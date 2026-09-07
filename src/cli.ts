@@ -10,7 +10,7 @@ import { loadEnv } from "./load-env.ts";
 import { createJsonlMemoryStore } from "./memory/index.ts";
 import { createModelClient } from "./model.ts";
 import { resolveOps, timed } from "./ops.ts";
-import { localPrincipals } from "./principals.ts";
+import { localAgentId, stdinCounterpartId } from "./principals.ts";
 import { lastAssistantText, readCommand } from "./repl.ts";
 import { loadTools } from "./tools.ts";
 import type { AgentState } from "./types.ts";
@@ -22,10 +22,11 @@ const main = async () => {
   const complete = createModelClient({ ops });
   const tools = loadTools();
   const root = join(homedir(), ".an-agent");
-  const { agentId, humanId } = localPrincipals(root);
+  const agentId = localAgentId(root);
+  const stdinFrom = stdinCounterpartId(agentId);
   const memory = createJsonlMemoryStore(join(root, "agents", agentId, "memory.jsonl"));
   // Temporary session: new UUID per process. Stdin has no protocol tag, so
-  // from_kind is unknown; from is still the stable local principal.
+  // from_kind is unknown; from is derived from this agent, not a shared human id.
   const session = crypto.randomUUID();
   let state: AgentState = {
     messages: [{ role: "system", content: "You are a helpful assistant." }],
@@ -39,7 +40,7 @@ const main = async () => {
       if (command.kind === "skip") continue;
       if (command.kind === "exit") break;
       memory.append({
-        from: humanId,
+        from: stdinFrom,
         from_kind: "unknown",
         kind: "utterance",
         session,
