@@ -47,4 +47,5 @@ export type AgentState = {
 export type AgentDeps = {
   complete: ModelClient;
   tools: readonly Tool[];
+  ops?: import("./ops.ts").Ops;
 };

@@ -1,19 +1,19 @@
 #!/usr/bin/env bun
 // Process entry for `an-agent`. Today this is a line REPL; later it will start the TUI.
-import { homedir } from "node:os";
-import { join } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { stdin, stdout } from "node:process";
 import { runUntilIdle } from "./agent.ts";
+import { parseCliArgs } from "./args.ts";
 import { loadEnv } from "./load-env.ts";
 import { createModelClient } from "./model.ts";
-import { createFileOps, timed } from "./ops.ts";
+import { resolveOps, timed } from "./ops.ts";
 import { lastAssistantText, readCommand } from "./repl.ts";
 import type { AgentState } from "./types.ts";
 
 const main = async () => {
   loadEnv();
-  const ops = createFileOps(join(homedir(), ".an-agent", "ops.jsonl"));
+  const args = parseCliArgs(process.argv.slice(2));
+  const ops = resolveOps({ debugPath: args.debugOps, env: process.env });
   const complete = createModelClient({ ops });
   let state: AgentState = {
     messages: [{ role: "system", content: "You are a helpful assistant." }],
@@ -31,7 +31,7 @@ const main = async () => {
       };
       try {
         state = await timed(ops, "agent.turn", () =>
-          runUntilIdle(state, { complete, tools: [] }),
+          runUntilIdle(state, { complete, tools: [], ops }),
         );
         stdout.write(`${lastAssistantText(state)}\n`);
       } catch (err) {
