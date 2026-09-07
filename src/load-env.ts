@@ -22,6 +22,7 @@ export const applyEnvFile = (path: string, env: EnvMap): void => {
     ) {
       value = value.slice(1, -1);
     }
+    // Already-set process env wins; files only fill gaps.
     if (env[key] === undefined || env[key] === "") env[key] = value;
   }
 };
@@ -30,6 +31,7 @@ export const packageRoot = (fromUrl = import.meta.url): string =>
   join(dirname(fileURLToPath(fromUrl)), "..");
 
 export const loadEnv = (env: EnvMap = process.env): void => {
+  // Home file first, project `.env` second so the repo-local file can fill remaining keys.
   applyEnvFile(join(homedir(), ".an-agent", ".env"), env);
   applyEnvFile(join(packageRoot(), ".env"), env);
 };

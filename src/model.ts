@@ -46,6 +46,7 @@ export function loadModelSettings(
 ): ModelSettings {
   const file = readFileConfig(configPath);
   const apiKeyEnv = file.apiKeyEnv ?? "MODEL_API_KEY";
+  // Env overrides config/model.json. Secrets never live in the json file.
   const baseUrl = env.MODEL_BASE_URL ?? file.baseUrl;
   const model = env.MODEL_NAME ?? file.model;
   if (!baseUrl || !model) {

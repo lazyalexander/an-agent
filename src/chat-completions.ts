@@ -6,7 +6,7 @@ export type ChatCompletionsOptions = {
   model: string;
   baseUrl: string;
   fetch?: typeof fetch;
-  extraBody?: Record<string, unknown>;
+  extraBody?: Record<string, unknown>; // vendor fields (e.g. thinking), merged into the JSON body
 };
 
 const toApiMessage = (message: Message): Record<string, unknown> => {

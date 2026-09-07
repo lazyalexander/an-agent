@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+// Process entry for `an-agent`. Today this is a line REPL; later it will start the TUI.
 import { createInterface } from "node:readline/promises";
 import { stdin, stdout } from "node:process";
 import { runUntilIdle } from "./agent.ts";

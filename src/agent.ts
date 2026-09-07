@@ -51,6 +51,7 @@ const runTool = async (call: ToolCall, tools: readonly Tool[]): Promise<ToolMess
   }
 };
 
+// One model call. Input state is not mutated; tool failures become tool messages, not throws.
 export async function step(state: AgentState, deps: AgentDeps): Promise<AgentState> {
   const assistant = await deps.complete({
     messages: state.messages,
@@ -71,6 +72,7 @@ const lastIsFinalAssistant = (state: AgentState): boolean => {
   return (last.tool_calls ?? []).length === 0;
 };
 
+// Repeat step until the last message is an assistant with no tool_calls.
 export async function runUntilIdle(
   state: AgentState,
   deps: AgentDeps,
