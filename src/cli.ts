@@ -5,7 +5,7 @@ import { stdin, stdout } from "node:process";
 import { runUntilIdle } from "./agent.ts";
 import { loadEnv } from "./load-env.ts";
 import { createModelClient } from "./model.ts";
-import { lastAssistantText, parseLine } from "./repl.ts";
+import { lastAssistantText, readCommand } from "./repl.ts";
 import type { AgentState } from "./types.ts";
 
 const main = async () => {
@@ -19,14 +19,18 @@ const main = async () => {
 
   try {
     for (;;) {
-      const command = parseLine(await rl.question("> "));
+      const command = await readCommand(() => rl.question("> "));
       if (command.kind === "skip") continue;
       if (command.kind === "exit") break;
       state = {
         messages: [...state.messages, { role: "user", content: command.text }],
       };
-      state = await runUntilIdle(state, { complete, tools: [] });
-      stdout.write(`${lastAssistantText(state)}\n`);
+      try {
+        state = await runUntilIdle(state, { complete, tools: [] });
+        stdout.write(`${lastAssistantText(state)}\n`);
+      } catch (err) {
+        console.error(err instanceof Error ? err.message : err);
+      }
     }
   } finally {
     rl.close();
