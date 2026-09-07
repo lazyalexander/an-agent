@@ -48,6 +48,7 @@ export type AgentDeps = {
   complete: ModelClient;
   tools: readonly Tool[];
   agentId?: string;
-  memory?: { append: import("./memory.ts").MemoryStore["append"] };
+  session?: string;
+  memory?: { append: import("./memory/index.ts").MemoryStore["append"] };
   ops?: import("./ops.ts").Ops;
 };

@@ -7,7 +7,7 @@ import { stdin, stdout } from "node:process";
 import { runUntilIdle } from "./agent.ts";
 import { parseCliArgs } from "./args.ts";
 import { loadEnv } from "./load-env.ts";
-import { createJsonlMemoryStore } from "./memory.ts";
+import { createJsonlMemoryStore } from "./memory/index.ts";
 import { createModelClient } from "./model.ts";
 import { resolveOps, timed } from "./ops.ts";
 import { localPrincipals } from "./principals.ts";
@@ -24,6 +24,9 @@ const main = async () => {
   const root = join(homedir(), ".an-agent");
   const { agentId, humanId } = localPrincipals(root);
   const memory = createJsonlMemoryStore(join(root, "agents", agentId, "memory.jsonl"));
+  // Temporary session: new UUID per process. Stdin has no protocol tag, so
+  // from_kind is unknown; from is still the stable local principal.
+  const session = crypto.randomUUID();
   let state: AgentState = {
     messages: [{ role: "system", content: "You are a helpful assistant." }],
   };
@@ -37,9 +40,10 @@ const main = async () => {
       if (command.kind === "exit") break;
       memory.append({
         from: humanId,
-        from_kind: "human",
+        from_kind: "unknown",
         kind: "utterance",
-        tags: ["utterance"],
+        session,
+        tags: [],
         content: command.text,
         refs: [],
       });
@@ -48,7 +52,7 @@ const main = async () => {
       };
       try {
         state = await timed(ops, "agent.turn", () =>
-          runUntilIdle(state, { complete, tools, agentId, memory, ops }),
+          runUntilIdle(state, { complete, tools, agentId, session, memory, ops }),
         );
         stdout.write(`${lastAssistantText(state)}\n`);
       } catch (err) {

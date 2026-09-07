@@ -1,4 +1,4 @@
-import type { Kind } from "./memory.ts";
+import type { Kind } from "./memory/index.ts";
 import { timed } from "./ops.ts";
 import type { AgentDeps, AgentState, Tool, ToolCall, ToolMessage } from "./types.ts";
 
@@ -7,12 +7,13 @@ const publish = (
   kind: Kind,
   content: string,
 ): void => {
-  if (!deps.memory || !deps.agentId) return;
+  if (!deps.memory || !deps.agentId || !deps.session) return;
   deps.memory.append({
     from: deps.agentId,
     from_kind: "agent",
     kind,
-    tags: [kind],
+    session: deps.session,
+    tags: [],
     content,
     refs: [],
   });

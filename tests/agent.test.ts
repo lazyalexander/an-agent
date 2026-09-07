@@ -141,7 +141,8 @@ describe("runUntilIdle", () => {
 
 describe("step memory", () => {
   test("publishes action and observation as separate records", async () => {
-    const kinds: string[] = [];
+    const published: { kind: string; session?: string; from_kind: string; tags: readonly unknown[] }[] =
+      [];
     const complete: ModelClient = async () => ({
       role: "assistant",
       content: "using echo",
@@ -160,13 +161,14 @@ describe("step memory", () => {
         complete,
         tools: [echo],
         agentId: "agent-1",
+        session: "session-1",
         memory: {
           append: (input) => {
-            kinds.push(input.kind);
+            published.push(input);
             return {
               v: 1,
               id: "01TEST",
-              seq: kinds.length,
+              seq: published.length,
               ts: "",
               ...input,
             };
@@ -175,7 +177,10 @@ describe("step memory", () => {
       },
     );
 
-    expect(kinds).toEqual(["utterance", "action", "observation"]);
+    expect(published.map((row) => row.kind)).toEqual(["utterance", "action", "observation"]);
+    expect(published.every((row) => row.session === "session-1")).toBe(true);
+    expect(published.every((row) => row.from_kind === "agent")).toBe(true);
+    expect(published.every((row) => row.tags.length === 0)).toBe(true);
   });
 });
 
