@@ -1,3 +1,4 @@
+import { appendLog } from "./log.ts";
 import type { AgentDeps, AgentState, Tool, ToolCall, ToolMessage } from "./types.ts";
 
 export type {
@@ -57,12 +58,39 @@ export async function step(state: AgentState, deps: AgentDeps): Promise<AgentSta
     messages: state.messages,
     tools: deps.tools,
   });
+  if (deps.log) {
+    appendLog(deps.log, {
+      type: "assistant",
+      content: assistant.content,
+      tool_calls: assistant.tool_calls,
+    });
+  }
   const messages = [...state.messages, assistant];
   const calls = assistant.tool_calls ?? [];
   if (calls.length === 0) {
     return { messages };
   }
-  const toolMessages = await Promise.all(calls.map((call) => runTool(call, deps.tools)));
+  const toolMessages: ToolMessage[] = [];
+  for (const call of calls) {
+    if (deps.log) {
+      appendLog(deps.log, {
+        type: "tool_call",
+        id: call.id,
+        name: call.name,
+        arguments: call.arguments,
+      });
+    }
+    const result = await runTool(call, deps.tools);
+    if (deps.log) {
+      appendLog(deps.log, {
+        type: "tool_result",
+        id: call.id,
+        name: call.name,
+        content: result.content,
+      });
+    }
+    toolMessages.push(result);
+  }
   return { messages: [...messages, ...toolMessages] };
 }
 

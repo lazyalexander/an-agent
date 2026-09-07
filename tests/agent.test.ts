@@ -138,3 +138,32 @@ describe("runUntilIdle", () => {
     ).rejects.toThrow("maxSteps");
   });
 });
+
+describe("step logging", () => {
+  test("records assistant, tool_call, and tool_result in order", async () => {
+    const events: { type: string }[] = [];
+    const complete: ModelClient = async () => ({
+      role: "assistant",
+      content: "",
+      tool_calls: [{ id: "c1", name: "echo", arguments: JSON.stringify({ text: "z" }) }],
+    });
+    const echo: Tool = {
+      name: "echo",
+      description: "echo",
+      parameters: {},
+      execute: (args) => String(args.text),
+    };
+
+    await step(
+      { messages: [{ role: "user", content: "z" }] },
+      {
+        complete,
+        tools: [echo],
+        log: { append: (event) => events.push(event) },
+      },
+    );
+
+    expect(events.map((e) => e.type)).toEqual(["assistant", "tool_call", "tool_result"]);
+  });
+});
+
