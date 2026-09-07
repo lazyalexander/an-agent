@@ -1,11 +1,12 @@
 import { createInterface } from "node:readline/promises";
 import { stdin, stdout } from "node:process";
 import { runUntilIdle } from "./agent.ts";
-import { createDeepSeekClient } from "./deepseek.ts";
+import { createModelClient } from "./model.ts";
+import { lastAssistantText, parseLine } from "./repl.ts";
 import type { AgentState } from "./types.ts";
 
 const main = async () => {
-  const complete = createDeepSeekClient();
+  const complete = createModelClient();
   let state: AgentState = {
     messages: [{ role: "system", content: "You are a helpful assistant." }],
   };
@@ -14,16 +15,14 @@ const main = async () => {
 
   try {
     for (;;) {
-      const line = (await rl.question("> ")).trim();
-      if (line === "" ) continue;
-      if (line === "/exit") break;
+      const command = parseLine(await rl.question("> "));
+      if (command.kind === "skip") continue;
+      if (command.kind === "exit") break;
       state = {
-        messages: [...state.messages, { role: "user", content: line }],
+        messages: [...state.messages, { role: "user", content: command.text }],
       };
       state = await runUntilIdle(state, { complete, tools: [] });
-      const last = state.messages.at(-1);
-      const text = last && last.role === "assistant" ? last.content : "";
-      stdout.write(`${text}\n`);
+      stdout.write(`${lastAssistantText(state)}\n`);
     }
   } finally {
     rl.close();
