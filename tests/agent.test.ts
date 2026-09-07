@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+  runUntilIdle,
   step,
   type AgentState,
   type AssistantMessage,
@@ -82,5 +83,59 @@ describe("step with tools", () => {
     const last = next.messages.at(-1);
     expect(last).toMatchObject({ role: "tool", tool_call_id: "c1" });
     expect(String((last as { content: string }).content)).toContain("nope");
+  });
+});
+
+describe("runUntilIdle", () => {
+  test("calls the model again after tools until a plain assistant message", async () => {
+    let n = 0;
+    const complete: ModelClient = async () => {
+      n += 1;
+      if (n === 1) {
+        return {
+          role: "assistant",
+          content: "",
+          tool_calls: [{ id: "c1", name: "echo", arguments: JSON.stringify({ text: "pong" }) }],
+        };
+      }
+      return { role: "assistant", content: "done pong" };
+    };
+
+    const echo: Tool = {
+      name: "echo",
+      description: "echo",
+      parameters: { type: "object", properties: { text: { type: "string" } } },
+      execute: (args) => String(args.text),
+    };
+
+    const next = await runUntilIdle(
+      { messages: [{ role: "user", content: "go" }] },
+      { complete, tools: [echo] },
+    );
+
+    expect(n).toBe(2);
+    expect(next.messages.at(-1)).toEqual({ role: "assistant", content: "done pong" });
+  });
+
+  test("throws when maxSteps is exceeded", async () => {
+    const complete: ModelClient = async () => ({
+      role: "assistant",
+      content: "",
+      tool_calls: [{ id: "c1", name: "echo", arguments: JSON.stringify({ text: "x" }) }],
+    });
+    const echo: Tool = {
+      name: "echo",
+      description: "echo",
+      parameters: {},
+      execute: () => "x",
+    };
+
+    await expect(
+      runUntilIdle(
+        { messages: [{ role: "user", content: "loop" }] },
+        { complete, tools: [echo] },
+        2,
+      ),
+    ).rejects.toThrow("maxSteps");
   });
 });

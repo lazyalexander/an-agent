@@ -64,3 +64,22 @@ export async function step(state: AgentState, deps: AgentDeps): Promise<AgentSta
   const toolMessages = await Promise.all(calls.map((call) => runTool(call, deps.tools)));
   return { messages: [...messages, ...toolMessages] };
 }
+
+const lastIsFinalAssistant = (state: AgentState): boolean => {
+  const last = state.messages.at(-1);
+  if (!last || last.role !== "assistant") return false;
+  return (last.tool_calls ?? []).length === 0;
+};
+
+export async function runUntilIdle(
+  state: AgentState,
+  deps: AgentDeps,
+  maxSteps = 16,
+): Promise<AgentState> {
+  let current = state;
+  for (let i = 0; i < maxSteps; i += 1) {
+    current = await step(current, deps);
+    if (lastIsFinalAssistant(current)) return current;
+  }
+  throw new Error("agent exceeded maxSteps");
+}
