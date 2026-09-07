@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { lastAssistantText, parseLine } from "../src/repl.ts";
+import { isInputEnded, lastAssistantText, parseLine, readCommand } from "../src/repl.ts";
 
 describe("parseLine", () => {
   test("treats blank input as skip", () => {
@@ -27,3 +27,22 @@ describe("lastAssistantText", () => {
     ).toBe("there");
   });
 });
+
+describe("isInputEnded", () => {
+  test("treats readline-closed and EOF as input end", () => {
+    expect(isInputEnded(new Error("readline was closed"))).toBe(true);
+    expect(isInputEnded(new Error("The cursor is closed"))).toBe(true);
+    const eof = new Error("ended") as Error & { code?: string };
+    eof.code = "ERR_USE_AFTER_CLOSE";
+    expect(isInputEnded(eof)).toBe(true);
+    expect(isInputEnded(new Error("chat completions HTTP 500"))).toBe(false);
+  });
+
+  test("readCommand maps a closed readline to exit", async () => {
+    const command = await readCommand(async () => {
+      throw new Error("readline was closed");
+    });
+    expect(command).toEqual({ kind: "exit" });
+  });
+});
+
