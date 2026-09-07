@@ -1,5 +1,21 @@
-import { appendLog } from "./log.ts";
+import type { Kind } from "./memory.ts";
 import type { AgentDeps, AgentState, Tool, ToolCall, ToolMessage } from "./types.ts";
+
+const publish = (
+  deps: AgentDeps,
+  kind: Kind,
+  content: string,
+): void => {
+  if (!deps.memory || !deps.agentId) return;
+  deps.memory.append({
+    from: deps.agentId,
+    from_kind: "agent",
+    kind,
+    tags: [kind],
+    content,
+    refs: [],
+  });
+};
 
 export type {
   AgentDeps,
@@ -58,13 +74,7 @@ export async function step(state: AgentState, deps: AgentDeps): Promise<AgentSta
     messages: state.messages,
     tools: deps.tools,
   });
-  if (deps.log) {
-    appendLog(deps.log, {
-      type: "assistant",
-      content: assistant.content,
-      tool_calls: assistant.tool_calls,
-    });
-  }
+  if (assistant.content) publish(deps, "utterance", assistant.content);
   const messages = [...state.messages, assistant];
   const calls = assistant.tool_calls ?? [];
   if (calls.length === 0) {
@@ -72,23 +82,9 @@ export async function step(state: AgentState, deps: AgentDeps): Promise<AgentSta
   }
   const toolMessages: ToolMessage[] = [];
   for (const call of calls) {
-    if (deps.log) {
-      appendLog(deps.log, {
-        type: "tool_call",
-        id: call.id,
-        name: call.name,
-        arguments: call.arguments,
-      });
-    }
+    publish(deps, "action", `${call.name} ${call.arguments}`);
     const result = await runTool(call, deps.tools);
-    if (deps.log) {
-      appendLog(deps.log, {
-        type: "tool_result",
-        id: call.id,
-        name: call.name,
-        content: result.content,
-      });
-    }
+    publish(deps, "observation", result.content);
     toolMessages.push(result);
   }
   return { messages: [...messages, ...toolMessages] };

@@ -139,12 +139,12 @@ describe("runUntilIdle", () => {
   });
 });
 
-describe("step logging", () => {
-  test("records assistant, tool_call, and tool_result in order", async () => {
-    const events: { type: string }[] = [];
+describe("step memory", () => {
+  test("publishes action and observation as separate records", async () => {
+    const kinds: string[] = [];
     const complete: ModelClient = async () => ({
       role: "assistant",
-      content: "",
+      content: "using echo",
       tool_calls: [{ id: "c1", name: "echo", arguments: JSON.stringify({ text: "z" }) }],
     });
     const echo: Tool = {
@@ -159,11 +159,24 @@ describe("step logging", () => {
       {
         complete,
         tools: [echo],
-        log: { append: (event) => events.push(event) },
+        agentId: "agent-1",
+        memory: {
+          append: (input) => {
+            kinds.push(input.kind);
+            return {
+              v: 1,
+              id: "01TEST",
+              seq: kinds.length,
+              ts: "",
+              ...input,
+            };
+          },
+        },
       },
     );
 
-    expect(events.map((e) => e.type)).toEqual(["assistant", "tool_call", "tool_result"]);
+    expect(kinds).toEqual(["utterance", "action", "observation"]);
   });
 });
+
 

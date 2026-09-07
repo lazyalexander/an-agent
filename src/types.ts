@@ -47,5 +47,6 @@ export type AgentState = {
 export type AgentDeps = {
   complete: ModelClient;
   tools: readonly Tool[];
-  log?: import("./log.ts").Log;
+  agentId?: string;
+  memory?: { append: import("./memory.ts").MemoryStore["append"] };
 };
