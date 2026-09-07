@@ -1,11 +1,14 @@
+#!/usr/bin/env bun
 import { createInterface } from "node:readline/promises";
 import { stdin, stdout } from "node:process";
 import { runUntilIdle } from "./agent.ts";
+import { loadEnv } from "./load-env.ts";
 import { createModelClient } from "./model.ts";
 import { lastAssistantText, parseLine } from "./repl.ts";
 import type { AgentState } from "./types.ts";
 
 const main = async () => {
+  loadEnv();
   const complete = createModelClient();
   let state: AgentState = {
     messages: [{ role: "system", content: "You are a helpful assistant." }],
