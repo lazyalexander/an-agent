@@ -1,3 +1,4 @@
+import { timed } from "./ops.ts";
 import type { AgentDeps, AgentState, Tool, ToolCall, ToolMessage } from "./types.ts";
 
 export type {
@@ -26,7 +27,11 @@ const parseArgs = (raw: string): ParseResult => {
   }
 };
 
-const runTool = async (call: ToolCall, tools: readonly Tool[]): Promise<ToolMessage> => {
+const runTool = async (
+  call: ToolCall,
+  tools: readonly Tool[],
+  deps: AgentDeps,
+): Promise<ToolMessage> => {
   const tool = tools.find((t) => t.name === call.name);
   if (!tool) {
     return {
@@ -40,7 +45,8 @@ const runTool = async (call: ToolCall, tools: readonly Tool[]): Promise<ToolMess
     return { role: "tool", tool_call_id: call.id, content: parsed.error };
   }
   try {
-    const content = await tool.execute(parsed.value);
+    const run = () => Promise.resolve(tool.execute(parsed.value));
+    const content = deps.ops ? await timed(deps.ops, `tool.${call.name}`, run) : await run();
     return { role: "tool", tool_call_id: call.id, content };
   } catch (err) {
     return {
@@ -62,7 +68,7 @@ export async function step(state: AgentState, deps: AgentDeps): Promise<AgentSta
   if (calls.length === 0) {
     return { messages };
   }
-  const toolMessages = await Promise.all(calls.map((call) => runTool(call, deps.tools)));
+  const toolMessages = await Promise.all(calls.map((call) => runTool(call, deps.tools, deps)));
   return { messages: [...messages, ...toolMessages] };
 }
 
