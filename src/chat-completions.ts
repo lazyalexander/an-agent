@@ -1,3 +1,4 @@
+import { timed } from "./ops.ts";
 import type { AssistantMessage, Message, ModelClient, Tool, ToolCall } from "./types.ts";
 
 export type ChatCompletionsOptions = {
@@ -7,6 +8,7 @@ export type ChatCompletionsOptions = {
   baseUrl: string;
   fetch?: typeof fetch;
   extraBody?: Record<string, unknown>; // vendor fields (e.g. thinking), merged into the JSON body
+  ops?: import("./ops.ts").Ops;
 };
 
 const toApiMessage = (message: Message): Record<string, unknown> => {
@@ -59,41 +61,44 @@ export function createChatCompletionsClient(options: ChatCompletionsOptions): Mo
   const extraBody = options.extraBody ?? {};
 
   return async ({ messages, tools }) => {
-    const apiKey = options.apiKey ?? process.env[options.apiKeyEnv ?? "MODEL_API_KEY"];
-    if (!apiKey) {
-      throw new Error(`${options.apiKeyEnv ?? "MODEL_API_KEY"} is not set`);
-    }
+    const run = async () => {
+      const apiKey = options.apiKey ?? process.env[options.apiKeyEnv ?? "MODEL_API_KEY"];
+      if (!apiKey) {
+        throw new Error(`${options.apiKeyEnv ?? "MODEL_API_KEY"} is not set`);
+      }
 
-    const body: Record<string, unknown> = {
-      model: options.model,
-      messages: messages.map(toApiMessage),
-      ...extraBody,
+      const body: Record<string, unknown> = {
+        model: options.model,
+        messages: messages.map(toApiMessage),
+        ...extraBody,
+      };
+      if (tools.length > 0) body.tools = toApiTools(tools);
+
+      const response = await fetchImpl(`${baseUrl}/chat/completions`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(body),
+      });
+
+      if (!response.ok) {
+        throw new Error(`chat completions HTTP ${response.status}: ${await response.text()}`);
+      }
+
+      const json = (await response.json()) as {
+        choices?: { message?: { content?: string | null; tool_calls?: unknown } }[];
+      };
+      const message = json.choices?.[0]?.message;
+      const tool_calls = mapToolCalls(message?.tool_calls);
+      const result: AssistantMessage = {
+        role: "assistant",
+        content: message?.content ?? "",
+      };
+      if (tool_calls) result.tool_calls = tool_calls;
+      return result;
     };
-    if (tools.length > 0) body.tools = toApiTools(tools);
-
-    const response = await fetchImpl(`${baseUrl}/chat/completions`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(body),
-    });
-
-    if (!response.ok) {
-      throw new Error(`chat completions HTTP ${response.status}: ${await response.text()}`);
-    }
-
-    const json = (await response.json()) as {
-      choices?: { message?: { content?: string | null; tool_calls?: unknown } }[];
-    };
-    const message = json.choices?.[0]?.message;
-    const tool_calls = mapToolCalls(message?.tool_calls);
-    const result: AssistantMessage = {
-      role: "assistant",
-      content: message?.content ?? "",
-    };
-    if (tool_calls) result.tool_calls = tool_calls;
-    return result;
+    return options.ops ? timed(options.ops, "model.complete", run) : run();
   };
 }

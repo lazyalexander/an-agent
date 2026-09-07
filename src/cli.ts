@@ -5,17 +5,21 @@ import { join } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { stdin, stdout } from "node:process";
 import { runUntilIdle } from "./agent.ts";
+import { parseCliArgs } from "./args.ts";
 import { loadEnv } from "./load-env.ts";
 import { createJsonlMemoryStore } from "./memory.ts";
 import { createModelClient } from "./model.ts";
+import { resolveOps, timed } from "./ops.ts";
 import { localPrincipals } from "./principals.ts";
-import { lastAssistantText, parseLine } from "./repl.ts";
+import { lastAssistantText, readCommand } from "./repl.ts";
 import { loadTools } from "./tools.ts";
 import type { AgentState } from "./types.ts";
 
 const main = async () => {
   loadEnv();
-  const complete = createModelClient();
+  const args = parseCliArgs(process.argv.slice(2));
+  const ops = resolveOps({ debugPath: args.debugOps, env: process.env });
+  const complete = createModelClient({ ops });
   const tools = loadTools();
   const root = join(homedir(), ".an-agent");
   const { agentId, humanId } = localPrincipals(root);
@@ -28,7 +32,7 @@ const main = async () => {
 
   try {
     for (;;) {
-      const command = parseLine(await rl.question("> "));
+      const command = await readCommand(() => rl.question("> "));
       if (command.kind === "skip") continue;
       if (command.kind === "exit") break;
       memory.append({
@@ -42,8 +46,14 @@ const main = async () => {
       state = {
         messages: [...state.messages, { role: "user", content: command.text }],
       };
-      state = await runUntilIdle(state, { complete, tools, agentId, memory });
-      stdout.write(`${lastAssistantText(state)}\n`);
+      try {
+        state = await timed(ops, "agent.turn", () =>
+          runUntilIdle(state, { complete, tools, agentId, memory, ops }),
+        );
+        stdout.write(`${lastAssistantText(state)}\n`);
+      } catch (err) {
+        console.error(err instanceof Error ? err.message : err);
+      }
     }
   } finally {
     rl.close();
