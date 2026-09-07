@@ -127,6 +127,6 @@ agent 是绑在单机进程上的实例，还是可迁宿主的持续身份：�
 
 - TypeScript 7 + `tsc --noEmit`（Go 编译器）
 - Bun：运行、装包、测试
-- 应用模型：OpenAI 兼容的 Chat Completions 协议，经 `ModelClient` 注入。DeepSeek 只是默认预设，不是内核。
+- 应用模型：OpenAI 兼容的 Chat Completions 协议，经 `ModelClient` 注入。厂商差异只放在 `config/model.json` 与环境变量，不进核心代码。
 - 形态：纯函数核心 + 薄 CLI
 - 工具默认空列表，循环支持注入工具

@@ -1,78 +1,73 @@
 import { describe, expect, test } from "bun:test";
-import { createModelClient } from "../src/model.ts";
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { createModelClient, loadModelSettings } from "../src/model.ts";
+
+const fakeFetchRecording = (into: { url: string; body: Record<string, unknown> }) =>
+  (async (input, init) => {
+    into.url = String(input);
+    into.body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+    return new Response(
+      JSON.stringify({ choices: [{ message: { content: "ok" } }] }),
+      { status: 200 },
+    );
+  }) as typeof fetch;
+
+describe("loadModelSettings", () => {
+  test("reads file config and lets env override", () => {
+    const dir = mkdtempSync(join(tmpdir(), "an-agent-model-"));
+    const path = join(dir, "model.json");
+    writeFileSync(
+      path,
+      JSON.stringify({
+        baseUrl: "https://file.example/v1",
+        model: "file-model",
+        extraBody: { thinking: { type: "disabled" } },
+      }),
+    );
+
+    const fromFile = loadModelSettings({}, path);
+    expect(fromFile).toEqual({
+      baseUrl: "https://file.example/v1",
+      model: "file-model",
+      extraBody: { thinking: { type: "disabled" } },
+      apiKeyEnv: "MODEL_API_KEY",
+    });
+
+    const fromEnv = loadModelSettings(
+      {
+        MODEL_BASE_URL: "https://env.example/v1",
+        MODEL_NAME: "env-model",
+        MODEL_API_KEY: "k",
+        MODEL_EXTRA_BODY: "{}",
+      },
+      path,
+    );
+    expect(fromEnv.baseUrl).toBe("https://env.example/v1");
+    expect(fromEnv.model).toBe("env-model");
+    expect(fromEnv.apiKey).toBe("k");
+    expect(fromEnv.extraBody).toEqual({});
+  });
+});
 
 describe("createModelClient", () => {
-  test("uses the DeepSeek preset by default", async () => {
-    const previous = {
-      MODEL_PROVIDER: process.env.MODEL_PROVIDER,
-      DEEPSEEK_API_KEY: process.env.DEEPSEEK_API_KEY,
-    };
-    process.env.DEEPSEEK_API_KEY = "ds-key";
-    delete process.env.MODEL_PROVIDER;
+  test("posts to settings.baseUrl with extraBody from settings", async () => {
+    const seen = { url: "", body: {} as Record<string, unknown> };
+    const complete = createModelClient({
+      settings: {
+        baseUrl: "https://api.example.test/v1",
+        model: "some-model",
+        apiKey: "k",
+        extraBody: { thinking: { type: "disabled" } },
+      },
+      fetch: fakeFetchRecording(seen),
+    });
 
-    try {
-      let url = "";
-      let body: Record<string, unknown> = {};
-      const complete = createModelClient({
-        fetch: (async (input, init) => {
-          url = String(input);
-          body = JSON.parse(String(init?.body)) as Record<string, unknown>;
-          return new Response(
-            JSON.stringify({ choices: [{ message: { content: "ok" } }] }),
-            { status: 200 },
-          );
-        }) as typeof fetch,
-      });
+    await complete({ messages: [{ role: "user", content: "hi" }], tools: [] });
 
-      await complete({ messages: [{ role: "user", content: "hi" }], tools: [] });
-
-      expect(url).toBe("https://api.deepseek.com/chat/completions");
-      expect(body.model).toBe("deepseek-v4-flash");
-      expect(body.thinking).toEqual({ type: "disabled" });
-    } finally {
-      if (previous.MODEL_PROVIDER === undefined) delete process.env.MODEL_PROVIDER;
-      else process.env.MODEL_PROVIDER = previous.MODEL_PROVIDER;
-      if (previous.DEEPSEEK_API_KEY === undefined) delete process.env.DEEPSEEK_API_KEY;
-      else process.env.DEEPSEEK_API_KEY = previous.DEEPSEEK_API_KEY;
-    }
-  });
-
-  test("uses a generic chat completions endpoint when provider is openai-compatible", async () => {
-    const previous = {
-      MODEL_PROVIDER: process.env.MODEL_PROVIDER,
-      MODEL_API_KEY: process.env.MODEL_API_KEY,
-      MODEL_BASE_URL: process.env.MODEL_BASE_URL,
-      MODEL_NAME: process.env.MODEL_NAME,
-    };
-    process.env.MODEL_PROVIDER = "openai-compatible";
-    process.env.MODEL_API_KEY = "k";
-    process.env.MODEL_BASE_URL = "https://api.example.test/v1";
-    process.env.MODEL_NAME = "some-model";
-
-    try {
-      let url = "";
-      let body: Record<string, unknown> = {};
-      const complete = createModelClient({
-        fetch: (async (input, init) => {
-          url = String(input);
-          body = JSON.parse(String(init?.body)) as Record<string, unknown>;
-          return new Response(
-            JSON.stringify({ choices: [{ message: { content: "ok" } }] }),
-            { status: 200 },
-          );
-        }) as typeof fetch,
-      });
-
-      await complete({ messages: [{ role: "user", content: "hi" }], tools: [] });
-
-      expect(url).toBe("https://api.example.test/v1/chat/completions");
-      expect(body.model).toBe("some-model");
-      expect(body.thinking).toBeUndefined();
-    } finally {
-      for (const [key, value] of Object.entries(previous)) {
-        if (value === undefined) delete process.env[key];
-        else process.env[key] = value;
-      }
-    }
+    expect(seen.url).toBe("https://api.example.test/v1/chat/completions");
+    expect(seen.body.model).toBe("some-model");
+    expect(seen.body.thinking).toEqual({ type: "disabled" });
   });
 });

@@ -3,7 +3,6 @@ import {
   runUntilIdle,
   step,
   type AgentState,
-  type AssistantMessage,
   type ModelClient,
   type Tool,
 } from "../src/agent.ts";
