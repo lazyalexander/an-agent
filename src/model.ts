@@ -17,6 +17,7 @@ export type ModelClientOptions = {
   env?: EnvMap;
   settings?: ModelSettings;
   configPath?: string;
+  ops?: import("./ops.ts").Ops;
 };
 
 type FileConfig = {
@@ -72,5 +73,6 @@ export function createModelClient(options: ModelClientOptions = {}): ModelClient
     baseUrl: settings.baseUrl,
     extraBody: settings.extraBody,
     fetch: options.fetch,
+    ops: options.ops,
   });
 }
