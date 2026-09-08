@@ -28,16 +28,22 @@ export type ToolMessage = {
 
 export type Message = SystemMessage | UserMessage | AssistantMessage | ToolMessage;
 
+export type ToolContext = {
+  /** Aborts when the surrounding turn is cancelled (e.g. user interrupt). */
+  signal?: AbortSignal;
+};
+
 export type Tool = {
   name: string;
   description: string;
   parameters: Record<string, unknown>;
-  execute: (args: Record<string, unknown>) => Promise<string> | string;
+  execute: (args: Record<string, unknown>, ctx?: ToolContext) => Promise<string> | string;
 };
 
 export type ModelClient = (input: {
   messages: readonly Message[];
   tools: readonly Tool[];
+  signal?: AbortSignal;
 }) => Promise<AssistantMessage>;
 
 export type AgentState = {
@@ -47,6 +53,7 @@ export type AgentState = {
 export type AgentDeps = {
   complete: ModelClient;
   tools: readonly Tool[];
+  signal?: AbortSignal;
   agentId?: string;
   session?: string;
   memory?: { append: import("./memory/index.ts").MemoryStore["append"] };

@@ -139,6 +139,100 @@ describe("runUntilIdle", () => {
   });
 });
 
+describe("runUntilIdle cancellation", () => {
+  test("passes the deps signal to tool execution", async () => {
+    let seen: AbortSignal | undefined;
+    const complete: ModelClient = async () => ({
+      role: "assistant",
+      content: "",
+      tool_calls: [{ id: "c1", name: "probe", arguments: "{}" }],
+    });
+    const probe: Tool = {
+      name: "probe",
+      description: "probe",
+      parameters: {},
+      execute: (_args, ctx) => {
+        seen = ctx?.signal;
+        return "x";
+      },
+    };
+    const ctrl = new AbortController();
+
+    await step(
+      { messages: [{ role: "user", content: "x" }] },
+      { complete, tools: [probe], signal: ctrl.signal },
+    );
+
+    expect(seen).toBe(ctrl.signal);
+  });
+
+  test("keeps a committed step when the signal aborts after the tool runs", async () => {
+    const ctrl = new AbortController();
+    const kinds: string[] = [];
+    const complete: ModelClient = async () => ({
+      role: "assistant",
+      content: "",
+      tool_calls: [{ id: "c1", name: "echo", arguments: "{}" }],
+    });
+    const echo: Tool = {
+      name: "echo",
+      description: "echo",
+      parameters: {},
+      execute: () => {
+        ctrl.abort();
+        return "x";
+      },
+    };
+
+    const next = await runUntilIdle(
+      { messages: [{ role: "user", content: "x" }] },
+      {
+        complete,
+        tools: [echo],
+        signal: ctrl.signal,
+        agentId: "agent-1",
+        session: "session-1",
+        memory: {
+          append: (input) => {
+            kinds.push(input.kind);
+            return {
+              v: 1,
+              id: "01TEST",
+              seq: kinds.length,
+              ts: "",
+              ...input,
+            };
+          },
+        },
+      },
+    );
+
+    expect(kinds).toEqual(["action", "observation"]);
+    expect(next.messages.at(-1)).toEqual({
+      role: "tool",
+      tool_call_id: "c1",
+      content: "x",
+    });
+  });
+
+  test("returns the last committed state when complete aborts before admit", async () => {
+    const ctrl = new AbortController();
+    const start: AgentState = { messages: [{ role: "user", content: "x" }] };
+    const complete: ModelClient = async () => {
+      ctrl.abort();
+      throw new Error("turn cancelled");
+    };
+
+    const next = await runUntilIdle(start, {
+      complete,
+      tools: [],
+      signal: ctrl.signal,
+    });
+
+    expect(next).toBe(start);
+  });
+});
+
 describe("step memory", () => {
   test("publishes action and observation as separate records", async () => {
     const published: { kind: string; session?: string; from_kind: string; tags: readonly unknown[] }[] =

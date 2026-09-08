@@ -32,7 +32,20 @@ const main = async () => {
     messages: [{ role: "system", content: "You are a helpful assistant." }],
   };
   const rl = createInterface({ input: stdin, output: stdout });
-  stdout.write("an-agent. /exit to quit.\n");
+  stdout.write("an-agent. /exit to quit. Ctrl+C cancels the current turn.\n");
+
+  // Ctrl+C: at the prompt quits like /exit; during a turn cancels that turn
+  // (tool processes and the in-flight model request get aborted); a second
+  // Ctrl+C mid-cancel force-exits.
+  let turn: AbortController | undefined;
+  rl.on("SIGINT", () => {
+    if (!turn) {
+      rl.close();
+      return;
+    }
+    if (turn.signal.aborted) process.exit(130);
+    turn.abort();
+  });
 
   try {
     for (;;) {
@@ -51,13 +64,21 @@ const main = async () => {
       state = {
         messages: [...state.messages, { role: "user", content: command.text }],
       };
+      const ctrl = new AbortController();
+      turn = ctrl;
       try {
         state = await timed(ops, "agent.turn", () =>
-          runUntilIdle(state, { complete, tools, agentId, session, memory, ops }),
+          runUntilIdle(state, { complete, tools, agentId, session, memory, ops, signal: ctrl.signal }),
         );
-        stdout.write(`${lastAssistantText(state)}\n`);
+        if (ctrl.signal.aborted) {
+          stdout.write("(turn cancelled)\n");
+        } else {
+          stdout.write(`${lastAssistantText(state)}\n`);
+        }
       } catch (err) {
         console.error(err instanceof Error ? err.message : err);
+      } finally {
+        turn = undefined;
       }
     }
   } finally {

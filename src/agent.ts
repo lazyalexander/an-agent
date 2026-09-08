@@ -2,7 +2,9 @@ import type { Kind } from "./memory/index.ts";
 import { timed } from "./ops.ts";
 import type { AgentDeps, AgentState, Tool, ToolCall, ToolMessage } from "./types.ts";
 
-const publish = (
+// Only path from the agent loop onto the tape. Call this in the same breath as
+// putting the matching message into the returned state; never throw that state away.
+const admit = (
   deps: AgentDeps,
   kind: Kind,
   content: string,
@@ -63,7 +65,7 @@ const runTool = async (
     return { role: "tool", tool_call_id: call.id, content: parsed.error };
   }
   try {
-    const run = () => Promise.resolve(tool.execute(parsed.value));
+    const run = () => Promise.resolve(tool.execute(parsed.value, { signal: deps.signal }));
     const content = deps.ops ? await timed(deps.ops, `tool.${call.name}`, run) : await run();
     return { role: "tool", tool_call_id: call.id, content };
   } catch (err) {
@@ -80,8 +82,9 @@ export async function step(state: AgentState, deps: AgentDeps): Promise<AgentSta
   const assistant = await deps.complete({
     messages: state.messages,
     tools: deps.tools,
+    signal: deps.signal,
   });
-  if (assistant.content) publish(deps, "utterance", assistant.content);
+  if (assistant.content) admit(deps, "utterance", assistant.content);
   const messages = [...state.messages, assistant];
   const calls = assistant.tool_calls ?? [];
   if (calls.length === 0) {
@@ -89,9 +92,9 @@ export async function step(state: AgentState, deps: AgentDeps): Promise<AgentSta
   }
   const toolMessages: ToolMessage[] = [];
   for (const call of calls) {
-    publish(deps, "action", `${call.name} ${call.arguments}`);
+    admit(deps, "action", `${call.name} ${call.arguments}`);
     const result = await runTool(call, deps.tools, deps);
-    publish(deps, "observation", result.content);
+    admit(deps, "observation", result.content);
     toolMessages.push(result);
   }
   return { messages: [...messages, ...toolMessages] };
@@ -104,6 +107,9 @@ const lastIsFinalAssistant = (state: AgentState): boolean => {
 };
 
 // Repeat step until the last message is an assistant with no tool_calls.
+// A step that returned has committed (tape + messages). Abort stops the next
+// step; it does not throw away the one that already finished. If complete()
+// aborts before admit, this returns the last committed state.
 export async function runUntilIdle(
   state: AgentState,
   deps: AgentDeps,
@@ -111,8 +117,16 @@ export async function runUntilIdle(
 ): Promise<AgentState> {
   let current = state;
   for (let i = 0; i < maxSteps; i += 1) {
-    current = await step(current, deps);
+    let next: AgentState;
+    try {
+      next = await step(current, deps);
+    } catch (err) {
+      if (deps.signal?.aborted) return current;
+      throw err;
+    }
+    current = next;
     if (lastIsFinalAssistant(current)) return current;
+    if (deps.signal?.aborted) return current;
   }
   throw new Error("agent exceeded maxSteps");
 }
