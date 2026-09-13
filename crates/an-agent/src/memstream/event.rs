@@ -44,6 +44,8 @@ pub struct ActOnEvent {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub workplace: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub resource: Option<crate::workplace::Resource>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub tool: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub effect: Option<Effect>,
@@ -55,6 +57,7 @@ impl ActOnEvent {
             kind: env.kind.as_str().to_string(),
             tag: env.tag.clone(),
             workplace: env.workplace.clone(),
+            resource: env.resource.clone(),
             tool: env.tool.clone(),
             effect: None,
         }
@@ -65,6 +68,7 @@ impl ActOnEvent {
             kind: env.kind.as_str().to_string(),
             tag: env.tag.clone(),
             workplace: env.workplace.clone(),
+            resource: env.resource.clone(),
             tool: env.tool.clone(),
             effect: Some(effect),
         }

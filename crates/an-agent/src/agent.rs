@@ -154,6 +154,7 @@ fn admit_utterance(
         kind: ActKind::Utterance,
         tag: ToolTag::none(),
         workplace: None,
+        resource: None,
         tool: None,
     };
     Ok(Some(store.append(AppendEvent {

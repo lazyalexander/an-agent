@@ -83,6 +83,7 @@ pub async fn run_tool_act(
         kind: ActKind::Tool,
         tag: tag.clone(),
         workplace: None,
+        resource: None,
         tool: Some(call.name.clone()),
     };
 

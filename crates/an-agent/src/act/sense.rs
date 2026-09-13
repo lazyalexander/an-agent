@@ -10,6 +10,12 @@ pub struct Effect {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub workplace: Option<String>,
     pub memory: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub from_head: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub to_head: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub blob: Option<String>,
 }
 
 pub fn effect_from_tag(tag: &ToolTag, workplace: Option<String>) -> Effect {
@@ -21,6 +27,9 @@ pub fn effect_from_tag(tag: &ToolTag, workplace: Option<String>) -> Effect {
             unbounded: false,
             workplace,
             memory,
+            from_head: None,
+            to_head: None,
+            blob: None,
         },
         FileFacet::Unbounded => Effect {
             reads: vec![],
@@ -28,6 +37,9 @@ pub fn effect_from_tag(tag: &ToolTag, workplace: Option<String>) -> Effect {
             unbounded: true,
             workplace,
             memory,
+            from_head: None,
+            to_head: None,
+            blob: None,
         },
         FileFacet::Read { path, .. } => Effect {
             reads: vec![path.clone()],
@@ -35,6 +47,9 @@ pub fn effect_from_tag(tag: &ToolTag, workplace: Option<String>) -> Effect {
             unbounded: false,
             workplace,
             memory,
+            from_head: None,
+            to_head: None,
+            blob: None,
         },
         FileFacet::Write { path, .. } => Effect {
             reads: vec![],
@@ -42,6 +57,9 @@ pub fn effect_from_tag(tag: &ToolTag, workplace: Option<String>) -> Effect {
             unbounded: false,
             workplace,
             memory,
+            from_head: None,
+            to_head: None,
+            blob: None,
         },
         FileFacet::ReadWrite { path, .. } => Effect {
             reads: vec![path.clone()],
@@ -49,6 +67,9 @@ pub fn effect_from_tag(tag: &ToolTag, workplace: Option<String>) -> Effect {
             unbounded: false,
             workplace,
             memory,
+            from_head: None,
+            to_head: None,
+            blob: None,
         },
     }
 }

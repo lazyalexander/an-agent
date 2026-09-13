@@ -38,6 +38,7 @@ pub struct ActEnvelope {
     pub kind: ActKind,
     pub tag: ToolTag,
     pub workplace: Option<String>,
+    pub resource: Option<crate::workplace::Resource>,
     pub tool: Option<String>,
 }
 
