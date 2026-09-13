@@ -1,4 +1,4 @@
-import type { MemoryEvent } from "../bedrock/memkit/types.ts";
+import type { MemoryEvent } from "../../bedrock/memkit/types.ts";
 import { FORGET_TAG, OUTSIDE_TAG } from "./types.ts";
 
 export const isOutside = (event: MemoryEvent): boolean => event.tags.includes(OUTSIDE_TAG);

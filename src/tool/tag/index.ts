@@ -10,4 +10,4 @@ export { fileConflicts, fileCoversPath } from "./file.ts";
 export type { PermitRule } from "./permit.ts";
 export { permitImplied } from "./permit.ts";
 export { forgottenRememberIds, isForget, isMaskedOutside, isOutside } from "./memory.ts";
-export { toolTag } from "./tag.ts";
+export { toolTag } from "./make.ts";

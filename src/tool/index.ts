@@ -1,0 +1,24 @@
+export type {
+  FileFacet,
+  FileOp,
+  MemoryFacet,
+  MemoryOp,
+  Permit,
+  PermitRule,
+  ToolTag,
+} from "./tag/index.ts";
+export {
+  FORGET_TAG,
+  OUTSIDE_TAG,
+  fileConflicts,
+  fileCoversPath,
+  forgottenRememberIds,
+  isDownward,
+  isForget,
+  isMaskedOutside,
+  isOutside,
+  isSamePath,
+  normalizePath,
+  permitImplied,
+  toolTag,
+} from "./tag/index.ts";

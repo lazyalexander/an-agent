@@ -8,7 +8,7 @@ import {
   isMaskedOutside,
   permitImplied,
   toolTag,
-} from "../../src/tooltag/index.ts";
+} from "../../src/tool/index.ts";
 
 const event = (over: Partial<MemoryEvent>): MemoryEvent => ({
   v: 1,
