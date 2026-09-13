@@ -28,17 +28,8 @@ export type ToolMessage = {
 
 export type Message = SystemMessage | UserMessage | AssistantMessage | ToolMessage;
 
-export type ToolContext = {
-  /** Aborts when the surrounding turn is cancelled (e.g. user interrupt). */
-  signal?: AbortSignal;
-};
-
-export type Tool = {
-  name: string;
-  description: string;
-  parameters: Record<string, unknown>;
-  execute: (args: Record<string, unknown>, ctx?: ToolContext) => Promise<string> | string;
-};
+import type { Tool, ToolContext } from "./tool/core.ts";
+export type { Tool, ToolContext };
 
 export type ModelClient = (input: {
   messages: readonly Message[];

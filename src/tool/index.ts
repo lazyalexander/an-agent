@@ -1,3 +1,6 @@
+export type { Tool, ToolContext } from "./core.ts";
+export type { TagPatch, TaggedTool } from "./define.ts";
+export { defineTool, isTaggedTool, resolveTag, tagOf } from "./define.ts";
 export type {
   FileFacet,
   FileOp,

@@ -1,4 +1,4 @@
-import type { Tool } from "../types.ts";
+import { defineTool, toolTag } from "../tool/index.ts";
 
 const DEFAULT_TIMEOUT_MS = 120_000;
 const DEFAULT_MAX_OUTPUT_BYTES = 64 * 1024;
@@ -71,13 +71,14 @@ const killGroup = (proc: { pid: number; kill: (signal?: NodeJS.Signals) => void 
   }
 };
 
-export const createBash = (options: BashOptions = {}): Tool => {
+export const createBash = (options: BashOptions = {}) => {
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const maxOutputBytes = options.maxOutputBytes ?? DEFAULT_MAX_OUTPUT_BYTES;
   const killGraceMs = options.killGraceMs ?? DEFAULT_KILL_GRACE_MS;
 
-  return {
+  return defineTool({
     name: "bash",
+    tag: toolTag.unbounded(),
     description: `Run a shell command. Killed after ${Math.round(timeoutMs / 1000)}s; output truncated at ${maxOutputBytes} bytes. Arguments: { command: string }.`,
     parameters: {
       type: "object",
@@ -148,7 +149,7 @@ export const createBash = (options: BashOptions = {}): Tool => {
         }
       }
     },
-  };
+  });
 };
 
 export const bash = createBash();

@@ -3,9 +3,18 @@ import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { loadTools } from "../src/tools.ts";
+import { tagOf } from "../src/tool/index.ts";
 import { bash, createBash } from "../src/tools/bash.ts";
 
 describe("bash", () => {
+  test("declares unbounded workplace access", () => {
+    expect(tagOf(bash)).toEqual({
+      file: { op: "unbounded" },
+      permit: "ask",
+      memory: { op: "ignore" },
+    });
+  });
+
   test("runs a command and returns stdout", async () => {
     const out = await bash.execute({ command: "printf 'ok'" });
     expect(out).toBe("ok");
