@@ -3,7 +3,10 @@ use std::sync::Arc;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use crate::act::{run_tool_act, ActEnvelope, ActKind, Tool, ToolCall, ToolCtx, ToolError, ToolTag};
+use crate::act::{
+    run_tool_act, ActEnvelope, ActKind, ActSentence, BareFile, Ingest, Permit, Tool, ToolCall,
+    ToolCtx, ToolError,
+};
 use crate::memstream::{ActOnEvent, AppendEvent, FromKind, JsonlStore, Kind, StoreError};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -152,9 +155,7 @@ fn admit_utterance(
     };
     let env = ActEnvelope {
         kind: ActKind::Utterance,
-        tag: ToolTag::none(),
-        workplace: None,
-        resource: None,
+        sentence: ActSentence::bare(Permit::Go, BareFile::None, Ingest::Ignore),
         tool: None,
     };
     Ok(Some(store.append(AppendEvent {

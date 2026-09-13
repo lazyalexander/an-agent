@@ -1,8 +1,10 @@
 mod sense;
+mod sentence;
 mod tag;
 mod tool;
 
-pub use sense::{effect_from_tag, Effect};
+pub use sense::{effect_from_sentence, effect_from_tag, Effect};
+pub use sentence::{Access, ActSentence, BareFile, Ingest, SentenceError};
 pub use tag::{FileFacet, MemoryFacet, Permit, ToolTag};
 pub use tool::{run_tool_act, tag_of, Tool, ToolCall, ToolCtx, ToolError, ToolMessage};
 
@@ -36,9 +38,7 @@ impl ActKind {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ActEnvelope {
     pub kind: ActKind,
-    pub tag: ToolTag,
-    pub workplace: Option<String>,
-    pub resource: Option<crate::workplace::Resource>,
+    pub sentence: ActSentence,
     pub tool: Option<String>,
 }
 
@@ -48,13 +48,26 @@ mod tests {
 
     #[test]
     fn senses_file_faces() {
-        let none = effect_from_tag(&ToolTag::none(), None);
+        let none = effect_from_sentence(&ActSentence::from_seed(&ToolTag::none(), None).unwrap());
         assert!(!none.unbounded);
         assert!(none.reads.is_empty());
-        let read = effect_from_tag(&ToolTag::read("/src/a.ts"), None);
-        assert_eq!(read.reads, ["/src/a.ts"]);
-        let write = effect_from_tag(&ToolTag::write("/src/a.ts"), None);
-        assert_eq!(write.writes, ["/src/a.ts"]);
-        assert!(effect_from_tag(&ToolTag::unbounded(), None).unbounded);
+        let wp = uuid::Uuid::parse_str("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa").unwrap();
+        let res = crate::workplace::Resource::new(
+            wp,
+            crate::workplace::ResourceKind::File,
+            ["src", "a.ts"],
+        );
+        let read = effect_from_sentence(
+            &ActSentence::from_seed(&ToolTag::read("/src/a.ts"), Some(res.clone())).unwrap(),
+        );
+        assert!(read.reads.iter().any(|p| p.ends_with("/src/a.ts")));
+        let write = effect_from_sentence(
+            &ActSentence::from_seed(&ToolTag::write("/src/a.ts"), Some(res)).unwrap(),
+        );
+        assert!(write.writes.iter().any(|p| p.ends_with("/src/a.ts")));
+        assert!(
+            effect_from_sentence(&ActSentence::from_seed(&ToolTag::unbounded(), None).unwrap())
+                .unbounded
+        );
     }
 }

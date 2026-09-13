@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::act::{ActEnvelope, Effect};
+use crate::act::{ActEnvelope, ActSentence, Effect};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -40,11 +40,7 @@ pub struct Memevent {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ActOnEvent {
     pub kind: String,
-    pub tag: crate::act::ToolTag,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub workplace: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub resource: Option<crate::workplace::Resource>,
+    pub tag: ActSentence,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tool: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -55,9 +51,7 @@ impl ActOnEvent {
     pub fn intent(env: &ActEnvelope) -> Self {
         Self {
             kind: env.kind.as_str().to_string(),
-            tag: env.tag.clone(),
-            workplace: env.workplace.clone(),
-            resource: env.resource.clone(),
+            tag: env.sentence.clone(),
             tool: env.tool.clone(),
             effect: None,
         }
@@ -66,9 +60,7 @@ impl ActOnEvent {
     pub fn with_effect(env: &ActEnvelope, effect: Effect) -> Self {
         Self {
             kind: env.kind.as_str().to_string(),
-            tag: env.tag.clone(),
-            workplace: env.workplace.clone(),
-            resource: env.resource.clone(),
+            tag: env.sentence.clone(),
             tool: env.tool.clone(),
             effect: Some(effect),
         }

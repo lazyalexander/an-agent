@@ -4,7 +4,8 @@ use async_trait::async_trait;
 use serde_json::Value;
 use thiserror::Error;
 
-use super::sense::effect_from_tag;
+use super::sense::effect_from_sentence;
+use super::sentence::ActSentence;
 use super::tag::{Permit, ToolTag};
 use super::{ActEnvelope, ActKind};
 use crate::memstream::{ActOnEvent, AppendEvent, FromKind, JsonlStore, Kind, Memevent, StoreError};
@@ -79,11 +80,50 @@ pub async fn run_tool_act(
 ) -> Result<ToolActResult, ToolError> {
     let tool = tools.iter().find(|t| t.name() == call.name);
     let tag = tag_of(tool.map(|t| t.as_ref()));
+    let sentence = match ActSentence::from_seed(&tag, None) {
+        Ok(s) => s,
+        Err(e) => {
+            let env = ActEnvelope {
+                kind: ActKind::Tool,
+                sentence: ActSentence::bare(
+                    tag.permit,
+                    super::sentence::BareFile::None,
+                    super::sentence::Ingest::Ignore,
+                ),
+                tool: Some(call.name.clone()),
+            };
+            let action = admit(
+                store,
+                agent_id,
+                session,
+                Kind::Action,
+                format!("{} {}", call.name, call.arguments),
+                vec![],
+                Some(ActOnEvent::intent(&env)),
+            )?;
+            let refs = action.as_ref().map(|a| vec![a.id.clone()]).unwrap_or_default();
+            let observation = admit(
+                store,
+                agent_id,
+                session,
+                Kind::Observation,
+                e.to_string(),
+                refs,
+                Some(ActOnEvent::with_effect(&env, effect_from_sentence(&env.sentence))),
+            )?;
+            return Ok(ToolActResult {
+                action,
+                observation,
+                message: ToolMessage {
+                    tool_call_id: call.id.clone(),
+                    content: e.to_string(),
+                },
+            });
+        }
+    };
     let env = ActEnvelope {
         kind: ActKind::Tool,
-        tag: tag.clone(),
-        workplace: None,
-        resource: None,
+        sentence,
         tool: Some(call.name.clone()),
     };
 
@@ -106,7 +146,7 @@ pub async fn run_tool_act(
             Kind::Observation,
             content.clone(),
             refs,
-            Some(ActOnEvent::with_effect(&env, effect_from_tag(&tag, None))),
+            Some(ActOnEvent::with_effect(&env, effect_from_sentence(&env.sentence))),
         )?;
         Ok(ToolActResult {
             action,
@@ -121,7 +161,7 @@ pub async fn run_tool_act(
     let Some(tool) = tool else {
         return fail(format!("unknown tool: {}", call.name), action);
     };
-    if tag.permit == Permit::Forbidden {
+    if env.sentence.permit() == Permit::Forbidden {
         return fail("forbidden".into(), action);
     }
     let args = match parse_args(&call.arguments) {
