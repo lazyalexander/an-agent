@@ -19,7 +19,7 @@ const baseInput = {
 describe("createJsonlMemoryStore", () => {
   test("appends records with increasing seq and never truncates", () => {
     const path = tempPath();
-    const store = createJsonlMemoryStore(path);
+    const store = createJsonlMemoryStore(path, { now: () => 0 });
 
     const first = store.append({ ...baseInput, content: "hi" });
     const second = store.append({
@@ -34,6 +34,7 @@ describe("createJsonlMemoryStore", () => {
     expect(second.seq).toBe(2);
     expect(first.session).toBe(baseInput.session);
     expect(first.from_kind).toBe("unknown");
+    expect(first.ts).toBe("1970-01-01T00:00:00.000Z");
     expect(first.tags).toEqual([]);
     expect(first.id).toHaveLength(26);
     expect(store.readAll()).toHaveLength(2);

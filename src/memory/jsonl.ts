@@ -1,24 +1,33 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname } from "node:path";
+import { jsonLine } from "../bedrock/memkit/json.ts";
+import { assertEvent } from "../bedrock/memkit/types.ts";
+import { Time } from "../bedrock/opkit/time.ts";
 import type { MemoryRecord, MemoryStore } from "./types.ts";
 import { ulid } from "./ulid.ts";
 
-const parseLine = (line: string): MemoryRecord | undefined => {
-  if (line.trim() === "") return undefined;
-  return JSON.parse(line) as MemoryRecord;
+export type JsonlMemoryOptions = {
+  /** Milliseconds since epoch. Defaults to Date.now. */
+  now?: () => number;
 };
 
-export function createJsonlMemoryStore(path: string): MemoryStore {
+export function createJsonlMemoryStore(
+  path: string,
+  options: JsonlMemoryOptions = {},
+): MemoryStore {
   mkdirSync(dirname(path), { recursive: true });
+  const now = options.now ?? Date.now;
   // Cached after the first scan so append does not reread the whole file.
   let nextSeq: number | undefined;
 
   const readAll = (): MemoryRecord[] => {
     if (!existsSync(path)) return [];
-    return readFileSync(path, "utf8").split("\n").flatMap((line) => {
-      const record = parseLine(line);
-      return record ? [record] : [];
-    });
+    const records: MemoryRecord[] = [];
+    for (const line of readFileSync(path, "utf8").split("\n")) {
+      if (line.trim() === "") continue;
+      records.push(jsonLine.decode(line));
+    }
+    return records;
   };
 
   const peekNextSeq = (): number => {
@@ -31,14 +40,14 @@ export function createJsonlMemoryStore(path: string): MemoryStore {
   return {
     append: (input) => {
       const seq = peekNextSeq();
-      const record: MemoryRecord = {
+      const record = assertEvent({
         v: 1,
         id: ulid(),
         seq,
-        ts: new Date().toISOString(),
+        ts: Time.iso(now()),
         ...input,
-      };
-      appendFileSync(path, `${JSON.stringify(record)}\n`);
+      });
+      appendFileSync(path, jsonLine.encode(record));
       nextSeq = seq + 1;
       return record;
     },

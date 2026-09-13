@@ -1,23 +1,24 @@
-import type { Kind } from "./memory/index.ts";
+import { makeArray } from "./bedrock/opkit/array.ts";
+import type { Kind, MemoryRecord } from "./memory/index.ts";
 import { timed } from "./ops.ts";
 import type { AgentDeps, AgentState, Tool, ToolCall, ToolMessage } from "./types.ts";
 
-// Only path from the agent loop onto the tape. Call this in the same breath as
-// putting the matching message into the returned state; never throw that state away.
+// Only write onto the memstream. Pair every append with the returned AgentState.
 const admit = (
   deps: AgentDeps,
   kind: Kind,
   content: string,
-): void => {
-  if (!deps.memory || !deps.agentId || !deps.session) return;
-  deps.memory.append({
+  refs: readonly string[] = [],
+): MemoryRecord | undefined => {
+  if (!deps.memory || !deps.agentId || !deps.session) return undefined;
+  return deps.memory.append({
     from: deps.agentId,
     from_kind: "agent",
     kind,
     session: deps.session,
     tags: [],
     content,
-    refs: [],
+    refs,
   });
 };
 
@@ -86,15 +87,15 @@ export async function step(state: AgentState, deps: AgentDeps): Promise<AgentSta
   });
   if (assistant.content) admit(deps, "utterance", assistant.content);
   const messages = [...state.messages, assistant];
-  const calls = assistant.tool_calls ?? [];
+  const calls = makeArray(assistant.tool_calls ?? []);
   if (calls.length === 0) {
     return { messages };
   }
   const toolMessages: ToolMessage[] = [];
   for (const call of calls) {
-    admit(deps, "action", `${call.name} ${call.arguments}`);
+    const action = admit(deps, "action", `${call.name} ${call.arguments}`);
     const result = await runTool(call, deps.tools, deps);
-    admit(deps, "observation", result.content);
+    admit(deps, "observation", result.content, action ? [action.id] : []);
     toolMessages.push(result);
   }
   return { messages: [...messages, ...toolMessages] };
@@ -107,9 +108,9 @@ const lastIsFinalAssistant = (state: AgentState): boolean => {
 };
 
 // Repeat step until the last message is an assistant with no tool_calls.
-// A step that returned has committed (tape + messages). Abort stops the next
-// step; it does not throw away the one that already finished. If complete()
-// aborts before admit, this returns the last committed state.
+// A step that returned has committed (memstream + messages). Abort stops the
+// next step; it does not throw away the one that already finished. If
+// complete() aborts before admit, this returns the last committed state.
 export async function runUntilIdle(
   state: AgentState,
   deps: AgentDeps,

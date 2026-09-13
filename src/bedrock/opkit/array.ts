@@ -28,7 +28,8 @@ export function without<T>(items: readonly T[], item: T): T[] {
   return [...items.slice(0, index), ...items.slice(index + 1)];
 }
 
-export function makeArray<T>(source: T | T[] | null | undefined): T[] {
-  if (Array.isArray(source)) return [...source];
-  return isNullable(source) ? [] : [source];
+export function makeArray<T>(source: T | readonly T[] | null | undefined): T[] {
+  if (isNullable(source)) return [];
+  if (Array.isArray(source)) return Array.from(source as ArrayLike<T>);
+  return [source as T];
 }

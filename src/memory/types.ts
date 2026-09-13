@@ -1,33 +1,9 @@
-export type Kind = "utterance" | "action" | "observation";
+import type { MemoryEvent } from "../bedrock/memkit/types.ts";
 
-/** Declared by the ingress channel. Without a protocol tag this is "unknown". */
-export type FromKind = "human" | "agent" | "unknown";
+export type { FromKind, Kind, MemoryEvent } from "../bedrock/memkit/types.ts";
 
-/**
- * Closed enum. None are defined yet, so writers pass [].
- * Session is a record field, not a tag.
- */
-export type Tag = never;
-
-/**
- * One event on this agent's tape. The tape is append-only testimony:
- * it records what this agent experienced, not a shared conversation object.
- * `session` groups events; membership and collaboration live elsewhere.
- * Older files may omit `session`; new appends always write one.
- */
-export type MemoryRecord = {
-  v: 1;
-  id: string;
-  seq: number;
-  ts: string;
-  from: string;
-  from_kind: FromKind;
-  kind: Kind;
-  session?: string;
-  content: string;
-  tags: readonly Tag[];
-  refs: readonly string[];
-};
+/** A memevent on this agent's memstream. Alias of MemoryEvent. */
+export type MemoryRecord = MemoryEvent;
 
 export type MemoryInput = Omit<MemoryRecord, "v" | "id" | "seq" | "ts" | "session"> & {
   session: string;
