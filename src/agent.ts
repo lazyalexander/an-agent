@@ -1,26 +1,6 @@
+import { admitUtterance, runToolAct } from "./act/index.ts";
 import { makeArray } from "./bedrock/opkit/array.ts";
-import type { Kind, MemoryRecord } from "./memory/index.ts";
-import { timed } from "./ops.ts";
-import type { AgentDeps, AgentState, Tool, ToolCall, ToolMessage } from "./types.ts";
-
-// Only write onto the memstream. Pair every append with the returned AgentState.
-const admit = (
-  deps: AgentDeps,
-  kind: Kind,
-  content: string,
-  refs: readonly string[] = [],
-): MemoryRecord | undefined => {
-  if (!deps.memory || !deps.agentId || !deps.session) return undefined;
-  return deps.memory.append({
-    from: deps.agentId,
-    from_kind: "agent",
-    kind,
-    session: deps.session,
-    tags: [],
-    content,
-    refs,
-  });
-};
+import type { AgentDeps, AgentState } from "./types.ts";
 
 export type {
   AgentDeps,
@@ -32,52 +12,6 @@ export type {
   ToolCall,
 } from "./types.ts";
 
-type ParseResult =
-  | { ok: true; value: Record<string, unknown> }
-  | { ok: false; error: string };
-
-const parseArgs = (raw: string): ParseResult => {
-  try {
-    const value: unknown = JSON.parse(raw);
-    if (value !== null && typeof value === "object" && !Array.isArray(value)) {
-      return { ok: true, value: value as Record<string, unknown> };
-    }
-    return { ok: false, error: "tool arguments must be a JSON object" };
-  } catch {
-    return { ok: false, error: "tool arguments are not valid JSON" };
-  }
-};
-
-const runTool = async (
-  call: ToolCall,
-  tools: readonly Tool[],
-  deps: AgentDeps,
-): Promise<ToolMessage> => {
-  const tool = tools.find((t) => t.name === call.name);
-  if (!tool) {
-    return {
-      role: "tool",
-      tool_call_id: call.id,
-      content: `unknown tool: ${call.name}`,
-    };
-  }
-  const parsed = parseArgs(call.arguments);
-  if (!parsed.ok) {
-    return { role: "tool", tool_call_id: call.id, content: parsed.error };
-  }
-  try {
-    const run = () => Promise.resolve(tool.execute(parsed.value, { signal: deps.signal }));
-    const content = deps.ops ? await timed(deps.ops, `tool.${call.name}`, run) : await run();
-    return { role: "tool", tool_call_id: call.id, content };
-  } catch (err) {
-    return {
-      role: "tool",
-      tool_call_id: call.id,
-      content: err instanceof Error ? err.message : String(err),
-    };
-  }
-};
-
 // One model call. Input state is not mutated; tool failures become tool messages, not throws.
 export async function step(state: AgentState, deps: AgentDeps): Promise<AgentState> {
   const assistant = await deps.complete({
@@ -85,18 +19,16 @@ export async function step(state: AgentState, deps: AgentDeps): Promise<AgentSta
     tools: deps.tools,
     signal: deps.signal,
   });
-  if (assistant.content) admit(deps, "utterance", assistant.content);
+  if (assistant.content) admitUtterance(deps, assistant.content);
   const messages = [...state.messages, assistant];
   const calls = makeArray(assistant.tool_calls ?? []);
   if (calls.length === 0) {
     return { messages };
   }
-  const toolMessages: ToolMessage[] = [];
+  const toolMessages = [];
   for (const call of calls) {
-    const action = admit(deps, "action", `${call.name} ${call.arguments}`);
-    const result = await runTool(call, deps.tools, deps);
-    admit(deps, "observation", result.content, action ? [action.id] : []);
-    toolMessages.push(result);
+    const { message } = await runToolAct(deps, call);
+    toolMessages.push(message);
   }
   return { messages: [...messages, ...toolMessages] };
 }

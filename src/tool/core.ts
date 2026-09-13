@@ -4,8 +4,8 @@ export type ToolContext = {
 };
 
 /**
- * Model-facing tool. Extra workplace faces live on `tag` via defineTool,
- * not on this type.
+ * Model-facing tool. Workplace faces live on the act envelope, not here.
+ * defineTool may attach an optional tag seed for wrapping.
  */
 export type Tool = {
   name: string;

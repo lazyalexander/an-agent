@@ -1,5 +1,5 @@
-import { toolTag } from "./tag/make.ts";
-import type { FileFacet, FileOp, MemoryFacet, MemoryOp, Permit, ToolTag } from "./tag/types.ts";
+import { toolTag } from "../act/tag/make.ts";
+import type { FileFacet, FileOp, MemoryFacet, MemoryOp, Permit, ToolTag } from "../act/tag/types.ts";
 import type { Tool } from "./core.ts";
 
 export type TaggedTool<T extends ToolTag = ToolTag> = Tool & { readonly tag: T };
@@ -35,7 +35,9 @@ export const isTaggedTool = (tool: Tool): tool is TaggedTool =>
 export const tagOf = (tool: Tool): ToolTag =>
   isTaggedTool(tool) ? tool.tag : toolTag.unbounded();
 
-export function defineTool<T extends ToolTag>(def: Tool & { tag: T }): TaggedTool<T> {
+export function defineTool<T extends ToolTag>(def: Tool & { tag: T }): TaggedTool<T>;
+export function defineTool(def: Tool): Tool;
+export function defineTool<T extends ToolTag>(def: Tool & { tag?: T }): Tool {
   return def;
 }
 

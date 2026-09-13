@@ -9,7 +9,8 @@ export type {
   Permit,
   PermitRule,
   ToolTag,
-} from "./tag/index.ts";
+} from "../act/tag/index.ts";
+
 export {
   FORGET_TAG,
   OUTSIDE_TAG,
@@ -24,4 +25,4 @@ export {
   normalizePath,
   permitImplied,
   toolTag,
-} from "./tag/index.ts";
+} from "../act/tag/index.ts";

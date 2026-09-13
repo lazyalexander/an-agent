@@ -18,6 +18,14 @@ export type MemoryEvent = {
   content: string;
   tags: readonly string[];
   refs: readonly string[];
+  /** Act envelope. Omitted on lines written before the act layer. */
+  act?: {
+    kind: string;
+    tag: object;
+    workplace?: string;
+    tool?: string;
+    effect?: object;
+  };
 };
 
 const KINDS: readonly Kind[] = ["utterance", "action", "observation"];
@@ -53,5 +61,15 @@ export function assertEvent(value: unknown): MemoryEvent {
   if (typeof row.content !== "string") throw new Error("memory event content must be a string");
   if (!isStringArray(row.tags)) throw new Error("memory event tags must be a string array");
   if (!isStringArray(row.refs)) throw new Error("memory event refs must be a string array");
+  if (row.act !== undefined) {
+    if (row.act === null || typeof row.act !== "object" || Array.isArray(row.act)) {
+      throw new Error("memory event act must be an object");
+    }
+    const act = row.act as Record<string, unknown>;
+    if (typeof act.kind !== "string") throw new Error("memory event act.kind must be a string");
+    if (act.tag === null || typeof act.tag !== "object" || Array.isArray(act.tag)) {
+      throw new Error("memory event act.tag must be an object");
+    }
+  }
   return row as MemoryEvent;
 }
