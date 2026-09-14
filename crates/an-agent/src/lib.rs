@@ -1,4 +1,5 @@
 pub mod act;
+pub mod entropy;
 pub mod agent;
 pub mod memstream;
 pub mod model;

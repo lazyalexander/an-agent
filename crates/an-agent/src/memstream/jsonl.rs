@@ -5,9 +5,9 @@ use std::sync::Mutex;
 
 use chrono::{TimeZone, Utc};
 use thiserror::Error;
-use ulid::Ulid;
 
 use super::event::{AppendEvent, Memevent};
+use crate::entropy::Entropy;
 
 #[derive(Debug, Error)]
 pub enum StoreError {
@@ -25,14 +25,27 @@ pub struct JsonlStore {
     path: PathBuf,
     next_seq: Mutex<Option<u64>>,
     now_ms: Clock,
+    entropy: Mutex<Entropy>,
 }
 
 impl JsonlStore {
     pub fn open(path: impl AsRef<Path>) -> Result<Self, StoreError> {
-        Self::open_with_clock(path, Box::new(|| Utc::now().timestamp_millis() as u64))
+        Self::open_with(
+            path,
+            Box::new(|| Utc::now().timestamp_millis() as u64),
+            Entropy::os(),
+        )
     }
 
     pub fn open_with_clock(path: impl AsRef<Path>, now_ms: Clock) -> Result<Self, StoreError> {
+        Self::open_with(path, now_ms, Entropy::os())
+    }
+
+    pub fn open_with(
+        path: impl AsRef<Path>,
+        now_ms: Clock,
+        entropy: Entropy,
+    ) -> Result<Self, StoreError> {
         let path = path.as_ref().to_path_buf();
         if let Some(dir) = path.parent() {
             fs::create_dir_all(dir)?;
@@ -41,6 +54,7 @@ impl JsonlStore {
             path,
             next_seq: Mutex::new(None),
             now_ms,
+            entropy: Mutex::new(entropy),
         })
     }
 
@@ -64,10 +78,17 @@ impl JsonlStore {
 
     pub fn append(&self, input: AppendEvent) -> Result<Memevent, StoreError> {
         let seq = self.peek_next_seq()?;
-        let ts = iso_ms((self.now_ms)());
+        let now = (self.now_ms)();
+        let ts = iso_ms(now);
+        let id = self
+            .entropy
+            .lock()
+            .expect("entropy lock")
+            .ulid(now)
+            .to_string();
         let event = Memevent {
             v: 1,
-            id: Ulid::new().to_string(),
+            id,
             seq,
             ts,
             from: input.from,
@@ -109,7 +130,9 @@ fn iso_ms(ms: u64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::entropy::Entropy;
     use crate::memstream::{FromKind, Kind};
+    use ulid::Ulid;
 
     fn tmp() -> PathBuf {
         let dir = std::env::temp_dir().join(format!("an-agent-mem-{}", Ulid::new()));
@@ -153,6 +176,14 @@ mod tests {
         .unwrap();
         let store = JsonlStore::open_with_clock(&path, Box::new(|| 0)).unwrap();
         assert_eq!(store.append(base("after")).unwrap().seq, 8);
+    }
+
+    #[test]
+    fn seeded_entropy_reproduces_ids() {
+        let seed = [3u8; 32];
+        let a = JsonlStore::open_with(tmp(), Box::new(|| 0), Entropy::seeded(seed)).unwrap();
+        let b = JsonlStore::open_with(tmp(), Box::new(|| 0), Entropy::seeded(seed)).unwrap();
+        assert_eq!(a.append(base("hi")).unwrap().id, b.append(base("hi")).unwrap().id);
     }
 
     #[test]
