@@ -3,10 +3,10 @@ use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
-use chrono::{TimeZone, Utc};
 use thiserror::Error;
 
 use super::event::{AppendEvent, Memevent};
+use crate::clock::Clock;
 use crate::entropy::Entropy;
 
 #[derive(Debug, Error)]
@@ -19,31 +19,25 @@ pub enum StoreError {
     Corrupt(String),
 }
 
-pub type Clock = Box<dyn Fn() -> u64 + Send + Sync>;
-
 pub struct JsonlStore {
     path: PathBuf,
     next_seq: Mutex<Option<u64>>,
-    now_ms: Clock,
+    clock: Clock,
     entropy: Mutex<Entropy>,
 }
 
 impl JsonlStore {
     pub fn open(path: impl AsRef<Path>) -> Result<Self, StoreError> {
-        Self::open_with(
-            path,
-            Box::new(|| Utc::now().timestamp_millis() as u64),
-            Entropy::os(),
-        )
+        Self::open_with(path, Clock::wall(), Entropy::os())
     }
 
-    pub fn open_with_clock(path: impl AsRef<Path>, now_ms: Clock) -> Result<Self, StoreError> {
-        Self::open_with(path, now_ms, Entropy::os())
+    pub fn open_with_clock(path: impl AsRef<Path>, clock: Clock) -> Result<Self, StoreError> {
+        Self::open_with(path, clock, Entropy::os())
     }
 
     pub fn open_with(
         path: impl AsRef<Path>,
-        now_ms: Clock,
+        clock: Clock,
         entropy: Entropy,
     ) -> Result<Self, StoreError> {
         let path = path.as_ref().to_path_buf();
@@ -53,7 +47,7 @@ impl JsonlStore {
         Ok(Self {
             path,
             next_seq: Mutex::new(None),
-            now_ms,
+            clock,
             entropy: Mutex::new(entropy),
         })
     }
@@ -78,8 +72,8 @@ impl JsonlStore {
 
     pub fn append(&self, input: AppendEvent) -> Result<Memevent, StoreError> {
         let seq = self.peek_next_seq()?;
-        let now = (self.now_ms)();
-        let ts = iso_ms(now);
+        let now = self.clock.now_ms();
+        let ts = Clock::format_ms(now);
         let id = self
             .entropy
             .lock()
@@ -118,18 +112,10 @@ impl JsonlStore {
     }
 }
 
-fn iso_ms(ms: u64) -> String {
-    let secs = (ms / 1000) as i64;
-    let nsec = ((ms % 1000) * 1_000_000) as u32;
-    Utc.timestamp_opt(secs, nsec)
-        .single()
-        .unwrap_or(Utc.timestamp_opt(0, 0).single().expect("epoch"))
-        .to_rfc3339_opts(chrono::SecondsFormat::Millis, true)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::clock::Clock;
     use crate::entropy::Entropy;
     use crate::memstream::{FromKind, Kind};
     use ulid::Ulid;
@@ -156,7 +142,7 @@ mod tests {
     #[test]
     fn seq_increases_and_clock_is_injected() {
         let path = tmp();
-        let store = JsonlStore::open_with_clock(&path, Box::new(|| 0)).unwrap();
+        let store = JsonlStore::open_with_clock(&path, Clock::frozen(0)).unwrap();
         let first = store.append(base("hi")).unwrap();
         let second = store.append(base("there")).unwrap();
         assert_eq!(first.seq, 1);
@@ -174,15 +160,15 @@ mod tests {
 "#,
         )
         .unwrap();
-        let store = JsonlStore::open_with_clock(&path, Box::new(|| 0)).unwrap();
+        let store = JsonlStore::open_with_clock(&path, Clock::frozen(0)).unwrap();
         assert_eq!(store.append(base("after")).unwrap().seq, 8);
     }
 
     #[test]
     fn seeded_entropy_reproduces_ids() {
         let seed = [3u8; 32];
-        let a = JsonlStore::open_with(tmp(), Box::new(|| 0), Entropy::seeded(seed)).unwrap();
-        let b = JsonlStore::open_with(tmp(), Box::new(|| 0), Entropy::seeded(seed)).unwrap();
+        let a = JsonlStore::open_with(tmp(), Clock::frozen(0), Entropy::seeded(seed)).unwrap();
+        let b = JsonlStore::open_with(tmp(), Clock::frozen(0), Entropy::seeded(seed)).unwrap();
         assert_eq!(a.append(base("hi")).unwrap().id, b.append(base("hi")).unwrap().id);
     }
 
