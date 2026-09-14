@@ -63,7 +63,7 @@ pub struct Workplace {
 
 impl Workplace {
     pub fn create(dir: impl AsRef<Path>, lead: Uuid) -> Result<Self, WorkplaceError> {
-        let id = Uuid::new_v4();
+        let id = crate::kit::Entropy::os().uuid_v4();
         let root = dir.as_ref().join(id.to_string());
         fs::create_dir_all(root.join("objects"))?;
         fs::create_dir_all(root.join("refs"))?;

@@ -6,6 +6,7 @@ use an_agent::act::{Tool, ToolCtx};
 use an_agent::agent::{last_assistant_text, run_until_idle, AgentState, ChatMessage};
 use an_agent::memstream::{AppendEvent, FromKind, JsonlStore, Kind};
 use an_agent::model::{load_settings, ChatCompletions};
+use an_agent::kit::Entropy;
 use an_agent::principal::{local_agent_id, stdin_counterpart_id};
 use an_agent::tools::Bash;
 use anyhow::{Context, Result};
@@ -16,7 +17,7 @@ async fn main() -> Result<()> {
     let root = home_dir().join(".an-agent");
     let agent_id = local_agent_id(&root)?;
     let stdin_from = stdin_counterpart_id(agent_id);
-    let session = uuid::Uuid::new_v4();
+    let session = Entropy::os().uuid_v4();
     let mem_path = root
         .join("agents")
         .join(agent_id.to_string())

@@ -6,8 +6,7 @@ use std::sync::Mutex;
 use thiserror::Error;
 
 use super::event::{AppendEvent, Memevent};
-use crate::clock::Clock;
-use crate::entropy::Entropy;
+use crate::kit::{Clock, Entropy};
 
 #[derive(Debug, Error)]
 pub enum StoreError {
@@ -115,8 +114,7 @@ impl JsonlStore {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::clock::Clock;
-    use crate::entropy::Entropy;
+    use crate::kit::{Clock, Entropy};
     use crate::memstream::{FromKind, Kind};
     use ulid::Ulid;
 

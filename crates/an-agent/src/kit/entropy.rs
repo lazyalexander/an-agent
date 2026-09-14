@@ -1,6 +1,7 @@
 use rand::rngs::{OsRng, StdRng};
 use rand::{RngCore, SeedableRng};
 use ulid::Ulid;
+use uuid::Uuid;
 
 /// Two kinds of randomness. Os is production entropy; Seeded is ChaCha12 (rand StdRng).
 pub enum Entropy {
@@ -34,6 +35,14 @@ impl Entropy {
         }
         Ulid::from_parts(now_ms, rnd)
     }
+
+    pub fn uuid_v4(&mut self) -> Uuid {
+        let mut bytes = [0u8; 16];
+        self.fill(&mut bytes);
+        bytes[6] = (bytes[6] & 0x0f) | 0x40;
+        bytes[8] = (bytes[8] & 0x3f) | 0x80;
+        Uuid::from_bytes(bytes)
+    }
 }
 
 #[cfg(test)]
@@ -54,5 +63,7 @@ mod tests {
     fn os_and_seeded_are_distinct_kinds() {
         assert!(matches!(Entropy::os(), Entropy::Os));
         assert!(matches!(Entropy::seeded([1; 32]), Entropy::Seeded(_)));
+        let id = Entropy::os().uuid_v4();
+        assert_eq!(id.get_version(), Some(uuid::Version::Random));
     }
 }
