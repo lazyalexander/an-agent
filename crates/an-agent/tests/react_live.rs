@@ -265,6 +265,22 @@ when you learned something worth keeping."
             sentence: ActSentence::bare(Permit::Go, BareFile::None, Ingest::Ignore),
             tool: Some("remember".into()),
         };
+        // Kinship rule (tape-evolution contract E3): a memory clip refs its
+        // evidence — here, the latest observation in this session.
+        let evidence = self
+            .store
+            .read_all()
+            .map(|evs| {
+                evs.iter()
+                    .rev()
+                    .find(|e| {
+                        e.kind == Kind::Observation
+                            && e.session.as_deref() == Some(self.session.as_str())
+                    })
+                    .map(|e| vec![e.id.clone()])
+                    .unwrap_or_default()
+            })
+            .unwrap_or_default();
         let ev = self
             .store
             .append(AppendEvent {
@@ -274,7 +290,7 @@ when you learned something worth keeping."
                 session: self.session.clone(),
                 content: text.to_string(),
                 tags: vec!["memory".into()],
-                refs: vec![],
+                refs: evidence,
                 act: Some(ActOnEvent::intent(&env)),
             })
             .map_err(|e| e.to_string())?;
@@ -373,14 +389,20 @@ async fn react_search_and_remember() {
         "expected a remember action on the tape, got {uses:?}"
     );
 
-    // 2. The deliberate memory clip exists (ActKind::remember, tagged).
-    assert!(
-        events
-            .iter()
-            .any(|e| e.tags.iter().any(|t| t == "memory")
-                && e.act.as_ref().map(|a| a.kind.as_str()) == Some("remember")),
-        "no memory-tagged clip on the tape"
-    );
+    // 2. The deliberate memory clip exists (ActKind::remember, tagged) and,
+    //    per kinship rule E3, refs the observation that evidenced it.
+    let clip = events
+        .iter()
+        .find(|e| {
+            e.tags.iter().any(|t| t == "memory")
+                && e.act.as_ref().map(|a| a.kind.as_str()) == Some("remember")
+        })
+        .expect("no memory-tagged clip on the tape");
+    assert!(!clip.refs.is_empty(), "memory clip must refs its evidence");
+    for r in &clip.refs {
+        let target = events.iter().find(|e| &e.id == r).expect("clip ref dangles");
+        assert_eq!(target.kind, Kind::Observation, "clip refs must cite observations");
+    }
 
     // 3. Causal linkage: every observation cites an existing action.
     let ids: HashSet<&str> = events.iter().map(|e| e.id.as_str()).collect();
