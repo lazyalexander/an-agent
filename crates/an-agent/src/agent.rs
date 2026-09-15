@@ -181,6 +181,7 @@ pub fn last_assistant_text(state: &AgentState) -> String {
 }
 
 #[cfg(test)]
+#[allow(clippy::disallowed_methods)]
 mod tests {
     use super::*;
     use crate::act::{Permit, ToolTag};

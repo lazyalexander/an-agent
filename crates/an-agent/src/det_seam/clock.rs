@@ -1,3 +1,5 @@
+#![allow(clippy::disallowed_methods)] // the seam is the licensed exception; see clippy.toml
+
 use std::time::Duration;
 
 use chrono::{TimeZone, Utc};

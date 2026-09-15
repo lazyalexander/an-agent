@@ -108,7 +108,9 @@ impl Model for ChatCompletions {
             .into_iter()
             .map(|c| ToolCall {
                 id: if c.id.is_empty() {
-                    crate::kit::Entropy::os().ulid(crate::kit::Clock::wall().now_ms()).to_string()
+                    crate::det_seam::Entropy::os()
+                        .ulid(crate::det_seam::Clock::wall().now_ms())
+                        .to_string()
                 } else {
                     c.id
                 },

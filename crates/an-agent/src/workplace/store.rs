@@ -63,7 +63,7 @@ pub struct Workplace {
 
 impl Workplace {
     pub fn create(dir: impl AsRef<Path>, lead: Uuid) -> Result<Self, WorkplaceError> {
-        let id = crate::kit::Entropy::os().uuid_v4();
+        let id = crate::det_seam::Entropy::os().uuid_v4();
         let root = dir.as_ref().join(id.to_string());
         fs::create_dir_all(root.join("objects"))?;
         fs::create_dir_all(root.join("refs"))?;
@@ -361,6 +361,7 @@ fn validate_ref(name: &str) -> Result<(), WorkplaceError> {
 }
 
 #[cfg(test)]
+#[allow(clippy::disallowed_methods)]
 mod tests {
     use super::*;
     use ulid::Ulid;

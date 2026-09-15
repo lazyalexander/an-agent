@@ -6,7 +6,7 @@ use uuid::Uuid;
 /// Two kinds of randomness. Os is production entropy; Seeded is ChaCha12 (rand StdRng).
 pub enum Entropy {
     Os,
-    Seeded(StdRng),
+    Seeded(Box<StdRng>),
 }
 
 impl Entropy {
@@ -15,7 +15,7 @@ impl Entropy {
     }
 
     pub fn seeded(seed: [u8; 32]) -> Self {
-        Self::Seeded(StdRng::from_seed(seed))
+        Self::Seeded(Box::new(StdRng::from_seed(seed)))
     }
 
     pub fn fill(&mut self, dest: &mut [u8]) {

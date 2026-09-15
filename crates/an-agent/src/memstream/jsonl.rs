@@ -6,7 +6,7 @@ use std::sync::Mutex;
 use thiserror::Error;
 
 use super::event::{AppendEvent, Memevent};
-use crate::kit::{Clock, Entropy};
+use crate::det_seam::{Clock, Entropy};
 
 #[derive(Debug, Error)]
 pub enum StoreError {
@@ -112,9 +112,10 @@ impl JsonlStore {
 }
 
 #[cfg(test)]
+#[allow(clippy::disallowed_methods)]
 mod tests {
     use super::*;
-    use crate::kit::{Clock, Entropy};
+    use crate::det_seam::{Clock, Entropy};
     use crate::memstream::{FromKind, Kind};
     use ulid::Ulid;
 
