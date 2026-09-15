@@ -112,17 +112,16 @@ impl JsonlStore {
 }
 
 #[cfg(test)]
-#[allow(clippy::disallowed_methods)]
 mod tests {
     use super::*;
     use crate::det_seam::{Clock, Entropy};
     use crate::memstream::{FromKind, Kind};
-    use ulid::Ulid;
+    use crate::testkit::TempDir;
 
-    fn tmp() -> PathBuf {
-        let dir = std::env::temp_dir().join(format!("an-agent-mem-{}", Ulid::new()));
-        fs::create_dir_all(&dir).unwrap();
-        dir.join("memory.jsonl")
+    fn tmp() -> (TempDir, PathBuf) {
+        let dir = TempDir::new("mem");
+        let path = dir.path().join("memory.jsonl");
+        (dir, path)
     }
 
     fn base(content: &str) -> AppendEvent {
@@ -140,7 +139,7 @@ mod tests {
 
     #[test]
     fn seq_increases_and_clock_is_injected() {
-        let path = tmp();
+        let (_guard, path) = tmp();
         let store = JsonlStore::open_with_clock(&path, Clock::frozen(0)).unwrap();
         let first = store.append(base("hi")).unwrap();
         let second = store.append(base("there")).unwrap();
@@ -152,7 +151,7 @@ mod tests {
 
     #[test]
     fn continues_seq_from_existing_file() {
-        let path = tmp();
+        let (_guard, path) = tmp();
         fs::write(
             &path,
             r#"{"v":1,"id":"01TEST","seq":7,"ts":"2026-01-01T00:00:00.000Z","from":"a","from_kind":"agent","kind":"utterance","session":"s","content":"prior","tags":[],"refs":[]}
@@ -166,14 +165,16 @@ mod tests {
     #[test]
     fn seeded_entropy_reproduces_ids() {
         let seed = [3u8; 32];
-        let a = JsonlStore::open_with(tmp(), Clock::frozen(0), Entropy::seeded(seed)).unwrap();
-        let b = JsonlStore::open_with(tmp(), Clock::frozen(0), Entropy::seeded(seed)).unwrap();
+        let (_ga, pa) = tmp();
+        let (_gb, pb) = tmp();
+        let a = JsonlStore::open_with(pa, Clock::frozen(0), Entropy::seeded(seed)).unwrap();
+        let b = JsonlStore::open_with(pb, Clock::frozen(0), Entropy::seeded(seed)).unwrap();
         assert_eq!(a.append(base("hi")).unwrap().id, b.append(base("hi")).unwrap().id);
     }
 
     #[test]
     fn reads_legacy_line_without_act() {
-        let path = tmp();
+        let (_guard, path) = tmp();
         let line = r#"{"v":1,"id":"01TEST","seq":1,"ts":"2026-01-01T00:00:00.000Z","from":"a","from_kind":"human","kind":"utterance","content":"legacy","tags":["utterance"],"refs":[]}"#;
         fs::write(&path, format!("{line}\n")).unwrap();
         let store = JsonlStore::open(&path).unwrap();
@@ -185,7 +186,7 @@ mod tests {
 
     #[test]
     fn corrupt_line_fails() {
-        let path = tmp();
+        let (_guard, path) = tmp();
         fs::write(&path, "not-json\n").unwrap();
         let store = JsonlStore::open(&path).unwrap();
         assert!(store.read_all().is_err());

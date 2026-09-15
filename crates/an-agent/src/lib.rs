@@ -6,3 +6,6 @@ pub mod model;
 pub mod principal;
 pub mod tools;
 pub mod workplace;
+
+#[cfg(test)]
+mod testkit;

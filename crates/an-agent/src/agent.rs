@@ -181,7 +181,6 @@ pub fn last_assistant_text(state: &AgentState) -> String {
 }
 
 #[cfg(test)]
-#[allow(clippy::disallowed_methods)]
 mod tests {
     use super::*;
     use crate::act::{Permit, ToolTag};
@@ -249,8 +248,8 @@ mod tests {
 
     #[tokio::test]
     async fn tool_observation_refs_action() {
-        let dir = std::env::temp_dir().join(format!("an-agent-act-{}", ulid::Ulid::new()));
-        let store = JsonlStore::open(dir.join("memory.jsonl")).unwrap();
+        let tmp = crate::testkit::TempDir::new("act");
+        let store = JsonlStore::open(tmp.path().join("memory.jsonl")).unwrap();
         let model = Fake(Assistant {
             content: "using echo".into(),
             tool_calls: vec![ToolCall {

@@ -173,7 +173,6 @@ impl Tool for Bash {
 }
 
 #[cfg(all(test, unix))]
-#[allow(clippy::disallowed_methods)]
 mod tests {
     use super::*;
     use std::fs;
@@ -188,8 +187,8 @@ mod tests {
 
     #[tokio::test]
     async fn times_out_and_kills_background_child() {
-        let dir = std::env::temp_dir().join(format!("an-agent-bash-{}", ulid::Ulid::new()));
-        fs::create_dir_all(&dir).unwrap();
+        let tmp = crate::testkit::TempDir::new("bash");
+        let dir = tmp.path().to_path_buf();
         let pid_file: PathBuf = dir.join("sleep.pid");
         let bash = Bash::with_timeout(Duration::from_millis(400));
         let cmd = format!(r#"sleep 30 & echo $! > "{}"; wait"#, pid_file.display());

@@ -44,10 +44,9 @@ pub fn local_agent_id(root: &Path) -> Result<Uuid, PrincipalError> {
 }
 
 #[cfg(test)]
-#[allow(clippy::disallowed_methods)]
 mod tests {
     use super::*;
-    use ulid::Ulid;
+    use crate::testkit::TempDir;
 
     #[test]
     fn stdin_id_is_stable_and_not_the_agent() {
@@ -61,7 +60,8 @@ mod tests {
 
     #[test]
     fn persists_agent_id_without_human_id() {
-        let dir = std::env::temp_dir().join(format!("an-agent-ids-{}", Ulid::new()));
+        let tmp = TempDir::new("ids");
+        let dir = tmp.path().to_path_buf();
         let first = local_agent_id(&dir).unwrap();
         let second = local_agent_id(&dir).unwrap();
         assert_eq!(first, second);

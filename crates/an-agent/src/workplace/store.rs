@@ -364,17 +364,18 @@ fn validate_ref(name: &str) -> Result<(), WorkplaceError> {
 #[allow(clippy::disallowed_methods)]
 mod tests {
     use super::*;
-    use ulid::Ulid;
+    use crate::testkit::TempDir;
 
-    fn tmp() -> PathBuf {
-        std::env::temp_dir().join(format!("an-agent-wp-{}", Ulid::new()))
+    fn tmp() -> TempDir {
+        TempDir::new("wp")
     }
 
     #[test]
     fn write_advances_head_and_shares_blobs() {
         let lead = Uuid::new_v4();
         let other = Uuid::new_v4();
-        let wp = Workplace::create(tmp(), lead).unwrap();
+        let tmp = tmp();
+        let wp = Workplace::create(tmp.path(), lead).unwrap();
         let empty = wp.head().unwrap();
         let c1 = wp
             .write_file(lead, &["src".into(), "a.txt".into()], b"aaa")
@@ -404,7 +405,8 @@ mod tests {
     #[test]
     fn branch_write_does_not_move_previous_head_snapshot() {
         let lead = Uuid::new_v4();
-        let wp = Workplace::create(tmp(), lead).unwrap();
+        let tmp = tmp();
+        let wp = Workplace::create(tmp.path(), lead).unwrap();
         wp.write_file(lead, &["a".into()], b"1").unwrap();
         let main_head = wp.head().unwrap();
         wp.branch(lead, "priv").unwrap();
@@ -420,7 +422,8 @@ mod tests {
     #[test]
     fn workers_wp_round_trip_and_suffix_is_not_json() {
         let lead = Uuid::new_v4();
-        let wp = Workplace::create(tmp(), lead).unwrap();
+        let tmp = tmp();
+        let wp = Workplace::create(tmp.path(), lead).unwrap();
         wp.set_workers(lead, b"alice\nbob\n").unwrap();
         assert_eq!(WORKERS_FILE.last().copied(), Some("workers.wp"));
         assert_eq!(wp.workers().unwrap(), Some(b"alice\nbob\n".to_vec()));
@@ -432,7 +435,8 @@ mod tests {
     #[test]
     fn merge_ff_onto_main_and_non_lead_cannot_branch() {
         let lead = Uuid::new_v4();
-        let wp = Workplace::create(tmp(), lead).unwrap();
+        let tmp = tmp();
+        let wp = Workplace::create(tmp.path(), lead).unwrap();
         wp.write_file(lead, &["a".into()], b"1").unwrap();
         wp.branch(lead, "main").unwrap();
         wp.checkout(lead, "main").unwrap();
