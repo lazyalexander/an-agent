@@ -8,6 +8,7 @@
 // is ordinary code inside test crates, so it carries its own allowance.
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
+pub mod rhai;
 
 use std::path::PathBuf;
 use std::sync::Arc;
