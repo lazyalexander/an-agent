@@ -31,4 +31,6 @@ Probes self-clean their temp dirs; setting `AN_AGENT_PROBE_DIR` keeps the tape a
 
 ## Conventions
 
+One folder = one proto-package: every module directory carries a thin README (purpose, admission rule, dependency direction). When a folder gains an independent consumer, it graduates to a crate and its README is the draft crate README. Rule-level text only — implementation details drift.
+
 Follow the repo-level discipline: `cargo check → clippy → test`, batch edits before compiling, no `cargo clean`. Dependencies are centralized in the workspace root; add nothing without a reason.
