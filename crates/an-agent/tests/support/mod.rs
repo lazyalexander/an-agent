@@ -4,6 +4,11 @@
 //! probe-grade code cannot be mistaken for, or depended on by, formal code.
 //! Src must never depend on this; deletion and rewrite are expected.
 
+// clippy.toml's allow-*-in-tests covers #[test] fns only; this support module
+// is ordinary code inside test crates, so it carries its own allowance.
+#![allow(clippy::unwrap_used, clippy::expect_used)]
+
+
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -12,6 +17,7 @@ use thiserror::Error;
 
 use an_agent::act::{
     ActEnvelope, ActKind, ActSentence, BareFile, Ingest, Permit, Tool, ToolCall,
+    effect_from_sentence,
 };
 use an_agent::memstream::{ActOnEvent, AppendEvent, FromKind, Kind, Memevent};
 
@@ -46,6 +52,14 @@ pub struct WireFunction {
 pub struct Assistant {
     pub content: String,
     pub tool_calls: Vec<ToolCall>,
+    pub usage: Option<Usage>,
+}
+
+/// Token accounting for one model call; None when the wire omits it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Usage {
+    pub prompt_tokens: u64,
+    pub completion_tokens: u64,
 }
 
 #[derive(Debug, Error)]
@@ -59,6 +73,10 @@ pub enum AgentError {
 }
 
 pub trait Model: Send + Sync {
+    /// Self-reported spec, taped on every invoke intent (thin trace, T2-style).
+    fn spec(&self) -> serde_json::Value {
+        serde_json::Value::Null
+    }
     fn complete(
         &self,
         messages: &[ChatMessage],
@@ -79,7 +97,9 @@ pub async fn step(
     tools: &[Arc<dyn Tool>],
     ctx: &an_agent::act::ToolCtx,
 ) -> Result<AgentState, AgentError> {
+    let invoke = admit_invoke_intent(actx, model, &state.messages)?;
     let assistant = model.complete(&state.messages, tools).await?;
+    admit_invoke_effect(actx, invoke.as_ref(), &assistant)?;
     if !assistant.content.is_empty() {
         let _ = admit_utterance(actx, &assistant.content)?;
     }
@@ -147,7 +167,12 @@ fn last_is_final_assistant(state: &AgentState) -> bool {
     let Some(last) = state.messages.last() else {
         return false;
     };
-    last.role == "assistant" && last.tool_calls.as_ref().map(|c| c.is_empty()).unwrap_or(true)
+    last.role == "assistant"
+        && last
+            .tool_calls
+            .as_ref()
+            .map(|c| c.is_empty())
+            .unwrap_or(true)
 }
 
 fn admit_utterance(
@@ -171,6 +196,85 @@ fn admit_utterance(
         tags: vec![],
         refs: vec![],
         act: Some(ActOnEvent::intent(&env)),
+        card: actx.card.map(str::to_string),
+    })?))
+}
+
+fn invoke_envelope() -> ActEnvelope {
+    ActEnvelope {
+        kind: ActKind::Invoke,
+        sentence: ActSentence::bare(Permit::Go, BareFile::None, Ingest::Ignore),
+        tool: None,
+    }
+}
+
+fn sha256_hex(bytes: impl AsRef<[u8]>) -> String {
+    use sha2::Digest;
+    sha2::Sha256::digest(bytes.as_ref())
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect()
+}
+
+/// Tape the model call itself: intent carries spec + input hash (thin trace,
+/// no full prompt), effect carries response hash + tool-call names + usage.
+/// Skipped when no store is attached.
+fn admit_invoke_intent(
+    actx: &an_agent::act::ActCtx<'_>,
+    model: &impl Model,
+    messages: &[ChatMessage],
+) -> Result<Option<Memevent>, AgentError> {
+    let Some(store) = actx.store else {
+        return Ok(None);
+    };
+    let env = invoke_envelope();
+    let content = serde_json::json!({
+        "spec": model.spec(),
+        "messages_hash": sha256_hex(serde_json::to_vec(messages).unwrap_or_default()),
+    });
+    Ok(Some(store.append(AppendEvent {
+        from: actx.agent_id.into(),
+        from_kind: FromKind::Agent,
+        kind: Kind::Action,
+        session: actx.session.into(),
+        content: content.to_string(),
+        tags: vec![],
+        refs: vec![],
+        act: Some(ActOnEvent::intent(&env)),
+        card: actx.card.map(str::to_string),
+    })?))
+}
+
+fn admit_invoke_effect(
+    actx: &an_agent::act::ActCtx<'_>,
+    intent: Option<&Memevent>,
+    assistant: &Assistant,
+) -> Result<Option<Memevent>, AgentError> {
+    let Some(store) = actx.store else {
+        return Ok(None);
+    };
+    let env = invoke_envelope();
+    let content = serde_json::json!({
+        "content_hash": sha256_hex(assistant.content.as_bytes()),
+        "tool_calls": assistant.tool_calls.iter().map(|c| c.name.as_str()).collect::<Vec<_>>(),
+        "usage": assistant.usage.map(|u| serde_json::json!({
+            "prompt_tokens": u.prompt_tokens,
+            "completion_tokens": u.completion_tokens,
+        })),
+    });
+    let refs = intent.map(|e| vec![e.id.clone()]).unwrap_or_default();
+    Ok(Some(store.append(AppendEvent {
+        from: actx.agent_id.into(),
+        from_kind: FromKind::Agent,
+        kind: Kind::Observation,
+        session: actx.session.into(),
+        content: content.to_string(),
+        tags: vec![],
+        refs,
+        act: Some(ActOnEvent::with_effect(
+            &env,
+            effect_from_sentence(&env.sentence),
+        )),
         card: actx.card.map(str::to_string),
     })?))
 }
@@ -216,6 +320,13 @@ impl ChatCompletions {
 #[derive(Deserialize)]
 struct ChatResponse {
     choices: Vec<Choice>,
+    usage: Option<WireUsage>,
+}
+
+#[derive(Deserialize)]
+struct WireUsage {
+    prompt_tokens: u64,
+    completion_tokens: u64,
 }
 
 #[derive(Deserialize)]
@@ -230,6 +341,14 @@ struct WireAssistant {
 }
 
 impl Model for ChatCompletions {
+    fn spec(&self) -> serde_json::Value {
+        serde_json::json!({
+            "base_url": self.settings.base_url,
+            "model": self.settings.model,
+            "extra_body": self.settings.extra_body,
+        })
+    }
+
     async fn complete(
         &self,
         messages: &[ChatMessage],
@@ -270,13 +389,19 @@ impl Model for ChatCompletions {
         if let Some(key) = &self.settings.api_key {
             req = req.bearer_auth(key);
         }
-        let resp = req.send().await.map_err(|e| AgentError::Model(e.to_string()))?;
+        let resp = req
+            .send()
+            .await
+            .map_err(|e| AgentError::Model(e.to_string()))?;
         if !resp.status().is_success() {
             let status = resp.status();
             let text = resp.text().await.unwrap_or_default();
             return Err(AgentError::Model(format!("{status}: {text}")));
         }
-        let parsed: ChatResponse = resp.json().await.map_err(|e| AgentError::Model(e.to_string()))?;
+        let parsed: ChatResponse = resp
+            .json()
+            .await
+            .map_err(|e| AgentError::Model(e.to_string()))?;
         let msg = parsed
             .choices
             .into_iter()
@@ -302,6 +427,10 @@ impl Model for ChatCompletions {
         Ok(Assistant {
             content: msg.content.unwrap_or_default(),
             tool_calls,
+            usage: parsed.usage.map(|u| Usage {
+                prompt_tokens: u.prompt_tokens,
+                completion_tokens: u.completion_tokens,
+            }),
         })
     }
 }

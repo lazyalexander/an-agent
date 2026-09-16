@@ -55,7 +55,8 @@ pub struct ToolMessage {
 }
 
 pub fn tag_of(tool: Option<&dyn Tool>) -> ToolTag {
-    tool.and_then(Tool::tag_seed).unwrap_or_else(ToolTag::unbounded)
+    tool.and_then(Tool::tag_seed)
+        .unwrap_or_else(ToolTag::unbounded)
 }
 
 pub struct ToolActResult {
@@ -65,7 +66,8 @@ pub struct ToolActResult {
 }
 
 fn parse_args(raw: &str) -> Result<Value, String> {
-    let value: Value = serde_json::from_str(raw).map_err(|_| "tool arguments are not valid JSON".to_string())?;
+    let value: Value =
+        serde_json::from_str(raw).map_err(|_| "tool arguments are not valid JSON".to_string())?;
     if !value.is_object() {
         return Err("tool arguments must be a JSON object".into());
     }
@@ -91,7 +93,7 @@ pub async fn run_tool_act(
         Ok(s) => s,
         Err(e) => {
             let env = ActEnvelope {
-                kind: ActKind::Tool,
+                kind: ActKind::Invoke,
                 sentence: ActSentence::bare(
                     tag.permit,
                     super::sentence::BareFile::None,
@@ -106,13 +108,19 @@ pub async fn run_tool_act(
                 vec![],
                 Some(ActOnEvent::intent(&env)),
             )?;
-            let refs = action.as_ref().map(|a| vec![a.id.clone()]).unwrap_or_default();
+            let refs = action
+                .as_ref()
+                .map(|a| vec![a.id.clone()])
+                .unwrap_or_default();
             let observation = admit(
                 actx,
                 Kind::Observation,
                 e.to_string(),
                 refs,
-                Some(ActOnEvent::with_effect(&env, effect_from_sentence(&env.sentence))),
+                Some(ActOnEvent::with_effect(
+                    &env,
+                    effect_from_sentence(&env.sentence),
+                )),
             )?;
             return Ok(ToolActResult {
                 action,
@@ -125,7 +133,7 @@ pub async fn run_tool_act(
         }
     };
     let env = ActEnvelope {
-        kind: ActKind::Tool,
+        kind: ActKind::Invoke,
         sentence,
         tool: Some(call.name.clone()),
     };
@@ -139,13 +147,19 @@ pub async fn run_tool_act(
     )?;
 
     let fail = |content: String, action: Option<Memevent>| -> Result<ToolActResult, ToolError> {
-        let refs = action.as_ref().map(|a| vec![a.id.clone()]).unwrap_or_default();
+        let refs = action
+            .as_ref()
+            .map(|a| vec![a.id.clone()])
+            .unwrap_or_default();
         let observation = admit(
             actx,
             Kind::Observation,
             content.clone(),
             refs,
-            Some(ActOnEvent::with_effect(&env, effect_from_sentence(&env.sentence))),
+            Some(ActOnEvent::with_effect(
+                &env,
+                effect_from_sentence(&env.sentence),
+            )),
         )?;
         Ok(ToolActResult {
             action,

@@ -14,6 +14,9 @@
 //! location; otherwise a self-cleaning temp dir is used (the tape is still
 //! printed to stderr).
 
+// Helper fns here are not #[test] fns, so allow-*-in-tests does not reach them.
+#![allow(clippy::unwrap_used, clippy::expect_used)]
+
 use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -26,7 +29,7 @@ use an_agent::act::{
 };
 use an_agent::det_seam::Entropy;
 use an_agent::memstream::{ActOnEvent, AppendEvent, FromKind, JsonlStore, Kind, Memevent};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use support::{
     AgentState, ChatCompletions, ChatMessage, ModelSettings, TempDir, last_assistant_text,
     run_until_idle,
@@ -67,17 +70,20 @@ fn api_key() -> Option<String> {
 
 fn settings(api_key: String) -> ModelSettings {
     let cfg_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../config/model.json");
-    let cfg: Value = serde_json::from_str(
-        &std::fs::read_to_string(cfg_path).expect("read config/model.json"),
-    )
-    .expect("parse config/model.json");
+    let cfg: Value =
+        serde_json::from_str(&std::fs::read_to_string(cfg_path).expect("read config/model.json"))
+            .expect("parse config/model.json");
     ModelSettings {
         base_url: cfg
             .get("baseUrl")
             .and_then(Value::as_str)
             .expect("baseUrl")
             .into(),
-        model: cfg.get("model").and_then(Value::as_str).expect("model").into(),
+        model: cfg
+            .get("model")
+            .and_then(Value::as_str)
+            .expect("model")
+            .into(),
         api_key: Some(api_key),
         extra_body: cfg.get("extraBody").cloned(),
     }
@@ -297,7 +303,9 @@ async fn react_search_and_remember() {
         eprintln!("MODEL_API_KEY not set and no .env at workspace root; skipping live probe");
         return;
     };
-    let model = ChatCompletions::new(settings(key));
+    let st = settings(key);
+    let model_name = st.model.clone();
+    let model = ChatCompletions::new(st);
     let (dir, _guard) = probe_dir();
     eprintln!("probe dir: {}", dir.display());
     let store = Arc::new(JsonlStore::open(dir.join("memory.jsonl")).unwrap());
@@ -312,9 +320,7 @@ async fn react_search_and_remember() {
         }),
     ];
     let (_tx, rx) = tokio::sync::watch::channel(false);
-    let ctx = ToolCtx {
-        signal: Some(rx),
-    };
+    let ctx = ToolCtx { signal: Some(rx) };
 
     // The operator's question is an utterance on the tape.
     store
@@ -390,8 +396,15 @@ async fn react_search_and_remember() {
         .expect("no memory-tagged clip on the tape");
     assert!(!clip.refs.is_empty(), "memory clip must refs its evidence");
     for r in &clip.refs {
-        let target = events.iter().find(|e| &e.id == r).expect("clip ref dangles");
-        assert_eq!(target.kind, Kind::Observation, "clip refs must cite observations");
+        let target = events
+            .iter()
+            .find(|e| &e.id == r)
+            .expect("clip ref dangles");
+        assert_eq!(
+            target.kind,
+            Kind::Observation,
+            "clip refs must cite observations"
+        );
     }
 
     // 3. Causal linkage: every observation cites an existing action.
@@ -428,7 +441,9 @@ async fn react_search_and_remember() {
     for m in &state.messages {
         match (m.role.as_str(), m.content.as_deref()) {
             ("assistant", Some(c)) => assert!(
-                events.iter().any(|e| e.kind == Kind::Utterance && e.content == c),
+                events
+                    .iter()
+                    .any(|e| e.kind == Kind::Utterance && e.content == c),
                 "assistant text missing from tape"
             ),
             ("tool", Some(c)) => assert!(
@@ -452,4 +467,58 @@ async fn react_search_and_remember() {
         })
         .map(|e| e.content.clone());
     assert_eq!(last_agent_utterance.as_deref(), Some(answer.as_str()));
+
+    // 6. Model calls are taped as invoke acts (vocabulary note 2026-09-17).
+    //    Tool acts share the invoke domain; the model side is told apart by
+    //    an absent tool field. One intent + one observation per step,
+    //    observation refs exactly its intent, intent names the configured
+    //    model, effect carries usage.
+    let is_model_invoke = |e: &Memevent| {
+        e.act.as_ref().map(|a| a.kind.as_str()) == Some("invoke")
+            && e.act.as_ref().and_then(|a| a.tool.as_deref()).is_none()
+    };
+    let invoke_actions: Vec<&Memevent> = events
+        .iter()
+        .filter(|e| e.kind == Kind::Action && is_model_invoke(e))
+        .collect();
+    let invoke_obs: Vec<&Memevent> = events
+        .iter()
+        .filter(|e| e.kind == Kind::Observation && is_model_invoke(e))
+        .collect();
+    let steps = state
+        .messages
+        .iter()
+        .filter(|m| m.role == "assistant")
+        .count();
+    assert_eq!(
+        invoke_actions.len(),
+        steps,
+        "every step must tape its model call"
+    );
+    assert_eq!(invoke_obs.len(), steps);
+    for a in &invoke_actions {
+        assert!(
+            a.content.contains(&model_name),
+            "invoke intent must name the model: {}",
+            a.content
+        );
+    }
+    for o in &invoke_obs {
+        assert_eq!(
+            o.refs.len(),
+            1,
+            "invoke observation refs exactly its intent"
+        );
+        let intent = events
+            .iter()
+            .find(|e| e.id == o.refs[0])
+            .expect("intent dangles");
+        assert!(is_model_invoke(intent) && intent.kind == Kind::Action);
+        let body: Value = serde_json::from_str(&o.content).expect("invoke effect is json");
+        assert!(
+            body["usage"]["prompt_tokens"].is_u64(),
+            "invoke effect must carry usage: {body}"
+        );
+        assert!(body["content_hash"].is_string());
+    }
 }

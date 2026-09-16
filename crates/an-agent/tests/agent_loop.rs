@@ -8,9 +8,9 @@ mod support;
 use std::sync::Arc;
 
 use an_agent::act::{ActCtx, Permit, Tool, ToolCall, ToolCtx, ToolTag};
-use an_agent::memstream::{JsonlStore, Kind};
+use an_agent::memstream::{JsonlStore, Kind, Memevent};
 use serde_json::json;
-use support::{step, AgentError, AgentState, Assistant, ChatMessage, Model, TempDir};
+use support::{AgentError, AgentState, Assistant, ChatMessage, Model, TempDir, step};
 
 struct Fake(Assistant);
 impl Model for Fake {
@@ -94,6 +94,7 @@ async fn tool_observation_refs_action() {
             name: "echo".into(),
             arguments: r#"{"text":"z"}"#.into(),
         }],
+        usage: None,
     });
     let tools: Vec<Arc<dyn Tool>> = vec![Arc::new(Echo)];
     let actx = ActCtx {
@@ -106,14 +107,37 @@ async fn tool_observation_refs_action() {
         .await
         .unwrap();
     let events = store.read_all().unwrap();
-    let action = events.iter().find(|e| e.kind == Kind::Action).unwrap();
-    let obs = events.iter().find(|e| e.kind == Kind::Observation).unwrap();
+    let is_tool = |e: &Memevent| e.act.as_ref().and_then(|a| a.tool.as_deref()) == Some("echo");
+    let action = events
+        .iter()
+        .find(|e| e.kind == Kind::Action && is_tool(e))
+        .unwrap();
+    let obs = events
+        .iter()
+        .find(|e| e.kind == Kind::Observation && e.refs.first() == Some(&action.id))
+        .unwrap();
     assert_eq!(obs.refs, vec![action.id.clone()]);
     assert_eq!(obs.content, "z");
-    assert_eq!(action.act.as_ref().unwrap().tool.as_deref(), Some("echo"));
     assert!(obs.act.as_ref().unwrap().effect.is_some());
     assert_eq!(action.card.as_deref(), Some("card-hash-1"));
     assert_eq!(obs.card.as_deref(), Some("card-hash-1"));
+
+    // The model call itself is taped as an invoke act: intent has no tool
+    // (channel = model side), its observation refs back to it. Tool acts
+    // share the invoke domain, so filter on the absent tool field.
+    let invoke = events
+        .iter()
+        .find(|e| {
+            e.kind == Kind::Action
+                && e.act.as_ref().map(|a| a.kind.as_str()) == Some("invoke")
+                && e.act.as_ref().and_then(|a| a.tool.as_deref()).is_none()
+        })
+        .unwrap();
+    let invoke_obs = events
+        .iter()
+        .find(|e| e.kind == Kind::Observation && e.refs.first() == Some(&invoke.id))
+        .unwrap();
+    assert!(invoke_obs.act.as_ref().unwrap().effect.is_some());
 }
 
 #[tokio::test]
@@ -125,6 +149,7 @@ async fn forbidden_does_not_execute() {
             name: "echo".into(),
             arguments: "{}".into(),
         }],
+        usage: None,
     });
     let tools: Vec<Arc<dyn Tool>> = vec![Arc::new(Locked)];
     let actx = ActCtx {
@@ -136,5 +161,8 @@ async fn forbidden_does_not_execute() {
     let next = step(one_user_msg("x"), &actx, &model, &tools, &ctx())
         .await
         .unwrap();
-    assert_eq!(next.messages.last().unwrap().content.as_deref(), Some("forbidden"));
+    assert_eq!(
+        next.messages.last().unwrap().content.as_deref(),
+        Some("forbidden")
+    );
 }
