@@ -20,6 +20,15 @@ pub struct ToolCtx {
     pub signal: Option<tokio::sync::watch::Receiver<bool>>,
 }
 
+/// Carrying context for tape-emitting act paths: where events go, who acts,
+/// and under which card (None for uncarded call sites).
+pub struct ActCtx<'a> {
+    pub store: Option<&'a JsonlStore>,
+    pub agent_id: &'a str,
+    pub session: &'a str,
+    pub card: Option<&'a str>,
+}
+
 #[async_trait]
 pub trait Tool: Send + Sync {
     fn name(&self) -> &str;
@@ -71,9 +80,7 @@ async fn run_body(tool: &dyn Tool, args: Value, ctx: &ToolCtx) -> String {
 }
 
 pub async fn run_tool_act(
-    store: Option<&JsonlStore>,
-    agent_id: &str,
-    session: &str,
+    actx: &ActCtx<'_>,
     tools: &[Arc<dyn Tool>],
     call: &ToolCall,
     ctx: &ToolCtx,
@@ -93,9 +100,7 @@ pub async fn run_tool_act(
                 tool: Some(call.name.clone()),
             };
             let action = admit(
-                store,
-                agent_id,
-                session,
+                actx,
                 Kind::Action,
                 format!("{} {}", call.name, call.arguments),
                 vec![],
@@ -103,9 +108,7 @@ pub async fn run_tool_act(
             )?;
             let refs = action.as_ref().map(|a| vec![a.id.clone()]).unwrap_or_default();
             let observation = admit(
-                store,
-                agent_id,
-                session,
+                actx,
                 Kind::Observation,
                 e.to_string(),
                 refs,
@@ -128,9 +131,7 @@ pub async fn run_tool_act(
     };
 
     let action = admit(
-        store,
-        agent_id,
-        session,
+        actx,
         Kind::Action,
         format!("{} {}", call.name, call.arguments),
         vec![],
@@ -140,9 +141,7 @@ pub async fn run_tool_act(
     let fail = |content: String, action: Option<Memevent>| -> Result<ToolActResult, ToolError> {
         let refs = action.as_ref().map(|a| vec![a.id.clone()]).unwrap_or_default();
         let observation = admit(
-            store,
-            agent_id,
-            session,
+            actx,
             Kind::Observation,
             content.clone(),
             refs,
@@ -173,25 +172,24 @@ pub async fn run_tool_act(
 }
 
 fn admit(
-    store: Option<&JsonlStore>,
-    agent_id: &str,
-    session: &str,
+    actx: &ActCtx<'_>,
     kind: Kind,
     content: String,
     refs: Vec<String>,
     act: Option<ActOnEvent>,
 ) -> Result<Option<Memevent>, ToolError> {
-    let Some(store) = store else {
+    let Some(store) = actx.store else {
         return Ok(None);
     };
     Ok(Some(store.append(AppendEvent {
-        from: agent_id.into(),
+        from: actx.agent_id.into(),
         from_kind: FromKind::Agent,
         kind,
-        session: session.into(),
+        session: actx.session.into(),
         content,
         tags: vec![],
         refs,
         act,
+        card: actx.card.map(str::to_string),
     })?))
 }

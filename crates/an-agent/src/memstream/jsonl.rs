@@ -92,6 +92,7 @@ impl JsonlStore {
             tags: input.tags,
             refs: input.refs,
             act: input.act,
+            card: input.card,
         };
         event.validate().map_err(StoreError::Corrupt)?;
         let mut file = OpenOptions::new().create(true).append(true).open(&self.path)?;
@@ -134,6 +135,7 @@ mod tests {
             tags: vec![],
             refs: vec![],
             act: None,
+            card: None,
         }
     }
 

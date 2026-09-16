@@ -18,14 +18,19 @@ use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+#[allow(dead_code)]
+mod support;
+
 use an_agent::act::{
-    ActEnvelope, ActKind, ActSentence, BareFile, Ingest, Permit, Tool, ToolCtx, ToolTag,
+    ActCtx, ActEnvelope, ActKind, ActSentence, BareFile, Ingest, Permit, Tool, ToolCtx, ToolTag,
 };
-use an_agent::agent::{last_assistant_text, run_until_idle, AgentState, ChatMessage};
-use an_agent::det_seam::{Clock, Entropy};
+use an_agent::det_seam::Entropy;
 use an_agent::memstream::{ActOnEvent, AppendEvent, FromKind, JsonlStore, Kind, Memevent};
-use an_agent::model::{ChatCompletions, ModelSettings};
 use serde_json::{json, Value};
+use support::{
+    AgentState, ChatCompletions, ChatMessage, ModelSettings, TempDir, last_assistant_text,
+    run_until_idle,
+};
 
 const SYSTEM: &str = "You are a ReAct agent. Think briefly, then act. \
 Available tools: web_search (search the live web), remember (store a durable \
@@ -38,10 +43,10 @@ while working at which company? Search the web to confirm, remember the key \
 fact, then answer.";
 
 fn api_key() -> Option<String> {
-    if let Ok(k) = std::env::var("MODEL_API_KEY") {
-        if !k.is_empty() {
-            return Some(k);
-        }
+    if let Ok(k) = std::env::var("MODEL_API_KEY")
+        && !k.is_empty()
+    {
+        return Some(k);
     }
     let env_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../.env");
     let raw = std::fs::read_to_string(env_path).ok()?;
@@ -78,28 +83,14 @@ fn settings(api_key: String) -> ModelSettings {
     }
 }
 
-/// Deletes its directory on drop. Integration tests cannot use the crate's
-/// cfg(test) helpers, so the probe keeps a local copy.
-struct TempDir(PathBuf);
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
-
 fn probe_dir() -> (PathBuf, Option<TempDir>) {
     if let Ok(dir) = std::env::var("AN_AGENT_PROBE_DIR") {
         let dir = PathBuf::from(dir);
         std::fs::create_dir_all(&dir).expect("create probe dir");
         return (dir, None);
     }
-    let dir = std::env::temp_dir().join(format!(
-        "an-agent-react-{}",
-        Entropy::os().ulid(Clock::wall().now_ms())
-    ));
-    std::fs::create_dir_all(&dir).expect("create temp dir");
-    (dir.clone(), Some(TempDir(dir)))
+    let tmp = TempDir::new("react");
+    (tmp.path().to_path_buf(), Some(tmp))
 }
 
 struct WebSearch;
@@ -292,6 +283,7 @@ when you learned something worth keeping."
                 tags: vec!["memory".into()],
                 refs: evidence,
                 act: Some(ActOnEvent::intent(&env)),
+                card: None,
             })
             .map_err(|e| e.to_string())?;
         Ok(format!("remembered as {}", ev.id))
@@ -335,6 +327,7 @@ async fn react_search_and_remember() {
             tags: vec![],
             refs: vec![],
             act: None,
+            card: None,
         })
         .unwrap();
 
@@ -354,18 +347,15 @@ async fn react_search_and_remember() {
             },
         ],
     };
-    let state = run_until_idle(
-        state,
-        Some(&store),
-        &agent_id,
-        &session,
-        &model,
-        &tools,
-        &ctx,
-        8,
-    )
-    .await
-    .unwrap();
+    let actx = ActCtx {
+        store: Some(&store),
+        agent_id: &agent_id,
+        session: &session,
+        card: None,
+    };
+    let state = run_until_idle(state, &actx, &model, &tools, &ctx, 8)
+        .await
+        .unwrap();
     let answer = last_assistant_text(&state);
     eprintln!("\n=== final answer ===\n{answer}");
 

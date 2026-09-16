@@ -6,7 +6,7 @@ mod tool;
 pub use sense::{effect_from_sentence, effect_from_tag, Effect};
 pub use sentence::{Access, ActSentence, BareFile, Ingest, SentenceError};
 pub use tag::{FileFacet, MemoryFacet, Permit, ToolTag};
-pub use tool::{run_tool_act, tag_of, Tool, ToolCall, ToolCtx, ToolError, ToolMessage};
+pub use tool::{run_tool_act, tag_of, ActCtx, Tool, ToolCall, ToolCtx, ToolError, ToolMessage};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ActKind {

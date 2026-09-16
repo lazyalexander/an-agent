@@ -34,6 +34,8 @@ pub struct Memevent {
     pub refs: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub act: Option<ActOnEvent>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub card: Option<String>,
 }
 
 /// Act envelope on a memevent. Older lines omit it.
@@ -77,6 +79,7 @@ pub struct AppendEvent {
     pub tags: Vec<String>,
     pub refs: Vec<String>,
     pub act: Option<ActOnEvent>,
+    pub card: Option<String>,
 }
 
 impl Memevent {
