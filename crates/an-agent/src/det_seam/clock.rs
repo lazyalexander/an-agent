@@ -37,7 +37,7 @@ impl Clock {
         let nsec = ((ms % 1000) * 1_000_000) as u32;
         Utc.timestamp_opt(secs, nsec)
             .single()
-            .unwrap_or_else(|| Utc.timestamp_opt(0, 0).single().expect("epoch"))
+            .unwrap_or(chrono::DateTime::UNIX_EPOCH)
             .to_rfc3339_opts(chrono::SecondsFormat::Millis, true)
     }
 

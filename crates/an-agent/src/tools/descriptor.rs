@@ -192,7 +192,7 @@ fn validate(raw: RawDescriptor) -> Result<Descriptor, SpecError> {
         other => {
             return Err(invalid(format!(
                 "unknown constructor {other}; supported: rhai, mcp"
-            )))
+            )));
         }
     };
 
@@ -260,7 +260,9 @@ fn validate_effect(raw: RawEffect) -> Result<ToolEffect, SpecError> {
 fn check_effect_path(path: &str) -> Result<(), SpecError> {
     let p = std::path::Path::new(path);
     if !p.is_absolute() {
-        return Err(invalid(format!("effect file path must be absolute: {path}")));
+        return Err(invalid(format!(
+            "effect file path must be absolute: {path}"
+        )));
     }
     if path.contains('~')
         || p.components()
@@ -381,7 +383,10 @@ requires: []
 
     #[test]
     fn enforces_constructor_block_pairing() {
-        let no_script = BASH.replace("script: |\n  let out = exec(params.command, #{ timeout: 120 });\n  out.stdout\n", "");
+        let no_script = BASH.replace(
+            "script: |\n  let out = exec(params.command, #{ timeout: 120 });\n  out.stdout\n",
+            "",
+        );
         assert!(parse(&no_script).is_err());
         let both = BASH.replace(
             "requires: []",
@@ -408,10 +413,7 @@ requires: []
     fn requires_strictness() {
         let missing = BASH.replace("requires: []\n", "");
         assert!(parse(&missing).is_err());
-        let self_ref = BASH.replace(
-            "requires: []",
-            "requires: [{ name: bash, version: 1.0.0 }]",
-        );
+        let self_ref = BASH.replace("requires: []", "requires: [{ name: bash, version: 1.0.0 }]");
         assert!(parse(&self_ref).is_err());
         let dup = BASH.replace(
             "requires: []",

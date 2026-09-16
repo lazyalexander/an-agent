@@ -61,7 +61,10 @@ mod tests {
         assert_eq!(stdin_counterpart_id(a), stdin_counterpart_id(a));
         assert_ne!(stdin_counterpart_id(a), stdin_counterpart_id(b));
         assert_ne!(stdin_counterpart_id(a), a);
-        assert_eq!(stdin_counterpart_id(a).get_version(), Some(uuid::Version::Sha1));
+        assert_eq!(
+            stdin_counterpart_id(a).get_version(),
+            Some(uuid::Version::Sha1)
+        );
     }
 
     #[test]

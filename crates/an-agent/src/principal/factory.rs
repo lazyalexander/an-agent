@@ -131,10 +131,7 @@ mod tests {
     fn unknown_tool_name_fails_build() {
         let mut c = card(ToolTag::none());
         c.tools[0].name = "nope".into();
-        assert!(matches!(
-            build(&c, "h"),
-            Err(FactoryError::UnknownTool(_))
-        ));
+        assert!(matches!(build(&c, "h"), Err(FactoryError::UnknownTool(_))));
     }
 
     #[tokio::test]

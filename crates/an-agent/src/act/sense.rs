@@ -41,9 +41,7 @@ fn empty_effect(workplace: Option<String>, memory: String, unbounded: bool) -> E
 
 pub fn effect_from_sentence(sentence: &ActSentence) -> Effect {
     match sentence {
-        ActSentence::Bare {
-            file, memory, ..
-        } => empty_effect(
+        ActSentence::Bare { file, memory, .. } => empty_effect(
             None,
             ingest_name(memory),
             matches!(file, BareFile::Unbounded),

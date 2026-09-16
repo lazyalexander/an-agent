@@ -13,3 +13,7 @@ disallowed-methods = [
     { path = "uuid::Uuid::new_v4", reason = "inject det_seam::Entropy and call uuid_v4" },
     { path = "ulid::Ulid::new", reason = "inject det_seam::Entropy + det_seam::Clock and call ulid(now_ms)" },
 ]
+
+# workspace.lints denies unwrap/expect; test code keeps them.
+allow-unwrap-in-tests = true
+allow-expect-in-tests = true

@@ -12,6 +12,8 @@ use crate::det_seam::{Clock, Entropy};
 pub enum StoreError {
     #[error("io: {0}")]
     Io(#[from] std::io::Error),
+    #[error("store lock poisoned")]
+    Poisoned,
     #[error("json: {0}")]
     Json(#[from] serde_json::Error),
     #[error("corrupt memevent: {0}")]
@@ -76,7 +78,7 @@ impl JsonlStore {
         let id = self
             .entropy
             .lock()
-            .expect("entropy lock")
+            .map_err(|_| StoreError::Poisoned)?
             .ulid(now)
             .to_string();
         let event = Memevent {
@@ -95,14 +97,17 @@ impl JsonlStore {
             card: input.card,
         };
         event.validate().map_err(StoreError::Corrupt)?;
-        let mut file = OpenOptions::new().create(true).append(true).open(&self.path)?;
+        let mut file = OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&self.path)?;
         writeln!(file, "{}", serde_json::to_string(&event)?)?;
-        *self.next_seq.lock().expect("seq lock") = Some(seq + 1);
+        *self.next_seq.lock().map_err(|_| StoreError::Poisoned)? = Some(seq + 1);
         Ok(event)
     }
 
     fn peek_next_seq(&self) -> Result<u64, StoreError> {
-        let mut slot = self.next_seq.lock().expect("seq lock");
+        let mut slot = self.next_seq.lock().map_err(|_| StoreError::Poisoned)?;
         if let Some(n) = *slot {
             return Ok(n);
         }
@@ -171,7 +176,10 @@ mod tests {
         let (_gb, pb) = tmp();
         let a = JsonlStore::open_with(pa, Clock::frozen(0), Entropy::seeded(seed)).unwrap();
         let b = JsonlStore::open_with(pb, Clock::frozen(0), Entropy::seeded(seed)).unwrap();
-        assert_eq!(a.append(base("hi")).unwrap().id, b.append(base("hi")).unwrap().id);
+        assert_eq!(
+            a.append(base("hi")).unwrap().id,
+            b.append(base("hi")).unwrap().id
+        );
     }
 
     #[test]

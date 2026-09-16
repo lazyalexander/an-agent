@@ -31,7 +31,7 @@ fn cards_dir(root: &Path, id: &str) -> PathBuf {
 
 /// Writes the card (if new) and moves HEAD. Never rewrites or deletes.
 pub fn register(root: &Path, card: &AgentCard) -> Result<String, RegistryError> {
-    let hash = card.hash();
+    let hash = card.hash()?;
     let dir = cards_dir(root, &card.id.to_string());
     fs::create_dir_all(&dir)?;
     let path = dir.join(format!("{hash}.json"));

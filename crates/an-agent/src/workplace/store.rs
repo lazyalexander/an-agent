@@ -97,7 +97,11 @@ impl Workplace {
         ObjectId::from_hex(raw.trim()).map_err(WorkplaceError::Msg)
     }
 
-    pub fn resource(&self, kind: ResourceKind, path: impl IntoIterator<Item = impl Into<String>>) -> Resource {
+    pub fn resource(
+        &self,
+        kind: ResourceKind,
+        path: impl IntoIterator<Item = impl Into<String>>,
+    ) -> Resource {
         Resource::new(self.id, kind, path)
     }
 
@@ -215,7 +219,9 @@ impl Workplace {
     }
 
     fn read_meta(&self) -> Result<Meta, WorkplaceError> {
-        Ok(serde_json::from_slice(&fs::read(self.root.join("meta.wp"))?)?)
+        Ok(serde_json::from_slice(&fs::read(
+            self.root.join("meta.wp"),
+        )?)?)
     }
 
     fn write_meta(&self, meta: &Meta) -> Result<(), WorkplaceError> {
@@ -396,9 +402,7 @@ mod tests {
             wp.read_file(&["src".into(), "b.txt".into()]).unwrap(),
             Some(b"bbb".to_vec())
         );
-        let err = wp
-            .write_file(other, &["x".into()], b"no")
-            .unwrap_err();
+        let err = wp.write_file(other, &["x".into()], b"no").unwrap_err();
         assert!(matches!(err, WorkplaceError::NotLead));
     }
 
@@ -427,9 +431,7 @@ mod tests {
         wp.set_workers(lead, b"alice\nbob\n").unwrap();
         assert_eq!(WORKERS_FILE.last().copied(), Some("workers.wp"));
         assert_eq!(wp.workers().unwrap(), Some(b"alice\nbob\n".to_vec()));
-        assert!(wp
-            .set_permit(Uuid::new_v4(), b"no")
-            .is_err());
+        assert!(wp.set_permit(Uuid::new_v4(), b"no").is_err());
     }
 
     #[test]

@@ -51,9 +51,12 @@ pub struct AgentCard {
 }
 
 impl AgentCard {
-    pub fn hash(&self) -> String {
-        let bytes = serde_json::to_vec(self).expect("card serializes");
-        Sha256::digest(bytes).iter().map(|b| format!("{b:02x}")).collect()
+    pub fn hash(&self) -> Result<String, serde_json::Error> {
+        let bytes = serde_json::to_vec(self)?;
+        Ok(Sha256::digest(bytes)
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect())
     }
 }
 
@@ -86,11 +89,11 @@ mod tests {
     fn same_card_same_hash_and_round_trip() {
         let a = card();
         let b = card();
-        assert_eq!(a.hash(), b.hash());
+        assert_eq!(a.hash().unwrap(), b.hash().unwrap());
         let json = serde_json::to_string(&a).unwrap();
         let back: AgentCard = serde_json::from_str(&json).unwrap();
         assert_eq!(back, a);
-        assert_eq!(back.hash(), a.hash());
+        assert_eq!(back.hash().unwrap(), a.hash().unwrap());
     }
 
     #[test]
@@ -98,9 +101,9 @@ mod tests {
         let base = card();
         let mut renamed = card();
         renamed.prompt = "other".into();
-        assert_ne!(renamed.hash(), base.hash());
+        assert_ne!(renamed.hash().unwrap(), base.hash().unwrap());
         let mut successor = card();
-        successor.supersedes = Some(base.hash());
-        assert_ne!(successor.hash(), base.hash());
+        successor.supersedes = Some(base.hash().unwrap());
+        assert_ne!(successor.hash().unwrap(), base.hash().unwrap());
     }
 }
