@@ -41,7 +41,8 @@ drop.addEventListener("drop", async (e) => {
   if (f) load(f.name, await f.text());
 });
 
-fetch("examples/sample.jsonl")
-  .then((r) => (r.ok ? r.text() : Promise.reject(new Error("no sample"))))
-  .then((t) => load("examples/sample.jsonl", t))
+const initial = new URLSearchParams(location.search).get("tape") ?? "examples/sample.jsonl";
+fetch(initial)
+  .then((r) => (r.ok ? r.text() : Promise.reject(new Error("no tape: " + initial))))
+  .then((t) => load(initial, t))
   .catch(() => {});
