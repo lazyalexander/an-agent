@@ -9,6 +9,7 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
 pub mod rhai;
+pub mod ts_tool;
 
 use std::path::PathBuf;
 use std::sync::Arc;
