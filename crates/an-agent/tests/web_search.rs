@@ -105,7 +105,14 @@ async fn web_search_live() {
     let tools: Vec<Arc<dyn Tool>> = vec![Arc::new(tool)];
     let result = run_tool_act(&actx, &tools, &call, &ctx()).await.unwrap();
     eprintln!("=== digest ===\n{}", result.message.content);
-    assert!(!result.message.content.is_empty());
+    let c = &result.message.content;
+    assert!(!c.is_empty());
+    // Error lines alone mean both backends failed — a failed probe must not
+    // pass. Success digests never carry the "<backend>: <error>" prefix.
+    assert!(
+        !c.contains("duckduckgo:") && !c.contains("wikipedia:"),
+        "search backends failed, digest is only errors: {c}"
+    );
 
     let events = store.read_all().unwrap();
     let mine: Vec<_> = events
