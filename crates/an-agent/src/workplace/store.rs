@@ -63,7 +63,7 @@ pub struct Workplace {
 
 impl Workplace {
     pub fn create(dir: impl AsRef<Path>, lead: Uuid) -> Result<Self, WorkplaceError> {
-        let id = Uuid::new_v4();
+        let id = crate::det_seam::Entropy::os().uuid_v4();
         let root = dir.as_ref().join(id.to_string());
         fs::create_dir_all(root.join("objects"))?;
         fs::create_dir_all(root.join("refs"))?;
@@ -97,7 +97,11 @@ impl Workplace {
         ObjectId::from_hex(raw.trim()).map_err(WorkplaceError::Msg)
     }
 
-    pub fn resource(&self, kind: ResourceKind, path: impl IntoIterator<Item = impl Into<String>>) -> Resource {
+    pub fn resource(
+        &self,
+        kind: ResourceKind,
+        path: impl IntoIterator<Item = impl Into<String>>,
+    ) -> Resource {
         Resource::new(self.id, kind, path)
     }
 
@@ -215,7 +219,9 @@ impl Workplace {
     }
 
     fn read_meta(&self) -> Result<Meta, WorkplaceError> {
-        Ok(serde_json::from_slice(&fs::read(self.root.join("meta.wp"))?)?)
+        Ok(serde_json::from_slice(&fs::read(
+            self.root.join("meta.wp"),
+        )?)?)
     }
 
     fn write_meta(&self, meta: &Meta) -> Result<(), WorkplaceError> {
@@ -361,19 +367,21 @@ fn validate_ref(name: &str) -> Result<(), WorkplaceError> {
 }
 
 #[cfg(test)]
+#[allow(clippy::disallowed_methods)]
 mod tests {
     use super::*;
-    use ulid::Ulid;
+    use crate::testkit::TempDir;
 
-    fn tmp() -> PathBuf {
-        std::env::temp_dir().join(format!("an-agent-wp-{}", Ulid::new()))
+    fn tmp() -> TempDir {
+        TempDir::new("wp")
     }
 
     #[test]
     fn write_advances_head_and_shares_blobs() {
         let lead = Uuid::new_v4();
         let other = Uuid::new_v4();
-        let wp = Workplace::create(tmp(), lead).unwrap();
+        let tmp = tmp();
+        let wp = Workplace::create(tmp.path(), lead).unwrap();
         let empty = wp.head().unwrap();
         let c1 = wp
             .write_file(lead, &["src".into(), "a.txt".into()], b"aaa")
@@ -394,16 +402,15 @@ mod tests {
             wp.read_file(&["src".into(), "b.txt".into()]).unwrap(),
             Some(b"bbb".to_vec())
         );
-        let err = wp
-            .write_file(other, &["x".into()], b"no")
-            .unwrap_err();
+        let err = wp.write_file(other, &["x".into()], b"no").unwrap_err();
         assert!(matches!(err, WorkplaceError::NotLead));
     }
 
     #[test]
     fn branch_write_does_not_move_previous_head_snapshot() {
         let lead = Uuid::new_v4();
-        let wp = Workplace::create(tmp(), lead).unwrap();
+        let tmp = tmp();
+        let wp = Workplace::create(tmp.path(), lead).unwrap();
         wp.write_file(lead, &["a".into()], b"1").unwrap();
         let main_head = wp.head().unwrap();
         wp.branch(lead, "priv").unwrap();
@@ -419,19 +426,19 @@ mod tests {
     #[test]
     fn workers_wp_round_trip_and_suffix_is_not_json() {
         let lead = Uuid::new_v4();
-        let wp = Workplace::create(tmp(), lead).unwrap();
+        let tmp = tmp();
+        let wp = Workplace::create(tmp.path(), lead).unwrap();
         wp.set_workers(lead, b"alice\nbob\n").unwrap();
         assert_eq!(WORKERS_FILE.last().copied(), Some("workers.wp"));
         assert_eq!(wp.workers().unwrap(), Some(b"alice\nbob\n".to_vec()));
-        assert!(wp
-            .set_permit(Uuid::new_v4(), b"no")
-            .is_err());
+        assert!(wp.set_permit(Uuid::new_v4(), b"no").is_err());
     }
 
     #[test]
     fn merge_ff_onto_main_and_non_lead_cannot_branch() {
         let lead = Uuid::new_v4();
-        let wp = Workplace::create(tmp(), lead).unwrap();
+        let tmp = tmp();
+        let wp = Workplace::create(tmp.path(), lead).unwrap();
         wp.write_file(lead, &["a".into()], b"1").unwrap();
         wp.branch(lead, "main").unwrap();
         wp.checkout(lead, "main").unwrap();

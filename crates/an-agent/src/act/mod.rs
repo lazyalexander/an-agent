@@ -3,15 +3,19 @@ mod sentence;
 mod tag;
 mod tool;
 
-pub use sense::{effect_from_sentence, effect_from_tag, Effect};
+pub use sense::{Effect, effect_from_sentence, effect_from_tag};
 pub use sentence::{Access, ActSentence, BareFile, Ingest, SentenceError};
 pub use tag::{FileFacet, MemoryFacet, Permit, ToolTag};
-pub use tool::{run_tool_act, tag_of, Tool, ToolCall, ToolCtx, ToolError, ToolMessage};
+pub use tool::{ActCtx, Tool, ToolCall, ToolCtx, ToolError, ToolMessage, run_tool_act, tag_of};
 
+/// Intent-domain vocabulary only. The channel (via tool / direct / model)
+/// is carried by `ActEnvelope.tool`: Some(name) = via tool, None = direct
+/// or model-side. Invoke covers all non-deterministic external calls —
+/// generic tool use and model calls alike.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ActKind {
     Utterance,
-    Tool,
+    Invoke,
     Mount,
     Unmount,
     Forbid,
@@ -24,7 +28,7 @@ impl ActKind {
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Utterance => "utterance",
-            Self::Tool => "tool",
+            Self::Invoke => "invoke",
             Self::Mount => "mount",
             Self::Unmount => "unmount",
             Self::Forbid => "forbid",

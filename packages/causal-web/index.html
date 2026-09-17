@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>causal-web · memstream 思考线索</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2032%2032'%3E%3Crect%20width='32'%20height='32'%20rx='7'%20fill='%23181818'/%3E%3Cpath%20d='M9%2020%20L16%2010%20L24%2018'%20stroke='%23666'%20stroke-width='1.5'%20fill='none'/%3E%3Ccircle%20cx='9'%20cy='20'%20r='3'%20fill='%2366ccff'/%3E%3Ccircle%20cx='16'%20cy='10'%20r='3'%20fill='%23ffcc66'/%3E%3Ccircle%20cx='24'%20cy='18'%20r='3'%20fill='%2366ff99'/%3E%3C/svg%3E" />
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 24px; max-width: 900px;
+    font: 14px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+    background: #111; color: #ddd;
+  }
+  h1 { font-size: 18px; margin: 0 0 4px; }
+  .sub { color: #888; margin-bottom: 16px; }
+  #drop {
+    border: 1px dashed #555; border-radius: 8px; padding: 14px;
+    color: #999; margin-bottom: 16px; text-align: center;
+  }
+  #drop.hot { border-color: #6cf; color: #6cf; }
+  #summary { margin-bottom: 16px; }
+  .score strong { font-size: 20px; }
+  .score.ok strong { color: #6f9; }
+  .score.bad strong { color: #f66; }
+  .meta { color: #888; font-size: 12px; }
+  #checks { columns: 2; column-gap: 24px; margin-bottom: 20px; }
+  .check { break-inside: avoid; padding: 2px 0; }
+  .check .mark { display: inline-block; width: 18px; }
+  .check.ok .mark { color: #6f9; }
+  .check.bad .mark { color: #f66; }
+  .check .count { color: #f66; margin-left: 6px; }
+  .issues { margin: 2px 0 6px 24px; padding: 0; list-style: none; color: #c99; font-size: 12px; }
+  a { color: #6cf; text-decoration: none; }
+  .ev {
+    border: 1px solid #333; border-left: 4px solid #555; border-radius: 6px;
+    padding: 8px 12px; margin-bottom: 8px; background: #181818;
+  }
+  .ev:target, .ev:has(:target) { border-color: #6cf; }
+  .k-utterance { border-left-color: #6cf; }
+  .k-action { border-left-color: #fc6; }
+  .k-observation { border-left-color: #6f9; }
+  .ev header { display: flex; gap: 10px; font-size: 12px; color: #999; margin-bottom: 4px; }
+  .ev .seq { color: #eee; font-weight: 700; }
+  .ev .kind { color: #bbb; }
+  .ev .content { white-space: pre-wrap; word-break: break-word; }
+  .ev footer { margin-top: 6px; font-size: 12px; color: #999; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .tag { background: #333; border-radius: 4px; padding: 0 6px; }
+  .tag.memory { background: #364; color: #cfc; }
+  .act { background: #432; border-radius: 4px; padding: 0 6px; color: #fc9; }
+</style>
+</head>
+<body>
+  <h1>causal-web</h1>
+  <div class="sub">memstream 思考线索演示 · 纯客户端运行，文件不出本机</div>
+  <div id="drop">拖入 memstream .jsonl，或 <input id="file" type="file" accept=".jsonl,.json,.txt" /></div>
+  <div id="summary"></div>
+  <div id="checks"></div>
+  <div id="thread"></div>
+  <script type="module" src="main.js"></script>
+</body>
+</html>

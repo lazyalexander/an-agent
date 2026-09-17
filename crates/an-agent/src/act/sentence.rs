@@ -83,12 +83,7 @@ impl ActSentence {
         }
     }
 
-    pub fn on_resource(
-        permit: Permit,
-        resource: Resource,
-        access: Access,
-        memory: Ingest,
-    ) -> Self {
+    pub fn on_resource(permit: Permit, resource: Resource, access: Access, memory: Ingest) -> Self {
         Self::OnResource {
             permit,
             resource,

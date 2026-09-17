@@ -1,0 +1,61 @@
+v: 1
+name: web_search
+version: 0.1.0
+constructor: rhai
+script: |
+  // params: { query: string }
+  // http_get_json returns #{ error: msg } on failure — a normal outcome
+  // the script branches on, not an exception.
+  let parts = [];
+  let errs = [];
+  let ddg = http_get_json("https://api.duckduckgo.com/", #{ q: params.query, format: "json", no_html: "1", skip_disambig: "1" });
+  if "error" in ddg {
+    errs.push("duckduckgo: " + ddg["error"]);
+  } else {
+    if "AbstractText" in ddg && ddg["AbstractText"] != "" {
+      let url = "";
+      if "AbstractURL" in ddg { url = ddg["AbstractURL"]; }
+      parts.push(ddg["AbstractText"] + " (" + url + ")");
+    }
+    if "Answer" in ddg && ddg["Answer"] != "" {
+      parts.push("answer: " + ddg["Answer"]);
+    }
+    if "RelatedTopics" in ddg {
+      let n = 0;
+      for t in ddg["RelatedTopics"] {
+        if n >= 3 { break; }
+        if "Text" in t && t["Text"] != "" {
+          parts.push(t["Text"]);
+          n += 1;
+        }
+      }
+    }
+  }
+  if parts.is_empty() {
+    let hits = http_get_json("https://en.wikipedia.org/w/api.php", #{ action: "query", list: "search", srsearch: params.query, srlimit: "3", format: "json" });
+    if "error" in hits {
+      errs.push("wikipedia: " + hits["error"]);
+    } else if "query" in hits && "search" in hits["query"] {
+      let n = 0;
+      for hit in hits["query"]["search"] {
+        if n >= 3 { break; }
+        parts.push(hit["title"] + ": " + hit["snippet"]);
+        n += 1;
+      }
+    }
+  }
+  if parts.is_empty() { parts = errs; }
+  if parts.is_empty() { throw "no results"; }
+  let out = "";
+  for p in parts {
+    if out != "" { out += "\n"; }
+    out += p;
+  }
+  out
+summary: Search the live web (DuckDuckGo, Wikipedia fallback) and return a digest
+effect:
+  net: egress
+  file: { op: none }
+  proc: none
+  memory: { op: ignore }
+requires: []

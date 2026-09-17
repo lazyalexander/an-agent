@@ -45,7 +45,11 @@ pub struct Resource {
 }
 
 impl Resource {
-    pub fn new(workplace: Uuid, kind: ResourceKind, path: impl IntoIterator<Item = impl Into<String>>) -> Self {
+    pub fn new(
+        workplace: Uuid,
+        kind: ResourceKind,
+        path: impl IntoIterator<Item = impl Into<String>>,
+    ) -> Self {
         Self {
             workplace,
             kind,
@@ -62,7 +66,10 @@ impl Resource {
             .map_err(|_| "workplace id must be a uuid")?;
         let kind = ResourceKind::parse(parts.next().ok_or("missing kind")?)
             .ok_or("unknown resource kind")?;
-        let path: Vec<String> = parts.filter(|p| !p.is_empty()).map(str::to_string).collect();
+        let path: Vec<String> = parts
+            .filter(|p| !p.is_empty())
+            .map(str::to_string)
+            .collect();
         Ok(Self {
             workplace: wp,
             kind,

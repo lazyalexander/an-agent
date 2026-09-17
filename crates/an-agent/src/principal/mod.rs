@@ -1,8 +1,16 @@
+pub mod card;
+pub mod factory;
+pub mod registry;
+
+pub use card::{AgentCard, ModelSpec, ToolGrant, Topology};
+
 use std::fs;
 use std::path::Path;
 
 use thiserror::Error;
 use uuid::Uuid;
+
+use crate::det_seam::Entropy;
 
 const DNS_NAMESPACE: Uuid = Uuid::from_bytes([
     0x6b, 0xa7, 0xb8, 0x10, 0x9d, 0xad, 0x11, 0xd1, 0x80, 0xb4, 0x00, 0xc0, 0x4f, 0xd4, 0x30, 0xc8,
@@ -32,7 +40,7 @@ pub fn load_or_create_id(path: &Path) -> Result<Uuid, PrincipalError> {
     if let Some(dir) = path.parent() {
         fs::create_dir_all(dir)?;
     }
-    let id = Uuid::new_v4();
+    let id = Entropy::os().uuid_v4();
     fs::write(path, format!("{id}\n"))?;
     Ok(id)
 }
@@ -44,7 +52,7 @@ pub fn local_agent_id(root: &Path) -> Result<Uuid, PrincipalError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ulid::Ulid;
+    use crate::testkit::TempDir;
 
     #[test]
     fn stdin_id_is_stable_and_not_the_agent() {
@@ -53,12 +61,16 @@ mod tests {
         assert_eq!(stdin_counterpart_id(a), stdin_counterpart_id(a));
         assert_ne!(stdin_counterpart_id(a), stdin_counterpart_id(b));
         assert_ne!(stdin_counterpart_id(a), a);
-        assert_eq!(stdin_counterpart_id(a).get_version(), Some(uuid::Version::Sha1));
+        assert_eq!(
+            stdin_counterpart_id(a).get_version(),
+            Some(uuid::Version::Sha1)
+        );
     }
 
     #[test]
     fn persists_agent_id_without_human_id() {
-        let dir = std::env::temp_dir().join(format!("an-agent-ids-{}", Ulid::new()));
+        let tmp = TempDir::new("ids");
+        let dir = tmp.path().to_path_buf();
         let first = local_agent_id(&dir).unwrap();
         let second = local_agent_id(&dir).unwrap();
         assert_eq!(first, second);

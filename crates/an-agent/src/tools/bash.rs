@@ -73,11 +73,7 @@ impl Tool for Bash {
     }
 
     async fn execute(&self, args: Value, ctx: &ToolCtx) -> Result<String, String> {
-        if ctx
-            .signal
-            .as_ref()
-            .is_some_and(|s| *s.borrow())
-        {
+        if ctx.signal.as_ref().is_some_and(|s| *s.borrow()) {
             return Ok("cancelled; process killed".into());
         }
         let command = args
@@ -175,9 +171,9 @@ impl Tool for Bash {
 #[cfg(all(test, unix))]
 mod tests {
     use super::*;
+    use serde_json::json;
     use std::fs;
     use std::path::PathBuf;
-    use serde_json::json;
     use tokio::sync::watch;
 
     fn ctx_open() -> ToolCtx {
@@ -187,8 +183,8 @@ mod tests {
 
     #[tokio::test]
     async fn times_out_and_kills_background_child() {
-        let dir = std::env::temp_dir().join(format!("an-agent-bash-{}", ulid::Ulid::new()));
-        fs::create_dir_all(&dir).unwrap();
+        let tmp = crate::testkit::TempDir::new("bash");
+        let dir = tmp.path().to_path_buf();
         let pid_file: PathBuf = dir.join("sleep.pid");
         let bash = Bash::with_timeout(Duration::from_millis(400));
         let cmd = format!(r#"sleep 30 & echo $! > "{}"; wait"#, pid_file.display());
@@ -197,7 +193,11 @@ mod tests {
             .await
             .unwrap();
         assert!(out.contains("timed out"), "{out}");
-        let pid: i32 = fs::read_to_string(&pid_file).unwrap().trim().parse().unwrap();
+        let pid: i32 = fs::read_to_string(&pid_file)
+            .unwrap()
+            .trim()
+            .parse()
+            .unwrap();
         tokio::time::sleep(Duration::from_millis(150)).await;
         let still = unsafe { libc::kill(pid, 0) };
         assert_eq!(still, -1, "grandchild should be gone");

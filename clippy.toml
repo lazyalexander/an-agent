@@ -1,0 +1,19 @@
+# The determinism seam (crates/an-agent/src/det_seam) is the only place
+# allowed to touch OS time and OS entropy. Everything else injects
+# det_seam::Clock and det_seam::Entropy. Exemptions: the seam module itself
+# and test modules carry #[allow(clippy::disallowed_methods)].
+disallowed-methods = [
+    { path = "chrono::Utc::now", reason = "inject det_seam::Clock instead" },
+    { path = "chrono::Local::now", reason = "inject det_seam::Clock instead" },
+    { path = "std::time::SystemTime::now", reason = "inject det_seam::Clock instead" },
+    { path = "std::time::Instant::now", reason = "inject det_seam::Clock instead" },
+    { path = "rand::thread_rng", reason = "inject det_seam::Entropy instead" },
+    { path = "rand::random", reason = "inject det_seam::Entropy instead" },
+    { path = "rand::SeedableRng::from_entropy", reason = "use det_seam::Entropy::seeded with an explicit seed" },
+    { path = "uuid::Uuid::new_v4", reason = "inject det_seam::Entropy and call uuid_v4" },
+    { path = "ulid::Ulid::new", reason = "inject det_seam::Entropy + det_seam::Clock and call ulid(now_ms)" },
+]
+
+# workspace.lints denies unwrap/expect; test code keeps them.
+allow-unwrap-in-tests = true
+allow-expect-in-tests = true
