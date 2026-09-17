@@ -368,17 +368,26 @@ requires: []
         assert!(matches!(m.constructor, Constructor::Mcp { .. }));
     }
 
+    /// Rejection tests must pin the *reason*: a test that only checks
+    /// `is_err()` passes even when the descriptor fails for the wrong cause
+    /// (e.g. an accidental YAML syntax break) — a fake-green branch.
+    fn err_of(yaml: &str) -> String {
+        parse(yaml).unwrap_err().to_string()
+    }
+
     #[test]
     fn rejects_unknown_field() {
         let bad = BASH.replace("summary:", "summray:");
-        assert!(parse(&bad).is_err());
+        assert!(err_of(&bad).contains("unknown field"));
     }
 
     #[test]
     fn rejects_wrong_v_and_sloppy_identity() {
-        assert!(parse(&BASH.replace("v: 1", "v: 2")).is_err());
-        assert!(parse(&BASH.replace("name: bash", "name: Bash")).is_err());
-        assert!(parse(&BASH.replace("version: 1.0.0", "version: 1.0")).is_err());
+        assert!(err_of(&BASH.replace("v: 1", "v: 2")).contains("v must be 1"));
+        assert!(err_of(&BASH.replace("name: bash", "name: Bash")).contains("invalid tool name"));
+        assert!(
+            err_of(&BASH.replace("version: 1.0.0", "version: 1.0")).contains("invalid version")
+        );
     }
 
     #[test]
@@ -387,39 +396,41 @@ requires: []
             "script: |\n  let out = exec(params.command, #{ timeout: 120 });\n  out.stdout\n",
             "",
         );
-        assert!(parse(&no_script).is_err());
+        assert!(err_of(&no_script).contains("requires a non-empty script"));
         let both = BASH.replace(
             "requires: []",
             "mcp: { transport: stdio, command: [\"x\"], tool: t }\nrequires: []",
         );
-        assert!(parse(&both).is_err());
-        assert!(parse(&MCP.replace("transport: stdio", "transport: http")).is_err());
+        assert!(err_of(&both).contains("must not carry an mcp block"));
+        assert!(
+            err_of(&MCP.replace("transport: stdio", "transport: http")).contains("must be stdio")
+        );
     }
 
     #[test]
     fn effect_faces_required_and_constrained() {
         let no_net = BASH.replace("  net: egress\n", "");
-        assert!(parse(&no_net).is_err());
+        assert!(err_of(&no_net).contains("net"));
         let rel = MCP.replace("path: \"/srv\"", "path: \"srv/data\"");
-        assert!(parse(&rel).is_err());
+        assert!(err_of(&rel).contains("absolute"));
         let forget = BASH.replace(
             "memory: { op: ignore }",
             "memory: { op: forget, rememberId: x }",
         );
-        assert!(parse(&forget).is_err());
+        assert!(err_of(&forget).contains("ignore or remember"));
     }
 
     #[test]
     fn requires_strictness() {
         let missing = BASH.replace("requires: []\n", "");
-        assert!(parse(&missing).is_err());
+        assert!(err_of(&missing).contains("requires is required"));
         let self_ref = BASH.replace("requires: []", "requires: [{ name: bash, version: 1.0.0 }]");
-        assert!(parse(&self_ref).is_err());
+        assert!(err_of(&self_ref).contains("requires itself"));
         let dup = BASH.replace(
             "requires: []",
             "requires:\n  - { name: a, version: 1.0.0 }\n  - { name: a, version: 2.0.0 }",
         );
-        assert!(parse(&dup).is_err());
+        assert!(err_of(&dup).contains("duplicate require"));
     }
 
     #[test]

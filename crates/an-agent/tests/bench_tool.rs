@@ -49,19 +49,28 @@ fn percentile(sorted: &[Duration], p: f64) -> Duration {
     sorted[idx]
 }
 
+/// Times one call and returns the output too: a bench that cannot prove the
+/// tool did work is measuring the wrong path (we shipped exactly that bug —
+/// a name mismatch sent every call down the unknown-tool fast path).
 async fn time_call(
     actx: &ActCtx<'_>,
     tool: &Arc<dyn Tool>,
     call: &ToolCall,
     ctx: &ToolCtx,
-) -> Duration {
+) -> (Duration, String) {
     let tools = [tool.clone()];
     let t = Instant::now();
-    run_tool_act(actx, &tools, call, ctx).await.unwrap();
-    t.elapsed()
+    let result = run_tool_act(actx, &tools, call, ctx).await.unwrap();
+    (t.elapsed(), result.message.content)
 }
 
-async fn bench(label: &str, call_name: &str, tool: &Arc<dyn Tool>, args: serde_json::Value) {
+async fn bench(
+    label: &str,
+    call_name: &str,
+    tool: &Arc<dyn Tool>,
+    args: serde_json::Value,
+    expect: &str,
+) {
     let actx = ActCtx {
         store: None,
         agent_id: "bench",
@@ -74,10 +83,19 @@ async fn bench(label: &str, call_name: &str, tool: &Arc<dyn Tool>, args: serde_j
         arguments: args.to_string(),
     };
     let ctx = ctx();
-    let cold = time_call(&actx, tool, &call, &ctx).await;
+    let (cold, out) = time_call(&actx, tool, &call, &ctx).await;
+    assert!(
+        out.contains(expect),
+        "{label}: cold call did no work: {out:?}"
+    );
     let mut warm = Vec::with_capacity(RUNS);
     for _ in 0..WARMUP + RUNS {
-        warm.push(time_call(&actx, tool, &call, &ctx).await);
+        let (d, out) = time_call(&actx, tool, &call, &ctx).await;
+        assert!(
+            out.contains(expect),
+            "{label}: warm call did no work: {out:?}"
+        );
+        warm.push(d);
     }
     let mut warm = warm.split_off(WARMUP);
     warm.sort();
@@ -97,12 +115,19 @@ async fn bench(label: &str, call_name: &str, tool: &Arc<dyn Tool>, args: serde_j
 #[ignore = "bench; run explicitly"]
 async fn constructor_overhead() {
     let bash: Arc<dyn Tool> = Arc::new(Bash::default());
-    bench("bash", "bash", &bash, json!({ "command": "true" })).await;
+    bench(
+        "bash",
+        "bash",
+        &bash,
+        json!({ "command": "echo bench-ok" }),
+        "bench-ok",
+    )
+    .await;
 
     let d = descriptor::parse(RHAI_YAML).unwrap();
     let rhai: Arc<dyn Tool> =
         Arc::new(RhaiTool::from_descriptor(d, json!({ "type": "object" })).unwrap());
-    bench("rhai", "echo_plus", &rhai, json!({ "x": 1 })).await;
+    bench("rhai", "echo_plus", &rhai, json!({ "x": 1 }), "2").await;
 
     if std::process::Command::new("bun")
         .arg("--version")
@@ -127,6 +152,7 @@ async fn constructor_overhead() {
         "word_count",
         &ts,
         json!({ "text": "hello world" }),
+        "\"words\":2",
     )
     .await;
 }
