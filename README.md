@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/icon.png" width="128" alt="an-agent icon">
+</p>
+
 # an-agent
 
 A research-oriented, audit-first agent framework: distributed by assumption, reproducible by construction.
