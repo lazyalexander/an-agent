@@ -190,6 +190,14 @@ impl ActSentence {
             _ => None,
         }
     }
+
+    /// The memory face, where the sentence carries one (Forget has none).
+    pub fn ingest(&self) -> Option<&Ingest> {
+        match self {
+            Self::Bare { memory, .. } | Self::OnResource { memory, .. } => Some(memory),
+            Self::Forget { .. } => None,
+        }
+    }
 }
 
 impl fmt::Display for ActSentence {

@@ -81,6 +81,15 @@ impl ToolTag {
         }
     }
 
+    /// A remember tool: returns the fact text, admission writes the clip.
+    pub fn remember() -> Self {
+        Self {
+            file: FileFacet::None,
+            permit: Permit::Go,
+            memory: MemoryFacet::Remember { aspect: None },
+        }
+    }
+
     pub fn unbounded() -> Self {
         Self {
             file: FileFacet::Unbounded,
