@@ -1,0 +1,29 @@
+v: 1
+name: echo_policy
+version: 0.1.0
+constructor: rhai
+script: |
+  // One-step policy over the tape projection (newest first):
+  // no agent reply yet -> ask the model, citing the human clips;
+  // a reply but no tool result yet -> echo the reply via the whitelisted tool;
+  // a result landed -> say done, then halt on the next step.
+  let human = params.clips.filter(|c| c.kind == "utterance" && c.from == "human");
+  let mine = params.clips.filter(|c| c.kind == "utterance" && c.from == "agent");
+  let results = params.clips.filter(|c| c.kind == "observation" && !c.preview.starts_with("{"));
+  if mine.is_empty() {
+      #{ kind: "invoke_model", clips: human.map(|c| c.id) }
+  } else if results.is_empty() {
+      #{ kind: "invoke_tool", name: "echo", args: #{ text: mine[0].preview } }
+  } else if mine.len() < 2 {
+      #{ kind: "utter", text: "done" }
+  } else {
+      #{ kind: "halt" }
+  }
+summary: probe policy — echo the model reply, then halt
+effect:
+  file: { op: none }
+  net: none
+  proc: none
+  memory: { op: ignore }
+requires:
+  - { name: echo, version: 1.0.0 }
