@@ -41,7 +41,10 @@ pub fn tool_registry() -> Vec<(&'static str, ToolCtor)> {
 }
 
 /// Wraps a constructed tool so the grant's tag wins over the constructor's
-/// default tag_seed: permissions come from the card.
+/// default tag_seed: permissions come from the card. The tag is an audit
+/// label, not a gate: only `Permit::Forbidden` blocks execution; `Ask` is
+/// taped but runs as `Go` until the delegation-chain + Ask-grant slice
+/// wires enforcement.
 struct Granted {
     inner: Arc<dyn Tool>,
     tag: ToolTag,

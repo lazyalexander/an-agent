@@ -1,5 +1,8 @@
 use serde::{Deserialize, Serialize};
 
+/// Ask is not a gate today: admission tapes the intent and runs it as Go;
+/// only Forbidden blocks. Enforcement arrives with the delegation-chain
+/// + Ask-grant slice.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Permit {
