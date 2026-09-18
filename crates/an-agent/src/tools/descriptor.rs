@@ -17,7 +17,7 @@ use crate::act::{FileFacet, MemoryFacet};
 #[derive(Debug, Error)]
 pub enum SpecError {
     #[error("yaml: {0}")]
-    Yaml(#[from] serde_yaml::Error),
+    Yaml(#[from] serde_saphyr::Error),
     #[error("{0}")]
     Invalid(String),
 }
@@ -70,8 +70,8 @@ struct RawEffect {
     // file/memory stay raw Values and are hand-validated in validate_effect:
     // FileFacet/MemoryFacet are internally tagged enums, which silently
     // swallow extra keys ({op: none, path: x}) — an admission bypass here.
-    file: serde_yaml::Value,
-    memory: serde_yaml::Value,
+    file: serde_json::Value,
+    memory: serde_json::Value,
     net: Net,
     #[serde(rename = "proc")]
     proc_: Proc,
@@ -136,8 +136,20 @@ pub fn content_hash(yaml: &str) -> String {
     format!("{:x}", h.finalize())
 }
 
+/// Hard input cap, enforced before the parser ever sees the bytes:
+/// pathological or oversized documents are rejected as a DoS surface
+/// regardless of parser internals. 64 KiB is far above any legitimate v1
+/// descriptor (~2 KiB observed, inline script included).
+const MAX_DESCRIPTOR_BYTES: usize = 64 * 1024;
+
 pub fn parse(yaml: &str) -> Result<Descriptor, SpecError> {
-    let raw: RawDescriptor = serde_yaml::from_str(yaml)?;
+    if yaml.len() > MAX_DESCRIPTOR_BYTES {
+        return Err(invalid(format!(
+            "descriptor too large: {} bytes (max {MAX_DESCRIPTOR_BYTES})",
+            yaml.len()
+        )));
+    }
+    let raw: RawDescriptor = serde_saphyr::from_str(yaml)?;
     validate(raw)
 }
 
@@ -262,12 +274,13 @@ fn validate_effect(raw: RawEffect) -> Result<ToolEffect, SpecError> {
 // never saw (deny_unknown_fields is not supported on tagged enums).
 // Fix: file/memory arrive as raw Values and are checked key-by-key here.
 
-fn facet_op(
-    value: serde_yaml::Value,
-    face: &str,
-) -> Result<(String, serde_yaml::Mapping), SpecError> {
+// serde-json Values stand in for a YAML AST: keys are always strings,
+// which is exactly what the key-by-key checks below want.
+type RawMap = serde_json::Map<String, serde_json::Value>;
+
+fn facet_op(value: serde_json::Value, face: &str) -> Result<(String, RawMap), SpecError> {
     let mut map = match value {
-        serde_yaml::Value::Mapping(m) => m,
+        serde_json::Value::Object(m) => m,
         // No scalar shorthand (file: none): one canonical mapping form,
         // one syntax to validate.
         _ => {
@@ -277,7 +290,7 @@ fn facet_op(
         }
     };
     let op = map
-        .remove(serde_yaml::Value::String("op".into()))
+        .remove("op")
         .and_then(|v| v.as_str().map(str::to_string))
         .ok_or_else(|| invalid(format!("effect.{face} requires a string op key")))?;
     Ok((op, map))
@@ -286,12 +299,11 @@ fn facet_op(
 fn reject_extra_keys(
     face: &str,
     op: &str,
-    map: &serde_yaml::Mapping,
+    map: &RawMap,
     allowed: &[&str],
 ) -> Result<(), SpecError> {
-    for key in map.keys() {
-        let k = key.as_str().unwrap_or("<non-string>");
-        if !allowed.contains(&k) {
+    for k in map.keys() {
+        if !allowed.contains(&k.as_str()) {
             return Err(invalid(format!(
                 "unknown key in effect.{face} (op {op}): {k}"
             )));
@@ -300,12 +312,8 @@ fn reject_extra_keys(
     Ok(())
 }
 
-fn optional_string(
-    face: &str,
-    map: &serde_yaml::Mapping,
-    key: &str,
-) -> Result<Option<String>, SpecError> {
-    match map.get(serde_yaml::Value::String(key.into())) {
+fn optional_string(face: &str, map: &RawMap, key: &str) -> Result<Option<String>, SpecError> {
+    match map.get(key) {
         None => Ok(None),
         Some(v) => v
             .as_str()
@@ -314,12 +322,12 @@ fn optional_string(
     }
 }
 
-fn required_string(face: &str, map: &serde_yaml::Mapping, key: &str) -> Result<String, SpecError> {
+fn required_string(face: &str, map: &RawMap, key: &str) -> Result<String, SpecError> {
     optional_string(face, map, key)?
         .ok_or_else(|| invalid(format!("effect.{face} requires a string {key}")))
 }
 
-fn parse_file_facet(value: serde_yaml::Value) -> Result<FileFacet, SpecError> {
+fn parse_file_facet(value: serde_json::Value) -> Result<FileFacet, SpecError> {
     let (op, map) = facet_op(value, "file")?;
     let facet = match op.as_str() {
         "none" => {
@@ -333,7 +341,7 @@ fn parse_file_facet(value: serde_yaml::Value) -> Result<FileFacet, SpecError> {
         "r" | "w" | "rw" => {
             reject_extra_keys("file", &op, &map, &["path", "recursive"])?;
             let path = required_string("file", &map, "path")?;
-            let recursive = match map.get(serde_yaml::Value::String("recursive".into())) {
+            let recursive = match map.get("recursive") {
                 None => false,
                 Some(v) => v
                     .as_bool()
@@ -350,7 +358,7 @@ fn parse_file_facet(value: serde_yaml::Value) -> Result<FileFacet, SpecError> {
     Ok(facet)
 }
 
-fn parse_memory_facet(value: serde_yaml::Value) -> Result<MemoryFacet, SpecError> {
+fn parse_memory_facet(value: serde_json::Value) -> Result<MemoryFacet, SpecError> {
     let (op, map) = facet_op(value, "memory")?;
     let facet = match op.as_str() {
         "ignore" => {
@@ -500,6 +508,12 @@ requires: []
     fn rejects_unknown_field() {
         let bad = BASH.replace("summary:", "summray:");
         assert!(err_of(&bad).contains("unknown field"));
+    }
+
+    #[test]
+    fn rejects_oversized_input_before_parsing() {
+        let huge = format!("{BASH}{}", " ".repeat(MAX_DESCRIPTOR_BYTES));
+        assert!(err_of(&huge).contains("too large"));
     }
 
     #[test]
