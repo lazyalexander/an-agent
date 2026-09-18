@@ -24,11 +24,9 @@ use std::sync::Arc;
 #[allow(dead_code)]
 mod support;
 
-use an_agent::act::{
-    ActCtx, ActEnvelope, ActKind, ActSentence, BareFile, Ingest, Permit, Tool, ToolCtx, ToolTag,
-};
+use an_agent::act::{ActCtx, Tool, ToolCtx, ToolTag};
 use an_agent::det_seam::Entropy;
-use an_agent::memstream::{ActOnEvent, AppendEvent, FromKind, JsonlStore, Kind, Memevent};
+use an_agent::memstream::{AppendEvent, FromKind, JsonlStore, Kind, Memevent};
 use serde_json::{Value, json};
 use support::{
     AgentState, ChatCompletions, ChatMessage, ModelSettings, TempDir, last_assistant_text,
@@ -221,11 +219,7 @@ async fn search_digest(query: &str) -> Result<String, String> {
     Ok(parts.join("\n"))
 }
 
-struct Remember {
-    store: Arc<JsonlStore>,
-    agent_id: String,
-    session: String,
-}
+struct Remember;
 
 #[async_trait::async_trait]
 impl Tool for Remember {
@@ -249,50 +243,16 @@ when you learned something worth keeping."
     }
 
     fn tag_seed(&self) -> Option<ToolTag> {
-        Some(ToolTag::none())
+        // The remember facet routes the clip through run_tool_act — the
+        // tool returns the fact text, admission writes the tape.
+        Some(ToolTag::remember())
     }
 
     async fn execute(&self, args: Value, _ctx: &ToolCtx) -> Result<String, String> {
-        let text = args
-            .get("text")
+        args.get("text")
             .and_then(Value::as_str)
-            .ok_or("missing text")?;
-        let env = ActEnvelope {
-            kind: ActKind::Remember,
-            sentence: ActSentence::bare(Permit::Go, BareFile::None, Ingest::Ignore),
-            tool: Some("remember".into()),
-        };
-        // Kinship rule (tape-evolution contract E3): a memory clip refs its
-        // evidence — here, the latest observation in this session.
-        let evidence = self
-            .store
-            .read_all()
-            .map(|evs| {
-                evs.iter()
-                    .rev()
-                    .find(|e| {
-                        e.kind == Kind::Observation
-                            && e.session.as_deref() == Some(self.session.as_str())
-                    })
-                    .map(|e| vec![e.id.clone()])
-                    .unwrap_or_default()
-            })
-            .unwrap_or_default();
-        let ev = self
-            .store
-            .append(AppendEvent {
-                from: self.agent_id.clone(),
-                from_kind: FromKind::Agent,
-                kind: Kind::Utterance,
-                session: self.session.clone(),
-                content: text.to_string(),
-                tags: vec!["memory".into()],
-                refs: evidence,
-                act: Some(ActOnEvent::intent(&env)),
-                card: None,
-            })
-            .map_err(|e| e.to_string())?;
-        Ok(format!("remembered as {}", ev.id))
+            .map(str::to_string)
+            .ok_or_else(|| "missing text".to_string())
     }
 }
 
@@ -311,14 +271,7 @@ async fn react_search_and_remember() {
     let store = Arc::new(JsonlStore::open(dir.join("memory.jsonl")).unwrap());
     let agent_id = "react-probe".to_string();
     let session = Entropy::os().uuid_v4().to_string();
-    let tools: Vec<Arc<dyn Tool>> = vec![
-        Arc::new(WebSearch),
-        Arc::new(Remember {
-            store: store.clone(),
-            agent_id: agent_id.clone(),
-            session: session.clone(),
-        }),
-    ];
+    let tools: Vec<Arc<dyn Tool>> = vec![Arc::new(WebSearch), Arc::new(Remember)];
     let (_tx, rx) = tokio::sync::watch::channel(false);
     let ctx = ToolCtx { signal: Some(rx) };
 

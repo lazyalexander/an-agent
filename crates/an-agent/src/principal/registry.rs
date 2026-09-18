@@ -6,6 +6,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use thiserror::Error;
+use uuid::Uuid;
 
 use super::card::AgentCard;
 
@@ -19,6 +20,32 @@ pub enum RegistryError {
     NotFound(String, String),
     #[error("lineage broken at {0}: card missing")]
     BrokenLineage(String),
+    #[error("invalid agent id (want a UUID): {0}")]
+    InvalidId(String),
+    #[error("invalid card hash (want 64 lowercase hex): {0}")]
+    InvalidHash(String),
+}
+
+// id and hash join into filesystem paths, and `Path::join` honors `..`:
+// without a strict alphabet a caller could escape the agent prefix
+// (e.g. card(root, "../../../tmp", "x")). Only the shapes register() itself
+// produces are accepted — canonical UUID, sha256 lowercase hex.
+fn check_agent_id(id: &str) -> Result<(), RegistryError> {
+    if Uuid::parse_str(id).is_err() {
+        return Err(RegistryError::InvalidId(id.into()));
+    }
+    Ok(())
+}
+
+fn check_hash(hash: &str) -> Result<(), RegistryError> {
+    let ok = hash.len() == 64
+        && hash
+            .chars()
+            .all(|c| c.is_ascii_digit() || ('a'..='f').contains(&c));
+    if !ok {
+        return Err(RegistryError::InvalidHash(hash.into()));
+    }
+    Ok(())
 }
 
 fn agent_dir(root: &Path, id: &str) -> PathBuf {
@@ -46,6 +73,7 @@ pub fn register(root: &Path, card: &AgentCard) -> Result<String, RegistryError> 
 }
 
 pub fn head(root: &Path, id: &str) -> Result<Option<String>, RegistryError> {
+    check_agent_id(id)?;
     let path = agent_dir(root, id).join("HEAD");
     if !path.exists() {
         return Ok(None);
@@ -54,6 +82,8 @@ pub fn head(root: &Path, id: &str) -> Result<Option<String>, RegistryError> {
 }
 
 pub fn card(root: &Path, id: &str, hash: &str) -> Result<AgentCard, RegistryError> {
+    check_agent_id(id)?;
+    check_hash(hash)?;
     let path = cards_dir(root, id).join(format!("{hash}.json"));
     if !path.exists() {
         return Err(RegistryError::NotFound(hash.into(), id.into()));
@@ -127,10 +157,31 @@ mod tests {
     #[test]
     fn unknown_agent_and_card_are_errors() {
         let tmp = TempDir::new("reg");
-        assert_eq!(head(tmp.path(), "nobody").unwrap(), None);
+        let id = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
+        assert_eq!(head(tmp.path(), id).unwrap(), None);
+        let hash = "b".repeat(64);
         assert!(matches!(
-            card(tmp.path(), "nobody", "nohash"),
+            card(tmp.path(), id, &hash),
             Err(RegistryError::NotFound(..))
+        ));
+    }
+
+    #[test]
+    fn read_paths_reject_traversal_and_off_alphabet() {
+        let tmp = TempDir::new("reg");
+        let id = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
+        assert!(matches!(
+            head(tmp.path(), "../../../tmp"),
+            Err(RegistryError::InvalidId(_))
+        ));
+        assert!(matches!(
+            card(tmp.path(), id, "../../outside"),
+            Err(RegistryError::InvalidHash(_))
+        ));
+        // Uppercase hex is off the digest alphabet too.
+        assert!(matches!(
+            card(tmp.path(), id, &"A".repeat(64)),
+            Err(RegistryError::InvalidHash(_))
         ));
     }
 }

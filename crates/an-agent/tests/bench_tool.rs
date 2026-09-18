@@ -126,7 +126,7 @@ async fn constructor_overhead() {
 
     let d = descriptor::parse(RHAI_YAML).unwrap();
     let rhai: Arc<dyn Tool> =
-        Arc::new(RhaiTool::from_descriptor(d, json!({ "type": "object" })).unwrap());
+        Arc::new(RhaiTool::from_descriptor(d, json!({ "type": "object" }), &[]).unwrap());
     bench("rhai", "echo_plus", &rhai, json!({ "x": 1 }), "2").await;
 
     if std::process::Command::new("bun")

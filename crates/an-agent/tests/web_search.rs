@@ -59,7 +59,12 @@ fn descriptor_admits() {
 async fn effect_gates_host_functions() {
     let mut d = descriptor::parse(YAML).unwrap();
     d.effect.net = Net::None;
-    let tool = RhaiTool::from_descriptor(d, params_schema()).unwrap();
+    let tool = RhaiTool::from_descriptor(
+        d,
+        params_schema(),
+        &["api.duckduckgo.com", "en.wikipedia.org"],
+    )
+    .unwrap();
     let actx = ActCtx {
         store: None,
         agent_id: "gate-probe",
@@ -85,7 +90,12 @@ async fn effect_gates_host_functions() {
 #[ignore = "live web probe; needs network"]
 async fn web_search_live() {
     let d = descriptor::parse(YAML).unwrap();
-    let tool = RhaiTool::from_descriptor(d, params_schema()).unwrap();
+    let tool = RhaiTool::from_descriptor(
+        d,
+        params_schema(),
+        &["api.duckduckgo.com", "en.wikipedia.org"],
+    )
+    .unwrap();
     let (dir, _guard) = probe_dir();
     eprintln!("probe dir: {}", dir.display());
     let store = JsonlStore::open(dir.join("memory.jsonl")).unwrap();

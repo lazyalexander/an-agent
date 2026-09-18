@@ -5,7 +5,7 @@ use serde_json::Value;
 use thiserror::Error;
 
 use super::sense::effect_from_sentence;
-use super::sentence::ActSentence;
+use super::sentence::{ActSentence, Ingest};
 use super::tag::{Permit, ToolTag};
 use super::{ActEnvelope, ActKind};
 use crate::memstream::{ActOnEvent, AppendEvent, FromKind, JsonlStore, Kind, Memevent, StoreError};
@@ -74,11 +74,41 @@ fn parse_args(raw: &str) -> Result<Value, String> {
     Ok(value)
 }
 
-async fn run_body(tool: &dyn Tool, args: Value, ctx: &ToolCtx) -> String {
-    match tool.execute(args, ctx).await {
-        Ok(s) => s,
-        Err(e) => e,
-    }
+/// Emits the remember clip for a successful remember-facet call. Kinship
+/// (tape-evolution contract E3): the clip refs its evidence — the latest
+/// observation in this session, which precedes this call's own observation
+/// (not yet written at this point).
+fn remember_clip(
+    actx: &ActCtx<'_>,
+    env: &ActEnvelope,
+    text: &str,
+) -> Result<Option<Memevent>, ToolError> {
+    let Some(store) = actx.store else {
+        return Ok(None);
+    };
+    let evidence = store
+        .read_all()?
+        .iter()
+        .rev()
+        .find(|e| e.kind == Kind::Observation && e.session.as_deref() == Some(actx.session))
+        .map(|e| vec![e.id.clone()])
+        .unwrap_or_default();
+    let clip_env = ActEnvelope {
+        kind: ActKind::Remember,
+        sentence: env.sentence.clone(),
+        tool: env.tool.clone(),
+    };
+    Ok(Some(store.append(AppendEvent {
+        from: actx.agent_id.into(),
+        from_kind: FromKind::Agent,
+        kind: Kind::Utterance,
+        session: actx.session.into(),
+        content: text.to_string(),
+        tags: vec!["memory".into()],
+        refs: evidence,
+        act: Some(ActOnEvent::intent(&clip_env)),
+        card: actx.card.map(str::to_string),
+    })?))
 }
 
 pub async fn run_tool_act(
@@ -181,7 +211,17 @@ pub async fn run_tool_act(
         Ok(v) => v,
         Err(e) => return fail(e, action),
     };
-    let content = run_body(tool.as_ref(), args, ctx).await;
+    // act is the only writer: a remember-facet tool just returns the fact
+    // text; admission emits the clip. A failed execution leaves nothing to
+    // remember.
+    let content = match (tool.execute(args, ctx).await, env.sentence.ingest()) {
+        (Ok(text), Some(Ingest::Remember { .. })) => match remember_clip(actx, &env, &text)? {
+            Some(clip) => format!("remembered as {}", clip.id),
+            None => text,
+        },
+        (Ok(s), _) => s,
+        (Err(e), _) => e,
+    };
     fail(content, action)
 }
 

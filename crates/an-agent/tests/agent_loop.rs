@@ -7,7 +7,7 @@ mod support;
 
 use std::sync::Arc;
 
-use an_agent::act::{ActCtx, Permit, Tool, ToolCall, ToolCtx, ToolTag};
+use an_agent::act::{ActCtx, Permit, Tool, ToolCall, ToolCtx, ToolTag, run_tool_act};
 use an_agent::memstream::{JsonlStore, Kind, Memevent};
 use serde_json::json;
 use support::{AgentError, AgentState, Assistant, ChatMessage, Model, TempDir, step};
@@ -64,6 +64,30 @@ impl Tool for Locked {
     }
     async fn execute(&self, _args: serde_json::Value, _ctx: &ToolCtx) -> Result<String, String> {
         panic!("must not execute");
+    }
+}
+
+struct Rem;
+#[async_trait::async_trait]
+impl Tool for Rem {
+    fn name(&self) -> &str {
+        "remember"
+    }
+    fn description(&self) -> &str {
+        "remember"
+    }
+    fn parameters(&self) -> serde_json::Value {
+        json!({})
+    }
+    fn tag_seed(&self) -> Option<ToolTag> {
+        Some(ToolTag::remember())
+    }
+    async fn execute(&self, args: serde_json::Value, _ctx: &ToolCtx) -> Result<String, String> {
+        Ok(args
+            .get("text")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string())
     }
 }
 
@@ -138,6 +162,62 @@ async fn tool_observation_refs_action() {
         .find(|e| e.kind == Kind::Observation && e.refs.first() == Some(&invoke.id))
         .unwrap();
     assert!(invoke_obs.act.as_ref().unwrap().effect.is_some());
+}
+
+#[tokio::test]
+async fn remember_clip_is_written_by_admission_not_the_tool() {
+    let tmp = TempDir::new("act");
+    let store = JsonlStore::open(tmp.path().join("memory.jsonl")).unwrap();
+    let actx = ActCtx {
+        store: Some(&store),
+        agent_id: "agent-1",
+        session: "session-1",
+        card: None,
+    };
+    let tools: Vec<Arc<dyn Tool>> = vec![Arc::new(Echo), Arc::new(Rem)];
+
+    // An evidence-producing call first, so the clip has something to cite.
+    run_tool_act(
+        &actx,
+        &tools,
+        &ToolCall {
+            id: "c1".into(),
+            name: "echo".into(),
+            arguments: r#"{"text":"evidence"}"#.into(),
+        },
+        &ctx(),
+    )
+    .await
+    .unwrap();
+    let r = run_tool_act(
+        &actx,
+        &tools,
+        &ToolCall {
+            id: "c2".into(),
+            name: "remember".into(),
+            arguments: r#"{"text":"sky is blue"}"#.into(),
+        },
+        &ctx(),
+    )
+    .await
+    .unwrap();
+    assert!(r.message.content.starts_with("remembered as"));
+
+    let events = store.read_all().unwrap();
+    let clip = events
+        .iter()
+        .find(|e| e.tags.iter().any(|t| t == "memory"))
+        .expect("no memory clip");
+    assert_eq!(clip.kind, Kind::Utterance);
+    assert_eq!(clip.content, "sky is blue");
+    assert_eq!(clip.act.as_ref().unwrap().kind.as_str(), "remember");
+    // Kinship: the clip refs the latest observation (the echo evidence),
+    // not its own call's observation.
+    let evidence = events
+        .iter()
+        .find(|e| e.kind == Kind::Observation && e.content == "evidence")
+        .unwrap();
+    assert_eq!(clip.refs, vec![evidence.id.clone()]);
 }
 
 #[tokio::test]
