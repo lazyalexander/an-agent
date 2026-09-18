@@ -17,7 +17,7 @@ use crate::act::{FileFacet, MemoryFacet};
 #[derive(Debug, Error)]
 pub enum SpecError {
     #[error("yaml: {0}")]
-    Yaml(#[from] serde_yaml::Error),
+    Yaml(#[from] serde_saphyr::Error),
     #[error("{0}")]
     Invalid(String),
 }
@@ -30,9 +30,6 @@ fn invalid(msg: impl Into<String>) -> SpecError {
 // Strict: every struct denies unknown fields — typos must fail loudly.
 // Future loosening: when descriptor versions must coexist, downgrade
 // unknown fields to a recorded warning.
-// Known hole (serde limitation): internally tagged enums (FileFacet/
-// MemoryFacet) silently swallow extra keys, e.g. {op: none, path: x}.
-// Future tightening: hand-rolled Value-level validation.
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -70,8 +67,11 @@ struct RawRequire {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct RawEffect {
-    file: FileFacet,
-    memory: MemoryFacet,
+    // file/memory stay raw Values and are hand-validated in validate_effect:
+    // FileFacet/MemoryFacet are internally tagged enums, which silently
+    // swallow extra keys ({op: none, path: x}) — an admission bypass here.
+    file: serde_json::Value,
+    memory: serde_json::Value,
     net: Net,
     #[serde(rename = "proc")]
     proc_: Proc,
@@ -136,8 +136,20 @@ pub fn content_hash(yaml: &str) -> String {
     format!("{:x}", h.finalize())
 }
 
+/// Hard input cap, enforced before the parser ever sees the bytes:
+/// pathological or oversized documents are rejected as a DoS surface
+/// regardless of parser internals. 64 KiB is far above any legitimate v1
+/// descriptor (~2 KiB observed, inline script included).
+const MAX_DESCRIPTOR_BYTES: usize = 64 * 1024;
+
 pub fn parse(yaml: &str) -> Result<Descriptor, SpecError> {
-    let raw: RawDescriptor = serde_yaml::from_str(yaml)?;
+    if yaml.len() > MAX_DESCRIPTOR_BYTES {
+        return Err(invalid(format!(
+            "descriptor too large: {} bytes (max {MAX_DESCRIPTOR_BYTES})",
+            yaml.len()
+        )));
+    }
+    let raw: RawDescriptor = serde_saphyr::from_str(yaml)?;
     validate(raw)
 }
 
@@ -231,7 +243,9 @@ fn validate(raw: RawDescriptor) -> Result<Descriptor, SpecError> {
 }
 
 fn validate_effect(raw: RawEffect) -> Result<ToolEffect, SpecError> {
-    match &raw.file {
+    let file = parse_file_facet(raw.file)?;
+    let memory = parse_memory_facet(raw.memory)?;
+    match &file {
         FileFacet::Read { path, .. } | FileFacet::Write { path, .. } => {
             check_effect_path(path)?;
         }
@@ -242,15 +256,130 @@ fn validate_effect(raw: RawEffect) -> Result<ToolEffect, SpecError> {
     // operation, not a capability declaration.
     // Future loosening: admitting forget to the effect vocabulary requires
     // designing its audit semantics first.
-    if let MemoryFacet::Forget { .. } = raw.memory {
+    if let MemoryFacet::Forget { .. } = memory {
         return Err(invalid("effect.memory must be ignore or remember"));
     }
     Ok(ToolEffect {
-        file: raw.file,
-        memory: raw.memory,
+        file,
+        memory,
         net: raw.net,
         proc_: raw.proc_,
     })
+}
+
+// --- facet hand-validation ---
+// Problem: FileFacet/MemoryFacet are internally tagged enums, and serde
+// silently drops extra keys on those — {op: none, path: /etc/passwd}
+// parsed as plain `none`, a restriction the author wrote but admission
+// never saw (deny_unknown_fields is not supported on tagged enums).
+// Fix: file/memory arrive as raw Values and are checked key-by-key here.
+
+// serde-json Values stand in for a YAML AST: keys are always strings,
+// which is exactly what the key-by-key checks below want.
+type RawMap = serde_json::Map<String, serde_json::Value>;
+
+fn facet_op(value: serde_json::Value, face: &str) -> Result<(String, RawMap), SpecError> {
+    let mut map = match value {
+        serde_json::Value::Object(m) => m,
+        // No scalar shorthand (file: none): one canonical mapping form,
+        // one syntax to validate.
+        _ => {
+            return Err(invalid(format!(
+                "effect.{face} must be a mapping with an op key"
+            )));
+        }
+    };
+    let op = map
+        .remove("op")
+        .and_then(|v| v.as_str().map(str::to_string))
+        .ok_or_else(|| invalid(format!("effect.{face} requires a string op key")))?;
+    Ok((op, map))
+}
+
+fn reject_extra_keys(
+    face: &str,
+    op: &str,
+    map: &RawMap,
+    allowed: &[&str],
+) -> Result<(), SpecError> {
+    for k in map.keys() {
+        if !allowed.contains(&k.as_str()) {
+            return Err(invalid(format!(
+                "unknown key in effect.{face} (op {op}): {k}"
+            )));
+        }
+    }
+    Ok(())
+}
+
+fn optional_string(face: &str, map: &RawMap, key: &str) -> Result<Option<String>, SpecError> {
+    match map.get(key) {
+        None => Ok(None),
+        Some(v) => v
+            .as_str()
+            .map(|s| Some(s.to_string()))
+            .ok_or_else(|| invalid(format!("effect.{face}.{key} must be a string"))),
+    }
+}
+
+fn required_string(face: &str, map: &RawMap, key: &str) -> Result<String, SpecError> {
+    optional_string(face, map, key)?
+        .ok_or_else(|| invalid(format!("effect.{face} requires a string {key}")))
+}
+
+fn parse_file_facet(value: serde_json::Value) -> Result<FileFacet, SpecError> {
+    let (op, map) = facet_op(value, "file")?;
+    let facet = match op.as_str() {
+        "none" => {
+            reject_extra_keys("file", &op, &map, &[])?;
+            FileFacet::None
+        }
+        "unbounded" => {
+            reject_extra_keys("file", &op, &map, &[])?;
+            FileFacet::Unbounded
+        }
+        "r" | "w" | "rw" => {
+            reject_extra_keys("file", &op, &map, &["path", "recursive"])?;
+            let path = required_string("file", &map, "path")?;
+            let recursive = match map.get("recursive") {
+                None => false,
+                Some(v) => v
+                    .as_bool()
+                    .ok_or_else(|| invalid("effect.file.recursive must be a bool"))?,
+            };
+            match op.as_str() {
+                "r" => FileFacet::Read { path, recursive },
+                "w" => FileFacet::Write { path, recursive },
+                _ => FileFacet::ReadWrite { path, recursive },
+            }
+        }
+        other => return Err(invalid(format!("unknown effect.file op: {other}"))),
+    };
+    Ok(facet)
+}
+
+fn parse_memory_facet(value: serde_json::Value) -> Result<MemoryFacet, SpecError> {
+    let (op, map) = facet_op(value, "memory")?;
+    let facet = match op.as_str() {
+        "ignore" => {
+            reject_extra_keys("memory", &op, &map, &[])?;
+            MemoryFacet::Ignore
+        }
+        "remember" => {
+            reject_extra_keys("memory", &op, &map, &["aspect"])?;
+            MemoryFacet::Remember {
+                aspect: optional_string("memory", &map, "aspect")?,
+            }
+        }
+        "forget" => {
+            reject_extra_keys("memory", &op, &map, &["rememberId"])?;
+            MemoryFacet::Forget {
+                remember_id: required_string("memory", &map, "rememberId")?,
+            }
+        }
+        other => return Err(invalid(format!("unknown effect.memory op: {other}"))),
+    };
+    Ok(facet)
 }
 
 /// T6 made mechanical: effect file paths must be clean absolute paths and
@@ -382,6 +511,12 @@ requires: []
     }
 
     #[test]
+    fn rejects_oversized_input_before_parsing() {
+        let huge = format!("{BASH}{}", " ".repeat(MAX_DESCRIPTOR_BYTES));
+        assert!(err_of(&huge).contains("too large"));
+    }
+
+    #[test]
     fn rejects_wrong_v_and_sloppy_identity() {
         assert!(err_of(&BASH.replace("v: 1", "v: 2")).contains("v must be 1"));
         assert!(err_of(&BASH.replace("name: bash", "name: Bash")).contains("invalid tool name"));
@@ -405,6 +540,54 @@ requires: []
         assert!(
             err_of(&MCP.replace("transport: stdio", "transport: http")).contains("must be stdio")
         );
+    }
+
+    #[test]
+    fn effect_facets_reject_swallowed_keys() {
+        // Internally tagged enums silently drop extra keys; without
+        // Value-level checks these would look like restrictions but admit
+        // none/unbounded/ignore.
+        let none_path = MCP.replace(
+            "file: { op: r, path: \"/srv\" }",
+            "file: { op: none, path: \"/etc/passwd\" }",
+        );
+        assert!(err_of(&none_path).contains("unknown key"));
+        let unbounded_recursive = BASH.replace(
+            "file: { op: unbounded }",
+            "file: { op: unbounded, recursive: true }",
+        );
+        assert!(err_of(&unbounded_recursive).contains("unknown key"));
+        let ignore_aspect = BASH.replace(
+            "memory: { op: ignore }",
+            "memory: { op: ignore, aspect: \"x\" }",
+        );
+        assert!(err_of(&ignore_aspect).contains("unknown key"));
+    }
+
+    #[test]
+    fn effect_facets_pin_shape_and_types() {
+        let bare = MCP.replace("file: { op: r, path: \"/srv\" }", "file: r");
+        assert!(err_of(&bare).contains("must be a mapping"));
+        let no_path = MCP.replace("file: { op: r, path: \"/srv\" }", "file: { op: r }");
+        assert!(err_of(&no_path).contains("requires a string path"));
+        let bad_recursive = MCP.replace(
+            "file: { op: r, path: \"/srv\" }",
+            "file: { op: r, path: \"/srv\", recursive: \"maybe\" }",
+        );
+        assert!(err_of(&bad_recursive).contains("recursive must be a bool"));
+        let unknown_op = MCP.replace("file: { op: r, path: \"/srv\" }", "file: { op: x }");
+        assert!(err_of(&unknown_op).contains("unknown effect.file op"));
+        // Valid full forms still parse.
+        let full = MCP.replace(
+            "file: { op: r, path: \"/srv\" }",
+            "file: { op: r, path: \"/srv\", recursive: true }",
+        );
+        assert!(parse(&full).is_ok());
+        let remember = BASH.replace(
+            "memory: { op: ignore }",
+            "memory: { op: remember, aspect: \"prefs\" }",
+        );
+        assert!(parse(&remember).is_ok());
     }
 
     #[test]

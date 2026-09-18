@@ -1,8 +1,10 @@
+mod registry;
 mod sense;
 mod sentence;
 mod tag;
 mod tool;
 
+pub use registry::{Registration, RegistryError, Tier, ToolRegistry};
 pub use sense::{Effect, effect_from_sentence, effect_from_tag};
 pub use sentence::{Access, ActSentence, BareFile, Ingest, SentenceError};
 pub use tag::{FileFacet, MemoryFacet, Permit, ToolTag};
