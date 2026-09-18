@@ -28,6 +28,24 @@ impl RhaiTool {
         params: serde_json::Value,
         allowed_hosts: &[&str],
     ) -> Result<Self, String> {
+        // The probe wires only the net face: rhai gets no FS host fns and
+        // no exec. A descriptor declaring a face the constructor cannot
+        // honor must fail here, not at first call — a file r/w/rw tag would
+        // die in admission (MissingResource) and proc: spawn has no effector.
+        use an_agent::act::FileFacet;
+        use an_agent::tools::descriptor::Proc;
+        if matches!(
+            desc.effect.file,
+            FileFacet::Read { .. } | FileFacet::Write { .. } | FileFacet::ReadWrite { .. }
+        ) {
+            return Err(format!(
+                "rhai constructor cannot wire file face {:?}",
+                desc.effect.file
+            ));
+        }
+        if desc.effect.proc_ == Proc::Spawn {
+            return Err("rhai constructor cannot wire proc: spawn".into());
+        }
         let script = match &desc.constructor {
             Constructor::Rhai { script } => script.clone(),
             _ => return Err("not a rhai descriptor".into()),
@@ -224,5 +242,38 @@ mod tests {
                 .contains("allowlist")
         );
         assert!(check_url("https://evil.example.com/", &hosts()).is_err());
+    }
+
+    fn desc(effect: &str) -> Descriptor {
+        let yaml = format!(
+            "v: 1\nname: probe_tool\nversion: 0.1.0\nconstructor: rhai\nscript: |\n  1\nsummary: probe\neffect:\n{effect}\nrequires: []\n"
+        );
+        an_agent::tools::descriptor::parse(&yaml).unwrap()
+    }
+
+    #[test]
+    fn unwireable_faces_fail_at_construction() {
+        let spawn =
+            desc("  net: none\n  file: { op: none }\n  proc: spawn\n  memory: { op: ignore }");
+        assert!(
+            RhaiTool::from_descriptor(spawn, serde_json::json!({}), &[])
+                .err()
+                .unwrap()
+                .contains("proc: spawn")
+        );
+        let read = desc(
+            "  net: none\n  file: { op: r, path: \"/srv\" }\n  proc: none\n  memory: { op: ignore }",
+        );
+        assert!(
+            RhaiTool::from_descriptor(read, serde_json::json!({}), &[])
+                .err()
+                .unwrap()
+                .contains("file face")
+        );
+        // The faces the probe does wire still construct.
+        let ok = desc(
+            "  net: egress\n  file: { op: unbounded }\n  proc: none\n  memory: { op: ignore }",
+        );
+        assert!(RhaiTool::from_descriptor(ok, serde_json::json!({}), &[]).is_ok());
     }
 }
