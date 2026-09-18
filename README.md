@@ -12,6 +12,7 @@ The core bet: an append-only event tape (memstream) is the single source of trut
 
 - `crates/an-agent` — the Rust kernel (tape, admission, agent identity, tool admission) plus runnable probes under `tests/`. See its README for the module map and invariants.
 - `packages/causal-web` — zero-dependency tape viewer: drop in a `.jsonl` tape, see the causal threads, get the tape validated in-page.
+- `packages/lean-probe` — tiny Lake package used by the Lean 4 compatibility probe (no Mathlib).
 - `config/` — model endpoint configuration.
 
 ## Status
