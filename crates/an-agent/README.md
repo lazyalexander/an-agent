@@ -27,6 +27,7 @@ The kernel: a handful of mechanisms and the invariants between them. Everything 
 - `web_search` — a rhai-constructed tool driven by a YAML descriptor (`fixtures/web_search.yaml`). The offline half proves the declared effect *is* the host-function wiring: declare `net: none` and `http_get_json` ceases to exist for the script.
 - `react_live` — live model run (search + deliberate remember) asserting the tape alone reconstructs the run, including per-call model intents/effects and token usage.
 - `lean_tool` — Lean 4 as a subprocess `Tool` (`#[ignore]`, needs elan). The test script is the control flow.
+- `lean_math` — rhai continuation script drives `lean_check` over Init arithmetic identities (`#[ignore]`, needs elan).
 
 Probes self-clean their temp dirs; setting `AN_AGENT_PROBE_DIR` keeps the tape at a chosen location instead.
 
