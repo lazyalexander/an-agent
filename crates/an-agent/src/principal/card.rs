@@ -20,8 +20,7 @@ pub struct ToolGrant {
     pub tag: ToolTag,
 }
 
-/// Composite shape. Only Leaf exists; composition arrives with the
-/// multi-agent slice.
+/// Composite shape. Only Leaf exists.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Topology {

@@ -210,6 +210,8 @@ impl Workplace {
         Ok(id)
     }
 
+    /// Discipline, not a lock: two handles sharing the lead id race and
+    /// lose updates. Callers must serialize writers themselves.
     fn require_lead(&self, caller: Uuid) -> Result<(), WorkplaceError> {
         if caller != self.lead {
             Err(WorkplaceError::NotLead)
@@ -234,6 +236,9 @@ impl Workplace {
         self.set_head_and_branch(id, branch)
     }
 
+    // HEAD, the branch ref, and meta.wp are three separate writes; a crash
+    // between them leaves them pointing at different trees. Objects are
+    // content-addressed, so recovery is rebuild from objects, not repair.
     fn set_head_and_branch(
         &self,
         id: ObjectId,

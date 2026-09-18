@@ -1,7 +1,7 @@
 //! Tool descriptor (YAML) admission: parse + strict validation.
-//! Contract: tool-registry.md appendix v1 (T1/T4/T5/T6).
-//! Policy: strict first — reject anything ambiguous; each strictness rule
-//! carries a comment marking its possible future loosening.
+//! Contract: tool-registry.md appendix v1.
+//! Policy: strict first — reject anything ambiguous. Loosening candidates
+//! are tracked in tool-registry.md, not in code comments.
 //! Single-file validation covers the descriptor itself; presence checks
 //! (every `requires` entry exists) live in `check_requires_present`,
 //! fed by the registry's index set.
@@ -28,8 +28,6 @@ fn invalid(msg: impl Into<String>) -> SpecError {
 
 // --- raw serde shapes ---
 // Strict: every struct denies unknown fields — typos must fail loudly.
-// Future loosening: when descriptor versions must coexist, downgrade
-// unknown fields to a recorded warning.
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -43,7 +41,6 @@ struct RawDescriptor {
     mcp: Option<RawMcp>,
     effect: RawEffect,
     // Strict: the field must be present (may be []).
-    // Future loosening: missing means [].
     requires: Option<Vec<RawRequire>>,
 }
 
@@ -63,13 +60,11 @@ struct RawRequire {
 }
 
 // Strict: all four effect faces explicitly required.
-// Future loosening: file/memory default to none/ignore.
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct RawEffect {
-    // file/memory stay raw Values and are hand-validated in validate_effect:
-    // FileFacet/MemoryFacet are internally tagged enums, which silently
-    // swallow extra keys ({op: none, path: x}) — an admission bypass here.
+    // file/memory arrive as raw Values, key-checked in validate_effect:
+    // internally tagged enums silently swallow extra keys (admission bypass).
     file: serde_json::Value,
     memory: serde_json::Value,
     net: Net,
@@ -82,7 +77,6 @@ struct RawEffect {
 pub enum Net {
     None,
     Egress,
-    // Future loosening: listen; domain-allowlisted egress (to: [...]).
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -90,7 +84,6 @@ pub enum Net {
 pub enum Proc {
     None,
     Spawn,
-    // Future loosening: argv-shape restriction on spawn (e.g. only: [...]).
 }
 
 // --- validated public shape ---
@@ -108,11 +101,10 @@ pub struct Descriptor {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Constructor {
     Rhai { script: String },
-    // Transport is strict stdio-only and not stored; future loosening:
-    // http/sse, upgrading this to an enum field.
+    // Transport is strict stdio-only and not stored.
     Mcp { command: Vec<String>, tool: String },
-    // Future loosening: Wasm { .. }; Builtin stays kernel-reserved and
-    // never enters the registry.
+    // No Wasm/Builtin variants: builtin stays kernel-reserved and never
+    // enters the registry; wasm awaits its sandbox slice.
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -129,7 +121,7 @@ pub struct Require {
     pub version: String,
 }
 
-/// sha256 hex of the raw YAML text — the registry's content address (T1).
+/// sha256 hex of the raw YAML text — the registry's content address.
 pub fn content_hash(yaml: &str) -> String {
     let mut h = Sha256::new();
     h.update(yaml.as_bytes());
@@ -154,8 +146,7 @@ pub fn parse(yaml: &str) -> Result<Descriptor, SpecError> {
 }
 
 fn validate(raw: RawDescriptor) -> Result<Descriptor, SpecError> {
-    // Strict: v1 only. Future loosening: per-version dispatch from v2 on
-    // (E1); old versions stay readable forever.
+    // Strict: v1 only.
     if raw.v != 1 {
         return Err(invalid(format!("v must be 1, got {}", raw.v)));
     }
@@ -183,7 +174,7 @@ fn validate(raw: RawDescriptor) -> Result<Descriptor, SpecError> {
             let mcp = raw
                 .mcp
                 .ok_or_else(|| invalid("constructor mcp requires an mcp block"))?;
-            // Strict: stdio only. Future loosening: http/sse transports.
+            // Strict: stdio only.
             if mcp.transport != "stdio" {
                 return Err(invalid(format!(
                     "mcp transport must be stdio, got {}",
@@ -254,8 +245,6 @@ fn validate_effect(raw: RawEffect) -> Result<ToolEffect, SpecError> {
     }
     // Strict: effect describes ignore/remember only; forget is a runtime
     // operation, not a capability declaration.
-    // Future loosening: admitting forget to the effect vocabulary requires
-    // designing its audit semantics first.
     if let MemoryFacet::Forget { .. } = memory {
         return Err(invalid("effect.memory must be ignore or remember"));
     }
@@ -268,12 +257,6 @@ fn validate_effect(raw: RawEffect) -> Result<ToolEffect, SpecError> {
 }
 
 // --- facet hand-validation ---
-// Problem: FileFacet/MemoryFacet are internally tagged enums, and serde
-// silently drops extra keys on those — {op: none, path: /etc/passwd}
-// parsed as plain `none`, a restriction the author wrote but admission
-// never saw (deny_unknown_fields is not supported on tagged enums).
-// Fix: file/memory arrive as raw Values and are checked key-by-key here.
-
 // serde-json Values stand in for a YAML AST: keys are always strings,
 // which is exactly what the key-by-key checks below want.
 type RawMap = serde_json::Map<String, serde_json::Value>;
@@ -382,10 +365,8 @@ fn parse_memory_facet(value: serde_json::Value) -> Result<MemoryFacet, SpecError
     Ok(facet)
 }
 
-/// T6 made mechanical: effect file paths must be clean absolute paths and
-/// may not point at relative locations inside a workplace/session.
-/// Future loosening: anchored-relative paths (relative to a declared root,
-/// resolved by the registry).
+/// Effect file paths must be clean absolute paths and may not point at
+/// relative locations inside a workplace/session.
 fn check_effect_path(path: &str) -> Result<(), SpecError> {
     let p = std::path::Path::new(path);
     if !p.is_absolute() {
@@ -402,8 +383,7 @@ fn check_effect_path(path: &str) -> Result<(), SpecError> {
     Ok(())
 }
 
-// Strict: lowercase snake/kebab. Future loosening: namespaces (org/name),
-// uppercase.
+// Strict: lowercase snake/kebab.
 fn check_name(name: &str) -> Result<(), SpecError> {
     let ok = !name.is_empty()
         && name.len() <= 64
@@ -417,8 +397,7 @@ fn check_name(name: &str) -> Result<(), SpecError> {
     Ok(())
 }
 
-// Strict: exact x.y.z. Future loosening: prerelease/build metadata;
-// `requires` stays exact-pinned regardless.
+// Strict: exact x.y.z.
 fn check_version(version: &str) -> Result<(), SpecError> {
     let parts: Vec<&str> = version.split('.').collect();
     let ok = parts.len() == 3
@@ -431,7 +410,7 @@ fn check_version(version: &str) -> Result<(), SpecError> {
     Ok(())
 }
 
-/// T4: verify each `requires` entry exists in the registry index —
+/// Verify each `requires` entry exists in the registry index —
 /// lookup only, no closure computation, no graph walk.
 pub fn check_requires_present(
     d: &Descriptor,
