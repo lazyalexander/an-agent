@@ -8,6 +8,7 @@
 // is ordinary code inside test crates, so it carries its own allowance.
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
+pub mod lean;
 pub mod rhai;
 pub mod ts_tool;
 

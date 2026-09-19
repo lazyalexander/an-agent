@@ -8,7 +8,10 @@ Everything here is probe scaffolding. The ReAct loop, the chat-completions HTTP 
 - `web_search.rs` — rhai-constructed tool from `fixtures/web_search.yaml`; the offline half proves the declared effect *is* the host-function wiring.
 - `react_live.rs` — live model run (search + deliberate remember); asserts the tape alone reconstructs the run, including per-call invoke intents/effects and token usage.
 - `policy_loop.rs` — policy-as-script control flow: a rhai policy (`fixtures/echo_policy.yaml`) is mounted on tape, then drives the loop one continuation at a time (invoke_model / invoke_tool / utter / halt). The host owns the loop and admission; the script owns the policy.
-- `support/` — shared probe scaffolding (loop, client, rhai tool, temp dirs).
+- `lean_tool.rs` — Lean 4 CLI behind `Tool` (`#[ignore = "needs lean4"]`). Control flow is the test script: theorem, type error, `lake build` of `packages/lean-probe`.
+- `lean_math.rs` — rhai continuation script yields Lean snippets (`fixtures/lean_math.rhai`); host admits `lean_check`. Init identities plus one type error (`#[ignore = "needs lean4"]`).
+- `ts_tool.rs` / `bench_tool.rs` — bun subprocess adapter and constructor-overhead bench.
+- `support/` — shared probe scaffolding (loop, client, rhai, ts, lean, temp dirs).
 - `fixtures/` — YAML descriptors under test.
 
-**Hygiene:** probes self-clean temp dirs; set `AN_AGENT_PROBE_DIR` to keep a tape. Live tests are `#[ignore]`d and need network (and `MODEL_API_KEY` for react_live).
+**Hygiene:** probes self-clean temp dirs; set `AN_AGENT_PROBE_DIR` to keep a tape. Live tests are `#[ignore]`d (`react_live` / `web_search` need network; `lean_tool` / `lean_math` need elan+Lean 4; `bench_tool` is a bench).

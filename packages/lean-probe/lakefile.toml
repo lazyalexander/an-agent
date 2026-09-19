@@ -1,0 +1,5 @@
+name = "lean_probe"
+defaultTargets = ["LeanProbe"]
+
+[[lean_lib]]
+name = "LeanProbe"
