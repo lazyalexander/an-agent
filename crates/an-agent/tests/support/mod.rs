@@ -292,6 +292,193 @@ pub fn last_assistant_text(state: &AgentState) -> String {
         .unwrap_or_default()
 }
 
+// --- policy-driven loop (control flow lives in a rhai script) ---
+//
+// The fixed ReAct policy above is one hardcoded policy; here the policy is
+// a rhai script mounted on tape. The script sees a tape projection (clip
+// ids + previews, not full text) and yields a continuation; the host
+// admits and executes it. The loop stays in the host.
+
+use self::rhai::{Continuation, RhaiPolicy};
+use an_agent::memstream::JsonlStore;
+
+/// How many recent events the policy sees, newest first.
+const PROJECTION_TAIL: usize = 20;
+const CLIP_PREVIEW_CHARS: usize = 200;
+
+fn ulid() -> String {
+    an_agent::det_seam::Entropy::os()
+        .ulid(an_agent::det_seam::Clock::wall().now_ms())
+        .to_string()
+}
+
+/// Tape the policy descriptor itself (script inline, content-addressed):
+/// the audit/reuse source of the control flow about to run.
+pub fn mount_policy(
+    actx: &an_agent::act::ActCtx<'_>,
+    name: &str,
+    yaml: &str,
+) -> Result<Option<String>, AgentError> {
+    let hash = an_agent::tools::descriptor::content_hash(yaml);
+    let Some(store) = actx.store else {
+        return Ok(None);
+    };
+    let env = ActEnvelope {
+        kind: ActKind::Mount,
+        sentence: ActSentence::bare(Permit::Go, BareFile::None, Ingest::Ignore),
+        tool: Some(name.to_string()),
+    };
+    store.append(AppendEvent {
+        from: actx.agent_id.into(),
+        from_kind: FromKind::Agent,
+        kind: Kind::Action,
+        session: actx.session.into(),
+        content: yaml.to_string(),
+        tags: vec!["policy".into(), hash.clone()],
+        refs: vec![],
+        act: Some(ActOnEvent::intent(&env)),
+        card: actx.card.map(str::to_string),
+    })?;
+    Ok(Some(hash))
+}
+
+/// Clip ids + metadata + truncated preview, newest first — not full text.
+/// The script pulls full content only indirectly, by naming clip ids in
+/// `invoke_model` and letting the host assemble the context.
+fn tape_projection(store: &JsonlStore, session: &str) -> Result<serde_json::Value, AgentError> {
+    let events = store.read_all()?;
+    let clips: Vec<serde_json::Value> = events
+        .iter()
+        .rev()
+        .filter(|e| e.session.as_deref() == Some(session))
+        .take(PROJECTION_TAIL)
+        .map(|e| {
+            serde_json::json!({
+                "id": e.id,
+                "kind": e.kind,
+                "from": e.from_kind,
+                "tags": e.tags,
+                "preview": e.content.chars().take(CLIP_PREVIEW_CHARS).collect::<String>(),
+            })
+        })
+        .collect();
+    Ok(serde_json::Value::Array(clips))
+}
+
+fn last_observation_preview(store: &JsonlStore, session: &str) -> Result<String, AgentError> {
+    Ok(store
+        .read_all()?
+        .iter()
+        .rev()
+        .find(|e| e.kind == Kind::Observation && e.session.as_deref() == Some(session))
+        .map(|e| e.content.chars().take(CLIP_PREVIEW_CHARS).collect())
+        .unwrap_or_default())
+}
+
+/// One policy step: project the tape, run the script through admission
+/// (the decision itself is taped as intent/effect), execute the
+/// continuation. Returns Ok(true) on halt.
+pub async fn policy_step(
+    actx: &an_agent::act::ActCtx<'_>,
+    model: &impl Model,
+    policy: &Arc<RhaiPolicy>,
+    tools: &[Arc<dyn Tool>],
+    ctx: &an_agent::act::ToolCtx,
+) -> Result<bool, AgentError> {
+    let (clips, last_obs) = match actx.store {
+        Some(store) => (
+            tape_projection(store, actx.session)?,
+            last_observation_preview(store, actx.session)?,
+        ),
+        None => (serde_json::json!([]), String::new()),
+    };
+    let args = serde_json::json!({ "clips": clips, "last_observation": last_obs });
+    let call = ToolCall {
+        id: ulid(),
+        name: policy.name().to_string(),
+        arguments: args.to_string(),
+    };
+    let policy_slot = [policy.clone() as Arc<dyn Tool>];
+    let decision = an_agent::act::run_tool_act(actx, &policy_slot, &call, ctx).await?;
+    let value: serde_json::Value = serde_json::from_str(&decision.message.content)
+        .map_err(|e| AgentError::Model(format!("policy output is not a continuation: {e}")))?;
+    let cont = Continuation::from_value(&value).map_err(AgentError::Model)?;
+    match cont {
+        Continuation::Halt => Ok(true),
+        Continuation::Utter { text } => {
+            let _ = admit_utterance(actx, &text)?;
+            Ok(false)
+        }
+        Continuation::InvokeModel { clips } => {
+            let store = actx
+                .store
+                .ok_or_else(|| AgentError::Model("invoke_model needs a store".into()))?;
+            // The host assembles context from the named clip ids; the
+            // script never touches full text or the model itself.
+            let events = store.read_all()?;
+            let mut messages = Vec::with_capacity(clips.len());
+            for id in &clips {
+                let e = events
+                    .iter()
+                    .find(|e| &e.id == id)
+                    .ok_or_else(|| AgentError::Model(format!("unknown clip id: {id}")))?;
+                messages.push(ChatMessage {
+                    role: match e.from_kind {
+                        FromKind::Agent => "assistant",
+                        _ => "user",
+                    }
+                    .into(),
+                    content: Some(e.content.clone()),
+                    tool_calls: None,
+                    tool_call_id: None,
+                });
+            }
+            let invoke = admit_invoke_intent(actx, model, &messages)?;
+            // The policy owns control flow: the model is an oracle called
+            // without tools; any tool_calls it emits are ignored.
+            let assistant = model.complete(&messages, &[]).await?;
+            admit_invoke_effect(actx, invoke.as_ref(), &assistant)?;
+            if !assistant.content.is_empty() {
+                let _ = admit_utterance(actx, &assistant.content)?;
+            }
+            Ok(false)
+        }
+        Continuation::InvokeTool { name, args } => {
+            // Static composition: a policy may only yield tools named in
+            // its descriptor's requires; anything else fails hard (the
+            // decision is already on tape, the call never happens).
+            if !policy.whitelist().iter().any(|n| n == &name) {
+                return Err(AgentError::Model(format!(
+                    "policy yielded tool outside its requires: {name}"
+                )));
+            }
+            let call = ToolCall {
+                id: ulid(),
+                name,
+                arguments: args.to_string(),
+            };
+            let _ = an_agent::act::run_tool_act(actx, tools, &call, ctx).await?;
+            Ok(false)
+        }
+    }
+}
+
+pub async fn run_policy_until_idle(
+    actx: &an_agent::act::ActCtx<'_>,
+    model: &impl Model,
+    policy: &Arc<RhaiPolicy>,
+    tools: &[Arc<dyn Tool>],
+    ctx: &an_agent::act::ToolCtx,
+    max_steps: u32,
+) -> Result<(), AgentError> {
+    for _ in 0..max_steps {
+        if policy_step(actx, model, policy, tools, ctx).await? {
+            return Ok(());
+        }
+    }
+    Err(AgentError::Model("policy exceeded maxSteps".into()))
+}
+
 // --- chat-completions HTTP client (live probes only) ---
 
 #[derive(Debug, Clone)]

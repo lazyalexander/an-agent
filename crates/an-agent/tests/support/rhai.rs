@@ -114,20 +114,25 @@ fn fetch(
     serde_json::from_slice(&buf).map_err(|e| e.to_string())
 }
 
+/// Probe scripts run untrusted-ish registry content: hard resource
+/// bounds, not just an operation budget.
+fn bounded_engine() -> rhai::Engine {
+    let mut engine = rhai::Engine::new();
+    engine.set_max_operations(100_000);
+    engine.set_max_string_size(1 << 20);
+    engine.set_max_array_size(10_000);
+    engine.set_max_map_size(10_000);
+    engine.set_max_expr_depths(64, 64);
+    engine
+}
+
 fn run_script(
     script: &str,
     allow_net: bool,
     args: serde_json::Value,
     allowed_hosts: Vec<String>,
 ) -> Result<String, String> {
-    let mut engine = rhai::Engine::new();
-    // Probe scripts run untrusted-ish registry content: hard resource
-    // bounds, not just an operation budget.
-    engine.set_max_operations(100_000);
-    engine.set_max_string_size(1 << 20);
-    engine.set_max_array_size(10_000);
-    engine.set_max_map_size(10_000);
-    engine.set_max_expr_depths(64, 64);
+    let mut engine = bounded_engine();
     if allow_net {
         let client = reqwest::blocking::Client::builder()
             .timeout(std::time::Duration::from_secs(30))
@@ -177,6 +182,187 @@ async fn wait_cancel(signal: Option<tokio::sync::watch::Receiver<bool>>) {
         if rx.changed().await.is_err() {
             return std::future::pending::<()>().await;
         }
+    }
+}
+
+// --- policy sort: tape projection in, continuation out ---
+
+/// The next step a policy script yields (effect-as-data): the host admits
+/// and executes it; the script never calls a model or a tool itself.
+/// Malformed output is a hard error, never silently reinterpreted.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Continuation {
+    Halt,
+    Utter {
+        text: String,
+    },
+    InvokeModel {
+        clips: Vec<String>,
+    },
+    InvokeTool {
+        name: String,
+        args: serde_json::Value,
+    },
+}
+
+impl Continuation {
+    pub fn from_value(v: &serde_json::Value) -> Result<Self, String> {
+        let kind = v
+            .get("kind")
+            .and_then(|k| k.as_str())
+            .ok_or("continuation requires a string kind")?;
+        match kind {
+            "halt" => Ok(Self::Halt),
+            "utter" => Ok(Self::Utter {
+                text: v
+                    .get("text")
+                    .and_then(|t| t.as_str())
+                    .ok_or("utter requires a string text")?
+                    .to_string(),
+            }),
+            "invoke_model" => {
+                let clips = v
+                    .get("clips")
+                    .and_then(|c| c.as_array())
+                    .ok_or("invoke_model requires a clips array")?
+                    .iter()
+                    .map(|c| {
+                        c.as_str()
+                            .map(str::to_string)
+                            .ok_or_else(|| "clips entries must be strings".to_string())
+                    })
+                    .collect::<Result<Vec<_>, _>>()?;
+                Ok(Self::InvokeModel { clips })
+            }
+            "invoke_tool" => {
+                let name = v
+                    .get("name")
+                    .and_then(|n| n.as_str())
+                    .ok_or("invoke_tool requires a string name")?
+                    .to_string();
+                let args = v
+                    .get("args")
+                    .cloned()
+                    .unwrap_or_else(|| serde_json::json!({}));
+                if !args.is_object() {
+                    return Err("invoke_tool args must be an object".into());
+                }
+                Ok(Self::InvokeTool { name, args })
+            }
+            other => Err(format!("unknown continuation kind: {other}")),
+        }
+    }
+
+    /// Canonical JSON form — what lands on tape as the decision's effect.
+    pub fn to_value(&self) -> serde_json::Value {
+        match self {
+            Self::Halt => serde_json::json!({ "kind": "halt" }),
+            Self::Utter { text } => serde_json::json!({ "kind": "utter", "text": text }),
+            Self::InvokeModel { clips } => {
+                serde_json::json!({ "kind": "invoke_model", "clips": clips })
+            }
+            Self::InvokeTool { name, args } => {
+                serde_json::json!({ "kind": "invoke_tool", "name": name, "args": args })
+            }
+        }
+    }
+}
+
+/// Policy-sort rhai tool: pure computation over a host-injected tape
+/// projection. The declared effect must be empty of effectors — a policy
+/// that declares file/net/proc faces is rejected at construction, the
+/// same fail-fast gate as RhaiTool.
+pub struct RhaiPolicy {
+    desc: Descriptor,
+    script: String,
+}
+
+impl RhaiPolicy {
+    pub fn from_descriptor(desc: Descriptor) -> Result<Self, String> {
+        use an_agent::act::FileFacet;
+        use an_agent::tools::descriptor::{Net, Proc};
+        if desc.effect.file != FileFacet::None {
+            return Err(format!(
+                "policy declares a file face it cannot use: {:?}",
+                desc.effect.file
+            ));
+        }
+        if desc.effect.net != Net::None {
+            return Err("policy declares net it cannot use".into());
+        }
+        if desc.effect.proc_ != Proc::None {
+            return Err("policy declares proc it cannot use".into());
+        }
+        let script = match &desc.constructor {
+            Constructor::Rhai { script } => script.clone(),
+            _ => return Err("not a rhai descriptor".into()),
+        };
+        Ok(Self { desc, script })
+    }
+
+    /// Names this policy may yield in `invoke_tool` — the descriptor's
+    /// requires list, enforced by the host driver.
+    pub fn whitelist(&self) -> Vec<String> {
+        self.desc.requires.iter().map(|r| r.name.clone()).collect()
+    }
+}
+
+fn run_policy_script(script: &str, args: serde_json::Value) -> Result<serde_json::Value, String> {
+    let engine = bounded_engine();
+    let mut scope = rhai::Scope::new();
+    scope.push(
+        "params",
+        rhai::serde::to_dynamic(args).map_err(|e| e.to_string())?,
+    );
+    let out = engine
+        .eval_with_scope::<rhai::Dynamic>(&mut scope, script)
+        .map_err(|e| e.to_string())?;
+    rhai::serde::from_dynamic::<serde_json::Value>(&out).map_err(|e| e.to_string())
+}
+
+#[async_trait::async_trait]
+impl Tool for RhaiPolicy {
+    fn name(&self) -> &str {
+        &self.desc.name
+    }
+
+    fn description(&self) -> &str {
+        &self.desc.summary
+    }
+
+    fn parameters(&self) -> serde_json::Value {
+        // Not model-facing: the host injects the tape projection as args.
+        serde_json::json!({
+            "type": "object",
+            "properties": {
+                "clips": {
+                    "type": "array",
+                    "description": "recent tape projection, newest first: id/kind/from/tags/preview per clip"
+                },
+                "last_observation": { "type": "string" }
+            }
+        })
+    }
+
+    fn tag_seed(&self) -> Option<ToolTag> {
+        Some(ToolTag {
+            file: an_agent::act::FileFacet::None,
+            permit: Permit::Go,
+            memory: self.desc.effect.memory.clone(),
+        })
+    }
+
+    async fn execute(&self, args: serde_json::Value, ctx: &ToolCtx) -> Result<String, String> {
+        let script = self.script.clone();
+        let mut task = tokio::task::spawn_blocking(move || run_policy_script(&script, args));
+        let value = tokio::select! {
+            res = &mut task => res.map_err(|e| e.to_string())??,
+            _ = wait_cancel(ctx.signal.clone()) => return Err("cancelled".into()),
+        };
+        // Validate at the boundary: the taped effect is always a
+        // well-formed continuation or an error, never garbage.
+        let cont = Continuation::from_value(&value)?;
+        Ok(cont.to_value().to_string())
     }
 }
 
@@ -275,5 +461,84 @@ mod tests {
             "  net: egress\n  file: { op: unbounded }\n  proc: none\n  memory: { op: ignore }",
         );
         assert!(RhaiTool::from_descriptor(ok, serde_json::json!({}), &[]).is_ok());
+    }
+
+    #[test]
+    fn continuation_parsing_is_strict() {
+        use serde_json::json;
+        assert_eq!(
+            Continuation::from_value(&json!({"kind": "halt"})).unwrap(),
+            Continuation::Halt
+        );
+        assert_eq!(
+            Continuation::from_value(&json!({"kind": "utter", "text": "hi"})).unwrap(),
+            Continuation::Utter { text: "hi".into() }
+        );
+        assert_eq!(
+            Continuation::from_value(&json!({"kind": "invoke_model", "clips": ["a", "b"]}))
+                .unwrap(),
+            Continuation::InvokeModel {
+                clips: vec!["a".into(), "b".into()]
+            }
+        );
+        assert_eq!(
+            Continuation::from_value(
+                &json!({"kind": "invoke_tool", "name": "echo", "args": {"text": "x"}})
+            )
+            .unwrap(),
+            Continuation::InvokeTool {
+                name: "echo".into(),
+                args: json!({"text": "x"})
+            }
+        );
+        // Garbage is a hard error, never reinterpreted.
+        assert!(Continuation::from_value(&json!({"kind": "nope"})).is_err());
+        assert!(Continuation::from_value(&json!({"kind": "utter"})).is_err());
+        assert!(Continuation::from_value(&json!({"clips": []})).is_err());
+        assert!(Continuation::from_value(&json!({"kind": "invoke_model", "clips": [1]})).is_err());
+        assert!(
+            Continuation::from_value(&json!({"kind": "invoke_tool", "name": "x", "args": 1}))
+                .is_err()
+        );
+        // Canonical form round-trips through the parser.
+        let cont = Continuation::InvokeTool {
+            name: "echo".into(),
+            args: json!({}),
+        };
+        assert_eq!(Continuation::from_value(&cont.to_value()).unwrap(), cont);
+    }
+
+    #[test]
+    fn policy_rejects_effector_faces_and_keeps_requires_whitelist() {
+        let net =
+            desc("  net: egress\n  file: { op: none }\n  proc: none\n  memory: { op: ignore }");
+        assert!(
+            RhaiPolicy::from_descriptor(net)
+                .err()
+                .unwrap()
+                .contains("net")
+        );
+        let file = desc(
+            "  net: none\n  file: { op: r, path: \"/srv\" }\n  proc: none\n  memory: { op: ignore }",
+        );
+        assert!(
+            RhaiPolicy::from_descriptor(file)
+                .err()
+                .unwrap()
+                .contains("file face")
+        );
+        let spawn =
+            desc("  net: none\n  file: { op: none }\n  proc: spawn\n  memory: { op: ignore }");
+        assert!(
+            RhaiPolicy::from_descriptor(spawn)
+                .err()
+                .unwrap()
+                .contains("proc")
+        );
+        // A pure policy constructs; requires become the invoke whitelist.
+        let yaml = "v: 1\nname: pol\nversion: 0.1.0\nconstructor: rhai\nscript: |\n  #{ kind: \"halt\" }\nsummary: p\neffect:\n  net: none\n  file: { op: none }\n  proc: none\n  memory: { op: remember, aspect: ctx }\nrequires:\n  - { name: echo, version: 1.0.0 }\n";
+        let policy =
+            RhaiPolicy::from_descriptor(an_agent::tools::descriptor::parse(yaml).unwrap()).unwrap();
+        assert_eq!(policy.whitelist(), vec!["echo".to_string()]);
     }
 }
