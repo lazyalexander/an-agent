@@ -8,6 +8,7 @@ mod session;
 mod steward;
 mod subwp;
 mod tree;
+mod wp;
 
 pub use agent::{Agent, AgentError};
 pub use pool::{Pool, PoolError, Turn};
@@ -16,6 +17,7 @@ pub use session::{Session, SessionError};
 pub use steward::{Arrival, ProductPtr, Steward, StewardError, TurnKind};
 pub use subwp::{SubWp, SubWpError};
 pub use tree::{Seat, Tree, TreeError};
+pub use wp::{CloseOut, DepEdge, Resolve, VerId, Wp, WpError, WriteMode};
 
 use std::path::Path;
 use std::sync::Arc;
