@@ -2,6 +2,7 @@
 //! tree, bounded turn pool. Workplace mount is not wired.
 
 mod agent;
+mod context;
 mod pool;
 mod recover;
 mod session;
@@ -11,6 +12,10 @@ mod tree;
 mod wp;
 
 pub use agent::{Agent, AgentError};
+pub use context::{
+    AssembleMode, Assembly, ContextError, Piece, assemble, cut_if_long, rebuild_index,
+    record_summary, segment_sources,
+};
 pub use pool::{Pool, PoolError, Turn};
 pub use recover::{RecoverError, recover};
 pub use session::{Session, SessionError};
