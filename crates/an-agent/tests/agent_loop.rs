@@ -1,5 +1,5 @@
 //! Loop behavior tests for the probe ReAct loop (tests/support): utterance
-//! admission, observation→action refs, and that a Forbidden permit never
+//! admission, observation→action refs, and that a Deny permit never
 //! reaches execution. Migrated from the former src/agent.rs unit tests.
 
 #[allow(dead_code)]
@@ -60,7 +60,7 @@ impl Tool for Locked {
         json!({})
     }
     fn tag_seed(&self) -> Option<ToolTag> {
-        Some(ToolTag::none_permit(Permit::Forbidden))
+        Some(ToolTag::none_permit(Permit::Deny))
     }
     async fn execute(&self, _args: serde_json::Value, _ctx: &ToolCtx) -> Result<String, String> {
         panic!("must not execute");
@@ -221,7 +221,7 @@ async fn remember_clip_is_written_by_admission_not_the_tool() {
 }
 
 #[tokio::test]
-async fn forbidden_does_not_execute() {
+async fn deny_does_not_execute() {
     let model = Fake(Assistant {
         content: String::new(),
         tool_calls: vec![ToolCall {
@@ -243,6 +243,6 @@ async fn forbidden_does_not_execute() {
         .unwrap();
     assert_eq!(
         next.messages.last().unwrap().content.as_deref(),
-        Some("forbidden")
+        Some("deny")
     );
 }

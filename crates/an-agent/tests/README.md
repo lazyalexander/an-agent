@@ -4,7 +4,7 @@ Everything here is probe scaffolding. The ReAct loop, the chat-completions HTTP 
 
 **Files:**
 
-- `agent_loop.rs` — offline loop semantics: observation→action refs, forbidden permits never execute, model calls taped as invoke acts.
+- `agent_loop.rs` — offline loop semantics: observation→action refs, deny permits never execute, model calls taped as invoke acts.
 - `web_search.rs` — rhai-constructed tool from `fixtures/web_search.yaml`; the offline half proves the declared effect *is* the host-function wiring.
 - `react_live.rs` — live model run (search + deliberate remember); asserts the tape alone reconstructs the run, including per-call invoke intents/effects and token usage.
 - `lean_tool.rs` — Lean 4 CLI behind `Tool` (`#[ignore = "needs lean4"]`). Control flow is the test script: theorem, type error, `lake build` of `packages/lean-probe`.

@@ -78,7 +78,7 @@ mod tests {
                 name: "bash".into(),
                 tag: ToolTag {
                     file: FileFacet::None,
-                    permit: Permit::Forbidden,
+                    permit: Permit::Deny,
                     memory: MemoryFacet::Ignore,
                 },
             }],
