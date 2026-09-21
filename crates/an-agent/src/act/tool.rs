@@ -204,8 +204,8 @@ pub async fn run_tool_act(
     let Some(tool) = tool else {
         return fail(format!("unknown tool: {}", call.name), action);
     };
-    if env.sentence.permit() == Permit::Forbidden {
-        return fail("forbidden".into(), action);
+    if env.sentence.permit() == Permit::Deny {
+        return fail("deny".into(), action);
     }
     let args = match parse_args(&call.arguments) {
         Ok(v) => v,

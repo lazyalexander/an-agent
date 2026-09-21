@@ -6,6 +6,7 @@ mod pool;
 mod recover;
 mod session;
 mod steward;
+mod subwp;
 mod tree;
 
 pub use agent::{Agent, AgentError};
@@ -13,6 +14,7 @@ pub use pool::{Pool, PoolError, Turn};
 pub use recover::{RecoverError, recover};
 pub use session::{Session, SessionError};
 pub use steward::{Arrival, ProductPtr, Steward, StewardError, TurnKind};
+pub use subwp::{SubWp, SubWpError};
 pub use tree::{Seat, Tree, TreeError};
 
 use std::path::Path;
@@ -70,7 +72,7 @@ mod tests {
             prompt: "p".into(),
             tools: vec![ToolGrant {
                 name: "bash".into(),
-                tag: ToolTag::none_permit(Permit::Forbidden),
+                tag: ToolTag::none_permit(Permit::Deny),
             }],
             topology: Topology::Leaf,
             kernel: "0.1.0".into(),
@@ -145,7 +147,7 @@ mod tests {
         let result = run_tool_act(&agent.act_ctx(), agent.tools(), &call, &ctx())
             .await
             .unwrap();
-        assert_eq!(result.message.content, "forbidden");
+        assert_eq!(result.message.content, "deny");
         assert_eq!(agent.session().tape().read_all().unwrap().len(), 2);
     }
 }

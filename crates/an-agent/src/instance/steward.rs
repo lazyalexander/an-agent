@@ -1,5 +1,5 @@
 //! The one user-facing agent in an instance. Spawn, mail, and link are
-//! verbs here — not tools. World-facing grants on its card must be Forbidden.
+//! verbs here — not tools. World-facing grants on its card must be Deny.
 
 use std::collections::VecDeque;
 use std::fs;
@@ -22,7 +22,7 @@ use super::{InstanceError, spawn};
 
 #[derive(Debug, Error)]
 pub enum StewardError {
-    #[error("steward grant {0} is not forbidden")]
+    #[error("steward grant {0} is not deny")]
     GrantNotDenied(String),
     #[error("no turn is running")]
     Idle,
@@ -67,6 +67,7 @@ pub struct ProductPtr {
     pub tape_sha256: String,
     pub md_sha256: Option<String>,
     pub tree_id: Option<String>,
+    pub subwp_sha256: Option<String>,
 }
 
 impl ProductPtr {
@@ -75,12 +76,14 @@ impl ProductPtr {
         tape: &Path,
         md_sha256: Option<String>,
         tree_id: Option<String>,
+        subwp_sha256: Option<String>,
     ) -> Result<Self, StewardError> {
         Ok(Self {
             child_session: child_session.into(),
             tape_sha256: hash_file(tape)?,
             md_sha256,
             tree_id,
+            subwp_sha256,
         })
     }
 }
@@ -230,6 +233,7 @@ impl Steward {
             "tape_sha256": product.tape_sha256,
             "md_sha256": product.md_sha256,
             "tree_id": product.tree_id,
+            "subwp_sha256": product.subwp_sha256,
         })
         .to_string();
         self.append(&self.agent, "link", body, vec![])
@@ -288,7 +292,7 @@ fn hash_file(path: &Path) -> Result<String, StewardError> {
 
 fn deny_world_grants(card: &AgentCard) -> Result<(), StewardError> {
     for grant in &card.tools {
-        if grant.tag.permit != Permit::Forbidden {
+        if grant.tag.permit != Permit::Deny {
             return Err(StewardError::GrantNotDenied(grant.name.clone()));
         }
     }
@@ -374,7 +378,7 @@ mod tests {
     fn only_the_steward_spawns_and_queue_steers() {
         let tmp = TempDir::new("steward-queue");
         let steward = Steward::open(
-            &bare("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", Permit::Forbidden),
+            &bare("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", Permit::Deny),
             tmp.path(),
             "{\"limit\":1}",
             "[\"c0\"]",
@@ -413,17 +417,14 @@ mod tests {
     fn collect_records_pointers_not_bodies() {
         let tmp = TempDir::new("steward-collect");
         let steward = Steward::open(
-            &bare("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", Permit::Forbidden),
+            &bare("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", Permit::Deny),
             tmp.path(),
             "{}",
             "[]",
         )
         .unwrap();
         let worker = steward
-            .spawn_worker(&bare(
-                "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
-                Permit::Forbidden,
-            ))
+            .spawn_worker(&bare("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb", Permit::Deny))
             .unwrap();
         let marker = "BODY_SHOULD_NOT_APPEAR";
         worker
@@ -446,6 +447,7 @@ mod tests {
             &worker.session().tape_path(),
             None,
             None,
+            None,
         )
         .unwrap();
         let digest = product.tape_sha256.clone();
@@ -461,7 +463,7 @@ mod tests {
     fn view_reads_linked_ids_only() {
         let tmp = TempDir::new("steward-view");
         let steward = Steward::open(
-            &bare("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", Permit::Forbidden),
+            &bare("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", Permit::Deny),
             tmp.path(),
             "{}",
             "[]",
@@ -473,6 +475,7 @@ mod tests {
                 tape_sha256: "aa".into(),
                 md_sha256: None,
                 tree_id: None,
+                subwp_sha256: None,
             })
             .unwrap();
         let b = steward
@@ -481,6 +484,7 @@ mod tests {
                 tape_sha256: "bb".into(),
                 md_sha256: Some("cc".into()),
                 tree_id: Some("tree-1".into()),
+                subwp_sha256: None,
             })
             .unwrap();
         steward

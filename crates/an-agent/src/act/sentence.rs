@@ -222,7 +222,7 @@ impl fmt::Display for ActSentence {
                 let p = match permit {
                     Permit::Ask => "ask",
                     Permit::Go => "go",
-                    Permit::Forbidden => "forbidden",
+                    Permit::Deny => "deny",
                 };
                 write!(f, "{p}; {file}; {mem}")
             }
@@ -265,7 +265,7 @@ impl fmt::Display for ActSentence {
                 let p = match permit {
                     Permit::Ask => "ask",
                     Permit::Go => "go",
-                    Permit::Forbidden => "forbidden",
+                    Permit::Deny => "deny",
                 };
                 write!(f, "{p}; {acc} {resource}; {mem}")
             }
@@ -276,7 +276,7 @@ impl fmt::Display for ActSentence {
                 let p = match permit {
                     Permit::Ask => "ask",
                     Permit::Go => "go",
-                    Permit::Forbidden => "forbidden",
+                    Permit::Deny => "deny",
                 };
                 write!(f, "{p}; forget {remember_id}")
             }

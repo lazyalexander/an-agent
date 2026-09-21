@@ -42,7 +42,7 @@ pub fn tool_registry() -> Vec<(&'static str, ToolCtor)> {
 
 /// Wraps a constructed tool so the grant's tag wins over the constructor's
 /// default tag_seed: permissions come from the card. The tag is an audit
-/// label, not a gate: only `Permit::Forbidden` blocks execution; `Ask` is
+/// label, not a gate: only `Permit::Deny` blocks execution; `Ask` is
 /// taped but runs as `Go` until the delegation-chain + Ask-grant slice
 /// wires enforcement.
 struct Granted {
@@ -157,8 +157,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn forbidden_grant_not_executed_and_tape_cites_card() {
-        let c = card(ToolTag::none_permit(Permit::Forbidden));
+    async fn deny_grant_not_executed_and_tape_cites_card() {
+        let c = card(ToolTag::none_permit(Permit::Deny));
         let rt = build(&c, "hash-x").unwrap();
         let tmp = TempDir::new("factory");
         let store = JsonlStore::open(tmp.path().join("memory.jsonl")).unwrap();
@@ -174,10 +174,10 @@ mod tests {
             arguments: r#"{"command":"true"}"#.into(),
         };
         let result = run_tool_act(&actx, &rt.tools, &call, &ctx()).await.unwrap();
-        assert_eq!(result.message.content, "forbidden");
+        assert_eq!(result.message.content, "deny");
         let events = store.read_all().unwrap();
         let obs = events.iter().find(|e| e.kind == Kind::Observation).unwrap();
-        assert_eq!(obs.content, "forbidden");
+        assert_eq!(obs.content, "deny");
         assert_eq!(obs.card.as_deref(), Some("hash-x"));
     }
 }
