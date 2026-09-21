@@ -6,4 +6,4 @@ Agent identity: the `AgentCard` (model spec + prompt + tool grants + kernel ref)
 
 **Dependencies:** `act` (tool traits/tags), `tools` (constructors), `det_seam`. Never: the loop, HTTP.
 
-**Not here:** the ReAct loop and model client — those are probe scaffolding under `tests/`.
+**Not here:** live session/tree/pool (`instance`), the ReAct loop, and the model client. `instance::spawn` is the loop-facing constructor that binds a card to a private session.

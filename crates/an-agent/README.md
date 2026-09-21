@@ -9,6 +9,7 @@ The kernel: a handful of mechanisms and the invariants between them. Everything 
 | `memstream` | The tape. Append-only JSONL; events carry kind, refs (causal edges), act envelopes, and the producing card's hash. Readers absorb schema drift (serde defaults + `skip_serializing_if`); history is never rewritten. |
 | `act` | Admission. Every effect-ful action passes here: a sentence (permit × file × memory facets) is decided, intent is taped before execution, effect after. `ActKind` is intent-domain vocabulary only; the channel (tool vs model) rides on `ActEnvelope.tool`. |
 | `principal` | Agent identity. An `AgentCard` = model spec + prompt + tool grants + kernel ref — immutable, content-addressed, versioned by supersession, never mutated. Cards hold no memory and no keys. |
+| `instance` | Loop runtime: private `Session` (tape/files/scratch), live `Agent`, registration `Tree`, bounded turn `Pool`. No workplace mount. |
 | `tools` | Tool implementations (today: `bash`) and strict YAML descriptor admission (`descriptor`): parse-or-reject, unknown fields fatal, effect faces fully explicit. |
 | `workplace` | Workspace resources and addressing. |
 | `det_seam` | The determinism seam — the only place allowed to touch OS time and entropy. Enforced by `clippy.toml` disallowed-methods, not by reviewer vigilance. |
