@@ -87,6 +87,10 @@ impl Session {
     pub fn tape(&self) -> &JsonlStore {
         &self.tape
     }
+
+    pub fn tape_path(&self) -> PathBuf {
+        self.root.join("memory.jsonl")
+    }
 }
 
 #[cfg(test)]

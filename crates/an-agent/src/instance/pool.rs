@@ -60,6 +60,13 @@ impl Pool {
         self.running.lock().unwrap_or_else(|e| e.into_inner()).len()
     }
 
+    pub fn is_running(&self, id: Uuid) -> bool {
+        self.running
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .contains(&id)
+    }
+
     pub fn begin_turn(&self, id: Uuid) -> Result<Turn<'_>, PoolError> {
         let agent = self.tree.get(id).ok_or(PoolError::NotMounted(id))?;
         let mut running = self.running.lock().unwrap_or_else(|e| e.into_inner());

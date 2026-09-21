@@ -3,12 +3,16 @@
 
 mod agent;
 mod pool;
+mod recover;
 mod session;
+mod steward;
 mod tree;
 
 pub use agent::{Agent, AgentError};
 pub use pool::{Pool, PoolError, Turn};
+pub use recover::{RecoverError, recover};
 pub use session::{Session, SessionError};
+pub use steward::{Arrival, ProductPtr, Steward, StewardError, TurnKind};
 pub use tree::{Seat, Tree, TreeError};
 
 use std::path::Path;
