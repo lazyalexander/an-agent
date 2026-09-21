@@ -18,6 +18,7 @@ use crate::principal::card::AgentCard;
 use super::agent::Agent;
 use super::pool::{Pool, PoolError, Turn};
 use super::tree::Seat;
+use super::wp::{CloseOut, DepEdge, Wp, WpError};
 use super::{InstanceError, spawn};
 
 #[derive(Debug, Error)]
@@ -38,6 +39,8 @@ pub enum StewardError {
     Pool(#[from] PoolError),
     #[error(transparent)]
     Tree(#[from] super::tree::TreeError),
+    #[error(transparent)]
+    Wp(#[from] WpError),
     #[error("store: {0}")]
     Store(#[from] crate::memstream::StoreError),
     #[error("io: {0}")]
@@ -100,6 +103,7 @@ pub struct Steward {
     seats: Mutex<Vec<Seat>>,
     queue: Mutex<VecDeque<Intent>>,
     root: PathBuf,
+    wp: Wp,
 }
 
 impl Steward {
@@ -127,12 +131,14 @@ impl Steward {
         )?;
         write_if_absent(&projection_path(agent.session().root(), "config"), config)?;
         write_if_absent(&projection_path(agent.session().root(), "context"), context)?;
+        let wp = Wp::open(&root)?;
         Ok(Self {
             agent,
             pool,
             seats: Mutex::new(vec![seat]),
             queue: Mutex::new(VecDeque::new()),
             root,
+            wp,
         })
     }
 
@@ -142,6 +148,10 @@ impl Steward {
 
     pub fn agent(&self) -> &Agent {
         &self.agent
+    }
+
+    pub fn workplace(&self) -> &Wp {
+        &self.wp
     }
 
     pub fn spawn_worker(&self, card: &AgentCard) -> Result<Arc<Agent>, StewardError> {
@@ -154,12 +164,14 @@ impl Steward {
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .push(seat);
+        let sub = self.wp.register(child.id(), child.session().root())?;
         self.append(
             &self.agent,
             "spawn",
             json!({
                 "worker": child.id_str(),
                 "session": child.session().id_str(),
+                "subwp": sub,
             })
             .to_string(),
             vec![],
@@ -219,6 +231,16 @@ impl Steward {
         .to_string();
         self.append(&child, "mail", back, vec![parent.clone()])?;
         Ok(parent)
+    }
+
+    /// Publish the worker's sub-workplace if it wrote anything.
+    /// Steward does not write file bytes.
+    pub fn close_worker(&self, worker: Uuid, extra: &[DepEdge]) -> Result<CloseOut, StewardError> {
+        let sub = self
+            .wp
+            .subwp_of(worker)
+            .ok_or(StewardError::NotMounted(worker))?;
+        Ok(self.wp.close(&sub, extra)?)
     }
 
     /// Collect: record pointers only. Does not run tools.
