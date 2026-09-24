@@ -6,7 +6,7 @@ mod tool;
 
 pub use registry::{Registration, RegistryError, Tier, ToolRegistry};
 pub use sense::{Effect, effect_from_sentence, effect_from_tag};
-pub use sentence::{Access, ActSentence, BareFile, Ingest, SentenceError};
+pub use sentence::{Access, ActSentence, Audience, BareFile, Ingest, SentenceError, Signal};
 pub use tag::{FileFacet, MemoryFacet, Permit, ToolTag};
 pub use tool::{ActCtx, Tool, ToolCall, ToolCtx, ToolError, ToolMessage, run_tool_act, tag_of};
 
