@@ -29,6 +29,10 @@ pub enum StewardError {
     OutsideBound(String),
     #[error("signal {0} is outside the charter")]
     SignalDenied(&'static str),
+    #[error("lite charter must not grant file access")]
+    LiteFile,
+    #[error("worker {0} has no sub-workplace")]
+    NoSubwp(Uuid),
     #[error("no turn is running")]
     Idle,
     #[error("a turn is still running")]
@@ -162,43 +166,26 @@ impl Steward {
 
     /// `bound` is the parent's charter for this child. It is written on the
     /// steward tape. Every tool grant on `card` must fit inside it.
+    /// Registers one sub-workplace for the child.
     pub fn spawn_worker(
         &self,
         card: &AgentCard,
         bound: &ActSentence,
     ) -> Result<Arc<Agent>, StewardError> {
-        for grant in &card.tools {
-            if !bound.allows(&grant.tag) {
-                return Err(StewardError::OutsideBound(grant.name.clone()));
-            }
+        self.spawn_child(card, bound, true)
+    }
+
+    /// A child with a seat and no sub-workplace. It cannot write paths.
+    /// The charter's file face must be `none`. Finishing is `complete` only.
+    pub fn spawn_lite(
+        &self,
+        card: &AgentCard,
+        bound: &ActSentence,
+    ) -> Result<Arc<Agent>, StewardError> {
+        if !bound_is_fileless(bound) {
+            return Err(StewardError::LiteFile);
         }
-        let child = Arc::new(spawn(card, &self.root)?);
-        let seat = self
-            .pool
-            .tree()
-            .mount(Arc::clone(&child), Some(self.agent.id()))?;
-        self.seats
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .push(seat);
-        let sub = self.wp.register(child.id(), child.session().root())?;
-        self.bounds
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .insert(child.id(), bound.clone());
-        self.append(
-            &self.agent,
-            "spawn",
-            json!({
-                "worker": child.id_str(),
-                "session": child.session().id_str(),
-                "subwp": sub,
-                "bound": bound,
-            })
-            .to_string(),
-            vec![],
-        )?;
-        Ok(child)
+        self.spawn_child(card, bound, false)
     }
 
     /// Parent cancels a direct child. Recorded on both tapes. A child cannot
@@ -331,7 +318,7 @@ impl Steward {
         let sub = self
             .wp
             .subwp_of(worker)
-            .ok_or(StewardError::NotMounted(worker))?;
+            .ok_or(StewardError::NoSubwp(worker))?;
         Ok(self.wp.close(&sub, extra)?)
     }
 
@@ -375,6 +362,51 @@ impl Steward {
             .filter_map(|x| x.as_str().map(str::to_string))
             .collect();
         Ok(links)
+    }
+
+    fn spawn_child(
+        &self,
+        card: &AgentCard,
+        bound: &ActSentence,
+        with_subwp: bool,
+    ) -> Result<Arc<Agent>, StewardError> {
+        for grant in &card.tools {
+            if !bound.allows(&grant.tag) {
+                return Err(StewardError::OutsideBound(grant.name.clone()));
+            }
+        }
+        let child = Arc::new(spawn(card, &self.root)?);
+        let seat = self
+            .pool
+            .tree()
+            .mount(Arc::clone(&child), Some(self.agent.id()))?;
+        self.seats
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .push(seat);
+        let sub = if with_subwp {
+            Some(self.wp.register(child.id(), child.session().root())?)
+        } else {
+            None
+        };
+        self.bounds
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .insert(child.id(), bound.clone());
+        self.append(
+            &self.agent,
+            "spawn",
+            json!({
+                "worker": child.id_str(),
+                "session": child.session().id_str(),
+                "subwp": sub,
+                "seat": if with_subwp { "worker" } else { "lite" },
+                "bound": bound,
+            })
+            .to_string(),
+            vec![],
+        )?;
+        Ok(child)
     }
 
     fn charter(&self, worker: Uuid) -> Result<ActSentence, StewardError> {
@@ -433,6 +465,16 @@ impl Steward {
 fn hash_file(path: &Path) -> Result<String, StewardError> {
     let bytes = fs::read(path)?;
     Ok(format!("{:x}", Sha256::digest(bytes)))
+}
+
+fn bound_is_fileless(bound: &ActSentence) -> bool {
+    matches!(
+        bound,
+        ActSentence::Bare {
+            file: crate::act::BareFile::None,
+            ..
+        } | ActSentence::Forget { .. }
+    )
 }
 
 fn deny_world_grants(card: &AgentCard) -> Result<(), StewardError> {
@@ -586,6 +628,46 @@ mod tests {
         assert!(matches!(err, Err(StewardError::OutsideBound(_))));
         let id = Uuid::parse_str("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb").unwrap();
         assert!(steward.workplace().subwp_of(id).is_none());
+    }
+
+    #[test]
+    fn lite_has_a_seat_no_subwp_and_finishes_by_complete() {
+        let tmp = TempDir::new("steward-lite");
+        let steward = Steward::open(
+            &bare("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", Permit::Deny),
+            tmp.path(),
+            "{}",
+            "[]",
+        )
+        .unwrap();
+        let wide = ActSentence::bare(Permit::Go, BareFile::Unbounded, Ingest::Ignore);
+        assert!(matches!(
+            steward.spawn_lite(
+                &bare("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb", Permit::Go),
+                &wide
+            ),
+            Err(StewardError::LiteFile)
+        ));
+        let bound = ActSentence::bare(Permit::Go, BareFile::None, Ingest::Ignore);
+        let lite = steward
+            .spawn_lite(
+                &bare("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb", Permit::Go),
+                &bound,
+            )
+            .unwrap();
+        assert_eq!(
+            steward.pool.tree().parent(lite.id()).unwrap(),
+            Some(steward.id())
+        );
+        assert!(steward.workplace().subwp_of(lite.id()).is_none());
+        assert!(matches!(
+            steward.close_worker(lite.id(), &[]),
+            Err(StewardError::NoSubwp(_))
+        ));
+        steward.complete(lite.id(), "result").unwrap();
+        assert!(tagged(&lite, "complete"));
+        assert!(tagged(steward.agent(), "complete"));
+        assert!(steward.workplace().current_paths().is_empty());
     }
 
     fn tagged(agent: &Agent, tag: &str) -> bool {
