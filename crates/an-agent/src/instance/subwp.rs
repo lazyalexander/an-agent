@@ -176,7 +176,7 @@ fn under(root: &str, path: &str) -> bool {
 mod tests {
     use super::*;
     use crate::act::Permit;
-    use crate::act::{FileFacet, MemoryFacet, ToolTag};
+    use crate::act::{ActSentence, BareFile, FileFacet, Ingest, MemoryFacet, ToolTag};
     use crate::instance::{ProductPtr, Steward};
     use crate::principal::card::{AgentCard, ModelSpec, ToolGrant, Topology};
     use crate::testkit::TempDir;
@@ -224,7 +224,10 @@ mod tests {
         )
         .unwrap();
         let worker = steward
-            .spawn_worker(&card("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb", Permit::Go))
+            .spawn_worker(
+                &card("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb", Permit::Go),
+                &ActSentence::bare(Permit::Go, BareFile::None, Ingest::Ignore),
+            )
             .unwrap();
         let log = SubWp::open(worker.session().root()).unwrap();
         log.append("src/a.txt", b"v1", Permit::Go, &face_rw())

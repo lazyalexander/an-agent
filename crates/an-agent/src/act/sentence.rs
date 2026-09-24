@@ -176,6 +176,35 @@ impl ActSentence {
         }
     }
 
+    /// Parent bound at spawn. The tag is allowed when it is no wider.
+    pub fn allows(&self, tag: &ToolTag) -> bool {
+        if permit_rank(tag.permit) > permit_rank(self.permit()) {
+            return false;
+        }
+        match self {
+            Self::Bare {
+                file: BareFile::None,
+                memory,
+                ..
+            } => matches!(tag.file, FileFacet::None) && memory_allows(memory, &tag.memory),
+            Self::Bare {
+                file: BareFile::Unbounded,
+                memory,
+                ..
+            } => memory_allows(memory, &tag.memory),
+            Self::OnResource {
+                resource,
+                access,
+                memory,
+                ..
+            } => file_within(resource, access, &tag.file) && memory_allows(memory, &tag.memory),
+            Self::Forget { remember_id, .. } => {
+                matches!(tag.file, FileFacet::None)
+                    && matches!(&tag.memory, MemoryFacet::Forget { remember_id: id } if id == remember_id)
+            }
+        }
+    }
+
     pub fn permit(&self) -> Permit {
         match self {
             Self::Bare { permit, .. }
@@ -198,6 +227,60 @@ impl ActSentence {
             Self::Forget { .. } => None,
         }
     }
+}
+
+fn permit_rank(p: Permit) -> u8 {
+    match p {
+        Permit::Deny => 0,
+        Permit::Ask => 1,
+        Permit::Go => 2,
+    }
+}
+
+fn memory_allows(bound: &Ingest, tag: &MemoryFacet) -> bool {
+    match (bound, tag) {
+        (Ingest::Ignore, MemoryFacet::Ignore) => true,
+        (Ingest::Remember { aspect: None }, MemoryFacet::Remember { .. }) => true,
+        (Ingest::Remember { aspect: Some(a) }, MemoryFacet::Remember { aspect: Some(b) }) => a == b,
+        _ => false,
+    }
+}
+
+fn file_within(resource: &Resource, access: &Access, tag: &FileFacet) -> bool {
+    if matches!(tag, FileFacet::None) {
+        return true;
+    }
+    let Some(path) = tag_path(tag) else {
+        return false;
+    };
+    if !path_under(&resource.path, path) {
+        return false;
+    }
+    matches!(
+        (access, tag),
+        (
+            Access::Rw { .. },
+            FileFacet::Read { .. } | FileFacet::Write { .. } | FileFacet::ReadWrite { .. },
+        ) | (Access::R { .. }, FileFacet::Read { .. })
+            | (Access::W { .. }, FileFacet::Write { .. })
+    )
+}
+
+fn tag_path(tag: &FileFacet) -> Option<&str> {
+    match tag {
+        FileFacet::Read { path, .. }
+        | FileFacet::Write { path, .. }
+        | FileFacet::ReadWrite { path, .. } => Some(path),
+        _ => None,
+    }
+}
+
+fn path_under(root: &[String], path: &str) -> bool {
+    let prefix = root.join("/");
+    if prefix.is_empty() {
+        return !path.starts_with('/');
+    }
+    path == prefix || path.starts_with(&format!("{prefix}/"))
 }
 
 impl fmt::Display for ActSentence {
