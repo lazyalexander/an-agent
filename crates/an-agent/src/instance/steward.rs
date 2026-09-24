@@ -31,6 +31,8 @@ pub enum StewardError {
     SignalDenied(&'static str),
     #[error("lite charter must not grant file access")]
     LiteFile,
+    #[error("spawn bound is wider than the parent charter")]
+    WiderThanParent,
     #[error("worker {0} has no sub-workplace")]
     NoSubwp(Uuid),
     #[error("no turn is running")]
@@ -172,7 +174,17 @@ impl Steward {
         card: &AgentCard,
         bound: &ActSentence,
     ) -> Result<Arc<Agent>, StewardError> {
-        self.spawn_child(card, bound, true)
+        self.spawn_child(self.agent.id(), card, bound, true)
+    }
+
+    /// Spawn under an existing child. The new bound must fit in that child's charter.
+    pub fn spawn_under(
+        &self,
+        parent: Uuid,
+        card: &AgentCard,
+        bound: &ActSentence,
+    ) -> Result<Arc<Agent>, StewardError> {
+        self.spawn_child(parent, card, bound, true)
     }
 
     /// A child with a seat and no sub-workplace. It cannot write paths.
@@ -185,7 +197,36 @@ impl Steward {
         if !bound_is_fileless(bound) {
             return Err(StewardError::LiteFile);
         }
-        self.spawn_child(card, bound, false)
+        self.spawn_child(self.agent.id(), card, bound, false)
+    }
+
+    /// Drop this seat and every descendant. Live sub-workplaces are abandoned
+    /// with no view. Already published views stay.
+    pub fn release(&self, id: Uuid) -> Result<(), StewardError> {
+        let ids = self.pool.tree().descendants(id)?;
+        for worker in &ids {
+            self.wp.abandon_worker(*worker)?;
+            self.bounds
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .remove(worker);
+        }
+        let mut seats = self.seats.lock().unwrap_or_else(|e| e.into_inner());
+        let mut keep = Vec::new();
+        let mut dropping = Vec::new();
+        for seat in seats.drain(..) {
+            if ids.contains(&seat.id()) {
+                dropping.push(seat);
+            } else {
+                keep.push(seat);
+            }
+        }
+        *seats = keep;
+        drop(seats);
+        for seat in dropping {
+            let _ = seat.unmount();
+        }
+        Ok(())
     }
 
     /// Parent cancels a direct child. Recorded on both tapes. A child cannot
@@ -366,20 +407,27 @@ impl Steward {
 
     fn spawn_child(
         &self,
+        parent: Uuid,
         card: &AgentCard,
         bound: &ActSentence,
         with_subwp: bool,
     ) -> Result<Arc<Agent>, StewardError> {
+        if self.pool.tree().get(parent).is_none() {
+            return Err(StewardError::NotMounted(parent));
+        }
+        if parent != self.agent.id() {
+            let charter = self.charter(parent)?;
+            if !bound.within(&charter) {
+                return Err(StewardError::WiderThanParent);
+            }
+        }
         for grant in &card.tools {
             if !bound.allows(&grant.tag) {
                 return Err(StewardError::OutsideBound(grant.name.clone()));
             }
         }
         let child = Arc::new(spawn(card, &self.root)?);
-        let seat = self
-            .pool
-            .tree()
-            .mount(Arc::clone(&child), Some(self.agent.id()))?;
+        let seat = self.pool.tree().mount(Arc::clone(&child), Some(parent))?;
         self.seats
             .lock()
             .unwrap_or_else(|e| e.into_inner())
@@ -667,6 +715,59 @@ mod tests {
         steward.complete(lite.id(), "result").unwrap();
         assert!(tagged(&lite, "complete"));
         assert!(tagged(steward.agent(), "complete"));
+        assert!(steward.workplace().current_paths().is_empty());
+    }
+
+    #[test]
+    fn release_drops_the_subtree_without_publishing_and_child_bound_cannot_widen() {
+        let tmp = TempDir::new("steward-release");
+        let steward = Steward::open(
+            &bare("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", Permit::Deny),
+            tmp.path(),
+            "{}",
+            "[]",
+        )
+        .unwrap();
+        let parent_bound = ActSentence::bare(Permit::Go, BareFile::None, Ingest::Ignore);
+        let parent = steward
+            .spawn_worker(
+                &bare("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb", Permit::Go),
+                &parent_bound,
+            )
+            .unwrap();
+        let wider = parent_bound.clone().with_signal(Signal {
+            complete: Permit::Go,
+            audience: Audience::Any,
+        });
+        assert!(matches!(
+            steward.spawn_under(
+                parent.id(),
+                &bare("cccccccc-cccc-cccc-cccc-cccccccccccc", Permit::Go),
+                &wider,
+            ),
+            Err(StewardError::WiderThanParent)
+        ));
+        let child = steward
+            .spawn_under(
+                parent.id(),
+                &bare("cccccccc-cccc-cccc-cccc-cccccccccccc", Permit::Go),
+                &parent_bound,
+            )
+            .unwrap();
+        let sub = steward.workplace().subwp_of(parent.id()).unwrap();
+        steward
+            .workplace()
+            .write(
+                &sub,
+                "src/a.txt",
+                b"draft",
+                crate::instance::WriteMode::Create,
+            )
+            .unwrap();
+        steward.release(parent.id()).unwrap();
+        assert!(steward.pool.tree().get(parent.id()).is_none());
+        assert!(steward.pool.tree().get(child.id()).is_none());
+        assert!(steward.workplace().subwp_of(parent.id()).is_none());
         assert!(steward.workplace().current_paths().is_empty());
     }
 

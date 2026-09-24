@@ -201,6 +201,21 @@ impl Wp {
         Ok(id)
     }
 
+    /// Drop a live sub-workplace without publishing a view. Bytes stay put.
+    pub fn abandon_worker(&self, worker: Uuid) -> Result<bool, WpError> {
+        let mut state = self.lock.lock().unwrap_or_else(|e| e.into_inner());
+        let Some(sub) = state
+            .live
+            .iter()
+            .find(|(_, live)| live.worker == worker)
+            .map(|(id, _)| id.clone())
+        else {
+            return Ok(false);
+        };
+        self.unmount_locked(&mut state, &sub)?;
+        Ok(true)
+    }
+
     pub fn subwp_of(&self, worker: Uuid) -> Option<String> {
         self.lock
             .lock()

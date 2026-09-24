@@ -85,6 +85,23 @@ impl Tree {
             .ok_or(TreeError::NotFound(id))
     }
 
+    /// `id` plus every descendant, parent before children.
+    pub fn descendants(&self, id: Uuid) -> Result<Vec<Uuid>, TreeError> {
+        let inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+        if !inner.nodes.contains_key(&id) {
+            return Err(TreeError::NotFound(id));
+        }
+        let mut out = vec![id];
+        let mut i = 0;
+        while i < out.len() {
+            if let Some(node) = inner.nodes.get(&out[i]) {
+                out.extend(node.children.iter().copied());
+            }
+            i += 1;
+        }
+        Ok(out)
+    }
+
     pub fn children(&self, id: Uuid) -> Result<Vec<Uuid>, TreeError> {
         self.inner
             .lock()

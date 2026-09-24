@@ -258,6 +258,22 @@ impl ActSentence {
         }
     }
 
+    /// This sentence is no wider than `parent` on permit, file, memory, and signal.
+    pub fn within(&self, parent: &ActSentence) -> bool {
+        if permit_rank(self.permit()) > permit_rank(parent.permit()) {
+            return false;
+        }
+        let child = self.signal();
+        let bound = parent.signal();
+        if permit_rank(child.complete) > permit_rank(bound.complete) {
+            return false;
+        }
+        if child.audience == Audience::Any && bound.audience != Audience::Any {
+            return false;
+        }
+        file_sentence_within(self, parent) && ingest_within(self.ingest(), parent.ingest())
+    }
+
     pub fn permit(&self) -> Permit {
         match self {
             Self::Bare { permit, .. }
@@ -287,6 +303,71 @@ fn permit_rank(p: Permit) -> u8 {
         Permit::Deny => 0,
         Permit::Ask => 1,
         Permit::Go => 2,
+    }
+}
+
+fn file_sentence_within(child: &ActSentence, parent: &ActSentence) -> bool {
+    match parent {
+        ActSentence::Bare {
+            file: BareFile::Unbounded,
+            ..
+        } => true,
+        ActSentence::Bare {
+            file: BareFile::None,
+            ..
+        }
+        | ActSentence::Forget { .. } => {
+            matches!(
+                child,
+                ActSentence::Bare {
+                    file: BareFile::None,
+                    ..
+                } | ActSentence::Forget { .. }
+            )
+        }
+        ActSentence::OnResource {
+            resource, access, ..
+        } => match child {
+            ActSentence::Bare {
+                file: BareFile::None,
+                ..
+            }
+            | ActSentence::Forget { .. } => true,
+            ActSentence::Bare {
+                file: BareFile::Unbounded,
+                ..
+            } => false,
+            ActSentence::OnResource {
+                resource: child_res,
+                access: child_access,
+                ..
+            } => {
+                path_under(&resource.path, &child_res.path.join("/"))
+                    && access_within(child_access, access)
+            }
+        },
+    }
+}
+
+fn access_within(child: &Access, parent: &Access) -> bool {
+    matches!(
+        (parent, child),
+        (Access::Rw { .. }, _)
+            | (Access::R { .. }, Access::R { .. })
+            | (Access::W { .. }, Access::W { .. })
+    )
+}
+
+fn ingest_within(child: Option<&Ingest>, parent: Option<&Ingest>) -> bool {
+    match (parent, child) {
+        (None, None) => true,
+        (Some(Ingest::Ignore), Some(Ingest::Ignore)) => true,
+        (Some(Ingest::Remember { aspect: None }), Some(Ingest::Remember { .. })) => true,
+        (
+            Some(Ingest::Remember { aspect: Some(a) }),
+            Some(Ingest::Remember { aspect: Some(b) }),
+        ) => a == b,
+        _ => false,
     }
 }
 
