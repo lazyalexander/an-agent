@@ -24,6 +24,12 @@ pub enum WpError {
     Pending(String),
     #[error("nothing to continue at {0}")]
     NoCurrent(String),
+    #[error("continue of {true_name} is based on {base}, current is {current}")]
+    StaleBase {
+        true_name: String,
+        current: u32,
+        base: u32,
+    },
     #[error("path escapes the sub-workplace: {0}")]
     BadPath(String),
     #[error("dependency cycle")]
@@ -44,9 +50,8 @@ pub enum WpError {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WriteMode {
-    /// Reuse the true name of the path in the current view, or of an earlier
-    /// write in this same sub-workplace.
-    Continue,
+    /// Reuse the true name. `base` must be the current version of that name.
+    Continue { base: u32 },
     /// Mint a new true name even if the path is already taken.
     Create,
 }
@@ -224,7 +229,17 @@ impl Wp {
             return Err(WpError::Pending(sub.into()));
         }
         let true_name = match mode {
-            WriteMode::Continue => inherited_name(&state.views, &live.session, &path)?,
+            WriteMode::Continue { base } => {
+                let (name, current) = current_of(&state.views, &live.session, &path)?;
+                if current != base {
+                    return Err(WpError::StaleBase {
+                        true_name: name,
+                        current,
+                        base,
+                    });
+                }
+                name
+            }
             WriteMode::Create => Entropy::os().uuid_v4().to_string(),
         };
         let version = next_version(&state.views, &live.session, &true_name)?;
@@ -237,6 +252,10 @@ impl Wp {
                 "sha256": sha,
                 "true_name": true_name,
                 "version": version,
+                "base": match mode {
+                    WriteMode::Continue { base } => Some(base),
+                    WriteMode::Create => None,
+                },
             }),
         )?;
         Ok(true_name)
@@ -494,24 +513,28 @@ fn log_has_change(session: &Path) -> Result<bool, WpError> {
 }
 
 fn inherited_name(views: &[ViewRec], session: &Path, path: &str) -> Result<String, WpError> {
-    if let Some(name) = last_write_name(session, path)? {
-        return Ok(name);
+    Ok(current_of(views, session, path)?.0)
+}
+
+fn current_of(views: &[ViewRec], session: &Path, path: &str) -> Result<(String, u32), WpError> {
+    if let Some(found) = last_write(session, path)? {
+        return Ok(found);
     }
     views
         .last()
         .and_then(|v| v.files.iter().find(|f| f.path == path))
-        .map(|f| f.true_name.clone())
+        .map(|f| (f.true_name.clone(), f.version))
         .ok_or_else(|| WpError::NoCurrent(path.into()))
 }
 
-fn last_write_name(session: &Path, path: &str) -> Result<Option<String>, WpError> {
+fn last_write(session: &Path, path: &str) -> Result<Option<(String, u32)>, WpError> {
     let mut found = None;
     for line in read_log(session)? {
-        if line["path"].as_str() != Some(path) {
+        if line["path"].as_str() != Some(path) || line["op"].as_str() != Some("write") {
             continue;
         }
-        if line["op"].as_str() == Some("write") {
-            found = line["true_name"].as_str().map(str::to_string);
+        if let (Some(name), Some(ver)) = (line["true_name"].as_str(), line["version"].as_u64()) {
+            found = Some((name.to_string(), ver as u32));
         }
     }
     Ok(found)
@@ -701,7 +724,7 @@ fn clean_path(path: &str) -> Result<String, WpError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::act::{FileFacet, MemoryFacet, Permit, ToolTag};
+    use crate::act::{ActSentence, BareFile, FileFacet, Ingest, MemoryFacet, Permit, ToolTag};
     use crate::instance::Steward;
     use crate::principal::card::{AgentCard, ModelSpec, ToolGrant, Topology};
     use crate::testkit::TempDir;
@@ -740,9 +763,16 @@ mod tests {
         .unwrap()
     }
 
+    fn bound() -> ActSentence {
+        ActSentence::bare(Permit::Go, BareFile::None, Ingest::Ignore)
+    }
+
     fn worker(s: &Steward) -> (std::sync::Arc<crate::instance::Agent>, String) {
         let w = s
-            .spawn_worker(&card("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb", Permit::Go))
+            .spawn_worker(
+                &card("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb", Permit::Go),
+                &bound(),
+            )
             .unwrap();
         let id = s.workplace().subwp_of(w.id()).unwrap();
         (w, id)
@@ -768,20 +798,58 @@ mod tests {
             .join(format!("{:x}", Sha256::digest(b"v1")));
         let (w2, sub2) = {
             let w = s
-                .spawn_worker(&card("cccccccc-cccc-cccc-cccc-cccccccccccc", Permit::Go))
+                .spawn_worker(
+                    &card("cccccccc-cccc-cccc-cccc-cccccccccccc", Permit::Go),
+                    &bound(),
+                )
                 .unwrap();
             let id = s.workplace().subwp_of(w.id()).unwrap();
             (w, id)
         };
         let again = s
             .workplace()
-            .write(&sub2, "src/a.txt", b"v2", WriteMode::Continue)
+            .write(&sub2, "src/a.txt", b"v2", WriteMode::Continue { base: 1 })
             .unwrap();
         assert_eq!(again, name);
         s.close_worker(w2.id(), &[]).unwrap();
         let paths = s.workplace().current_paths();
         assert_eq!(paths, vec![("src/a.txt".into(), name, 2)]);
         assert_eq!(std::fs::read(blob).unwrap(), b"v1");
+    }
+
+    #[test]
+    fn continue_rejects_a_stale_base_without_writing() {
+        let tmp = TempDir::new("wp-stale");
+        let s = steward(&tmp);
+        let (w1, sub1) = worker(&s);
+        s.workplace()
+            .write(&sub1, "src/a.txt", b"v1", WriteMode::Create)
+            .unwrap();
+        s.close_worker(w1.id(), &[]).unwrap();
+        let (w2, sub2) = {
+            let w = s
+                .spawn_worker(
+                    &card("cccccccc-cccc-cccc-cccc-cccccccccccc", Permit::Go),
+                    &bound(),
+                )
+                .unwrap();
+            let id = s.workplace().subwp_of(w.id()).unwrap();
+            (w, id)
+        };
+        let err = s
+            .workplace()
+            .write(&sub2, "src/a.txt", b"v2", WriteMode::Continue { base: 9 })
+            .unwrap_err();
+        assert!(matches!(
+            err,
+            WpError::StaleBase {
+                current: 1,
+                base: 9,
+                ..
+            }
+        ));
+        let log = std::fs::read_to_string(w2.session().root().join("subwp/log.jsonl")).unwrap();
+        assert!(!log.contains("\"op\":\"write\"") && !log.contains("\"op\": \"write\""));
     }
 
     #[test]
@@ -795,7 +863,10 @@ mod tests {
         s.close_worker(w1.id(), &[]).unwrap();
         let (w2, sub2) = {
             let w = s
-                .spawn_worker(&card("cccccccc-cccc-cccc-cccc-cccccccccccc", Permit::Go))
+                .spawn_worker(
+                    &card("cccccccc-cccc-cccc-cccc-cccccccccccc", Permit::Go),
+                    &bound(),
+                )
                 .unwrap();
             let id = s.workplace().subwp_of(w.id()).unwrap();
             (w, id)
@@ -897,13 +968,16 @@ mod tests {
         s.close_worker(w.id(), &[]).unwrap();
         let (w2, sub2) = {
             let w = s
-                .spawn_worker(&card("cccccccc-cccc-cccc-cccc-cccccccccccc", Permit::Go))
+                .spawn_worker(
+                    &card("cccccccc-cccc-cccc-cccc-cccccccccccc", Permit::Go),
+                    &bound(),
+                )
                 .unwrap();
             let id = s.workplace().subwp_of(w.id()).unwrap();
             (w, id)
         };
         s.workplace()
-            .write(&sub2, "src/a.txt", b"a2", WriteMode::Continue)
+            .write(&sub2, "src/a.txt", b"a2", WriteMode::Continue { base: 1 })
             .unwrap();
         let b = s
             .workplace()
@@ -941,13 +1015,16 @@ mod tests {
         s.close_worker(w.id(), &[]).unwrap();
         let (w2, sub2) = {
             let w = s
-                .spawn_worker(&card("cccccccc-cccc-cccc-cccc-cccccccccccc", Permit::Go))
+                .spawn_worker(
+                    &card("cccccccc-cccc-cccc-cccc-cccccccccccc", Permit::Go),
+                    &bound(),
+                )
                 .unwrap();
             let id = s.workplace().subwp_of(w.id()).unwrap();
             (w, id)
         };
         s.workplace()
-            .write(&sub2, "src/a.txt", b"a2", WriteMode::Continue)
+            .write(&sub2, "src/a.txt", b"a2", WriteMode::Continue { base: 1 })
             .unwrap();
         let b = s
             .workplace()

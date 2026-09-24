@@ -11,7 +11,7 @@ use sha2::{Digest, Sha256};
 use thiserror::Error;
 use uuid::Uuid;
 
-use crate::act::Permit;
+use crate::act::{ActSentence, Permit};
 use crate::memstream::{AppendEvent, FromKind, Kind};
 use crate::principal::card::AgentCard;
 
@@ -25,6 +25,8 @@ use super::{InstanceError, spawn};
 pub enum StewardError {
     #[error("steward grant {0} is not deny")]
     GrantNotDenied(String),
+    #[error("worker grant {0} is outside the spawn bound")]
+    OutsideBound(String),
     #[error("no turn is running")]
     Idle,
     #[error("a turn is still running")]
@@ -154,7 +156,18 @@ impl Steward {
         &self.wp
     }
 
-    pub fn spawn_worker(&self, card: &AgentCard) -> Result<Arc<Agent>, StewardError> {
+    /// `bound` is the parent's charter for this child. It is written on the
+    /// steward tape. Every tool grant on `card` must fit inside it.
+    pub fn spawn_worker(
+        &self,
+        card: &AgentCard,
+        bound: &ActSentence,
+    ) -> Result<Arc<Agent>, StewardError> {
+        for grant in &card.tools {
+            if !bound.allows(&grant.tag) {
+                return Err(StewardError::OutsideBound(grant.name.clone()));
+            }
+        }
         let child = Arc::new(spawn(card, &self.root)?);
         let seat = self
             .pool
@@ -172,6 +185,7 @@ impl Steward {
                 "worker": child.id_str(),
                 "session": child.session().id_str(),
                 "subwp": sub,
+                "bound": bound,
             })
             .to_string(),
             vec![],
@@ -356,7 +370,7 @@ fn view_name(content: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::act::{FileFacet, MemoryFacet, ToolTag};
+    use crate::act::{ActSentence, BareFile, FileFacet, Ingest, MemoryFacet, ToolTag};
     use crate::principal::card::{ModelSpec, ToolGrant, Topology};
     use crate::testkit::TempDir;
 
@@ -407,7 +421,10 @@ mod tests {
         )
         .unwrap();
         let worker = steward
-            .spawn_worker(&bare("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb", Permit::Go))
+            .spawn_worker(
+                &bare("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb", Permit::Go),
+                &ActSentence::bare(Permit::Go, BareFile::None, Ingest::Ignore),
+            )
             .unwrap();
         assert_eq!(
             steward.pool.tree().parent(worker.id()).unwrap(),
@@ -433,6 +450,31 @@ mod tests {
         drop(turn);
         let intent = steward.pop().unwrap();
         assert_eq!(intent.text, "later");
+        let spawned = steward.agent().session().tape().read_all().unwrap();
+        assert!(
+            spawned.iter().any(|e| {
+                e.tags.iter().any(|t| t == "spawn") && e.content.contains("\"bound\"")
+            })
+        );
+    }
+
+    #[test]
+    fn spawn_rejects_a_grant_wider_than_the_bound() {
+        let tmp = TempDir::new("steward-bound");
+        let steward = Steward::open(
+            &bare("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", Permit::Deny),
+            tmp.path(),
+            "{}",
+            "[]",
+        )
+        .unwrap();
+        let err = steward.spawn_worker(
+            &bare("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb", Permit::Go),
+            &ActSentence::bare(Permit::Deny, BareFile::None, Ingest::Ignore),
+        );
+        assert!(matches!(err, Err(StewardError::OutsideBound(_))));
+        let id = Uuid::parse_str("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb").unwrap();
+        assert!(steward.workplace().subwp_of(id).is_none());
     }
 
     #[test]
@@ -446,7 +488,10 @@ mod tests {
         )
         .unwrap();
         let worker = steward
-            .spawn_worker(&bare("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb", Permit::Deny))
+            .spawn_worker(
+                &bare("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb", Permit::Deny),
+                &ActSentence::bare(Permit::Deny, BareFile::None, Ingest::Ignore),
+            )
             .unwrap();
         let marker = "BODY_SHOULD_NOT_APPEAR";
         worker
