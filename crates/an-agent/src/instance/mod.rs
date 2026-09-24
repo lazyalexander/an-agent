@@ -19,7 +19,9 @@ pub use context::{
 pub use pool::{Pool, PoolError, Turn};
 pub use recover::{RecoverError, recover};
 pub use session::{Session, SessionError};
-pub use steward::{Arrival, ProductPtr, Steward, StewardError, TurnKind};
+pub use steward::{
+    Arrival, Lease, ProductPtr, RestoredSeat, Steward, StewardError, TurnKind, restore_seats,
+};
 pub use subwp::{SubWp, SubWpError};
 pub use tree::{Seat, Tree, TreeError};
 pub use wp::{CloseOut, DepEdge, Resolve, VerId, Wp, WpError, WriteMode};

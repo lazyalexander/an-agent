@@ -4,6 +4,7 @@
 use std::collections::{HashMap, VecDeque};
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 use serde_json::{Value, json};
@@ -115,6 +116,32 @@ pub struct Steward {
     root: PathBuf,
     wp: Wp,
     bounds: Mutex<HashMap<Uuid, ActSentence>>,
+    flags: Mutex<HashMap<Uuid, Arc<AtomicBool>>>,
+}
+
+/// In-process cancel handle. It only observes flags down the parent chain.
+/// Rights and message text stay on the tape.
+pub struct Lease {
+    id: Uuid,
+    flags: Vec<Arc<AtomicBool>>,
+}
+
+impl Lease {
+    pub fn id(&self) -> Uuid {
+        self.id
+    }
+
+    pub fn is_cancelled(&self) -> bool {
+        self.flags.iter().any(|flag| flag.load(Ordering::Relaxed))
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RestoredSeat {
+    pub id: Uuid,
+    pub parent: Uuid,
+    pub lite: bool,
+    pub subwp: Option<String>,
 }
 
 impl Steward {
@@ -143,6 +170,7 @@ impl Steward {
         write_if_absent(&projection_path(agent.session().root(), "config"), config)?;
         write_if_absent(&projection_path(agent.session().root(), "context"), context)?;
         let wp = Wp::open(&root)?;
+        let steward_id = agent.id();
         Ok(Self {
             agent,
             pool,
@@ -151,6 +179,10 @@ impl Steward {
             root,
             wp,
             bounds: Mutex::new(HashMap::new()),
+            flags: Mutex::new(HashMap::from([(
+                steward_id,
+                Arc::new(AtomicBool::new(false)),
+            )])),
         })
     }
 
@@ -204,9 +236,19 @@ impl Steward {
     /// with no view. Already published views stay.
     pub fn release(&self, id: Uuid) -> Result<(), StewardError> {
         let ids = self.pool.tree().descendants(id)?;
+        self.append(
+            &self.agent,
+            "release",
+            json!({ "id": id.to_string() }).to_string(),
+            vec![],
+        )?;
         for worker in &ids {
             self.wp.abandon_worker(*worker)?;
             self.bounds
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .remove(worker);
+            self.flags
                 .lock()
                 .unwrap_or_else(|e| e.into_inner())
                 .remove(worker);
@@ -247,6 +289,57 @@ impl Steward {
             .get(parent)
             .ok_or(StewardError::NotMounted(parent))?;
         self.record_both(&parent_agent, &child_agent, "cancel", "cancel")
+    }
+
+    /// Set this seat's cancel flag and record cancel down every child edge.
+    /// The flag is the only thing a [`Lease`] carries.
+    pub fn propagate_cancel(&self, id: Uuid) -> Result<(), StewardError> {
+        if self
+            .flags
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .get(&id)
+            .is_none()
+            && id != self.agent.id()
+        {
+            return Err(StewardError::NotMounted(id));
+        }
+        self.mark_cancelled(id);
+        let children = self.pool.tree().children(id).unwrap_or_default();
+        for child in children {
+            self.propagate_cancel(child)?;
+        }
+        if id != self.agent.id() {
+            let parent = self
+                .pool
+                .tree()
+                .parent(id)?
+                .ok_or(StewardError::NotMounted(id))?;
+            self.cancel(parent, id)?;
+        }
+        Ok(())
+    }
+
+    pub fn lease(&self, id: Uuid) -> Result<Lease, StewardError> {
+        let flags_map = self.flags.lock().unwrap_or_else(|e| e.into_inner());
+        let mut flags = Vec::new();
+        let mut cursor = id;
+        loop {
+            let flag = flags_map
+                .get(&cursor)
+                .cloned()
+                .ok_or(StewardError::NotMounted(cursor))?;
+            flags.push(flag);
+            if cursor == self.agent.id() {
+                break;
+            }
+            cursor = self
+                .pool
+                .tree()
+                .parent(cursor)?
+                .ok_or(StewardError::NotMounted(cursor))?;
+        }
+        Ok(Lease { id, flags })
     }
 
     /// Child finishes and hands a result to its parent.
@@ -441,12 +534,17 @@ impl Steward {
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .insert(child.id(), bound.clone());
+        self.flags
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .insert(child.id(), Arc::new(AtomicBool::new(false)));
         self.append(
             &self.agent,
             "spawn",
             json!({
                 "worker": child.id_str(),
                 "session": child.session().id_str(),
+                "parent": parent.to_string(),
                 "subwp": sub,
                 "seat": if with_subwp { "worker" } else { "lite" },
                 "bound": bound,
@@ -455,6 +553,17 @@ impl Steward {
             vec![],
         )?;
         Ok(child)
+    }
+
+    fn mark_cancelled(&self, id: Uuid) {
+        if let Some(flag) = self
+            .flags
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .get(&id)
+        {
+            flag.store(true, Ordering::Relaxed);
+        }
     }
 
     fn charter(&self, worker: Uuid) -> Result<ActSentence, StewardError> {
@@ -513,6 +622,95 @@ impl Steward {
 fn hash_file(path: &Path) -> Result<String, StewardError> {
     let bytes = fs::read(path)?;
     Ok(format!("{:x}", Sha256::digest(bytes)))
+}
+
+pub fn restore_seats(session_dir: &Path) -> Result<Vec<RestoredSeat>, StewardError> {
+    use crate::memstream::JsonlStore;
+    let events = JsonlStore::open(session_dir.join("memory.jsonl"))?.read_all()?;
+    let mut nodes: HashMap<Uuid, RestoredSeat> = HashMap::new();
+    let mut steward_id = None;
+    for event in &events {
+        let Ok(steward) = event.from.parse::<Uuid>() else {
+            continue;
+        };
+        if event.tags.iter().any(|tag| tag == "spawn") {
+            steward_id = Some(steward);
+            let value: Value = serde_json::from_str(&event.content)?;
+            let id = value["worker"]
+                .as_str()
+                .unwrap_or_default()
+                .parse::<Uuid>()
+                .map_err(|_| StewardError::NotMounted(steward))?;
+            let parent = value["parent"]
+                .as_str()
+                .and_then(|text| text.parse().ok())
+                .unwrap_or(steward);
+            nodes.insert(
+                id,
+                RestoredSeat {
+                    id,
+                    parent,
+                    lite: value["seat"].as_str() == Some("lite"),
+                    subwp: value["subwp"].as_str().map(str::to_string),
+                },
+            );
+        }
+        if event.tags.iter().any(|tag| tag == "release") {
+            let value: Value = serde_json::from_str(&event.content)?;
+            if let Some(id) = value["id"].as_str().and_then(|text| text.parse().ok()) {
+                remove_subtree(&mut nodes, id);
+            }
+        }
+        if event.tags.iter().any(|tag| tag == "cancel") {
+            let value: Value = serde_json::from_str(&event.content)?;
+            if let Some(id) = value["to"].as_str().and_then(|text| text.parse().ok()) {
+                remove_subtree(&mut nodes, id);
+            }
+        }
+    }
+    let Some(steward_id) = steward_id else {
+        return Ok(Vec::new());
+    };
+    let live: Vec<Uuid> = nodes
+        .keys()
+        .copied()
+        .filter(|id| parent_chain_reaches(*id, &nodes, steward_id))
+        .collect();
+    nodes.retain(|id, _| live.contains(id));
+    let mut restored: Vec<_> = nodes.into_values().collect();
+    restored.sort_by_key(|seat| seat.id);
+    Ok(restored)
+}
+
+fn remove_subtree(nodes: &mut HashMap<Uuid, RestoredSeat>, root: Uuid) {
+    let mut drop_ids = vec![root];
+    let mut i = 0;
+    while i < drop_ids.len() {
+        let id = drop_ids[i];
+        for (child, seat) in nodes.iter() {
+            if seat.parent == id {
+                drop_ids.push(*child);
+            }
+        }
+        i += 1;
+    }
+    for id in drop_ids {
+        nodes.remove(&id);
+    }
+}
+
+fn parent_chain_reaches(id: Uuid, nodes: &HashMap<Uuid, RestoredSeat>, steward: Uuid) -> bool {
+    let mut cursor = id;
+    for _ in 0..=nodes.len() {
+        let Some(seat) = nodes.get(&cursor) else {
+            return false;
+        };
+        if seat.parent == steward {
+            return true;
+        }
+        cursor = seat.parent;
+    }
+    false
 }
 
 fn bound_is_fileless(bound: &ActSentence) -> bool {
@@ -779,6 +977,53 @@ mod tests {
             .unwrap()
             .iter()
             .any(|e| e.tags.iter().any(|t| t == tag))
+    }
+
+    #[test]
+    fn cancel_propagates_down_and_restore_skips_broken_chains() {
+        let tmp = TempDir::new("steward-lease");
+        let steward = Steward::open(
+            &bare("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", Permit::Deny),
+            tmp.path(),
+            "{}",
+            "[]",
+        )
+        .unwrap();
+        let bound = ActSentence::bare(Permit::Go, BareFile::None, Ingest::Ignore);
+        let kept = steward
+            .spawn_lite(
+                &bare("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb", Permit::Go),
+                &bound,
+            )
+            .unwrap();
+        let parent = steward
+            .spawn_worker(
+                &bare("cccccccc-cccc-cccc-cccc-cccccccccccc", Permit::Go),
+                &bound,
+            )
+            .unwrap();
+        let child = steward
+            .spawn_under(
+                parent.id(),
+                &bare("dddddddd-dddd-dddd-dddd-dddddddddddd", Permit::Go),
+                &bound,
+            )
+            .unwrap();
+        let parent_lease = steward.lease(parent.id()).unwrap();
+        let child_lease = steward.lease(child.id()).unwrap();
+        let kept_lease = steward.lease(kept.id()).unwrap();
+        steward.propagate_cancel(parent.id()).unwrap();
+        assert!(parent_lease.is_cancelled());
+        assert!(child_lease.is_cancelled());
+        assert!(!kept_lease.is_cancelled());
+        assert!(tagged(&child, "cancel"));
+        let restored = restore_seats(steward.agent().session().root()).unwrap();
+        assert!(restored.iter().any(|seat| seat.id == kept.id()));
+        assert!(
+            restored
+                .iter()
+                .all(|seat| seat.id != parent.id() && seat.id != child.id())
+        );
     }
 
     #[test]
