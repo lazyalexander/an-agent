@@ -1,7 +1,7 @@
 //! The one user-facing agent in an instance. Spawn, mail, and link are
 //! verbs here — not tools. World-facing grants on its card must be Deny.
 
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
@@ -11,7 +11,7 @@ use sha2::{Digest, Sha256};
 use thiserror::Error;
 use uuid::Uuid;
 
-use crate::act::{ActSentence, Permit};
+use crate::act::{ActSentence, MailTo, Permit};
 use crate::memstream::{AppendEvent, FromKind, Kind};
 use crate::principal::card::AgentCard;
 
@@ -27,6 +27,8 @@ pub enum StewardError {
     GrantNotDenied(String),
     #[error("worker grant {0} is outside the spawn bound")]
     OutsideBound(String),
+    #[error("signal {0} is outside the charter")]
+    SignalDenied(&'static str),
     #[error("no turn is running")]
     Idle,
     #[error("a turn is still running")]
@@ -106,6 +108,7 @@ pub struct Steward {
     queue: Mutex<VecDeque<Intent>>,
     root: PathBuf,
     wp: Wp,
+    bounds: Mutex<HashMap<Uuid, ActSentence>>,
 }
 
 impl Steward {
@@ -141,6 +144,7 @@ impl Steward {
             queue: Mutex::new(VecDeque::new()),
             root,
             wp,
+            bounds: Mutex::new(HashMap::new()),
         })
     }
 
@@ -178,6 +182,10 @@ impl Steward {
             .unwrap_or_else(|e| e.into_inner())
             .push(seat);
         let sub = self.wp.register(child.id(), child.session().root())?;
+        self.bounds
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .insert(child.id(), bound.clone());
         self.append(
             &self.agent,
             "spawn",
@@ -191,6 +199,74 @@ impl Steward {
             vec![],
         )?;
         Ok(child)
+    }
+
+    /// Parent cancels a direct child. Recorded on both tapes. A child cannot
+    /// cancel its parent or a sibling.
+    pub fn cancel(&self, parent: Uuid, child: Uuid) -> Result<String, StewardError> {
+        let actual = self.pool.tree().parent(child)?;
+        if actual != Some(parent) {
+            return Err(StewardError::SignalDenied("cancel"));
+        }
+        let child_agent = self
+            .pool
+            .tree()
+            .get(child)
+            .ok_or(StewardError::NotMounted(child))?;
+        let parent_agent = self
+            .pool
+            .tree()
+            .get(parent)
+            .ok_or(StewardError::NotMounted(parent))?;
+        self.record_both(&parent_agent, &child_agent, "cancel", "cancel")
+    }
+
+    /// Child ends itself. Denied when the charter's return face is Deny.
+    pub fn child_return(&self, child: Uuid, text: &str) -> Result<String, StewardError> {
+        let parent = self
+            .pool
+            .tree()
+            .parent(child)?
+            .ok_or(StewardError::NotMounted(child))?;
+        let bound = self.charter(child)?;
+        if bound.signal().ret == Permit::Deny {
+            return Err(StewardError::SignalDenied("return"));
+        }
+        let child_agent = self
+            .pool
+            .tree()
+            .get(child)
+            .ok_or(StewardError::NotMounted(child))?;
+        let parent_agent = self
+            .pool
+            .tree()
+            .get(parent)
+            .ok_or(StewardError::NotMounted(parent))?;
+        self.record_both(&child_agent, &parent_agent, "return", text)
+    }
+
+    /// Child mail. Parent is always allowed. Anyone else requires `mail: any`.
+    pub fn child_mail(&self, from: Uuid, to: Uuid, text: &str) -> Result<String, StewardError> {
+        let parent = self
+            .pool
+            .tree()
+            .parent(from)?
+            .ok_or(StewardError::NotMounted(from))?;
+        let bound = self.charter(from)?;
+        if to != parent && bound.signal().mail != MailTo::Any {
+            return Err(StewardError::SignalDenied("mail"));
+        }
+        let from_agent = self
+            .pool
+            .tree()
+            .get(from)
+            .ok_or(StewardError::NotMounted(from))?;
+        let to_agent = self
+            .pool
+            .tree()
+            .get(to)
+            .ok_or(StewardError::NotMounted(to))?;
+        self.record_both(&from_agent, &to_agent, "mail", text)
     }
 
     pub fn submit(&self, worker: Uuid, text: &str) -> Result<Arrival, StewardError> {
@@ -299,6 +375,37 @@ impl Steward {
         Ok(links)
     }
 
+    fn charter(&self, worker: Uuid) -> Result<ActSentence, StewardError> {
+        self.bounds
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .get(&worker)
+            .cloned()
+            .ok_or(StewardError::NotMounted(worker))
+    }
+
+    fn record_both(
+        &self,
+        from: &Agent,
+        to: &Agent,
+        tag: &str,
+        text: &str,
+    ) -> Result<String, StewardError> {
+        let body = json!({
+            "to": to.id_str(),
+            "text": text,
+        })
+        .to_string();
+        let origin = self.append(from, tag, body, vec![])?;
+        let back = json!({
+            "from": from.id_str(),
+            "text": text,
+        })
+        .to_string();
+        self.append(to, tag, back, vec![origin.clone()])?;
+        Ok(origin)
+    }
+
     fn append(
         &self,
         agent: &Agent,
@@ -370,7 +477,9 @@ fn view_name(content: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::act::{ActSentence, BareFile, FileFacet, Ingest, MemoryFacet, ToolTag};
+    use crate::act::{
+        ActSentence, BareFile, FileFacet, Ingest, MailTo, MemoryFacet, Signal, ToolTag,
+    };
     use crate::principal::card::{ModelSpec, ToolGrant, Topology};
     use crate::testkit::TempDir;
 
@@ -475,6 +584,70 @@ mod tests {
         assert!(matches!(err, Err(StewardError::OutsideBound(_))));
         let id = Uuid::parse_str("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb").unwrap();
         assert!(steward.workplace().subwp_of(id).is_none());
+    }
+
+    fn tagged(agent: &Agent, tag: &str) -> bool {
+        agent
+            .session()
+            .tape()
+            .read_all()
+            .unwrap()
+            .iter()
+            .any(|e| e.tags.iter().any(|t| t == tag))
+    }
+
+    #[test]
+    fn signals_follow_the_charter_and_only_parent_cancels() {
+        let tmp = TempDir::new("steward-signal");
+        let steward = Steward::open(
+            &bare("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", Permit::Deny),
+            tmp.path(),
+            "{}",
+            "[]",
+        )
+        .unwrap();
+        let bound =
+            ActSentence::bare(Permit::Go, BareFile::None, Ingest::Ignore).with_signal(Signal {
+                ret: Permit::Deny,
+                mail: MailTo::Parent,
+            });
+        let worker = steward
+            .spawn_worker(
+                &bare("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb", Permit::Go),
+                &bound,
+            )
+            .unwrap();
+        let sibling = steward
+            .spawn_worker(
+                &bare("cccccccc-cccc-cccc-cccc-cccccccccccc", Permit::Go),
+                &ActSentence::bare(Permit::Go, BareFile::None, Ingest::Ignore),
+            )
+            .unwrap();
+        assert!(matches!(
+            steward.child_return(worker.id(), "done"),
+            Err(StewardError::SignalDenied("return"))
+        ));
+        assert!(matches!(
+            steward.child_mail(worker.id(), sibling.id(), "hi"),
+            Err(StewardError::SignalDenied("mail"))
+        ));
+        assert!(matches!(
+            steward.cancel(worker.id(), steward.id()),
+            Err(StewardError::SignalDenied("cancel"))
+        ));
+        let id = steward.cancel(steward.id(), worker.id()).unwrap();
+        assert!(tagged(steward.agent(), "cancel"));
+        assert!(tagged(&worker, "cancel"));
+        assert!(!tagged(&sibling, "cancel"));
+        let back = worker.session().tape().read_all().unwrap();
+        assert!(
+            back.iter()
+                .any(|e| e.refs.first().map(String::as_str) == Some(id.as_str()))
+        );
+        steward
+            .child_mail(worker.id(), steward.id(), "ping")
+            .unwrap();
+        assert!(tagged(&worker, "mail"));
     }
 
     #[test]

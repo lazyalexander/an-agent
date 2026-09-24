@@ -52,6 +52,33 @@ pub enum Ingest {
     },
 }
 
+/// Who a child may address. `Any` is wider than `Parent`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum MailTo {
+    #[default]
+    Parent,
+    Any,
+}
+
+/// Signal face of a charter. Cancel is not here: a parent may always cancel
+/// its child, and a child may not cancel anyone.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Signal {
+    #[serde(rename = "return")]
+    pub ret: Permit,
+    pub mail: MailTo,
+}
+
+impl Default for Signal {
+    fn default() -> Self {
+        Self {
+            ret: Permit::Go,
+            mail: MailTo::Parent,
+        }
+    }
+}
+
 /// Orthogonal faces composed so illegal combinations cannot be built.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "form", rename_all = "snake_case")]
@@ -60,17 +87,23 @@ pub enum ActSentence {
         permit: Permit,
         file: BareFile,
         memory: Ingest,
+        #[serde(default)]
+        signal: Signal,
     },
     OnResource {
         permit: Permit,
         resource: Resource,
         access: Access,
         memory: Ingest,
+        #[serde(default)]
+        signal: Signal,
     },
     Forget {
         permit: Permit,
         #[serde(rename = "rememberId")]
         remember_id: String,
+        #[serde(default)]
+        signal: Signal,
     },
 }
 
@@ -80,6 +113,7 @@ impl ActSentence {
             permit,
             file,
             memory,
+            signal: Signal::default(),
         }
     }
 
@@ -89,6 +123,7 @@ impl ActSentence {
             resource,
             access,
             memory,
+            signal: Signal::default(),
         }
     }
 
@@ -96,6 +131,24 @@ impl ActSentence {
         Self::Forget {
             permit,
             remember_id: remember_id.into(),
+            signal: Signal::default(),
+        }
+    }
+
+    pub fn with_signal(mut self, signal: Signal) -> Self {
+        match &mut self {
+            Self::Bare { signal: slot, .. }
+            | Self::OnResource { signal: slot, .. }
+            | Self::Forget { signal: slot, .. } => *slot = signal,
+        }
+        self
+    }
+
+    pub fn signal(&self) -> Signal {
+        match self {
+            Self::Bare { signal, .. }
+            | Self::OnResource { signal, .. }
+            | Self::Forget { signal, .. } => *signal,
         }
     }
 
@@ -130,6 +183,7 @@ impl ActSentence {
                         permit: tag.permit,
                         file: BareFile::None,
                         memory: ingest,
+                        signal: Signal::default(),
                     });
                 }
                 Ok(Self::bare(tag.permit, BareFile::None, ingest))
@@ -290,6 +344,7 @@ impl fmt::Display for ActSentence {
                 permit,
                 file,
                 memory,
+                ..
             } => {
                 let file = match file {
                     BareFile::None => "none",
@@ -314,6 +369,7 @@ impl fmt::Display for ActSentence {
                 resource,
                 access,
                 memory,
+                ..
             } => {
                 let acc = match access {
                     Access::R { recursive } => {
@@ -355,6 +411,7 @@ impl fmt::Display for ActSentence {
             Self::Forget {
                 permit,
                 remember_id,
+                ..
             } => {
                 let p = match permit {
                     Permit::Ask => "ask",
