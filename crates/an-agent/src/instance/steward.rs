@@ -11,7 +11,7 @@ use sha2::{Digest, Sha256};
 use thiserror::Error;
 use uuid::Uuid;
 
-use crate::act::{ActSentence, MailTo, Permit};
+use crate::act::{ActSentence, Audience, Permit};
 use crate::memstream::{AppendEvent, FromKind, Kind};
 use crate::principal::card::AgentCard;
 
@@ -221,16 +221,17 @@ impl Steward {
         self.record_both(&parent_agent, &child_agent, "cancel", "cancel")
     }
 
-    /// Child ends itself. Denied when the charter's return face is Deny.
-    pub fn child_return(&self, child: Uuid, text: &str) -> Result<String, StewardError> {
+    /// Child finishes and hands a result to its parent.
+    /// Denied when the charter's complete face is Deny.
+    pub fn complete(&self, child: Uuid, text: &str) -> Result<String, StewardError> {
         let parent = self
             .pool
             .tree()
             .parent(child)?
             .ok_or(StewardError::NotMounted(child))?;
         let bound = self.charter(child)?;
-        if bound.signal().ret == Permit::Deny {
-            return Err(StewardError::SignalDenied("return"));
+        if bound.signal().complete == Permit::Deny {
+            return Err(StewardError::SignalDenied("complete"));
         }
         let child_agent = self
             .pool
@@ -242,19 +243,20 @@ impl Steward {
             .tree()
             .get(parent)
             .ok_or(StewardError::NotMounted(parent))?;
-        self.record_both(&child_agent, &parent_agent, "return", text)
+        self.record_both(&child_agent, &parent_agent, "complete", text)
     }
 
-    /// Child mail. Parent is always allowed. Anyone else requires `mail: any`.
-    pub fn child_mail(&self, from: Uuid, to: Uuid, text: &str) -> Result<String, StewardError> {
+    /// Child sends a message. The parent is always allowed.
+    /// Anyone else requires `audience: any`.
+    pub fn send(&self, from: Uuid, to: Uuid, text: &str) -> Result<String, StewardError> {
         let parent = self
             .pool
             .tree()
             .parent(from)?
             .ok_or(StewardError::NotMounted(from))?;
         let bound = self.charter(from)?;
-        if to != parent && bound.signal().mail != MailTo::Any {
-            return Err(StewardError::SignalDenied("mail"));
+        if to != parent && bound.signal().audience != Audience::Any {
+            return Err(StewardError::SignalDenied("send"));
         }
         let from_agent = self
             .pool
@@ -266,7 +268,7 @@ impl Steward {
             .tree()
             .get(to)
             .ok_or(StewardError::NotMounted(to))?;
-        self.record_both(&from_agent, &to_agent, "mail", text)
+        self.record_both(&from_agent, &to_agent, "send", text)
     }
 
     pub fn submit(&self, worker: Uuid, text: &str) -> Result<Arrival, StewardError> {
@@ -313,13 +315,13 @@ impl Steward {
             "text": text,
         })
         .to_string();
-        let parent = self.append(&self.agent, "mail", body, vec![])?;
+        let parent = self.append(&self.agent, "send", body, vec![])?;
         let back = json!({
             "to_session": self.agent.session().id_str(),
             "text": text,
         })
         .to_string();
-        self.append(&child, "mail", back, vec![parent.clone()])?;
+        self.append(&child, "send", back, vec![parent.clone()])?;
         Ok(parent)
     }
 
@@ -478,7 +480,7 @@ fn view_name(content: &str) -> Option<String> {
 mod tests {
     use super::*;
     use crate::act::{
-        ActSentence, BareFile, FileFacet, Ingest, MailTo, MemoryFacet, Signal, ToolTag,
+        ActSentence, Audience, BareFile, FileFacet, Ingest, MemoryFacet, Signal, ToolTag,
     };
     use crate::principal::card::{ModelSpec, ToolGrant, Topology};
     use crate::testkit::TempDir;
@@ -553,7 +555,7 @@ mod tests {
         assert!(
             mailed
                 .iter()
-                .any(|e| e.tags.iter().any(|t| t == "mail")
+                .any(|e| e.tags.iter().any(|t| t == "send")
                     && e.content.contains("also check tests"))
         );
         drop(turn);
@@ -608,8 +610,8 @@ mod tests {
         .unwrap();
         let bound =
             ActSentence::bare(Permit::Go, BareFile::None, Ingest::Ignore).with_signal(Signal {
-                ret: Permit::Deny,
-                mail: MailTo::Parent,
+                complete: Permit::Deny,
+                audience: Audience::Parent,
             });
         let worker = steward
             .spawn_worker(
@@ -624,12 +626,12 @@ mod tests {
             )
             .unwrap();
         assert!(matches!(
-            steward.child_return(worker.id(), "done"),
-            Err(StewardError::SignalDenied("return"))
+            steward.complete(worker.id(), "done"),
+            Err(StewardError::SignalDenied("complete"))
         ));
         assert!(matches!(
-            steward.child_mail(worker.id(), sibling.id(), "hi"),
-            Err(StewardError::SignalDenied("mail"))
+            steward.send(worker.id(), sibling.id(), "hi"),
+            Err(StewardError::SignalDenied("send"))
         ));
         assert!(matches!(
             steward.cancel(worker.id(), steward.id()),
@@ -644,10 +646,8 @@ mod tests {
             back.iter()
                 .any(|e| e.refs.first().map(String::as_str) == Some(id.as_str()))
         );
-        steward
-            .child_mail(worker.id(), steward.id(), "ping")
-            .unwrap();
-        assert!(tagged(&worker, "mail"));
+        steward.send(worker.id(), steward.id(), "ping").unwrap();
+        assert!(tagged(&worker, "send"));
     }
 
     #[test]

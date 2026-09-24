@@ -52,29 +52,28 @@ pub enum Ingest {
     },
 }
 
-/// Who a child may address. `Any` is wider than `Parent`.
+/// Who an agent may address. `Any` is wider than `Parent`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
-pub enum MailTo {
+pub enum Audience {
     #[default]
     Parent,
     Any,
 }
 
-/// Signal face of a charter. Cancel is not here: a parent may always cancel
-/// its child, and a child may not cancel anyone.
+/// Signal face of a charter. Cancel is not granted here: a parent may always
+/// cancel its child, and a child may not cancel anyone.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Signal {
-    #[serde(rename = "return")]
-    pub ret: Permit,
-    pub mail: MailTo,
+    pub complete: Permit,
+    pub audience: Audience,
 }
 
 impl Default for Signal {
     fn default() -> Self {
         Self {
-            ret: Permit::Go,
-            mail: MailTo::Parent,
+            complete: Permit::Go,
+            audience: Audience::Parent,
         }
     }
 }
