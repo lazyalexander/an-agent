@@ -1,19 +1,18 @@
-//! Composition crate. Re-exports the kernel and mounts context assembly,
-//! tool constructors, and the workplace CAS store.
+//! Composition crate. Re-exports the kernel, tools, and the CAS store,
+//! and mounts context assembly.
 //!
-//! [`principal::factory::build`] and [`instance::spawn`] keep the bash
-//! constructor list. The kernel functions take that list as an argument.
+//! [`principal::factory::build`] and [`runtime::spawn`] register bash.
+//! The kernel functions take that constructor list as an argument.
 
 mod context;
 mod factory;
 
-pub mod tools;
-pub mod workplace;
-
 pub use an_agent_core::{act, det_seam, memstream};
+pub use an_agent_tool as tools;
+pub use an_agent_workspace as workspace;
 
-pub mod instance {
-    pub use an_agent_core::instance::*;
+pub mod runtime {
+    pub use an_agent_core::runtime::*;
 
     use std::path::Path;
     use std::sync::Arc;
@@ -25,18 +24,15 @@ pub mod instance {
         record_summary, segment_sources,
     };
 
-    pub fn spawn(
-        card: &AgentCard,
-        sessions_root: impl AsRef<Path>,
-    ) -> Result<Agent, InstanceError> {
+    pub fn spawn(card: &AgentCard, sessions_root: impl AsRef<Path>) -> Result<Agent, RuntimeError> {
         let registry = crate::factory::tool_registry();
-        an_agent_core::instance::spawn_with(card, sessions_root, &registry)
+        an_agent_core::runtime::spawn_with(card, sessions_root, &registry)
     }
 
     pub fn spawn_arc(
         card: &AgentCard,
         sessions_root: impl AsRef<Path>,
-    ) -> Result<Arc<Agent>, InstanceError> {
+    ) -> Result<Arc<Agent>, RuntimeError> {
         Ok(Arc::new(spawn(card, sessions_root)?))
     }
 }
@@ -49,7 +45,7 @@ pub mod principal {
 
     pub mod factory {
         pub use an_agent_core::principal::factory::{
-            AgentRuntime, FactoryError, ToolCtor, build_with,
+            BuiltAgent, FactoryError, ToolCtor, build_with,
         };
 
         pub use crate::factory::{build, tool_registry};

@@ -1,4 +1,4 @@
-//! Instance runtime for the loop: private session, live agent, registration
+//! Runtime for the loop: private session, live agent, registration
 //! tree, bounded turn pool, steward, and the steward workspace.
 //! Context assembly lives in the composition crate.
 
@@ -31,7 +31,7 @@ use crate::principal::card::AgentCard;
 use crate::principal::factory::{self, FactoryError};
 
 #[derive(Debug, Error)]
-pub enum InstanceError {
+pub enum RuntimeError {
     #[error(transparent)]
     Factory(#[from] FactoryError),
     #[error(transparent)]
@@ -48,18 +48,18 @@ pub fn spawn_with(
     card: &AgentCard,
     sessions_root: impl AsRef<Path>,
     registry: &[(&str, factory::ToolCtor)],
-) -> Result<Agent, InstanceError> {
+) -> Result<Agent, RuntimeError> {
     let hash = card.hash()?;
     let rt = factory::build_with(card, &hash, registry)?;
     let session = Session::create(sessions_root, card.id)?;
-    Ok(Agent::from_runtime(rt, session)?)
+    Ok(Agent::from_built(rt, session)?)
 }
 
 pub fn spawn_arc_with(
     card: &AgentCard,
     sessions_root: impl AsRef<Path>,
     registry: &[(&str, factory::ToolCtor)],
-) -> Result<Arc<Agent>, InstanceError> {
+) -> Result<Arc<Agent>, RuntimeError> {
     Ok(Arc::new(spawn_with(card, sessions_root, registry)?))
 }
 
@@ -73,11 +73,11 @@ mod tests {
     use crate::testkit::{TempDir, bash_registry};
     use uuid::Uuid;
 
-    fn spawn(card: &AgentCard, root: &std::path::Path) -> Result<Agent, InstanceError> {
+    fn spawn(card: &AgentCard, root: &std::path::Path) -> Result<Agent, RuntimeError> {
         super::spawn_with(card, root, &bash_registry())
     }
 
-    fn spawn_arc(card: &AgentCard, root: &std::path::Path) -> Result<Arc<Agent>, InstanceError> {
+    fn spawn_arc(card: &AgentCard, root: &std::path::Path) -> Result<Arc<Agent>, RuntimeError> {
         super::spawn_arc_with(card, root, &bash_registry())
     }
 

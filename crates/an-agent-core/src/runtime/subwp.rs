@@ -1,5 +1,5 @@
 //! Append-only path log for one worker session. Old blob bytes are never
-//! rewritten. This is not the workplace CAS.
+//! rewritten. This is not the workspace CAS.
 
 use std::fs::{self, OpenOptions};
 use std::io::Write;
@@ -14,11 +14,11 @@ use crate::act::{FileFacet, Permit};
 
 #[derive(Debug, Error)]
 pub enum SubWpError {
-    #[error("grant denies this sub-workplace op")]
+    #[error("grant denies this sub-workspace op")]
     Denied,
     #[error("path not found: {0}")]
     NotFound(String),
-    #[error("path escapes the sub-workplace: {0}")]
+    #[error("path escapes the sub-workspace: {0}")]
     BadPath(String),
     #[error("io: {0}")]
     Io(#[from] std::io::Error),
@@ -177,8 +177,8 @@ mod tests {
     use super::*;
     use crate::act::Permit;
     use crate::act::{ActSentence, BareFile, FileFacet, Ingest, MemoryFacet, ToolTag};
-    use crate::instance::{ProductPtr, Steward};
     use crate::principal::card::{AgentCard, ModelSpec, ToolGrant, Topology};
+    use crate::runtime::{ProductPtr, Steward};
     use crate::testkit::TempDir;
     use uuid::Uuid;
 

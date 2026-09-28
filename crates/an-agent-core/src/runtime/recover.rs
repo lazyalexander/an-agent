@@ -59,8 +59,8 @@ mod tests {
     use super::*;
     use crate::act::Permit;
     use crate::act::{FileFacet, MemoryFacet, ToolTag};
-    use crate::instance::Steward;
     use crate::principal::card::{AgentCard, ModelSpec, ToolGrant, Topology};
+    use crate::runtime::Steward;
     use crate::testkit::TempDir;
     use uuid::Uuid;
 
@@ -119,7 +119,7 @@ mod tests {
     fn missing_card_hash_event_fails_closed() {
         let tmp = TempDir::new("recover-miss");
         let agent_id = Uuid::parse_str("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa").unwrap();
-        let session = crate::instance::Session::create(tmp.path(), agent_id).unwrap();
+        let session = crate::runtime::Session::create(tmp.path(), agent_id).unwrap();
         let err = recover(session.root()).unwrap_err();
         assert!(matches!(err, RecoverError::Missing("prompt")));
     }

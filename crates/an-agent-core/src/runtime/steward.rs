@@ -1,4 +1,4 @@
-//! The one user-facing agent in an instance. Spawn, mail, and link are
+//! The one user-facing agent in a runtime. Spawn, mail, and link are
 //! verbs here — not tools. World-facing grants on its card must be Deny.
 
 use std::collections::{HashMap, VecDeque};
@@ -20,7 +20,7 @@ use super::agent::Agent;
 use super::pool::{Pool, PoolError, Turn};
 use super::tree::Seat;
 use super::wp::{CloseOut, DepEdge, Wp, WpError};
-use super::{InstanceError, spawn_with};
+use super::{RuntimeError, spawn_with};
 
 #[derive(Debug, Error)]
 pub enum StewardError {
@@ -34,7 +34,7 @@ pub enum StewardError {
     LiteFile,
     #[error("spawn bound is wider than the parent charter")]
     WiderThanParent,
-    #[error("worker {0} has no sub-workplace")]
+    #[error("worker {0} has no sub-workspace")]
     NoSubwp(Uuid),
     #[error("no turn is running")]
     Idle,
@@ -45,7 +45,7 @@ pub enum StewardError {
     #[error("worker is not mounted: {0}")]
     NotMounted(Uuid),
     #[error(transparent)]
-    Instance(#[from] InstanceError),
+    Runtime(#[from] RuntimeError),
     #[error(transparent)]
     Pool(#[from] PoolError),
     #[error(transparent)]
@@ -215,13 +215,13 @@ impl Steward {
         &self.agent
     }
 
-    pub fn workplace(&self) -> &Wp {
+    pub fn workspace(&self) -> &Wp {
         &self.wp
     }
 
     /// `bound` is the parent's charter for this child. It is written on the
     /// steward tape. Every tool grant on `card` must fit inside it.
-    /// Registers one sub-workplace for the child.
+    /// Registers one sub-workspace for the child.
     pub fn spawn_worker(
         &self,
         card: &AgentCard,
@@ -240,7 +240,7 @@ impl Steward {
         self.spawn_child(parent, card, bound, true)
     }
 
-    /// A child with a seat and no sub-workplace. It cannot write paths.
+    /// A child with a seat and no sub-workspace. It cannot write paths.
     /// The charter's file face must be `none`. Finishing is `complete` only.
     pub fn spawn_lite(
         &self,
@@ -253,7 +253,7 @@ impl Steward {
         self.spawn_child(self.agent.id(), card, bound, false)
     }
 
-    /// Drop this seat and every descendant. Live sub-workplaces are abandoned
+    /// Drop this seat and every descendant. Live sub-workspaces are abandoned
     /// with no view. Already published views stay.
     pub fn release(&self, id: Uuid) -> Result<(), StewardError> {
         let ids = self.pool.tree().descendants(id)?;
@@ -467,7 +467,7 @@ impl Steward {
         Ok(parent)
     }
 
-    /// Publish the worker's sub-workplace if it wrote anything.
+    /// Publish the worker's sub-workspace if it wrote anything.
     /// Steward does not write file bytes.
     pub fn close_worker(&self, worker: Uuid, extra: &[DepEdge]) -> Result<CloseOut, StewardError> {
         let sub = self
@@ -904,7 +904,7 @@ mod tests {
         );
         assert!(matches!(err, Err(StewardError::OutsideBound(_))));
         let id = Uuid::parse_str("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb").unwrap();
-        assert!(steward.workplace().subwp_of(id).is_none());
+        assert!(steward.workspace().subwp_of(id).is_none());
     }
 
     #[test]
@@ -936,7 +936,7 @@ mod tests {
             steward.pool.tree().parent(lite.id()).unwrap(),
             Some(steward.id())
         );
-        assert!(steward.workplace().subwp_of(lite.id()).is_none());
+        assert!(steward.workspace().subwp_of(lite.id()).is_none());
         assert!(matches!(
             steward.close_worker(lite.id(), &[]),
             Err(StewardError::NoSubwp(_))
@@ -944,7 +944,7 @@ mod tests {
         steward.complete(lite.id(), "result").unwrap();
         assert!(tagged(&lite, "complete"));
         assert!(tagged(steward.agent(), "complete"));
-        assert!(steward.workplace().current_paths().is_empty());
+        assert!(steward.workspace().current_paths().is_empty());
     }
 
     #[test]
@@ -983,21 +983,21 @@ mod tests {
                 &parent_bound,
             )
             .unwrap();
-        let sub = steward.workplace().subwp_of(parent.id()).unwrap();
+        let sub = steward.workspace().subwp_of(parent.id()).unwrap();
         steward
-            .workplace()
+            .workspace()
             .write(
                 &sub,
                 "src/a.txt",
                 b"draft",
-                crate::instance::WriteMode::Create,
+                crate::runtime::WriteMode::Create,
             )
             .unwrap();
         steward.release(parent.id()).unwrap();
         assert!(steward.pool.tree().get(parent.id()).is_none());
         assert!(steward.pool.tree().get(child.id()).is_none());
-        assert!(steward.workplace().subwp_of(parent.id()).is_none());
-        assert!(steward.workplace().current_paths().is_empty());
+        assert!(steward.workspace().subwp_of(parent.id()).is_none());
+        assert!(steward.workspace().current_paths().is_empty());
     }
 
     fn tagged(agent: &Agent, tag: &str) -> bool {

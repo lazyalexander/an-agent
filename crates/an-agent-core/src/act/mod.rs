@@ -17,8 +17,8 @@ pub use tool::{ActCtx, Tool, ToolCall, ToolCtx, ToolError, ToolMessage, run_tool
 /// or model-side. Invoke covers all non-deterministic external calls —
 /// generic tool use and model calls alike.
 ///
-/// `Deny` is the agent-side refusal. Workplace rights use the word Forbidden
-/// when an effect falls outside the workplace; that word is not an `ActKind`.
+/// `Deny` is the agent-side refusal. Workspace rights use the word Forbidden
+/// when an effect falls outside the workspace; that word is not an `ActKind`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ActKind {
     Utterance,

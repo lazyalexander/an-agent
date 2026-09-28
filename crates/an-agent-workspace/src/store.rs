@@ -12,14 +12,14 @@ use an_agent_core::act::{Resource, ResourceKind};
 use super::id::ObjectId;
 
 #[derive(Debug, Error)]
-pub enum WorkplaceError {
+pub enum WorkspaceError {
     #[error("io: {0}")]
     Io(#[from] std::io::Error),
     #[error("json: {0}")]
     Json(#[from] serde_json::Error),
     #[error("{0}")]
     Msg(String),
-    #[error("only the lead agent may change this workplace")]
+    #[error("only the lead agent may change this workspace")]
     NotLead,
     #[error("unknown ref {0}")]
     UnknownRef(String),
@@ -28,8 +28,8 @@ pub enum WorkplaceError {
 }
 
 /// Governance files in the tree. Suffix is `.wp`, not `.json`.
-pub const WORKERS_FILE: &[&str] = &[".workplace", "workers.wp"];
-pub const PERMIT_FILE: &[&str] = &[".workplace", "permit.wp"];
+pub const WORKERS_FILE: &[&str] = &[".workspace", "workers.wp"];
+pub const PERMIT_FILE: &[&str] = &[".workspace", "permit.wp"];
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct Meta {
@@ -56,15 +56,15 @@ pub struct Commit {
     pub blob: ObjectId,
 }
 
-pub struct Workplace {
+pub struct Workspace {
     pub id: Uuid,
     root: PathBuf,
     lead: Uuid,
 }
 
-impl Workplace {
-    pub fn create(dir: impl AsRef<Path>, lead: Uuid) -> Result<Self, WorkplaceError> {
-        let id = crate::det_seam::Entropy::os().uuid_v4();
+impl Workspace {
+    pub fn create(dir: impl AsRef<Path>, lead: Uuid) -> Result<Self, WorkspaceError> {
+        let id = an_agent_core::det_seam::Entropy::os().uuid_v4();
         let root = dir.as_ref().join(id.to_string());
         fs::create_dir_all(root.join("objects"))?;
         fs::create_dir_all(root.join("refs"))?;
@@ -79,7 +79,7 @@ impl Workplace {
         Ok(wp)
     }
 
-    pub fn open(root: impl AsRef<Path>, id: Uuid) -> Result<Self, WorkplaceError> {
+    pub fn open(root: impl AsRef<Path>, id: Uuid) -> Result<Self, WorkspaceError> {
         let root = root.as_ref().join(id.to_string());
         let meta: Meta = serde_json::from_slice(&fs::read(root.join("meta.wp"))?)?;
         Ok(Self {
@@ -93,9 +93,9 @@ impl Workplace {
         self.lead
     }
 
-    pub fn head(&self) -> Result<ObjectId, WorkplaceError> {
+    pub fn head(&self) -> Result<ObjectId, WorkspaceError> {
         let raw = fs::read_to_string(self.root.join("HEAD"))?;
-        ObjectId::from_hex(raw.trim()).map_err(WorkplaceError::Msg)
+        ObjectId::from_hex(raw.trim()).map_err(WorkspaceError::Msg)
     }
 
     pub fn resource(
@@ -106,29 +106,29 @@ impl Workplace {
         Resource::new(self.id, kind, path)
     }
 
-    pub fn put_blob(&self, bytes: &[u8]) -> Result<ObjectId, WorkplaceError> {
+    pub fn put_blob(&self, bytes: &[u8]) -> Result<ObjectId, WorkspaceError> {
         let id = ObjectId::from_payload("blob", bytes);
         self.write_object(&id, bytes)?;
         Ok(id)
     }
 
-    pub fn get_blob(&self, id: &ObjectId) -> Result<Vec<u8>, WorkplaceError> {
+    pub fn get_blob(&self, id: &ObjectId) -> Result<Vec<u8>, WorkspaceError> {
         fs::read(self.object_path(id)).map_err(Into::into)
     }
 
-    pub fn put_tree(&self, tree: &Tree) -> Result<ObjectId, WorkplaceError> {
+    pub fn put_tree(&self, tree: &Tree) -> Result<ObjectId, WorkspaceError> {
         let payload = serde_json::to_vec(tree)?;
         let id = ObjectId::from_payload("tree", &payload);
         self.write_object(&id, &payload)?;
         Ok(id)
     }
 
-    pub fn get_tree(&self, id: &ObjectId) -> Result<Tree, WorkplaceError> {
+    pub fn get_tree(&self, id: &ObjectId) -> Result<Tree, WorkspaceError> {
         let bytes = fs::read(self.object_path(id))?;
         Ok(serde_json::from_slice(&bytes)?)
     }
 
-    pub fn read_file(&self, path: &[String]) -> Result<Option<Vec<u8>>, WorkplaceError> {
+    pub fn read_file(&self, path: &[String]) -> Result<Option<Vec<u8>>, WorkspaceError> {
         let Some(id) = self.lookup(path)? else {
             return Ok(None);
         };
@@ -141,12 +141,12 @@ impl Workplace {
         caller: Uuid,
         path: &[String],
         bytes: &[u8],
-    ) -> Result<Commit, WorkplaceError> {
+    ) -> Result<Commit, WorkspaceError> {
         if caller != self.lead {
-            return Err(WorkplaceError::NotLead);
+            return Err(WorkspaceError::NotLead);
         }
         if path.is_empty() {
-            return Err(WorkplaceError::Msg("file path is empty".into()));
+            return Err(WorkspaceError::Msg("file path is empty".into()));
         }
         let from_head = self.head()?;
         let blob = self.put_blob(bytes)?;
@@ -161,24 +161,24 @@ impl Workplace {
         })
     }
 
-    pub fn set_workers(&self, caller: Uuid, body: &[u8]) -> Result<Commit, WorkplaceError> {
+    pub fn set_workers(&self, caller: Uuid, body: &[u8]) -> Result<Commit, WorkspaceError> {
         self.write_file(caller, &owned(WORKERS_FILE), body)
     }
 
-    pub fn set_permit(&self, caller: Uuid, body: &[u8]) -> Result<Commit, WorkplaceError> {
+    pub fn set_permit(&self, caller: Uuid, body: &[u8]) -> Result<Commit, WorkspaceError> {
         self.write_file(caller, &owned(PERMIT_FILE), body)
     }
 
-    pub fn workers(&self) -> Result<Option<Vec<u8>>, WorkplaceError> {
+    pub fn workers(&self) -> Result<Option<Vec<u8>>, WorkspaceError> {
         self.read_file(&owned(WORKERS_FILE))
     }
 
-    pub fn permit(&self) -> Result<Option<Vec<u8>>, WorkplaceError> {
+    pub fn permit(&self) -> Result<Option<Vec<u8>>, WorkspaceError> {
         self.read_file(&owned(PERMIT_FILE))
     }
 
     /// Point a private branch at the current HEAD.
-    pub fn branch(&self, caller: Uuid, name: &str) -> Result<ObjectId, WorkplaceError> {
+    pub fn branch(&self, caller: Uuid, name: &str) -> Result<ObjectId, WorkspaceError> {
         self.require_lead(caller)?;
         validate_ref(name)?;
         let head = self.head()?;
@@ -186,53 +186,53 @@ impl Workplace {
         Ok(head)
     }
 
-    pub fn checkout(&self, caller: Uuid, name: &str) -> Result<ObjectId, WorkplaceError> {
+    pub fn checkout(&self, caller: Uuid, name: &str) -> Result<ObjectId, WorkspaceError> {
         self.require_lead(caller)?;
         let id = self.read_ref(name)?;
-        self.get_tree(&id).map_err(|_| WorkplaceError::NotATree)?;
+        self.get_tree(&id).map_err(|_| WorkspaceError::NotATree)?;
         self.set_head_and_branch(id, Some(name.to_string()))?;
         Ok(id)
     }
 
     /// Rollback HEAD (and the current branch, if any) to an existing tree.
-    pub fn reset(&self, caller: Uuid, tree: ObjectId) -> Result<ObjectId, WorkplaceError> {
+    pub fn reset(&self, caller: Uuid, tree: ObjectId) -> Result<ObjectId, WorkspaceError> {
         self.require_lead(caller)?;
-        self.get_tree(&tree).map_err(|_| WorkplaceError::NotATree)?;
+        self.get_tree(&tree).map_err(|_| WorkspaceError::NotATree)?;
         self.set_head(tree)?;
         Ok(tree)
     }
 
     /// Fast-forward HEAD to a named ref. No three-way merge.
-    pub fn merge_ff(&self, caller: Uuid, name: &str) -> Result<ObjectId, WorkplaceError> {
+    pub fn merge_ff(&self, caller: Uuid, name: &str) -> Result<ObjectId, WorkspaceError> {
         self.require_lead(caller)?;
         let id = self.read_ref(name)?;
-        self.get_tree(&id).map_err(|_| WorkplaceError::NotATree)?;
+        self.get_tree(&id).map_err(|_| WorkspaceError::NotATree)?;
         self.set_head(id)?;
         Ok(id)
     }
 
     /// Discipline, not a lock: two handles sharing the lead id race and
     /// lose updates. Callers must serialize writers themselves.
-    fn require_lead(&self, caller: Uuid) -> Result<(), WorkplaceError> {
+    fn require_lead(&self, caller: Uuid) -> Result<(), WorkspaceError> {
         if caller != self.lead {
-            Err(WorkplaceError::NotLead)
+            Err(WorkspaceError::NotLead)
         } else {
             Ok(())
         }
     }
 
-    fn read_meta(&self) -> Result<Meta, WorkplaceError> {
+    fn read_meta(&self) -> Result<Meta, WorkspaceError> {
         Ok(serde_json::from_slice(&fs::read(
             self.root.join("meta.wp"),
         )?)?)
     }
 
-    fn write_meta(&self, meta: &Meta) -> Result<(), WorkplaceError> {
+    fn write_meta(&self, meta: &Meta) -> Result<(), WorkspaceError> {
         fs::write(self.root.join("meta.wp"), serde_json::to_vec_pretty(meta)?)?;
         Ok(())
     }
 
-    fn set_head(&self, id: ObjectId) -> Result<(), WorkplaceError> {
+    fn set_head(&self, id: ObjectId) -> Result<(), WorkspaceError> {
         let branch = self.read_meta()?.branch;
         self.set_head_and_branch(id, branch)
     }
@@ -244,7 +244,7 @@ impl Workplace {
         &self,
         id: ObjectId,
         branch: Option<String>,
-    ) -> Result<(), WorkplaceError> {
+    ) -> Result<(), WorkspaceError> {
         fs::write(self.root.join("HEAD"), format!("{id}\n"))?;
         if let Some(name) = &branch {
             self.write_ref(name, id)?;
@@ -258,22 +258,22 @@ impl Workplace {
         self.root.join("refs").join(name)
     }
 
-    fn write_ref(&self, name: &str, id: ObjectId) -> Result<(), WorkplaceError> {
+    fn write_ref(&self, name: &str, id: ObjectId) -> Result<(), WorkspaceError> {
         fs::create_dir_all(self.root.join("refs"))?;
         fs::write(self.ref_path(name), format!("{id}\n"))?;
         Ok(())
     }
 
-    fn read_ref(&self, name: &str) -> Result<ObjectId, WorkplaceError> {
+    fn read_ref(&self, name: &str) -> Result<ObjectId, WorkspaceError> {
         let path = self.ref_path(name);
         if !path.exists() {
-            return Err(WorkplaceError::UnknownRef(name.into()));
+            return Err(WorkspaceError::UnknownRef(name.into()));
         }
         let raw = fs::read_to_string(path)?;
-        ObjectId::from_hex(raw.trim()).map_err(WorkplaceError::Msg)
+        ObjectId::from_hex(raw.trim()).map_err(WorkspaceError::Msg)
     }
 
-    fn lookup(&self, path: &[String]) -> Result<Option<ObjectId>, WorkplaceError> {
+    fn lookup(&self, path: &[String]) -> Result<Option<ObjectId>, WorkspaceError> {
         let mut tree = self.get_tree(&self.head()?)?;
         if path.is_empty() {
             return Ok(Some(self.head()?));
@@ -282,12 +282,12 @@ impl Workplace {
             let Some(entry) = tree.entries.get(name) else {
                 return Ok(None);
             };
-            let id = ObjectId::from_hex(&entry.id).map_err(WorkplaceError::Msg)?;
+            let id = ObjectId::from_hex(&entry.id).map_err(WorkspaceError::Msg)?;
             if i + 1 == path.len() {
                 return Ok(Some(id));
             }
             if entry.kind != ResourceKind::Tree {
-                return Err(WorkplaceError::Msg("path prefix is not a tree".into()));
+                return Err(WorkspaceError::Msg("path prefix is not a tree".into()));
             }
             tree = self.get_tree(&id)?;
         }
@@ -300,7 +300,7 @@ impl Workplace {
         path: &[String],
         kind: ResourceKind,
         id: ObjectId,
-    ) -> Result<Tree, WorkplaceError> {
+    ) -> Result<Tree, WorkspaceError> {
         let name = &path[0];
         if path.len() == 1 {
             tree.entries.insert(
@@ -314,10 +314,10 @@ impl Workplace {
         }
         let child = match tree.entries.get(name) {
             Some(e) if e.kind == ResourceKind::Tree => {
-                let cid = ObjectId::from_hex(&e.id).map_err(WorkplaceError::Msg)?;
+                let cid = ObjectId::from_hex(&e.id).map_err(WorkspaceError::Msg)?;
                 self.get_tree(&cid)?
             }
-            Some(_) => return Err(WorkplaceError::Msg("cannot nest under a file".into())),
+            Some(_) => return Err(WorkspaceError::Msg("cannot nest under a file".into())),
             None => Tree::default(),
         };
         let child = self.upsert(child, &path[1..], kind, id)?;
@@ -337,7 +337,7 @@ impl Workplace {
         self.root.join("objects").join(&h[..2]).join(&h[2..])
     }
 
-    fn write_object(&self, id: &ObjectId, bytes: &[u8]) -> Result<(), WorkplaceError> {
+    fn write_object(&self, id: &ObjectId, bytes: &[u8]) -> Result<(), WorkspaceError> {
         let path = self.object_path(id);
         if path.exists() {
             return Ok(());
@@ -359,7 +359,7 @@ fn owned(parts: &[&str]) -> Vec<String> {
     parts.iter().map(|s| (*s).to_string()).collect()
 }
 
-fn validate_ref(name: &str) -> Result<(), WorkplaceError> {
+fn validate_ref(name: &str) -> Result<(), WorkspaceError> {
     if name.is_empty()
         || name.contains('/')
         || name.contains("..")
@@ -367,7 +367,7 @@ fn validate_ref(name: &str) -> Result<(), WorkplaceError> {
             .chars()
             .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
     {
-        return Err(WorkplaceError::Msg("invalid ref name".into()));
+        return Err(WorkspaceError::Msg("invalid ref name".into()));
     }
     Ok(())
 }
@@ -387,7 +387,7 @@ mod tests {
         let lead = Uuid::new_v4();
         let other = Uuid::new_v4();
         let tmp = tmp();
-        let wp = Workplace::create(tmp.path(), lead).unwrap();
+        let wp = Workspace::create(tmp.path(), lead).unwrap();
         let empty = wp.head().unwrap();
         let c1 = wp
             .write_file(lead, &["src".into(), "a.txt".into()], b"aaa")
@@ -409,14 +409,14 @@ mod tests {
             Some(b"bbb".to_vec())
         );
         let err = wp.write_file(other, &["x".into()], b"no").unwrap_err();
-        assert!(matches!(err, WorkplaceError::NotLead));
+        assert!(matches!(err, WorkspaceError::NotLead));
     }
 
     #[test]
     fn branch_write_does_not_move_previous_head_snapshot() {
         let lead = Uuid::new_v4();
         let tmp = tmp();
-        let wp = Workplace::create(tmp.path(), lead).unwrap();
+        let wp = Workspace::create(tmp.path(), lead).unwrap();
         wp.write_file(lead, &["a".into()], b"1").unwrap();
         let main_head = wp.head().unwrap();
         wp.branch(lead, "priv").unwrap();
@@ -433,7 +433,7 @@ mod tests {
     fn workers_wp_round_trip_and_suffix_is_not_json() {
         let lead = Uuid::new_v4();
         let tmp = tmp();
-        let wp = Workplace::create(tmp.path(), lead).unwrap();
+        let wp = Workspace::create(tmp.path(), lead).unwrap();
         wp.set_workers(lead, b"alice\nbob\n").unwrap();
         assert_eq!(WORKERS_FILE.last().copied(), Some("workers.wp"));
         assert_eq!(wp.workers().unwrap(), Some(b"alice\nbob\n".to_vec()));
@@ -444,7 +444,7 @@ mod tests {
     fn merge_ff_onto_main_and_non_lead_cannot_branch() {
         let lead = Uuid::new_v4();
         let tmp = tmp();
-        let wp = Workplace::create(tmp.path(), lead).unwrap();
+        let wp = Workspace::create(tmp.path(), lead).unwrap();
         wp.write_file(lead, &["a".into()], b"1").unwrap();
         wp.branch(lead, "main").unwrap();
         wp.checkout(lead, "main").unwrap();
@@ -459,7 +459,7 @@ mod tests {
         assert_eq!(wp.read_file(&["a".into()]).unwrap(), Some(b"2".to_vec()));
         assert!(matches!(
             wp.branch(Uuid::new_v4(), "x"),
-            Err(WorkplaceError::NotLead)
+            Err(WorkspaceError::NotLead)
         ));
     }
 }

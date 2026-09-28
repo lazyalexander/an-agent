@@ -1,5 +1,5 @@
-//! Workplace owned by the steward. Live sub-workplaces hang on its tree.
-//! A view is published only when a sub-workplace closes with writes.
+//! Workspace owned by the steward. Live sub-workspaces hang on its tree.
+//! A view is published only when a sub-workspace closes with writes.
 //! Bytes stay in the worker session; this log only records versions.
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -18,9 +18,9 @@ use crate::det_seam::Entropy;
 
 #[derive(Debug, Error)]
 pub enum WpError {
-    #[error("sub-workplace is not registered: {0}")]
+    #[error("sub-workspace is not registered: {0}")]
     NotRegistered(String),
-    #[error("sub-workplace is waiting on a name conflict: {0}")]
+    #[error("sub-workspace is waiting on a name conflict: {0}")]
     Pending(String),
     #[error("nothing to continue at {0}")]
     NoCurrent(String),
@@ -30,7 +30,7 @@ pub enum WpError {
         current: u32,
         base: u32,
     },
-    #[error("path escapes the sub-workplace: {0}")]
+    #[error("path escapes the sub-workspace: {0}")]
     BadPath(String),
     #[error("dependency cycle")]
     Cycle,
@@ -201,7 +201,7 @@ impl Wp {
         Ok(id)
     }
 
-    /// Drop a live sub-workplace without publishing a view. Bytes stay put.
+    /// Drop a live sub-workspace without publishing a view. Bytes stay put.
     pub fn abandon_worker(&self, worker: Uuid) -> Result<bool, WpError> {
         let mut state = self.lock.lock().unwrap_or_else(|e| e.into_inner());
         let Some(sub) = state
@@ -740,8 +740,8 @@ fn clean_path(path: &str) -> Result<String, WpError> {
 mod tests {
     use super::*;
     use crate::act::{ActSentence, BareFile, FileFacet, Ingest, MemoryFacet, Permit, ToolTag};
-    use crate::instance::Steward;
     use crate::principal::card::{AgentCard, ModelSpec, ToolGrant, Topology};
+    use crate::runtime::Steward;
     use crate::testkit::TempDir;
 
     fn card(id: &str, permit: Permit) -> AgentCard {
@@ -783,14 +783,14 @@ mod tests {
         ActSentence::bare(Permit::Go, BareFile::None, Ingest::Ignore)
     }
 
-    fn worker(s: &Steward) -> (std::sync::Arc<crate::instance::Agent>, String) {
+    fn worker(s: &Steward) -> (std::sync::Arc<crate::runtime::Agent>, String) {
         let w = s
             .spawn_worker(
                 &card("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb", Permit::Go),
                 &bound(),
             )
             .unwrap();
-        let id = s.workplace().subwp_of(w.id()).unwrap();
+        let id = s.workspace().subwp_of(w.id()).unwrap();
         (w, id)
     }
 
@@ -800,7 +800,7 @@ mod tests {
         let s = steward(&tmp);
         let (w1, sub1) = worker(&s);
         let name = s
-            .workplace()
+            .workspace()
             .write(&sub1, "src/a.txt", b"v1", WriteMode::Create)
             .unwrap();
         assert!(matches!(
@@ -819,16 +819,16 @@ mod tests {
                     &bound(),
                 )
                 .unwrap();
-            let id = s.workplace().subwp_of(w.id()).unwrap();
+            let id = s.workspace().subwp_of(w.id()).unwrap();
             (w, id)
         };
         let again = s
-            .workplace()
+            .workspace()
             .write(&sub2, "src/a.txt", b"v2", WriteMode::Continue { base: 1 })
             .unwrap();
         assert_eq!(again, name);
         s.close_worker(w2.id(), &[]).unwrap();
-        let paths = s.workplace().current_paths();
+        let paths = s.workspace().current_paths();
         assert_eq!(paths, vec![("src/a.txt".into(), name, 2)]);
         assert_eq!(std::fs::read(blob).unwrap(), b"v1");
     }
@@ -838,7 +838,7 @@ mod tests {
         let tmp = TempDir::new("wp-stale");
         let s = steward(&tmp);
         let (w1, sub1) = worker(&s);
-        s.workplace()
+        s.workspace()
             .write(&sub1, "src/a.txt", b"v1", WriteMode::Create)
             .unwrap();
         s.close_worker(w1.id(), &[]).unwrap();
@@ -849,11 +849,11 @@ mod tests {
                     &bound(),
                 )
                 .unwrap();
-            let id = s.workplace().subwp_of(w.id()).unwrap();
+            let id = s.workspace().subwp_of(w.id()).unwrap();
             (w, id)
         };
         let err = s
-            .workplace()
+            .workspace()
             .write(&sub2, "src/a.txt", b"v2", WriteMode::Continue { base: 9 })
             .unwrap_err();
         assert!(matches!(
@@ -873,7 +873,7 @@ mod tests {
         let tmp = TempDir::new("wp-conflict");
         let s = steward(&tmp);
         let (w1, sub1) = worker(&s);
-        s.workplace()
+        s.workspace()
             .write(&sub1, "src/a.txt", b"old", WriteMode::Create)
             .unwrap();
         s.close_worker(w1.id(), &[]).unwrap();
@@ -884,18 +884,18 @@ mod tests {
                     &bound(),
                 )
                 .unwrap();
-            let id = s.workplace().subwp_of(w.id()).unwrap();
+            let id = s.workspace().subwp_of(w.id()).unwrap();
             (w, id)
         };
-        s.workplace()
+        s.workspace()
             .write(&sub2, "src/a.txt", b"new", WriteMode::Create)
             .unwrap();
         let conflict = s.close_worker(w2.id(), &[]).unwrap();
         let CloseOut::Conflict(c) = conflict else {
             panic!("expected conflict");
         };
-        assert!(s.workplace().is_live(&sub2));
-        s.workplace()
+        assert!(s.workspace().is_live(&sub2));
+        s.workspace()
             .resolve(
                 &sub2,
                 Resolve::Allow {
@@ -904,8 +904,8 @@ mod tests {
                 },
             )
             .unwrap();
-        assert!(!s.workplace().is_live(&sub2));
-        let paths = s.workplace().current_paths();
+        assert!(!s.workspace().is_live(&sub2));
+        let paths = s.workspace().current_paths();
         assert!(paths.iter().any(|p| p.0 == "src/a.txt"));
         assert!(
             paths
@@ -923,8 +923,8 @@ mod tests {
             s.close_worker(w.id(), &[]).unwrap(),
             CloseOut::Empty
         ));
-        assert!(!s.workplace().is_live(&sub));
-        assert!(s.workplace().current_paths().is_empty());
+        assert!(!s.workspace().is_live(&sub));
+        assert!(s.workspace().current_paths().is_empty());
     }
 
     #[test]
@@ -933,11 +933,11 @@ mod tests {
         let s = steward(&tmp);
         let (w, sub) = worker(&s);
         let a = s
-            .workplace()
+            .workspace()
             .write(&sub, "src/a.txt", b"a", WriteMode::Create)
             .unwrap();
         let b = s
-            .workplace()
+            .workspace()
             .write(&sub, "src/b.txt", b"b", WriteMode::Create)
             .unwrap();
         let err = s.close_worker(
@@ -967,9 +967,9 @@ mod tests {
         );
         assert!(matches!(
             err,
-            Err(crate::instance::StewardError::Wp(WpError::Cycle))
+            Err(crate::runtime::StewardError::Wp(WpError::Cycle))
         ));
-        assert!(s.workplace().is_live(&sub));
+        assert!(s.workspace().is_live(&sub));
     }
 
     #[test]
@@ -978,7 +978,7 @@ mod tests {
         let s = steward(&tmp);
         let (w, sub) = worker(&s);
         let a = s
-            .workplace()
+            .workspace()
             .write(&sub, "src/a.txt", b"a1", WriteMode::Create)
             .unwrap();
         s.close_worker(w.id(), &[]).unwrap();
@@ -989,14 +989,14 @@ mod tests {
                     &bound(),
                 )
                 .unwrap();
-            let id = s.workplace().subwp_of(w.id()).unwrap();
+            let id = s.workspace().subwp_of(w.id()).unwrap();
             (w, id)
         };
-        s.workplace()
+        s.workspace()
             .write(&sub2, "src/a.txt", b"a2", WriteMode::Continue { base: 1 })
             .unwrap();
         let b = s
-            .workplace()
+            .workspace()
             .write(&sub2, "src/b.txt", b"b1", WriteMode::Create)
             .unwrap();
         s.close_worker(
@@ -1013,8 +1013,8 @@ mod tests {
             }],
         )
         .unwrap();
-        s.workplace().rollback(&a, 1, false).unwrap();
-        let quiet = s.workplace().current_paths();
+        s.workspace().rollback(&a, 1, false).unwrap();
+        let quiet = s.workspace().current_paths();
         assert!(quiet.iter().any(|p| p.1 == a && p.2 == 1));
         assert!(quiet.iter().any(|p| p.1 == b && p.2 == 1));
     }
@@ -1025,7 +1025,7 @@ mod tests {
         let s = steward(&tmp);
         let (w, sub) = worker(&s);
         let a = s
-            .workplace()
+            .workspace()
             .write(&sub, "src/a.txt", b"a1", WriteMode::Create)
             .unwrap();
         s.close_worker(w.id(), &[]).unwrap();
@@ -1036,14 +1036,14 @@ mod tests {
                     &bound(),
                 )
                 .unwrap();
-            let id = s.workplace().subwp_of(w.id()).unwrap();
+            let id = s.workspace().subwp_of(w.id()).unwrap();
             (w, id)
         };
-        s.workplace()
+        s.workspace()
             .write(&sub2, "src/a.txt", b"a2", WriteMode::Continue { base: 1 })
             .unwrap();
         let b = s
-            .workplace()
+            .workspace()
             .write(&sub2, "src/b.txt", b"b1", WriteMode::Create)
             .unwrap();
         s.close_worker(
@@ -1061,8 +1061,8 @@ mod tests {
         )
         .unwrap();
         let before = std::fs::read(tmp.path().join("wp/views.jsonl")).unwrap();
-        s.workplace().rollback(&a, 1, true).unwrap();
-        let cascaded = s.workplace().current_paths();
+        s.workspace().rollback(&a, 1, true).unwrap();
+        let cascaded = s.workspace().current_paths();
         assert!(cascaded.iter().any(|p| p.1 == a && p.2 == 1));
         assert!(
             !cascaded.iter().any(|p| p.1 == b),
@@ -1077,10 +1077,10 @@ mod tests {
         let tmp = TempDir::new("wp-open");
         let s = steward(&tmp);
         let (_w, sub) = worker(&s);
-        s.workplace()
+        s.workspace()
             .write(&sub, "src/a.txt", b"x", WriteMode::Create)
             .unwrap();
-        assert!(s.workplace().is_live(&sub));
-        assert!(s.workplace().current_paths().is_empty());
+        assert!(s.workspace().is_live(&sub));
+        assert!(s.workspace().current_paths().is_empty());
     }
 }

@@ -8,11 +8,11 @@ use super::tag::{FileFacet, MemoryFacet, Permit, ToolTag};
 
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum SentenceError {
-    #[error("read/write act requires a workplace resource")]
+    #[error("read/write act requires a workspace resource")]
     MissingResource,
     #[error("unbounded act cannot name a resource")]
     UnboundedWithResource,
-    #[error("forget cannot touch workplace files")]
+    #[error("forget cannot touch workspace files")]
     ForgetWithFile,
     #[error("forget does not take a resource")]
     ForgetWithResource,

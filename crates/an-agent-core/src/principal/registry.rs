@@ -1,5 +1,5 @@
-//! Append-only registry of agent cards. Layout follows the workplace HEAD
-//! idiom without depending on workplace:
+//! Append-only registry of agent cards. Layout follows the workspace HEAD
+//! idiom without depending on the CAS store:
 //! `<root>/agents/<id>/cards/<hash>.json` + `<root>/agents/<id>/HEAD`.
 
 use std::fs;

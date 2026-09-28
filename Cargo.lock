@@ -21,12 +21,12 @@ name = "an-agent"
 version = "0.1.0"
 dependencies = [
  "an-agent-core",
+ "an-agent-tool",
+ "an-agent-workspace",
  "async-trait",
- "libc",
  "reqwest",
  "rhai",
  "serde",
- "serde-saphyr",
  "serde_json",
  "sha2",
  "thiserror",
@@ -47,6 +47,33 @@ dependencies = [
  "thiserror",
  "tokio",
  "ulid",
+ "uuid",
+]
+
+[[package]]
+name = "an-agent-tool"
+version = "0.1.0"
+dependencies = [
+ "an-agent-core",
+ "async-trait",
+ "libc",
+ "serde",
+ "serde-saphyr",
+ "serde_json",
+ "sha2",
+ "thiserror",
+ "tokio",
+]
+
+[[package]]
+name = "an-agent-workspace"
+version = "0.1.0"
+dependencies = [
+ "an-agent-core",
+ "serde",
+ "serde_json",
+ "sha2",
+ "thiserror",
  "uuid",
 ]
 

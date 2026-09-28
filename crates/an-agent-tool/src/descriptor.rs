@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
 
-use crate::act::{FileFacet, MemoryFacet};
+use an_agent_core::act::{FileFacet, MemoryFacet};
 
 #[derive(Debug, Error)]
 pub enum SpecError {
@@ -366,7 +366,7 @@ fn parse_memory_facet(value: serde_json::Value) -> Result<MemoryFacet, SpecError
 }
 
 /// Effect file paths must be clean absolute paths and may not point at
-/// relative locations inside a workplace/session.
+/// relative locations inside a workspace or a session.
 fn check_effect_path(path: &str) -> Result<(), SpecError> {
     let p = std::path::Path::new(path);
     if !p.is_absolute() {

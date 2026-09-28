@@ -6,7 +6,7 @@ use thiserror::Error;
 use uuid::Uuid;
 
 use crate::act::{ActCtx, Tool};
-use crate::principal::factory::AgentRuntime;
+use crate::principal::factory::BuiltAgent;
 
 use super::session::Session;
 
@@ -18,7 +18,7 @@ pub enum AgentError {
     SessionMismatch { expected: Uuid, found: Uuid },
 }
 
-/// Scheduled unit for the loop. Workplace mount is out of scope.
+/// Scheduled unit for the loop. Workspace mount is out of scope.
 pub struct Agent {
     id: Uuid,
     id_str: String,
@@ -29,7 +29,7 @@ pub struct Agent {
 }
 
 impl Agent {
-    pub fn from_runtime(rt: AgentRuntime, session: Session) -> Result<Self, AgentError> {
+    pub fn from_built(rt: BuiltAgent, session: Session) -> Result<Self, AgentError> {
         let id: Uuid = rt
             .agent_id
             .parse()

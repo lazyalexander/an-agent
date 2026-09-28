@@ -473,8 +473,8 @@ fn read_proj(session_dir: &Path, name: &str) -> String {
 mod tests {
     use super::*;
     use crate::act::{FileFacet, MemoryFacet, Permit, ToolTag};
-    use crate::instance::Steward;
     use crate::principal::card::{AgentCard, ModelSpec, ToolGrant, Topology};
+    use crate::runtime::Steward;
     use an_agent_core::testkit::TempDir;
     use uuid::Uuid;
 

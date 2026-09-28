@@ -10,8 +10,10 @@ The core bet: an append-only event tape (memstream) is the single source of trut
 
 ## Layout
 
-- `crates/an-agent-core` — the kernel: tape, admission, identity, instance runtime, and the steward workspace.
-- `crates/an-agent` — composition on that kernel (context, tool constructors, the workplace CAS store) plus runnable probes under `tests/`.
+- `crates/an-agent-core` — the kernel: tape, admission, identity, runtime, and the steward workspace.
+- `crates/an-agent-tool` — external tools: bash and YAML descriptor admission.
+- `crates/an-agent-workspace` — content-addressed store. It is not the steward workspace.
+- `crates/an-agent` — composition: re-exports the three crates, registers bash, holds context, plus probes under `tests/`.
 - `packages/causal-web` — zero-dependency tape viewer: drop in a `.jsonl` tape, see the causal threads, get the tape validated in-page.
 - `packages/lean-probe` — tiny Lake package used by the Lean 4 compatibility probe (no Mathlib).
 - `config/` — model endpoint configuration.

@@ -1,6 +1,6 @@
 [package]
-name = "an-agent"
-description = "First-person memstream agent"
+name = "an-agent-workspace"
+description = "Content-addressed workspace store"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -10,17 +10,11 @@ workspace = true
 
 [dependencies]
 an-agent-core = { path = "../an-agent-core" }
-an-agent-tool = { path = "../an-agent-tool" }
-an-agent-workspace = { path = "../an-agent-workspace" }
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
 thiserror.workspace = true
+uuid.workspace = true
 
 [dev-dependencies]
 an-agent-core = { path = "../an-agent-core", features = ["testkit"] }
-async-trait.workspace = true
-reqwest = { workspace = true, features = ["blocking"] }
-rhai.workspace = true
-tokio.workspace = true
-uuid.workspace = true

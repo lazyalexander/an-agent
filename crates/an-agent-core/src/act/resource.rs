@@ -36,7 +36,8 @@ impl ResourceKind {
     }
 }
 
-/// Mnemonic for an object inside a workplace. Content identity is ObjectId, not this.
+/// Mnemonic for an object inside a workspace. Content identity is ObjectId, not this.
+/// The field name `workplace` is the tape key; do not rename it.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Resource {
     pub workplace: Uuid,
@@ -63,7 +64,7 @@ impl Resource {
             .next()
             .ok_or("empty resource")?
             .parse::<Uuid>()
-            .map_err(|_| "workplace id must be a uuid")?;
+            .map_err(|_| "workspace id must be a uuid")?;
         let kind = ResourceKind::parse(parts.next().ok_or("missing kind")?)
             .ok_or("unknown resource kind")?;
         let path: Vec<String> = parts

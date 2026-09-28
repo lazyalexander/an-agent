@@ -1,17 +1,17 @@
 # an-agent (composition crate)
 
-Re-exports [`an-agent-core`](../an-agent-core/README.md) and mounts what is not the kernel: context assembly, tool constructors, and the workplace CAS store. Probes live in `tests/`.
+Re-exports the kernel, [`an-agent-tool`](../an-agent-tool/README.md), and [`an-agent-workspace`](../an-agent-workspace/README.md). Context assembly and the bash registration live here. Probes live in `tests/`.
 
 ## Modules
 
 | module | role |
 |---|---|
-| `context` | Session context: compressed markdown that cites tape events, plus a rebuildable sidecar index. Re-exported from `instance`. |
-| `factory` | Registers the `bash` constructor and calls the kernel's `build_with`. `principal::factory::build` and `instance::spawn` keep that list. |
-| `tools` | Tool implementations (today: `bash`) and strict YAML descriptor admission (`descriptor`): parse-or-reject, unknown fields fatal, effect faces fully explicit. |
-| `workplace` | CAS store. `Resource` and `ResourceKind` are re-exported from the kernel. |
+| `context` | Session context: compressed markdown that cites tape events, plus a rebuildable sidecar index. Re-exported from `runtime`. |
+| `factory` | Registers the `bash` constructor and calls the kernel's `build_with`. `principal::factory::build` and `runtime::spawn` keep that list. The factory returns a `BuiltAgent`. |
+| `tools` | Re-export of `an-agent-tool`. |
+| `workspace` | Re-export of `an-agent-workspace`, the CAS store. `Resource` and `ResourceKind` still come from the kernel. |
 
-Kernel modules (`memstream`, `act`, `principal`, `instance`, `det_seam`) are re-exported from `an-agent-core`. See that crate's README for the invariant list.
+Kernel modules (`memstream`, `act`, `principal`, `runtime`, `det_seam`) are re-exported from `an-agent-core`. See that crate's README for the invariant list.
 
 ## Probes (`tests/`)
 

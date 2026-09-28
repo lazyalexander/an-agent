@@ -15,17 +15,17 @@ use super::card::AgentCard;
 pub enum FactoryError {
     #[error("unknown tool in grants: {0}")]
     UnknownTool(String),
-    // act cannot resolve workplace resources yet (ActCtx carries none), so
+    // act cannot resolve workspace resources yet (ActCtx carries none), so
     // a file-faced grant would die at run time with MissingResource. Fail
     // at build instead of implying the tool is runnable.
-    #[error("grant for {0} declares a file face the runtime cannot wire yet")]
+    #[error("grant for {0} declares a file face admission cannot wire yet")]
     UnsupportedFace(String),
 }
 
 /// What a card builds: identity, prompt, and the granted tool set. Model
 /// clients and message state belong to the caller's chosen loop (today: the
 /// probe in tests/), not to the factory.
-pub struct AgentRuntime {
+pub struct BuiltAgent {
     pub card_hash: String,
     pub agent_id: String,
     pub prompt: String,
@@ -68,7 +68,7 @@ pub fn build_with(
     card: &AgentCard,
     card_hash: &str,
     registry: &[(&str, ToolCtor)],
-) -> Result<AgentRuntime, FactoryError> {
+) -> Result<BuiltAgent, FactoryError> {
     let mut tools: Vec<Arc<dyn Tool>> = Vec::new();
     for grant in &card.tools {
         let (_, ctor) = registry
@@ -86,7 +86,7 @@ pub fn build_with(
             tag: grant.tag.clone(),
         }));
     }
-    Ok(AgentRuntime {
+    Ok(BuiltAgent {
         card_hash: card_hash.to_string(),
         agent_id: card.id.to_string(),
         prompt: card.prompt.clone(),
@@ -103,7 +103,7 @@ mod tests {
     use crate::testkit::TempDir;
     use uuid::Uuid;
 
-    fn build(card: &AgentCard, hash: &str) -> Result<AgentRuntime, FactoryError> {
+    fn build(card: &AgentCard, hash: &str) -> Result<BuiltAgent, FactoryError> {
         build_with(card, hash, &crate::testkit::bash_registry())
     }
 

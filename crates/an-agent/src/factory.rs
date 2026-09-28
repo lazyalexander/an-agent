@@ -4,15 +4,15 @@
 use std::sync::Arc;
 
 use an_agent_core::principal::card::AgentCard;
-use an_agent_core::principal::factory::{self, AgentRuntime, FactoryError, ToolCtor};
+use an_agent_core::principal::factory::{self, BuiltAgent, FactoryError, ToolCtor};
 
-use crate::tools::Bash;
+use an_agent_tool::Bash;
 
 pub fn tool_registry() -> Vec<(&'static str, ToolCtor)> {
     vec![("bash", || Arc::new(Bash::default()))]
 }
 
-pub fn build(card: &AgentCard, card_hash: &str) -> Result<AgentRuntime, FactoryError> {
+pub fn build(card: &AgentCard, card_hash: &str) -> Result<BuiltAgent, FactoryError> {
     factory::build_with(card, card_hash, &tool_registry())
 }
 
