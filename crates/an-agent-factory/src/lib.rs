@@ -2,14 +2,16 @@
 //! grants from whatever list the caller passes. `spawn` opens a session
 //! with that list. Worker seats stay on the runtime.
 
+mod bash;
+
+pub use bash::Bash;
+
 use std::path::Path;
 use std::sync::Arc;
 
 use an_agent_core::principal::card::AgentCard;
 use an_agent_core::principal::factory::{self, BuiltAgent, FactoryError, ToolCtor};
 use an_agent_core::runtime::{Agent, RuntimeError};
-
-use an_agent_tool::Bash;
 
 pub fn tool_registry() -> Vec<(&'static str, ToolCtor)> {
     vec![("bash", || Arc::new(Bash::default()))]

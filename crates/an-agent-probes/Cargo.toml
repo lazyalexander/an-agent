@@ -15,7 +15,8 @@ workspace = true
 
 [dependencies]
 an-agent-core = { path = "../an-agent-core" }
-an-agent-tool = { path = "../an-agent-tool" }
+an-agent-factory = { path = "../an-agent-factory" }
+an-agent-spool = { path = "../an-agent-spool" }
 
 [dev-dependencies]
 async-trait.workspace = true

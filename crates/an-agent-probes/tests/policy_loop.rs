@@ -97,7 +97,7 @@ async fn policy_drives_model_tool_and_halt() {
         session: "s1",
         card: Some("card-hash"),
     };
-    let desc = an_agent_tool::descriptor::parse(POLICY_YAML).unwrap();
+    let desc = an_agent_spool::descriptor::parse(POLICY_YAML).unwrap();
     let policy = Arc::new(RhaiPolicy::from_descriptor(desc).unwrap());
     let hash = mount_policy(&actx, policy.name(), POLICY_YAML)
         .unwrap()
@@ -186,7 +186,7 @@ async fn policy_cannot_yield_tool_outside_requires() {
         session: "s1",
         card: None,
     };
-    let desc = an_agent_tool::descriptor::parse(yaml).unwrap();
+    let desc = an_agent_spool::descriptor::parse(yaml).unwrap();
     let policy = Arc::new(RhaiPolicy::from_descriptor(desc).unwrap());
     let tools: Vec<Arc<dyn Tool>> = vec![Arc::new(Echo)];
 

@@ -13,7 +13,7 @@ use std::sync::Arc;
 
 use an_agent_core::act::{ActCtx, Tool, ToolCall, ToolCtx, run_tool_act};
 use an_agent_core::memstream::{JsonlStore, Kind};
-use an_agent_tool::descriptor::{self, Constructor, Net};
+use an_agent_spool::descriptor::{self, Constructor, Net};
 use serde_json::{Value, json};
 use support::TempDir;
 use support::rhai::RhaiTool;

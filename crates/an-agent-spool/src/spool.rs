@@ -1,7 +1,14 @@
-//! Plugin descriptor. A published body is addressed by its sha256 and is
-//! never rewritten. A later version is a new body. Workspace recovery
-//! reads the old body back by hash or by name and version. Dependencies
-//! and the inverse point at other plugins already in this registry.
+//! Spool descriptor. A spool declares an internal capability: constructor,
+//! effect ceiling, pinned requires, inverse. The document is a grant
+//! envelope, not a self-description — what a spool actually forms at
+//! runtime is observed on the tape, not read off the declaration.
+//! (The document subsists in the registry; the mounted instance is its
+//! hypostasis.)
+//!
+//! A published body is addressed by its sha256 and is never rewritten. A
+//! later version is a new body. Workspace recovery reads the old body back
+//! by hash or by name and version. Dependencies and the inverse point at
+//! other spools already in this registry.
 
 use std::fs::{self, OpenOptions};
 use std::io::Write;
@@ -17,7 +24,7 @@ use an_agent_core::act::{FileFacet, MemoryFacet};
 use crate::descriptor::{self, Net, Proc, SpecError};
 
 #[derive(Debug, Error)]
-pub enum ToolError {
+pub enum SpoolError {
     #[error(transparent)]
     Spec(#[from] SpecError),
     #[error("io: {0}")]
@@ -28,8 +35,8 @@ pub enum ToolError {
     Invalid(String),
 }
 
-fn invalid(msg: impl Into<String>) -> ToolError {
-    ToolError::Invalid(msg.into())
+fn invalid(msg: impl Into<String>) -> SpoolError {
+    SpoolError::Invalid(msg.into())
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -53,7 +60,7 @@ pub struct Faces {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Inverse {
     Irreversible,
-    Plugin { name: String, version: String },
+    Spool { name: String, version: String },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -68,9 +75,9 @@ pub struct Require {
     pub version: String,
 }
 
-/// One published plugin. `body` is the YAML bytes that hash to `sha256`.
+/// One published spool. `body` is the YAML bytes that hash to `sha256`.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct PluginSpec {
+pub struct SpoolSpec {
     pub name: String,
     pub version: String,
     pub summary: String,
@@ -119,9 +126,9 @@ struct RawEffect {
     flow: Flow,
 }
 
-/// Parse a plugin descriptor. `kind` must be `plugin`. The constructor is
+/// Parse a spool descriptor. `kind` must be `spool`. The constructor is
 /// `rhai` or `host`. Permit is not a field. An MCP block is not a field.
-pub fn parse(yaml: &str) -> Result<PluginSpec, ToolError> {
+pub fn parse(yaml: &str) -> Result<SpoolSpec, SpoolError> {
     if yaml.len() > descriptor::MAX_DESCRIPTOR_BYTES {
         return Err(invalid(format!(
             "descriptor too large: {} bytes (max {})",
@@ -133,8 +140,8 @@ pub fn parse(yaml: &str) -> Result<PluginSpec, ToolError> {
     if raw.v != 1 {
         return Err(invalid(format!("v must be 1, got {}", raw.v)));
     }
-    if raw.kind != "plugin" {
-        return Err(invalid(format!("kind must be plugin, got {}", raw.kind)));
+    if raw.kind != "spool" {
+        return Err(invalid(format!("kind must be spool, got {}", raw.kind)));
     }
     check_name(&raw.name)?;
     check_version(&raw.version)?;
@@ -165,7 +172,7 @@ pub fn parse(yaml: &str) -> Result<PluginSpec, ToolError> {
         }
         other => {
             return Err(invalid(format!(
-                "plugin constructor must be rhai or host, got {other}"
+                "spool constructor must be rhai or host, got {other}"
             )));
         }
     };
@@ -202,7 +209,7 @@ pub fn parse(yaml: &str) -> Result<PluginSpec, ToolError> {
         _ => return Err(invalid("config must be a mapping")),
     };
     let inverse = parse_inverse(raw.inverse)?;
-    Ok(PluginSpec {
+    Ok(SpoolSpec {
         name: raw.name,
         version: raw.version,
         summary: raw.summary,
@@ -222,7 +229,7 @@ pub fn parse(yaml: &str) -> Result<PluginSpec, ToolError> {
     })
 }
 
-fn parse_inverse(value: Value) -> Result<Inverse, ToolError> {
+fn parse_inverse(value: Value) -> Result<Inverse, SpoolError> {
     match value {
         Value::String(s) if s == "irreversible" => Ok(Inverse::Irreversible),
         Value::Object(map) => {
@@ -241,7 +248,7 @@ fn parse_inverse(value: Value) -> Result<Inverse, ToolError> {
             }
             check_name(&name)?;
             check_version(&version)?;
-            Ok(Inverse::Plugin { name, version })
+            Ok(Inverse::Spool { name, version })
         }
         _ => Err(invalid(
             "inverse must be irreversible or a name and version",
@@ -339,7 +346,121 @@ fn flow_covers(ceiling: Flow, effect: Flow) -> bool {
     )
 }
 
-/// Append-only registry of plugin bodies. `blobs/<sha256>` is the YAML.
+// --- transitive folds over the requires closure ---
+//
+// Some properties of a spool are inherited from its dependencies; they
+// must be folded over the whole closure at admission time, never read off
+// the root's own faces alone: a spool that can yield a net-egress member
+// has egress reach. Publish order is topological (a requires target must
+// already be published), so the closure is acyclic and the walk always
+// terminates; the visited set only dedups diamonds.
+
+/// The transitive fold of one spool's requires closure.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Closure {
+    /// Join of every member's effect faces, root included.
+    pub ceiling: Faces,
+    /// False when any member declares itself irreversible.
+    pub reversible: bool,
+    /// Every (name, version) in the closure, root included.
+    pub members: Vec<(String, String)>,
+}
+
+fn bottom_faces() -> Faces {
+    Faces {
+        file: FileFacet::None,
+        memory: MemoryFacet::Ignore,
+        net: Net::None,
+        proc_: Proc::None,
+        flow: Flow::None,
+    }
+}
+
+fn join_faces(a: &Faces, b: &Faces) -> Faces {
+    Faces {
+        file: file_join(&a.file, &b.file),
+        memory: memory_join(&a.memory, &b.memory),
+        net: net_join(a.net, b.net),
+        proc_: proc_join(a.proc_, b.proc_),
+        flow: flow_join(a.flow, b.flow),
+    }
+}
+
+/// Two different rooted paths cannot be expressed as one facet, so the
+/// join over-approximates to Unbounded: a ceiling may be loose, never low.
+fn file_join(a: &FileFacet, b: &FileFacet) -> FileFacet {
+    use FileFacet as F;
+    fn parts(f: &FileFacet) -> (&String, bool, u8) {
+        match f {
+            F::Read { path, recursive } => (path, *recursive, 1),
+            F::Write { path, recursive } => (path, *recursive, 2),
+            F::ReadWrite { path, recursive } => (path, *recursive, 3),
+            F::None | F::Unbounded => unreachable!(),
+        }
+    }
+    match (a, b) {
+        (F::None, x) | (x, F::None) => x.clone(),
+        (F::Unbounded, _) | (_, F::Unbounded) => F::Unbounded,
+        _ => {
+            let (pa, ra, ka) = parts(a);
+            let (pb, rb, kb) = parts(b);
+            if pa != pb {
+                return F::Unbounded;
+            }
+            let path = pa.clone();
+            let recursive = ra || rb;
+            match ka | kb {
+                1 => F::Read { path, recursive },
+                2 => F::Write { path, recursive },
+                _ => F::ReadWrite { path, recursive },
+            }
+        }
+    }
+}
+
+/// Remember without an aspect covers any aspect, so joining two different
+/// aspects widens to None; Forget never appears in an effect.
+fn memory_join(a: &MemoryFacet, b: &MemoryFacet) -> MemoryFacet {
+    use MemoryFacet as M;
+    match (a, b) {
+        (M::Ignore, x) | (x, M::Ignore) => x.clone(),
+        (M::Remember { aspect: None }, _) | (_, M::Remember { aspect: None }) => {
+            M::Remember { aspect: None }
+        }
+        (M::Remember { aspect: x }, M::Remember { aspect: y }) => M::Remember {
+            aspect: if x == y { x.clone() } else { None },
+        },
+        (M::Forget { .. }, _) | (_, M::Forget { .. }) => unreachable!(),
+    }
+}
+
+fn net_join(a: Net, b: Net) -> Net {
+    if a == Net::Egress || b == Net::Egress {
+        Net::Egress
+    } else {
+        Net::None
+    }
+}
+
+fn proc_join(a: Proc, b: Proc) -> Proc {
+    if a == Proc::Spawn || b == Proc::Spawn {
+        Proc::Spawn
+    } else {
+        Proc::None
+    }
+}
+
+fn flow_join(a: Flow, b: Flow) -> Flow {
+    match (a, b) {
+        (Flow::None, x) | (x, Flow::None) => x,
+        (Flow::Both, _) | (_, Flow::Both) => Flow::Both,
+        (Flow::In, Flow::In) => Flow::In,
+        (Flow::Out, Flow::Out) => Flow::Out,
+        _ => Flow::Both,
+    }
+}
+
+/// Append-only registry of spool bodies. `blobs/<sha256>` is the YAML.
 /// `index.jsonl` records name, version, and hash. Neither file is rewritten.
 pub struct Registry {
     root: PathBuf,
@@ -357,11 +478,11 @@ struct IndexLine {
 #[serde(untagged)]
 enum IndexInverse {
     Irreversible(String),
-    Plugin { name: String, version: String },
+    Spool { name: String, version: String },
 }
 
 impl Registry {
-    pub fn open(root: impl AsRef<Path>) -> Result<Self, ToolError> {
+    pub fn open(root: impl AsRef<Path>) -> Result<Self, SpoolError> {
         let root = root.as_ref().to_path_buf();
         fs::create_dir_all(root.join("blobs"))?;
         let index = root.join("index.jsonl");
@@ -374,21 +495,21 @@ impl Registry {
     /// Store `yaml` if this name and version are new. The same bytes may
     /// be published again. A different body for the same version is refused,
     /// so an old workspace write can still name the descriptor that made it.
-    pub fn publish(&self, yaml: &str) -> Result<PluginSpec, ToolError> {
+    pub fn publish(&self, yaml: &str) -> Result<SpoolSpec, SpoolError> {
         let spec = parse(yaml)?;
         for req in &spec.requires {
             if self.lookup(&req.name, &req.version)?.is_none() {
                 return Err(invalid(format!(
-                    "required plugin is not published: {} {}",
+                    "required spool is not published: {} {}",
                     req.name, req.version
                 )));
             }
         }
-        if let Inverse::Plugin { name, version } = &spec.inverse
+        if let Inverse::Spool { name, version } = &spec.inverse
             && self.lookup(name, version)?.is_none()
         {
             return Err(invalid(format!(
-                "inverse plugin is not published: {name} {version}"
+                "inverse spool is not published: {name} {version}"
             )));
         }
         if let Some(existing) = self.lookup(&spec.name, &spec.version)? {
@@ -413,7 +534,7 @@ impl Registry {
             sha256: spec.sha256.clone(),
             inverse: match &spec.inverse {
                 Inverse::Irreversible => IndexInverse::Irreversible("irreversible".into()),
-                Inverse::Plugin { name, version } => IndexInverse::Plugin {
+                Inverse::Spool { name, version } => IndexInverse::Spool {
                     name: name.clone(),
                     version: version.clone(),
                 },
@@ -424,12 +545,12 @@ impl Registry {
         Ok(spec)
     }
 
-    pub fn recover(&self, name: &str, version: &str) -> Result<PluginSpec, ToolError> {
+    pub fn recover(&self, name: &str, version: &str) -> Result<SpoolSpec, SpoolError> {
         self.lookup(name, version)?
-            .ok_or_else(|| invalid(format!("plugin not published: {name} {version}")))
+            .ok_or_else(|| invalid(format!("spool not published: {name} {version}")))
     }
 
-    pub fn recover_hash(&self, sha256: &str) -> Result<PluginSpec, ToolError> {
+    pub fn recover_hash(&self, sha256: &str) -> Result<SpoolSpec, SpoolError> {
         let body = fs::read_to_string(self.blob_path(sha256))?;
         let spec = parse(&body)?;
         if spec.sha256 != sha256 {
@@ -439,7 +560,7 @@ impl Registry {
     }
 
     /// Every published version of `name`, oldest first.
-    pub fn versions(&self, name: &str) -> Result<Vec<PluginSpec>, ToolError> {
+    pub fn versions(&self, name: &str) -> Result<Vec<SpoolSpec>, SpoolError> {
         let mut out = Vec::new();
         for line in self.lines()? {
             if line.name == name {
@@ -449,7 +570,7 @@ impl Registry {
         Ok(out)
     }
 
-    fn lookup(&self, name: &str, version: &str) -> Result<Option<PluginSpec>, ToolError> {
+    fn lookup(&self, name: &str, version: &str) -> Result<Option<SpoolSpec>, SpoolError> {
         for line in self.lines()? {
             if line.name == name && line.version == version {
                 return Ok(Some(self.recover_hash(&line.sha256)?));
@@ -458,7 +579,7 @@ impl Registry {
         Ok(None)
     }
 
-    fn lines(&self) -> Result<Vec<IndexLine>, ToolError> {
+    fn lines(&self) -> Result<Vec<IndexLine>, SpoolError> {
         let text = fs::read_to_string(self.index_path())?;
         let mut out = Vec::new();
         for (i, line) in text.lines().enumerate() {
@@ -482,11 +603,39 @@ impl Registry {
     }
 }
 
+impl Registry {
+    /// Fold the requires closure of a published spool: the ceiling its
+    /// whole system can reach, and whether the mount can be unwound.
+    pub fn closure(&self, name: &str, version: &str) -> Result<Closure, SpoolError> {
+        let mut seen = std::collections::HashSet::new();
+        let mut stack = vec![self.recover(name, version)?];
+        let mut ceiling = bottom_faces();
+        let mut reversible = true;
+        let mut members = Vec::new();
+        while let Some(spec) = stack.pop() {
+            if !seen.insert((spec.name.clone(), spec.version.clone())) {
+                continue;
+            }
+            ceiling = join_faces(&ceiling, &spec.effect);
+            reversible &= !matches!(spec.inverse, Inverse::Irreversible);
+            members.push((spec.name.clone(), spec.version.clone()));
+            for req in &spec.requires {
+                stack.push(self.recover(&req.name, &req.version)?);
+            }
+        }
+        Ok(Closure {
+            ceiling,
+            reversible,
+            members,
+        })
+    }
+}
+
 fn sha256(yaml: &str) -> String {
     format!("{:x}", Sha256::digest(yaml.as_bytes()))
 }
 
-fn check_name(name: &str) -> Result<(), ToolError> {
+fn check_name(name: &str) -> Result<(), SpoolError> {
     let ok = !name.is_empty()
         && name.len() <= 64
         && name
@@ -494,12 +643,12 @@ fn check_name(name: &str) -> Result<(), ToolError> {
             .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_' || c == '-')
         && name.chars().next().is_some_and(|c| c.is_ascii_lowercase());
     if !ok {
-        return Err(invalid(format!("invalid plugin name: {name}")));
+        return Err(invalid(format!("invalid spool name: {name}")));
     }
     Ok(())
 }
 
-fn check_version(version: &str) -> Result<(), ToolError> {
+fn check_version(version: &str) -> Result<(), SpoolError> {
     let parts: Vec<&str> = version.split('.').collect();
     let ok = parts.len() == 3
         && parts
@@ -519,7 +668,7 @@ mod tests {
     fn read_yaml() -> String {
         r#"
 v: 1
-kind: plugin
+kind: spool
 name: fs_read
 version: 1.0.0
 summary: Read a workspace file
@@ -540,7 +689,7 @@ requires: []
     fn write_yaml() -> String {
         r#"
 v: 1
-kind: plugin
+kind: spool
 name: fs_write
 version: 1.0.0
 summary: Write a workspace file
@@ -565,7 +714,7 @@ requires:
     }
 
     #[test]
-    fn parses_a_hosted_plugin() {
+    fn parses_a_hosted_spool() {
         let spec = parse(&read_yaml()).unwrap();
         assert!(matches!(spec.constructor, Constructor::Host { .. }));
         assert_eq!(spec.effect.flow, Flow::In);
@@ -576,12 +725,12 @@ requires:
 
     #[test]
     fn rejects_a_tool_an_mcp_block_and_a_permit() {
-        let tool = read_yaml().replace("kind: plugin", "kind: tool");
+        let tool = read_yaml().replace("kind: spool", "kind: tool");
         assert!(
             parse(&tool)
                 .unwrap_err()
                 .to_string()
-                .contains("kind must be plugin")
+                .contains("kind must be spool")
         );
         let mcp = read_yaml().replace("constructor: host\nhost: fs_read", "constructor: mcp");
         assert!(
@@ -590,7 +739,7 @@ requires:
                 .to_string()
                 .contains("rhai or host")
         );
-        let permit = read_yaml().replace("kind: plugin", "kind: plugin\npermit: go");
+        let permit = read_yaml().replace("kind: spool", "kind: spool\npermit: go");
         assert!(
             parse(&permit)
                 .unwrap_err()
@@ -614,7 +763,7 @@ requires:
 
     #[test]
     fn published_versions_stay_readable() {
-        let tmp = TempDir::new("plugins");
+        let tmp = TempDir::new("spools");
         let reg = Registry::open(tmp.path()).unwrap();
         let reader = reg.publish(&read_yaml()).unwrap();
         assert!(matches!(reader.constructor, Constructor::Host { .. }));
@@ -655,5 +804,42 @@ requires:
             .to_string()
             .contains("not published")
         );
+    }
+
+    #[test]
+    fn closure_folds_ceiling_and_reversibility() {
+        let tmp = TempDir::new("spool-closure");
+        let reg = Registry::open(tmp.path()).unwrap();
+        reg.publish(&read_yaml()).unwrap();
+        let restore = read_yaml()
+            .replace("name: fs_read", "name: fs_restore")
+            .replace("host: fs_read", "host: fs_restore")
+            .replace("summary: Read a workspace file", "summary: Restore");
+        reg.publish(&restore).unwrap();
+        reg.publish(&write_yaml()).unwrap();
+
+        let closure = reg.closure("fs_write", "1.0.0").unwrap();
+        // file faces join: w /srv (recursive) ∪ r /srv = rw /srv recursive.
+        assert_eq!(
+            closure.ceiling.file,
+            FileFacet::ReadWrite {
+                path: "/srv".into(),
+                recursive: true
+            }
+        );
+        // flow joins across the closure: write is none, read is in.
+        assert_eq!(closure.ceiling.flow, Flow::In);
+        assert_eq!(closure.ceiling.net, Net::None);
+        // fs_write has an inverse but requires fs_read, which is
+        // irreversible — the whole mount cannot be unwound.
+        assert!(!closure.reversible);
+        assert_eq!(closure.members.len(), 2);
+
+        // The root's own faces alone would under-report: read alone does
+        // not cover the closure ceiling, and that is the point of the fold.
+        let root = reg.recover("fs_write", "1.0.0").unwrap();
+        assert!(covers(&closure.ceiling, &root.effect));
+        let read_only = reg.recover("fs_read", "1.0.0").unwrap();
+        assert!(!covers(&read_only.effect, &closure.ceiling));
     }
 }

@@ -50,7 +50,10 @@ name = "an-agent-factory"
 version = "0.1.0"
 dependencies = [
  "an-agent-core",
- "an-agent-tool",
+ "async-trait",
+ "libc",
+ "serde_json",
+ "tokio",
  "uuid",
 ]
 
@@ -59,7 +62,8 @@ name = "an-agent-probes"
 version = "0.1.0"
 dependencies = [
  "an-agent-core",
- "an-agent-tool",
+ "an-agent-factory",
+ "an-agent-spool",
  "async-trait",
  "reqwest",
  "rhai",
@@ -72,18 +76,15 @@ dependencies = [
 ]
 
 [[package]]
-name = "an-agent-tool"
+name = "an-agent-spool"
 version = "0.1.0"
 dependencies = [
  "an-agent-core",
- "async-trait",
- "libc",
  "serde",
  "serde-saphyr",
  "serde_json",
  "sha2",
  "thiserror",
- "tokio",
 ]
 
 [[package]]

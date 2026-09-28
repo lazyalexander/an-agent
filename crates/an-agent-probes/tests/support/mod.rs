@@ -319,7 +319,7 @@ pub fn mount_policy(
     name: &str,
     yaml: &str,
 ) -> Result<Option<String>, AgentError> {
-    let hash = an_agent_tool::descriptor::content_hash(yaml);
+    let hash = an_agent_spool::descriptor::content_hash(yaml);
     let Some(store) = actx.store else {
         return Ok(None);
     };

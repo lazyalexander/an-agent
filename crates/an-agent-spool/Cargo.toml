@@ -1,6 +1,6 @@
 [package]
-name = "an-agent-tool"
-description = "External tool constructors and YAML descriptor admission"
+name = "an-agent-spool"
+description = "Capability spools: YAML descriptor admission and the append-only spool registry"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -10,16 +10,11 @@ workspace = true
 
 [dependencies]
 an-agent-core = { path = "../an-agent-core" }
-async-trait.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 serde-saphyr.workspace = true
 sha2.workspace = true
 thiserror.workspace = true
-tokio.workspace = true
 
 [dev-dependencies]
 an-agent-core = { path = "../an-agent-core", features = ["testkit"] }
-
-[target.'cfg(unix)'.dependencies]
-libc.workspace = true

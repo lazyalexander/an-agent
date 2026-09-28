@@ -10,7 +10,12 @@ workspace = true
 
 [dependencies]
 an-agent-core = { path = "../an-agent-core" }
-an-agent-tool = { path = "../an-agent-tool" }
+async-trait.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
 
 [dev-dependencies]
 uuid.workspace = true
+
+[target.'cfg(unix)'.dependencies]
+libc.workspace = true

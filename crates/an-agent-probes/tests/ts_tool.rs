@@ -12,7 +12,7 @@ use std::sync::Arc;
 
 use an_agent_core::act::{ActCtx, Tool, ToolCall, ToolCtx, ToolTag, run_tool_act};
 use an_agent_core::memstream::{JsonlStore, Kind};
-use an_agent_tool::descriptor;
+use an_agent_spool::descriptor;
 use serde_json::{Value, json};
 use support::TempDir;
 use support::ts_tool::SubprocessTool;

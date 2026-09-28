@@ -4,7 +4,7 @@
 //! registry slice.
 
 use an_agent_core::act::{Permit, Tool, ToolCtx, ToolTag};
-use an_agent_tool::descriptor::{Constructor, Descriptor, Net};
+use an_agent_spool::descriptor::{Constructor, Descriptor, Net};
 
 /// Responses are byte-capped at the host fn: a script that can name any
 /// URL must not also get unbounded memory via the response body.
@@ -33,7 +33,7 @@ impl RhaiTool {
         // honor must fail here, not at first call — a file r/w/rw tag would
         // die in admission (MissingResource) and proc: spawn has no effector.
         use an_agent_core::act::FileFacet;
-        use an_agent_tool::descriptor::Proc;
+        use an_agent_spool::descriptor::Proc;
         if matches!(
             desc.effect.file,
             FileFacet::Read { .. } | FileFacet::Write { .. } | FileFacet::ReadWrite { .. }
@@ -280,7 +280,7 @@ pub struct RhaiPolicy {
 impl RhaiPolicy {
     pub fn from_descriptor(desc: Descriptor) -> Result<Self, String> {
         use an_agent_core::act::FileFacet;
-        use an_agent_tool::descriptor::{Net, Proc};
+        use an_agent_spool::descriptor::{Net, Proc};
         if desc.effect.file != FileFacet::None {
             return Err(format!(
                 "policy declares a file face it cannot use: {:?}",
@@ -434,7 +434,7 @@ mod tests {
         let yaml = format!(
             "v: 1\nname: probe_tool\nversion: 0.1.0\nconstructor: rhai\nscript: |\n  1\nsummary: probe\neffect:\n{effect}\nrequires: []\n"
         );
-        an_agent_tool::descriptor::parse(&yaml).unwrap()
+        an_agent_spool::descriptor::parse(&yaml).unwrap()
     }
 
     #[test]
@@ -538,7 +538,7 @@ mod tests {
         // A pure policy constructs; requires become the invoke whitelist.
         let yaml = "v: 1\nname: pol\nversion: 0.1.0\nconstructor: rhai\nscript: |\n  #{ kind: \"halt\" }\nsummary: p\neffect:\n  net: none\n  file: { op: none }\n  proc: none\n  memory: { op: remember, aspect: ctx }\nrequires:\n  - { name: echo, version: 1.0.0 }\n";
         let policy =
-            RhaiPolicy::from_descriptor(an_agent_tool::descriptor::parse(yaml).unwrap()).unwrap();
+            RhaiPolicy::from_descriptor(an_agent_spool::descriptor::parse(yaml).unwrap()).unwrap();
         assert_eq!(policy.whitelist(), vec!["echo".to_string()]);
     }
 }
