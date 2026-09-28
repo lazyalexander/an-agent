@@ -1,14 +1,13 @@
-//! Card-driven construction of a granted tool set: a static constructor
-//! registry plus `build`. Thin by design — no dynamic registration
-//! machinery. Memory, model clients, and the loop stay with the caller;
-//! the card never holds keys or runtime deps.
+//! Card-driven construction of a granted tool set. The caller passes the
+//! constructor list; this crate registers none. Thin by design — no dynamic
+//! registration machinery. Memory, model clients, and the loop stay with
+//! the caller; the card never holds keys or runtime deps.
 
 use std::sync::Arc;
 
 use thiserror::Error;
 
 use crate::act::{FileFacet, Tool, ToolCtx, ToolTag};
-use crate::tools::Bash;
 
 use super::card::AgentCard;
 
@@ -33,12 +32,8 @@ pub struct AgentRuntime {
     pub tools: Vec<Arc<dyn Tool>>,
 }
 
-/// Name → constructor. Static and thin on purpose.
+/// Name → constructor. The kernel registers nothing; the caller passes the list.
 pub type ToolCtor = fn() -> Arc<dyn Tool>;
-
-pub fn tool_registry() -> Vec<(&'static str, ToolCtor)> {
-    vec![("bash", || Arc::new(Bash::default()))]
-}
 
 /// Wraps a constructed tool so the grant's tag wins over the constructor's
 /// default tag_seed: permissions come from the card. The tag is an audit
@@ -69,8 +64,11 @@ impl Tool for Granted {
     }
 }
 
-pub fn build(card: &AgentCard, card_hash: &str) -> Result<AgentRuntime, FactoryError> {
-    let registry = tool_registry();
+pub fn build_with(
+    card: &AgentCard,
+    card_hash: &str,
+    registry: &[(&str, ToolCtor)],
+) -> Result<AgentRuntime, FactoryError> {
     let mut tools: Vec<Arc<dyn Tool>> = Vec::new();
     for grant in &card.tools {
         let (_, ctor) = registry
@@ -99,11 +97,15 @@ pub fn build(card: &AgentCard, card_hash: &str) -> Result<AgentRuntime, FactoryE
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::act::{ActCtx, Permit, ToolCall, run_tool_act};
+    use crate::act::{ActCtx, Permit, ToolCall, ToolTag, run_tool_act};
     use crate::memstream::{JsonlStore, Kind};
     use crate::principal::card::{ModelSpec, ToolGrant, Topology};
     use crate::testkit::TempDir;
     use uuid::Uuid;
+
+    fn build(card: &AgentCard, hash: &str) -> Result<AgentRuntime, FactoryError> {
+        build_with(card, hash, &crate::testkit::bash_registry())
+    }
 
     fn ctx() -> ToolCtx {
         let (_tx, rx) = tokio::sync::watch::channel(false);

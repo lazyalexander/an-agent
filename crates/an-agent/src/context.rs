@@ -475,7 +475,7 @@ mod tests {
     use crate::act::{FileFacet, MemoryFacet, Permit, ToolTag};
     use crate::instance::Steward;
     use crate::principal::card::{AgentCard, ModelSpec, ToolGrant, Topology};
-    use crate::testkit::TempDir;
+    use an_agent_core::testkit::TempDir;
     use uuid::Uuid;
 
     fn card() -> AgentCard {
@@ -503,7 +503,14 @@ mod tests {
     }
 
     fn session(tmp: &TempDir) -> PathBuf {
-        let s = Steward::open(&card(), tmp.path(), "{\"k\":1}", "[\"c0\"]").unwrap();
+        let s = Steward::open(
+            &card(),
+            tmp.path(),
+            "{\"k\":1}",
+            "[\"c0\"]",
+            &crate::factory::tool_registry(),
+        )
+        .unwrap();
         s.agent().session().root().to_path_buf()
     }
 

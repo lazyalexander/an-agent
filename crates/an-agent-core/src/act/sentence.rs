@@ -3,8 +3,8 @@ use std::fmt;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+use super::resource::Resource;
 use super::tag::{FileFacet, MemoryFacet, Permit, ToolTag};
-use crate::workplace::Resource;
 
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum SentenceError {
@@ -506,8 +506,8 @@ impl fmt::Display for ActSentence {
 
 #[cfg(test)]
 mod tests {
+    use super::super::resource::{Resource, ResourceKind};
     use super::*;
-    use crate::workplace::{Resource, ResourceKind};
     use uuid::Uuid;
 
     fn file_res() -> Resource {

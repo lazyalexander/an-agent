@@ -774,6 +774,7 @@ mod tests {
             tmp.path(),
             "{}",
             "[]",
+            &crate::testkit::bash_registry(),
         )
         .unwrap()
     }

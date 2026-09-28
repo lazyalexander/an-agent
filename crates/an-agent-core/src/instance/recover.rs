@@ -91,7 +91,14 @@ mod tests {
     #[test]
     fn rebuilds_absent_projections_from_tape() {
         let tmp = TempDir::new("recover-ok");
-        let steward = Steward::open(&card(), tmp.path(), "{\"a\":1}", "[\"c1\"]").unwrap();
+        let steward = Steward::open(
+            &card(),
+            tmp.path(),
+            "{\"a\":1}",
+            "[\"c1\"]",
+            &crate::testkit::bash_registry(),
+        )
+        .unwrap();
         let dir = steward.agent().session().root().to_path_buf();
         let hash = steward.agent().card_hash().to_string();
         fs::remove_file(dir.join("prompt")).unwrap();

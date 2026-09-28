@@ -1,26 +1,17 @@
-# an-agent (kernel crate)
+# an-agent (composition crate)
 
-The kernel: a handful of mechanisms and the invariants between them. Everything a reviewer or a collaborating agent needs is the module map plus the invariant list below.
+Re-exports [`an-agent-core`](../an-agent-core/README.md) and mounts what is not the kernel: context assembly, tool constructors, and the workplace CAS store. Probes live in `tests/`.
 
 ## Modules
 
 | module | role |
 |---|---|
-| `memstream` | The tape. Append-only JSONL; events carry kind, refs (causal edges), act envelopes, and the producing card's hash. Readers absorb schema drift (serde defaults + `skip_serializing_if`); history is never rewritten. |
-| `act` | Admission. Every effect-ful action passes here: a sentence (permit × file × memory facets) is decided, intent is taped before execution, effect after. `ActKind` is intent-domain vocabulary only; the channel (tool vs model) rides on `ActEnvelope.tool`. |
-| `principal` | Agent identity. An `AgentCard` = model spec + prompt + tool grants + kernel ref — immutable, content-addressed, versioned by supersession, never mutated. Cards hold no memory and no keys. |
-| `instance` | Loop runtime: private `Session` (tape/files/scratch), live `Agent`, registration `Tree`, bounded turn `Pool`. No workplace mount. |
+| `context` | Session context: compressed markdown that cites tape events, plus a rebuildable sidecar index. Re-exported from `instance`. |
+| `factory` | Registers the `bash` constructor and calls the kernel's `build_with`. `principal::factory::build` and `instance::spawn` keep that list. |
 | `tools` | Tool implementations (today: `bash`) and strict YAML descriptor admission (`descriptor`): parse-or-reject, unknown fields fatal, effect faces fully explicit. |
-| `workplace` | Workspace resources and addressing. |
-| `det_seam` | The determinism seam — the only place allowed to touch OS time and entropy. Enforced by `clippy.toml` disallowed-methods, not by reviewer vigilance. |
+| `workplace` | CAS store. `Resource` and `ResourceKind` are re-exported from the kernel. |
 
-## Invariants (what a review should police)
-
-1. The tape is append-only. New semantics arrive as new fields or new kinds; old lines must stay readable.
-2. Model calls and tool calls are both `invoke` acts; the tape records thin traces (hashes, token usage), never full payloads.
-3. Tools are cognition-free effectors. Anything containing an LLM call is an agent, reached by delegation — never a tool.
-4. The kernel never depends on `tests/`. The ReAct loop, the HTTP client, and the rhai shim are probe scaffolding there, expected to be replaced.
-5. No OS time/entropy outside `det_seam`; no `unwrap`/`expect` outside tests.
+Kernel modules (`memstream`, `act`, `principal`, `instance`, `det_seam`) are re-exported from `an-agent-core`. See that crate's README for the invariant list.
 
 ## Probes (`tests/`)
 

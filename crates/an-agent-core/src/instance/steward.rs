@@ -20,7 +20,7 @@ use super::agent::Agent;
 use super::pool::{Pool, PoolError, Turn};
 use super::tree::Seat;
 use super::wp::{CloseOut, DepEdge, Wp, WpError};
-use super::{InstanceError, spawn};
+use super::{InstanceError, spawn_with};
 
 #[derive(Debug, Error)]
 pub enum StewardError {
@@ -117,6 +117,7 @@ pub struct Steward {
     wp: Wp,
     bounds: Mutex<HashMap<Uuid, ActSentence>>,
     flags: Mutex<HashMap<Uuid, Arc<AtomicBool>>>,
+    registry: Vec<(String, crate::principal::factory::ToolCtor)>,
 }
 
 /// In-process cancel handle. It only observes flags down the parent chain.
@@ -148,16 +149,28 @@ impl Steward {
     /// `config` and `context` are projection snapshots (config text, clip-id
     /// list). They are written beside the tape and also recorded as events
     /// so `recover` can rebuild the files. The prompt projection is the card
-    /// hash, not a second copy of the prompt text.
+    /// hash, not a second copy of the prompt text. `registry` is the tool
+    /// constructors for this steward and every child it spawns.
     pub fn open(
         card: &AgentCard,
         sessions_root: impl AsRef<Path>,
         config: &str,
         context: &str,
+        registry: &[(&str, crate::principal::factory::ToolCtor)],
     ) -> Result<Self, StewardError> {
         deny_world_grants(card)?;
         let root = sessions_root.as_ref().to_path_buf();
-        let agent = Arc::new(spawn(card, &root)?);
+        let registry: Vec<(String, crate::principal::factory::ToolCtor)> = registry
+            .iter()
+            .map(|(name, ctor)| ((*name).to_string(), *ctor))
+            .collect();
+        let agent = {
+            let listed: Vec<(&str, crate::principal::factory::ToolCtor)> = registry
+                .iter()
+                .map(|(name, ctor)| (name.as_str(), *ctor))
+                .collect();
+            Arc::new(spawn_with(card, &root, &listed)?)
+        };
         let pool = Pool::new(1)?;
         let seat = pool.tree().mount(Arc::clone(&agent), None)?;
         note_projection(&agent, "prompt", agent.card_hash())?;
@@ -183,7 +196,15 @@ impl Steward {
                 steward_id,
                 Arc::new(AtomicBool::new(false)),
             )])),
+            registry,
         })
+    }
+
+    fn listed_registry(&self) -> Vec<(&str, crate::principal::factory::ToolCtor)> {
+        self.registry
+            .iter()
+            .map(|(name, ctor)| (name.as_str(), *ctor))
+            .collect()
     }
 
     pub fn id(&self) -> Uuid {
@@ -519,7 +540,8 @@ impl Steward {
                 return Err(StewardError::OutsideBound(grant.name.clone()));
             }
         }
-        let child = Arc::new(spawn(card, &self.root)?);
+        let registry = self.listed_registry();
+        let child = Arc::new(spawn_with(card, &self.root, &registry)?);
         let seat = self.pool.tree().mount(Arc::clone(&child), Some(parent))?;
         self.seats
             .lock()
@@ -771,7 +793,16 @@ mod tests {
         ActSentence, Audience, BareFile, FileFacet, Ingest, MemoryFacet, Signal, ToolTag,
     };
     use crate::principal::card::{ModelSpec, ToolGrant, Topology};
-    use crate::testkit::TempDir;
+    use crate::testkit::{TempDir, bash_registry};
+
+    fn open_at(
+        card: &AgentCard,
+        root: &std::path::Path,
+        config: &str,
+        context: &str,
+    ) -> Result<Steward, StewardError> {
+        Steward::open(card, root, config, context, &bash_registry())
+    }
 
     fn bare(id: &str, permit: Permit) -> AgentCard {
         AgentCard {
@@ -800,7 +831,7 @@ mod tests {
     #[test]
     fn go_grant_cannot_open_a_steward() {
         let tmp = TempDir::new("steward-deny");
-        let err = Steward::open(
+        let err = open_at(
             &bare("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", Permit::Go),
             tmp.path(),
             "{}",
@@ -812,7 +843,7 @@ mod tests {
     #[test]
     fn only_the_steward_spawns_and_queue_steers() {
         let tmp = TempDir::new("steward-queue");
-        let steward = Steward::open(
+        let steward = open_at(
             &bare("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", Permit::Deny),
             tmp.path(),
             "{\"limit\":1}",
@@ -860,7 +891,7 @@ mod tests {
     #[test]
     fn spawn_rejects_a_grant_wider_than_the_bound() {
         let tmp = TempDir::new("steward-bound");
-        let steward = Steward::open(
+        let steward = open_at(
             &bare("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", Permit::Deny),
             tmp.path(),
             "{}",
@@ -879,7 +910,7 @@ mod tests {
     #[test]
     fn lite_has_a_seat_no_subwp_and_finishes_by_complete() {
         let tmp = TempDir::new("steward-lite");
-        let steward = Steward::open(
+        let steward = open_at(
             &bare("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", Permit::Deny),
             tmp.path(),
             "{}",
@@ -919,7 +950,7 @@ mod tests {
     #[test]
     fn release_drops_the_subtree_without_publishing_and_child_bound_cannot_widen() {
         let tmp = TempDir::new("steward-release");
-        let steward = Steward::open(
+        let steward = open_at(
             &bare("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", Permit::Deny),
             tmp.path(),
             "{}",
@@ -982,7 +1013,7 @@ mod tests {
     #[test]
     fn cancel_propagates_down_and_restore_skips_broken_chains() {
         let tmp = TempDir::new("steward-lease");
-        let steward = Steward::open(
+        let steward = open_at(
             &bare("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", Permit::Deny),
             tmp.path(),
             "{}",
@@ -1029,7 +1060,7 @@ mod tests {
     #[test]
     fn signals_follow_the_charter_and_only_parent_cancels() {
         let tmp = TempDir::new("steward-signal");
-        let steward = Steward::open(
+        let steward = open_at(
             &bare("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", Permit::Deny),
             tmp.path(),
             "{}",
@@ -1081,7 +1112,7 @@ mod tests {
     #[test]
     fn collect_records_pointers_not_bodies() {
         let tmp = TempDir::new("steward-collect");
-        let steward = Steward::open(
+        let steward = open_at(
             &bare("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", Permit::Deny),
             tmp.path(),
             "{}",
@@ -1130,7 +1161,7 @@ mod tests {
     #[test]
     fn view_reads_linked_ids_only() {
         let tmp = TempDir::new("steward-view");
-        let steward = Steward::open(
+        let steward = open_at(
             &bare("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", Permit::Deny),
             tmp.path(),
             "{}",

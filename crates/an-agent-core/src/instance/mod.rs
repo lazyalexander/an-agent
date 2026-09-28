@@ -1,8 +1,8 @@
 //! Instance runtime for the loop: private session, live agent, registration
-//! tree, bounded turn pool. Workplace mount is not wired.
+//! tree, bounded turn pool, steward, and the steward workspace.
+//! Context assembly lives in the composition crate.
 
 mod agent;
-mod context;
 mod pool;
 mod recover;
 mod session;
@@ -12,10 +12,6 @@ mod tree;
 mod wp;
 
 pub use agent::{Agent, AgentError};
-pub use context::{
-    AssembleMode, Assembly, ContextError, Piece, assemble, cut_if_long, rebuild_index,
-    record_summary, segment_sources,
-};
 pub use pool::{Pool, PoolError, Turn};
 pub use recover::{RecoverError, recover};
 pub use session::{Session, SessionError};
@@ -47,27 +43,43 @@ pub enum InstanceError {
 }
 
 /// Card → grants (factory) then a fresh private session. The loop's constructor.
-pub fn spawn(card: &AgentCard, sessions_root: impl AsRef<Path>) -> Result<Agent, InstanceError> {
+/// `registry` is the caller's tool constructors; this crate registers none.
+pub fn spawn_with(
+    card: &AgentCard,
+    sessions_root: impl AsRef<Path>,
+    registry: &[(&str, factory::ToolCtor)],
+) -> Result<Agent, InstanceError> {
     let hash = card.hash()?;
-    let rt = factory::build(card, &hash)?;
+    let rt = factory::build_with(card, &hash, registry)?;
     let session = Session::create(sessions_root, card.id)?;
     Ok(Agent::from_runtime(rt, session)?)
 }
 
-pub fn spawn_arc(
+pub fn spawn_arc_with(
     card: &AgentCard,
     sessions_root: impl AsRef<Path>,
+    registry: &[(&str, factory::ToolCtor)],
 ) -> Result<Arc<Agent>, InstanceError> {
-    Ok(Arc::new(spawn(card, sessions_root)?))
+    Ok(Arc::new(spawn_with(card, sessions_root, registry)?))
 }
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
     use super::*;
     use crate::act::{Permit, ToolCall, ToolCtx, ToolTag, run_tool_act};
     use crate::principal::card::{AgentCard, ModelSpec, ToolGrant, Topology};
-    use crate::testkit::TempDir;
+    use crate::testkit::{TempDir, bash_registry};
     use uuid::Uuid;
+
+    fn spawn(card: &AgentCard, root: &std::path::Path) -> Result<Agent, InstanceError> {
+        super::spawn_with(card, root, &bash_registry())
+    }
+
+    fn spawn_arc(card: &AgentCard, root: &std::path::Path) -> Result<Arc<Agent>, InstanceError> {
+        super::spawn_arc_with(card, root, &bash_registry())
+    }
 
     fn card(id: &str) -> AgentCard {
         AgentCard {

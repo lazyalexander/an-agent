@@ -183,7 +183,7 @@ mod tests {
 
     #[tokio::test]
     async fn times_out_and_kills_background_child() {
-        let tmp = crate::testkit::TempDir::new("bash");
+        let tmp = an_agent_core::testkit::TempDir::new("bash");
         let dir = tmp.path().to_path_buf();
         let pid_file: PathBuf = dir.join("sleep.pid");
         let bash = Bash::with_timeout(Duration::from_millis(400));

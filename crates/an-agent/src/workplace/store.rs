@@ -7,8 +7,9 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use uuid::Uuid;
 
+use an_agent_core::act::{Resource, ResourceKind};
+
 use super::id::ObjectId;
-use super::resource::{Resource, ResourceKind};
 
 #[derive(Debug, Error)]
 pub enum WorkplaceError {
@@ -375,7 +376,7 @@ fn validate_ref(name: &str) -> Result<(), WorkplaceError> {
 #[allow(clippy::disallowed_methods)]
 mod tests {
     use super::*;
-    use crate::testkit::TempDir;
+    use an_agent_core::testkit::TempDir;
 
     fn tmp() -> TempDir {
         TempDir::new("wp")

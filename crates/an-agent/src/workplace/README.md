@@ -8,4 +8,4 @@ Workspace resources: what an agent may act on, and how those things are named an
 
 **Single-lead discipline:** the lead check (`NotLead`) is caller discipline, not a lock — two writers holding the same lead id race and lose updates; callers must serialize. A crash mid-commit can leave HEAD, the branch ref, and `meta.wp` pointing at different trees; objects are content-addressed and never lost, so recovery is rebuild, not repair.
 
-**Dependencies:** nothing in-crate. Leaf module.
+**Dependencies:** `an-agent-core` for `Resource`, `ResourceKind`, and `det_seam`. The CAS store stays here; resource mnemonics live in the kernel because sentences name them.

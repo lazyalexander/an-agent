@@ -20,14 +20,28 @@ dependencies = [
 name = "an-agent"
 version = "0.1.0"
 dependencies = [
+ "an-agent-core",
  "async-trait",
- "chrono",
  "libc",
- "rand 0.8.8",
  "reqwest",
  "rhai",
  "serde",
  "serde-saphyr",
+ "serde_json",
+ "sha2",
+ "thiserror",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
+name = "an-agent-core"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "rand 0.8.8",
+ "serde",
  "serde_json",
  "sha2",
  "thiserror",

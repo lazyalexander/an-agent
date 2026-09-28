@@ -1,10 +1,12 @@
 mod registry;
+mod resource;
 mod sense;
 mod sentence;
 mod tag;
 mod tool;
 
 pub use registry::{Registration, RegistryError, Tier, ToolRegistry};
+pub use resource::{Resource, ResourceKind};
 pub use sense::{Effect, effect_from_sentence, effect_from_tag};
 pub use sentence::{Access, ActSentence, Audience, BareFile, Ingest, SentenceError, Signal};
 pub use tag::{FileFacet, MemoryFacet, Permit, ToolTag};
@@ -61,11 +63,7 @@ mod tests {
         assert!(!none.unbounded);
         assert!(none.reads.is_empty());
         let wp = uuid::Uuid::parse_str("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa").unwrap();
-        let res = crate::workplace::Resource::new(
-            wp,
-            crate::workplace::ResourceKind::File,
-            ["src", "a.ts"],
-        );
+        let res = Resource::new(wp, ResourceKind::File, ["src", "a.ts"]);
         let read = effect_from_sentence(
             &ActSentence::from_seed(&ToolTag::read("/src/a.ts"), Some(res.clone())).unwrap(),
         );

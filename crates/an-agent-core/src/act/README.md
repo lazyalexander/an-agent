@@ -8,4 +8,4 @@ Admission: every effect-ful action passes through here. A sentence (permit × fi
 
 **Vocabulary rule:** `ActKind` is intent domains only (utterance, invoke, remember, …). The channel rides on `ActEnvelope.tool`: `Some(name)` = via tool, `None` = model-side or direct. Generic tool calls and model calls share `invoke`.
 
-**Dependencies:** `memstream` (to tape), `workplace` (resources). Never: `principal`, `tools`.
+**Dependencies:** `memstream` (to tape). Resource mnemonics live in this module. Never: `principal`, `tools`, the workplace CAS store.
