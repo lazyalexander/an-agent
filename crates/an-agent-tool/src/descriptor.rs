@@ -132,7 +132,7 @@ pub fn content_hash(yaml: &str) -> String {
 /// pathological or oversized documents are rejected as a DoS surface
 /// regardless of parser internals. 64 KiB is far above any legitimate v1
 /// descriptor (~2 KiB observed, inline script included).
-const MAX_DESCRIPTOR_BYTES: usize = 64 * 1024;
+pub(crate) const MAX_DESCRIPTOR_BYTES: usize = 64 * 1024;
 
 pub fn parse(yaml: &str) -> Result<Descriptor, SpecError> {
     if yaml.len() > MAX_DESCRIPTOR_BYTES {
@@ -310,6 +310,10 @@ fn required_string(face: &str, map: &RawMap, key: &str) -> Result<String, SpecEr
         .ok_or_else(|| invalid(format!("effect.{face} requires a string {key}")))
 }
 
+pub(crate) fn parse_file_facet_pub(value: serde_json::Value) -> Result<FileFacet, SpecError> {
+    parse_file_facet(value)
+}
+
 fn parse_file_facet(value: serde_json::Value) -> Result<FileFacet, SpecError> {
     let (op, map) = facet_op(value, "file")?;
     let facet = match op.as_str() {
@@ -341,6 +345,10 @@ fn parse_file_facet(value: serde_json::Value) -> Result<FileFacet, SpecError> {
     Ok(facet)
 }
 
+pub(crate) fn parse_memory_facet_pub(value: serde_json::Value) -> Result<MemoryFacet, SpecError> {
+    parse_memory_facet(value)
+}
+
 fn parse_memory_facet(value: serde_json::Value) -> Result<MemoryFacet, SpecError> {
     let (op, map) = facet_op(value, "memory")?;
     let facet = match op.as_str() {
@@ -367,6 +375,10 @@ fn parse_memory_facet(value: serde_json::Value) -> Result<MemoryFacet, SpecError
 
 /// Effect file paths must be clean absolute paths and may not point at
 /// relative locations inside a workspace or a session.
+pub(crate) fn check_effect_path_pub(path: &str) -> Result<(), SpecError> {
+    check_effect_path(path)
+}
+
 fn check_effect_path(path: &str) -> Result<(), SpecError> {
     let p = std::path::Path::new(path);
     if !p.is_absolute() {

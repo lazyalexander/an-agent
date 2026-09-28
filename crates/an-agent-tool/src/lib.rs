@@ -3,5 +3,6 @@
 
 pub mod bash;
 pub mod descriptor;
+pub mod tool;
 
 pub use bash::Bash;
