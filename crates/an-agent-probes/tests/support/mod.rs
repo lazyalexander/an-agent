@@ -18,11 +18,11 @@ use std::sync::Arc;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use an_agent::act::{
+use an_agent_core::act::{
     ActEnvelope, ActKind, ActSentence, BareFile, Ingest, Permit, Tool, ToolCall,
     effect_from_sentence,
 };
-use an_agent::memstream::{ActOnEvent, AppendEvent, FromKind, Kind, Memevent};
+use an_agent_core::memstream::{ActOnEvent, AppendEvent, FromKind, Kind, Memevent};
 
 // --- wire types (OpenAI-style chat completions; vendor detail) ---
 
@@ -68,9 +68,9 @@ pub struct Usage {
 #[derive(Debug, Error)]
 pub enum AgentError {
     #[error("store: {0}")]
-    Store(#[from] an_agent::memstream::StoreError),
+    Store(#[from] an_agent_core::memstream::StoreError),
     #[error("tool: {0}")]
-    Tool(#[from] an_agent::act::ToolError),
+    Tool(#[from] an_agent_core::act::ToolError),
     #[error("model: {0}")]
     Model(String),
 }
@@ -95,10 +95,10 @@ pub struct AgentState {
 
 pub async fn step(
     state: AgentState,
-    actx: &an_agent::act::ActCtx<'_>,
+    actx: &an_agent_core::act::ActCtx<'_>,
     model: &impl Model,
     tools: &[Arc<dyn Tool>],
-    ctx: &an_agent::act::ToolCtx,
+    ctx: &an_agent_core::act::ToolCtx,
 ) -> Result<AgentState, AgentError> {
     let invoke = admit_invoke_intent(actx, model, &state.messages)?;
     let assistant = model.complete(&state.messages, tools).await?;
@@ -138,7 +138,7 @@ pub async fn step(
         return Ok(AgentState { messages });
     }
     for call in &tool_calls {
-        let result = an_agent::act::run_tool_act(actx, tools, call, ctx).await?;
+        let result = an_agent_core::act::run_tool_act(actx, tools, call, ctx).await?;
         messages.push(ChatMessage {
             role: "tool".into(),
             content: Some(result.message.content),
@@ -151,10 +151,10 @@ pub async fn step(
 
 pub async fn run_until_idle(
     mut state: AgentState,
-    actx: &an_agent::act::ActCtx<'_>,
+    actx: &an_agent_core::act::ActCtx<'_>,
     model: &impl Model,
     tools: &[Arc<dyn Tool>],
-    ctx: &an_agent::act::ToolCtx,
+    ctx: &an_agent_core::act::ToolCtx,
     max_steps: u32,
 ) -> Result<AgentState, AgentError> {
     for _ in 0..max_steps {
@@ -179,7 +179,7 @@ fn last_is_final_assistant(state: &AgentState) -> bool {
 }
 
 fn admit_utterance(
-    actx: &an_agent::act::ActCtx<'_>,
+    actx: &an_agent_core::act::ActCtx<'_>,
     content: &str,
 ) -> Result<Option<Memevent>, AgentError> {
     let Some(store) = actx.store else {
@@ -223,7 +223,7 @@ fn sha256_hex(bytes: impl AsRef<[u8]>) -> String {
 /// no full prompt), effect carries response hash + tool-call names + usage.
 /// Skipped when no store is attached.
 fn admit_invoke_intent(
-    actx: &an_agent::act::ActCtx<'_>,
+    actx: &an_agent_core::act::ActCtx<'_>,
     model: &impl Model,
     messages: &[ChatMessage],
 ) -> Result<Option<Memevent>, AgentError> {
@@ -249,7 +249,7 @@ fn admit_invoke_intent(
 }
 
 fn admit_invoke_effect(
-    actx: &an_agent::act::ActCtx<'_>,
+    actx: &an_agent_core::act::ActCtx<'_>,
     intent: Option<&Memevent>,
     assistant: &Assistant,
 ) -> Result<Option<Memevent>, AgentError> {
@@ -300,26 +300,26 @@ pub fn last_assistant_text(state: &AgentState) -> String {
 // admits and executes it. The loop stays in the host.
 
 use self::rhai::{Continuation, RhaiPolicy};
-use an_agent::memstream::JsonlStore;
+use an_agent_core::memstream::JsonlStore;
 
 /// How many recent events the policy sees, newest first.
 const PROJECTION_TAIL: usize = 20;
 const CLIP_PREVIEW_CHARS: usize = 200;
 
 fn ulid() -> String {
-    an_agent::det_seam::Entropy::os()
-        .ulid(an_agent::det_seam::Clock::wall().now_ms())
+    an_agent_core::det_seam::Entropy::os()
+        .ulid(an_agent_core::det_seam::Clock::wall().now_ms())
         .to_string()
 }
 
 /// Tape the policy descriptor itself (script inline, content-addressed):
 /// the audit/reuse source of the control flow about to run.
 pub fn mount_policy(
-    actx: &an_agent::act::ActCtx<'_>,
+    actx: &an_agent_core::act::ActCtx<'_>,
     name: &str,
     yaml: &str,
 ) -> Result<Option<String>, AgentError> {
-    let hash = an_agent::tools::descriptor::content_hash(yaml);
+    let hash = an_agent_tool::descriptor::content_hash(yaml);
     let Some(store) = actx.store else {
         return Ok(None);
     };
@@ -379,11 +379,11 @@ fn last_observation_preview(store: &JsonlStore, session: &str) -> Result<String,
 /// (the decision itself is taped as intent/effect), execute the
 /// continuation. Returns Ok(true) on halt.
 pub async fn policy_step(
-    actx: &an_agent::act::ActCtx<'_>,
+    actx: &an_agent_core::act::ActCtx<'_>,
     model: &impl Model,
     policy: &Arc<RhaiPolicy>,
     tools: &[Arc<dyn Tool>],
-    ctx: &an_agent::act::ToolCtx,
+    ctx: &an_agent_core::act::ToolCtx,
 ) -> Result<bool, AgentError> {
     let (clips, last_obs) = match actx.store {
         Some(store) => (
@@ -399,7 +399,7 @@ pub async fn policy_step(
         arguments: args.to_string(),
     };
     let policy_slot = [policy.clone() as Arc<dyn Tool>];
-    let decision = an_agent::act::run_tool_act(actx, &policy_slot, &call, ctx).await?;
+    let decision = an_agent_core::act::run_tool_act(actx, &policy_slot, &call, ctx).await?;
     let value: serde_json::Value = serde_json::from_str(&decision.message.content)
         .map_err(|e| AgentError::Model(format!("policy output is not a continuation: {e}")))?;
     let cont = Continuation::from_value(&value).map_err(AgentError::Model)?;
@@ -457,18 +457,18 @@ pub async fn policy_step(
                 name,
                 arguments: args.to_string(),
             };
-            let _ = an_agent::act::run_tool_act(actx, tools, &call, ctx).await?;
+            let _ = an_agent_core::act::run_tool_act(actx, tools, &call, ctx).await?;
             Ok(false)
         }
     }
 }
 
 pub async fn run_policy_until_idle(
-    actx: &an_agent::act::ActCtx<'_>,
+    actx: &an_agent_core::act::ActCtx<'_>,
     model: &impl Model,
     policy: &Arc<RhaiPolicy>,
     tools: &[Arc<dyn Tool>],
-    ctx: &an_agent::act::ToolCtx,
+    ctx: &an_agent_core::act::ToolCtx,
     max_steps: u32,
 ) -> Result<(), AgentError> {
     for _ in 0..max_steps {
@@ -604,8 +604,8 @@ impl Model for ChatCompletions {
             .into_iter()
             .map(|c| ToolCall {
                 id: if c.id.is_empty() {
-                    an_agent::det_seam::Entropy::os()
-                        .ulid(an_agent::det_seam::Clock::wall().now_ms())
+                    an_agent_core::det_seam::Entropy::os()
+                        .ulid(an_agent_core::det_seam::Clock::wall().now_ms())
                         .to_string()
                 } else {
                     c.id
@@ -633,7 +633,8 @@ impl TempDir {
     pub fn new(tag: &str) -> Self {
         let dir = std::env::temp_dir().join(format!(
             "an-agent-test-{tag}-{}",
-            an_agent::det_seam::Entropy::os().ulid(an_agent::det_seam::Clock::wall().now_ms())
+            an_agent_core::det_seam::Entropy::os()
+                .ulid(an_agent_core::det_seam::Clock::wall().now_ms())
         ));
         std::fs::create_dir_all(&dir).expect("create temp dir");
         TempDir(dir)

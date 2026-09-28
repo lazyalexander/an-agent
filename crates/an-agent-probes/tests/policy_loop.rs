@@ -11,8 +11,8 @@ mod support;
 
 use std::sync::Arc;
 
-use an_agent::act::{ActCtx, Tool, ToolCtx, ToolTag};
-use an_agent::memstream::{AppendEvent, FromKind, JsonlStore, Kind};
+use an_agent_core::act::{ActCtx, Tool, ToolCtx, ToolTag};
+use an_agent_core::memstream::{AppendEvent, FromKind, JsonlStore, Kind};
 use serde_json::json;
 use support::rhai::RhaiPolicy;
 use support::{
@@ -69,7 +69,10 @@ fn ctx() -> ToolCtx {
     ToolCtx { signal: Some(rx) }
 }
 
-fn seed_task(store: &JsonlStore, session: &str) -> Result<(), an_agent::memstream::StoreError> {
+fn seed_task(
+    store: &JsonlStore,
+    session: &str,
+) -> Result<(), an_agent_core::memstream::StoreError> {
     store.append(AppendEvent {
         from: "user".into(),
         from_kind: FromKind::Human,
@@ -94,7 +97,7 @@ async fn policy_drives_model_tool_and_halt() {
         session: "s1",
         card: Some("card-hash"),
     };
-    let desc = an_agent::tools::descriptor::parse(POLICY_YAML).unwrap();
+    let desc = an_agent_tool::descriptor::parse(POLICY_YAML).unwrap();
     let policy = Arc::new(RhaiPolicy::from_descriptor(desc).unwrap());
     let hash = mount_policy(&actx, policy.name(), POLICY_YAML)
         .unwrap()
@@ -183,7 +186,7 @@ async fn policy_cannot_yield_tool_outside_requires() {
         session: "s1",
         card: None,
     };
-    let desc = an_agent::tools::descriptor::parse(yaml).unwrap();
+    let desc = an_agent_tool::descriptor::parse(yaml).unwrap();
     let policy = Arc::new(RhaiPolicy::from_descriptor(desc).unwrap());
     let tools: Vec<Arc<dyn Tool>> = vec![Arc::new(Echo)];
 

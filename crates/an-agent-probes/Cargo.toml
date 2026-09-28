@@ -1,0 +1,29 @@
+[package]
+name = "an-agent-probes"
+description = "Probe tests. Not a library."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+autolib = false
+autobins = false
+autoexamples = false
+autobenches = false
+
+[lints]
+workspace = true
+
+[dependencies]
+an-agent-core = { path = "../an-agent-core" }
+an-agent-tool = { path = "../an-agent-tool" }
+
+[dev-dependencies]
+async-trait.workspace = true
+reqwest = { workspace = true, features = ["blocking"] }
+rhai.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+uuid.workspace = true

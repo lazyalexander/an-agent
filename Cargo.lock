@@ -17,20 +17,15 @@ dependencies = [
 ]
 
 [[package]]
-name = "an-agent"
+name = "an-agent-context"
 version = "0.1.0"
 dependencies = [
  "an-agent-core",
- "an-agent-tool",
- "an-agent-workspace",
- "async-trait",
- "reqwest",
- "rhai",
+ "an-agent-factory",
  "serde",
  "serde_json",
  "sha2",
  "thiserror",
- "tokio",
  "uuid",
 ]
 
@@ -47,6 +42,32 @@ dependencies = [
  "thiserror",
  "tokio",
  "ulid",
+ "uuid",
+]
+
+[[package]]
+name = "an-agent-factory"
+version = "0.1.0"
+dependencies = [
+ "an-agent-core",
+ "an-agent-tool",
+ "uuid",
+]
+
+[[package]]
+name = "an-agent-probes"
+version = "0.1.0"
+dependencies = [
+ "an-agent-core",
+ "an-agent-tool",
+ "async-trait",
+ "reqwest",
+ "rhai",
+ "serde",
+ "serde_json",
+ "sha2",
+ "thiserror",
+ "tokio",
  "uuid",
 ]
 

@@ -24,9 +24,9 @@ use std::sync::Arc;
 #[allow(dead_code)]
 mod support;
 
-use an_agent::act::{ActCtx, Tool, ToolCtx, ToolTag};
-use an_agent::det_seam::Entropy;
-use an_agent::memstream::{AppendEvent, FromKind, JsonlStore, Kind, Memevent};
+use an_agent_core::act::{ActCtx, Tool, ToolCtx, ToolTag};
+use an_agent_core::det_seam::Entropy;
+use an_agent_core::memstream::{AppendEvent, FromKind, JsonlStore, Kind, Memevent};
 use serde_json::{Value, json};
 use support::{
     AgentState, ChatCompletions, ChatMessage, ModelSettings, TempDir, last_assistant_text,

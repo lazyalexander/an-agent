@@ -7,7 +7,7 @@ use std::process::Stdio;
 use std::sync::Arc;
 use std::time::Duration;
 
-use an_agent::act::{Tool, ToolCtx, ToolTag};
+use an_agent_core::act::{Tool, ToolCtx, ToolTag};
 use serde_json::Value;
 use tokio::io::AsyncWriteExt;
 use tokio::process::Command;

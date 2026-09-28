@@ -1,6 +1,6 @@
 # an-agent-core
 
-The kernel. Tool constructors live in `an-agent-tool`. Context assembly lives in `an-agent`. The CAS store lives in `an-agent-workspace`. The steward workspace (`Wp`) stays here.
+The kernel. Tool constructors live in `an-agent-tool`. Bash registration and session open live in `an-agent-factory`. Context assembly lives in `an-agent-context`. The CAS store lives in `an-agent-workspace`. The steward workspace (`Wp`) stays here.
 
 ## Modules
 

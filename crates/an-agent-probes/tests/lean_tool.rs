@@ -9,8 +9,8 @@ mod support;
 
 use std::sync::Arc;
 
-use an_agent::act::{ActCtx, Tool, ToolCall, ToolCtx, run_tool_act};
-use an_agent::memstream::{JsonlStore, Kind};
+use an_agent_core::act::{ActCtx, Tool, ToolCall, ToolCtx, run_tool_act};
+use an_agent_core::memstream::{JsonlStore, Kind};
 use serde_json::{Value, json};
 use support::TempDir;
 use support::lean::LeanTool;

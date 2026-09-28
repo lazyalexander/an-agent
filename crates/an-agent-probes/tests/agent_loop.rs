@@ -7,8 +7,8 @@ mod support;
 
 use std::sync::Arc;
 
-use an_agent::act::{ActCtx, Permit, Tool, ToolCall, ToolCtx, ToolTag, run_tool_act};
-use an_agent::memstream::{JsonlStore, Kind, Memevent};
+use an_agent_core::act::{ActCtx, Permit, Tool, ToolCall, ToolCtx, ToolTag, run_tool_act};
+use an_agent_core::memstream::{JsonlStore, Kind, Memevent};
 use serde_json::json;
 use support::{AgentError, AgentState, Assistant, ChatMessage, Model, TempDir, step};
 

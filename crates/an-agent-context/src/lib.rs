@@ -11,12 +11,12 @@ use serde_json::json;
 use sha2::{Digest, Sha256};
 use thiserror::Error;
 
-use crate::memstream::{AppendEvent, FromKind, JsonlStore, Kind, Memevent};
+use an_agent_core::memstream::{AppendEvent, FromKind, JsonlStore, Kind, Memevent};
 
 #[derive(Debug, Error)]
 pub enum ContextError {
     #[error("store: {0}")]
-    Store(#[from] crate::memstream::StoreError),
+    Store(#[from] an_agent_core::memstream::StoreError),
     #[error("io: {0}")]
     Io(#[from] std::io::Error),
     #[error("json: {0}")]
@@ -472,9 +472,9 @@ fn read_proj(session_dir: &Path, name: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::act::{FileFacet, MemoryFacet, Permit, ToolTag};
-    use crate::principal::card::{AgentCard, ModelSpec, ToolGrant, Topology};
-    use crate::runtime::Steward;
+    use an_agent_core::act::{FileFacet, MemoryFacet, Permit, ToolTag};
+    use an_agent_core::principal::card::{AgentCard, ModelSpec, ToolGrant, Topology};
+    use an_agent_core::runtime::Steward;
     use an_agent_core::testkit::TempDir;
     use uuid::Uuid;
 
@@ -508,7 +508,7 @@ mod tests {
             tmp.path(),
             "{\"k\":1}",
             "[\"c0\"]",
-            &crate::factory::tool_registry(),
+            &an_agent_factory::tool_registry(),
         )
         .unwrap();
         s.agent().session().root().to_path_buf()

@@ -7,7 +7,7 @@ use std::process::Stdio;
 use std::sync::Arc;
 use std::time::Duration;
 
-use an_agent::act::{Tool, ToolCtx, ToolTag};
+use an_agent_core::act::{Tool, ToolCtx, ToolTag};
 use serde_json::{Value, json};
 use tokio::process::Command;
 use tokio::time::timeout;
@@ -163,7 +163,8 @@ impl Tool for LeanTool {
         if let Some(source) = args.get("source").and_then(|v| v.as_str()) {
             let dir = std::env::temp_dir().join(format!(
                 "an-agent-lean-{}",
-                an_agent::det_seam::Entropy::os().ulid(an_agent::det_seam::Clock::wall().now_ms())
+                an_agent_core::det_seam::Entropy::os()
+                    .ulid(an_agent_core::det_seam::Clock::wall().now_ms())
             ));
             std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
             let file = dir.join("Main.lean");

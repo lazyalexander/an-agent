@@ -1,0 +1,16 @@
+[package]
+name = "an-agent-factory"
+description = "Registers tool constructors and builds a BuiltAgent from a card"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+an-agent-core = { path = "../an-agent-core" }
+an-agent-tool = { path = "../an-agent-tool" }
+
+[dev-dependencies]
+uuid.workspace = true

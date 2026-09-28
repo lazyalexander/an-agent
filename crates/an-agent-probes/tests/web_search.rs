@@ -11,9 +11,9 @@ mod support;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use an_agent::act::{ActCtx, Tool, ToolCall, ToolCtx, run_tool_act};
-use an_agent::memstream::{JsonlStore, Kind};
-use an_agent::tools::descriptor::{self, Constructor, Net};
+use an_agent_core::act::{ActCtx, Tool, ToolCall, ToolCtx, run_tool_act};
+use an_agent_core::memstream::{JsonlStore, Kind};
+use an_agent_tool::descriptor::{self, Constructor, Net};
 use serde_json::{Value, json};
 use support::TempDir;
 use support::rhai::RhaiTool;
@@ -100,7 +100,7 @@ async fn web_search_live() {
     eprintln!("probe dir: {}", dir.display());
     let store = JsonlStore::open(dir.join("memory.jsonl")).unwrap();
     // A probe dir may hold earlier runs; scope reads to this run's session.
-    let session = an_agent::det_seam::Entropy::os().uuid_v4().to_string();
+    let session = an_agent_core::det_seam::Entropy::os().uuid_v4().to_string();
     let actx = ActCtx {
         store: Some(&store),
         agent_id: "websearch-probe",

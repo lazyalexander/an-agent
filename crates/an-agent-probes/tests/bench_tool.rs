@@ -14,8 +14,8 @@ mod support;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use an_agent::act::{ActCtx, Tool, ToolCall, ToolCtx, ToolTag, run_tool_act};
-use an_agent::tools::{Bash, descriptor};
+use an_agent_core::act::{ActCtx, Tool, ToolCall, ToolCtx, ToolTag, run_tool_act};
+use an_agent_tool::{Bash, descriptor};
 use serde_json::json;
 use support::rhai::RhaiTool;
 use support::ts_tool::SubprocessTool;
