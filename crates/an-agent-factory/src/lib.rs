@@ -3,8 +3,10 @@
 //! with that list. Worker seats stay on the runtime.
 
 mod bash;
+mod discord;
 
 pub use bash::Bash;
+pub use discord::{Discord, DiscordConfig, ReqwestTransport, Transport};
 
 use std::path::Path;
 use std::sync::Arc;
