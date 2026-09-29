@@ -1,4 +1,4 @@
-//! Workspace owned by the steward. Live sub-workspaces hang on its tree.
+//! Workspace owned by the recorder. Live sub-workspaces hang on its tree.
 //! A view is published only when a sub-workspace closes with writes.
 //! Bytes stay in the worker session; this log only records versions.
 
@@ -741,7 +741,7 @@ mod tests {
     use super::*;
     use crate::act::{ActSentence, BareFile, FileFacet, Ingest, MemoryFacet, Permit, ToolTag};
     use crate::principal::card::{AgentCard, ModelSpec, ToolGrant, Topology};
-    use crate::runtime::Steward;
+    use crate::runtime::Recorder;
     use crate::testkit::TempDir;
 
     fn card(id: &str, permit: Permit) -> AgentCard {
@@ -768,8 +768,8 @@ mod tests {
         }
     }
 
-    fn steward(tmp: &TempDir) -> Steward {
-        Steward::open(
+    fn recorder(tmp: &TempDir) -> Recorder {
+        Recorder::open(
             &card("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", Permit::Deny),
             tmp.path(),
             "{}",
@@ -783,7 +783,7 @@ mod tests {
         ActSentence::bare(Permit::Go, BareFile::None, Ingest::Ignore)
     }
 
-    fn worker(s: &Steward) -> (std::sync::Arc<crate::runtime::Agent>, String) {
+    fn worker(s: &Recorder) -> (std::sync::Arc<crate::runtime::Agent>, String) {
         let w = s
             .spawn_worker(
                 &card("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb", Permit::Go),
@@ -797,7 +797,7 @@ mod tests {
     #[test]
     fn continue_replaces_same_true_name_and_keeps_bytes() {
         let tmp = TempDir::new("wp-continue");
-        let s = steward(&tmp);
+        let s = recorder(&tmp);
         let (w1, sub1) = worker(&s);
         let name = s
             .workspace()
@@ -836,7 +836,7 @@ mod tests {
     #[test]
     fn continue_rejects_a_stale_base_without_writing() {
         let tmp = TempDir::new("wp-stale");
-        let s = steward(&tmp);
+        let s = recorder(&tmp);
         let (w1, sub1) = worker(&s);
         s.workspace()
             .write(&sub1, "src/a.txt", b"v1", WriteMode::Create)
@@ -871,7 +871,7 @@ mod tests {
     #[test]
     fn create_on_taken_path_asks_then_reject_or_rename() {
         let tmp = TempDir::new("wp-conflict");
-        let s = steward(&tmp);
+        let s = recorder(&tmp);
         let (w1, sub1) = worker(&s);
         s.workspace()
             .write(&sub1, "src/a.txt", b"old", WriteMode::Create)
@@ -917,7 +917,7 @@ mod tests {
     #[test]
     fn empty_close_publishes_nothing() {
         let tmp = TempDir::new("wp-empty");
-        let s = steward(&tmp);
+        let s = recorder(&tmp);
         let (w, sub) = worker(&s);
         assert!(matches!(
             s.close_worker(w.id(), &[]).unwrap(),
@@ -930,7 +930,7 @@ mod tests {
     #[test]
     fn cyclic_extra_is_rejected() {
         let tmp = TempDir::new("wp-cycle");
-        let s = steward(&tmp);
+        let s = recorder(&tmp);
         let (w, sub) = worker(&s);
         let a = s
             .workspace()
@@ -967,7 +967,7 @@ mod tests {
         );
         assert!(matches!(
             err,
-            Err(crate::runtime::StewardError::Wp(WpError::Cycle))
+            Err(crate::runtime::RecorderError::Wp(WpError::Cycle))
         ));
         assert!(s.workspace().is_live(&sub));
     }
@@ -975,7 +975,7 @@ mod tests {
     #[test]
     fn rollback_without_cascade_leaves_dependents() {
         let tmp = TempDir::new("wp-roll-quiet");
-        let s = steward(&tmp);
+        let s = recorder(&tmp);
         let (w, sub) = worker(&s);
         let a = s
             .workspace()
@@ -1022,7 +1022,7 @@ mod tests {
     #[test]
     fn rollback_can_cascade_and_keeps_prior_view() {
         let tmp = TempDir::new("wp-roll");
-        let s = steward(&tmp);
+        let s = recorder(&tmp);
         let (w, sub) = worker(&s);
         let a = s
             .workspace()
@@ -1075,7 +1075,7 @@ mod tests {
     #[test]
     fn unclosed_subwp_is_not_the_view() {
         let tmp = TempDir::new("wp-open");
-        let s = steward(&tmp);
+        let s = recorder(&tmp);
         let (_w, sub) = worker(&s);
         s.workspace()
             .write(&sub, "src/a.txt", b"x", WriteMode::Create)

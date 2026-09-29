@@ -1,6 +1,6 @@
 # an-agent-workspace
 
-Content-addressed store. This is not the steward workspace (`Wp` in the kernel).
+Content-addressed store. This is not the recorder workspace (`Wp` in the kernel).
 
 **Admission rule:** blob, tree, and commit persistence, plus lead checks. No admission decisions (`act`), no tape (`memstream`).
 

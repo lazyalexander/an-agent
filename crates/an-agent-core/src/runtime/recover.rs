@@ -8,7 +8,7 @@ use thiserror::Error;
 
 use crate::memstream::JsonlStore;
 
-use super::steward::projection_path;
+use super::recorder::projection_path;
 
 #[derive(Debug, Error)]
 pub enum RecoverError {
@@ -60,7 +60,7 @@ mod tests {
     use crate::act::Permit;
     use crate::act::{FileFacet, MemoryFacet, ToolTag};
     use crate::principal::card::{AgentCard, ModelSpec, ToolGrant, Topology};
-    use crate::runtime::Steward;
+    use crate::runtime::Recorder;
     use crate::testkit::TempDir;
     use uuid::Uuid;
 
@@ -91,7 +91,7 @@ mod tests {
     #[test]
     fn rebuilds_absent_projections_from_tape() {
         let tmp = TempDir::new("recover-ok");
-        let steward = Steward::open(
+        let recorder = Recorder::open(
             &card(),
             tmp.path(),
             "{\"a\":1}",
@@ -99,8 +99,8 @@ mod tests {
             &crate::testkit::bash_registry(),
         )
         .unwrap();
-        let dir = steward.agent().session().root().to_path_buf();
-        let hash = steward.agent().card_hash().to_string();
+        let dir = recorder.agent().session().root().to_path_buf();
+        let hash = recorder.agent().card_hash().to_string();
         fs::remove_file(dir.join("prompt")).unwrap();
         fs::remove_file(dir.join("config")).unwrap();
         fs::remove_file(dir.join("context")).unwrap();

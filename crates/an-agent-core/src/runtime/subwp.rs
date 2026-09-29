@@ -178,7 +178,7 @@ mod tests {
     use crate::act::Permit;
     use crate::act::{ActSentence, BareFile, FileFacet, Ingest, MemoryFacet, ToolTag};
     use crate::principal::card::{AgentCard, ModelSpec, ToolGrant, Topology};
-    use crate::runtime::{ProductPtr, Steward};
+    use crate::runtime::{ProductPtr, Recorder};
     use crate::testkit::TempDir;
     use uuid::Uuid;
 
@@ -216,7 +216,7 @@ mod tests {
     #[test]
     fn append_tombstone_keeps_old_bytes_and_links_hash() {
         let tmp = TempDir::new("subwp");
-        let steward = Steward::open(
+        let recorder = Recorder::open(
             &card("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", Permit::Deny),
             tmp.path(),
             "{}",
@@ -224,7 +224,7 @@ mod tests {
             &crate::testkit::bash_registry(),
         )
         .unwrap();
-        let worker = steward
+        let worker = recorder
             .spawn_worker(
                 &card("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb", Permit::Go),
                 &ActSentence::bare(Permit::Go, BareFile::None, Ingest::Ignore),
@@ -253,7 +253,7 @@ mod tests {
             Err(SubWpError::Denied)
         ));
         let digest = log.snapshot_hash().unwrap();
-        let id = steward
+        let id = recorder
             .link(&ProductPtr {
                 child_session: worker.session().id_str().into(),
                 tape_sha256: "tape".into(),
@@ -262,7 +262,7 @@ mod tests {
                 subwp_sha256: Some(digest.clone()),
             })
             .unwrap();
-        let events = steward.agent().session().tape().read_all().unwrap();
+        let events = recorder.agent().session().tape().read_all().unwrap();
         let link = events.iter().find(|e| e.id == id).unwrap();
         assert!(link.content.contains(&digest));
         assert!(!link.content.contains("v1"));
