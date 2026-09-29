@@ -1,0 +1,48 @@
+v: 1
+kind: spool
+name: ai_character
+version: 1.0.0
+summary: One-mention-one-answer character policy over the tape projection
+constructor: rhai
+script: |
+  // Clips are newest first; config.name is my mention handle (mount
+  // config — one body, many characters). Answer the newest unanswered
+  // human discord message that names me, forward the taped reply through
+  // the discord spool, then halt. My own sends never come back: the
+  // bridge drops bot-authored messages before they can reach the tape.
+  fn pos(clips, id) {
+      for i in 0..clips.len() {
+          if clips[i].id == id { return i; }
+      }
+      -1
+  }
+  let me = config.name;
+  let mentions = params.clips.filter(|c| c.kind == "utterance" && c.from == "human" && c.tags.contains("discord") && c.preview.contains(me));
+  let mine = params.clips.filter(|c| c.who == me);
+  let my_utts = mine.filter(|c| c.kind == "utterance");
+  if mentions.is_empty() {
+      #{ kind: "halt" }
+  } else {
+      let m = mentions[0];
+      let unanswered = my_utts.is_empty() || pos(params.clips, m.id) < pos(params.clips, my_utts[0].id);
+      if unanswered {
+          #{ kind: "invoke_model", clips: [m.id] }
+      } else if mine[0].id == my_utts[0].id {
+          // The reply is taped but not yet sent: the host substitutes the
+          // clip's full text; the script never sees more than a preview.
+          #{ kind: "invoke_tool", name: "discord", args: #{ op: "send", content: #{ "$clip": my_utts[0].id } } }
+      } else {
+          #{ kind: "halt" }
+      }
+  }
+effect:
+  file: { op: none }
+  memory: { op: ignore }
+  net: none
+  proc: none
+  flow: none
+# A pure policy: every effect it causes went through another spool's
+# admitted act, so unmount is detach-only.
+inverse: none
+requires:
+  - { name: discord, version: 1.0.0 }

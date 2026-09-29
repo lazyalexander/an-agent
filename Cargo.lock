@@ -80,11 +80,13 @@ name = "an-agent-spool"
 version = "0.1.0"
 dependencies = [
  "an-agent-core",
+ "async-trait",
  "serde",
  "serde-saphyr",
  "serde_json",
  "sha2",
  "thiserror",
+ "tokio",
 ]
 
 [[package]]

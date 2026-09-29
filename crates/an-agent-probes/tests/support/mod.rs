@@ -9,6 +9,7 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
 pub mod lean;
+pub mod mount;
 pub mod rhai;
 pub mod ts_tool;
 
@@ -357,6 +358,10 @@ fn tape_projection(store: &JsonlStore, session: &str) -> Result<serde_json::Valu
                 "id": e.id,
                 "kind": e.kind,
                 "from": e.from_kind,
+                // The raw principal name (agent id / discord username) —
+                // a projection shared by several mounts must let a script
+                // tell its own clips apart from another mount's.
+                "who": e.from,
                 "tags": e.tags,
                 "preview": e.content.chars().take(CLIP_PREVIEW_CHARS).collect::<String>(),
             })
@@ -375,15 +380,59 @@ fn last_observation_preview(store: &JsonlStore, session: &str) -> Result<String,
         .unwrap_or_default())
 }
 
+/// Resolve `{"$clip": "<id>"}` argument values against the tape: the policy
+/// only ever sees truncated previews, so when a continuation needs full
+/// text (e.g. forwarding a model reply), the host substitutes it from the
+/// named clip. One level deep by design — flat argument shapes keep the
+/// substitution surface small; clips must belong to this session.
+fn resolve_clip_args(
+    store: &JsonlStore,
+    session: &str,
+    args: &mut serde_json::Value,
+) -> Result<(), AgentError> {
+    let Some(obj) = args.as_object_mut() else {
+        return Ok(());
+    };
+    let needs: bool = obj.values().any(|v| {
+        v.as_object()
+            .and_then(|m| m.get("$clip"))
+            .and_then(|c| c.as_str())
+            .is_some()
+    });
+    if !needs {
+        return Ok(());
+    }
+    let events = store.read_all()?;
+    for v in obj.values_mut() {
+        let Some(id) = v
+            .as_object()
+            .and_then(|m| m.get("$clip"))
+            .and_then(|c| c.as_str())
+            .map(str::to_string)
+        else {
+            continue;
+        };
+        let e = events
+            .iter()
+            .find(|e| e.id == id && e.session.as_deref() == Some(session))
+            .ok_or_else(|| AgentError::Model(format!("unknown clip id in args: {id}")))?;
+        *v = serde_json::Value::String(e.content.clone());
+    }
+    Ok(())
+}
+
 /// One policy step: project the tape, run the script through admission
 /// (the decision itself is taped as intent/effect), execute the
-/// continuation. Returns Ok(true) on halt.
+/// continuation. Returns Ok(true) on halt. `system`, when given, is
+/// prepended to the context of every invoke_model — a persona belongs to
+/// the mount (card side), never to the script body.
 pub async fn policy_step(
     actx: &an_agent_core::act::ActCtx<'_>,
     model: &impl Model,
     policy: &Arc<RhaiPolicy>,
     tools: &[Arc<dyn Tool>],
     ctx: &an_agent_core::act::ToolCtx,
+    system: Option<&str>,
 ) -> Result<bool, AgentError> {
     let (clips, last_obs) = match actx.store {
         Some(store) => (
@@ -416,7 +465,15 @@ pub async fn policy_step(
             // The host assembles context from the named clip ids; the
             // script never touches full text or the model itself.
             let events = store.read_all()?;
-            let mut messages = Vec::with_capacity(clips.len());
+            let mut messages = Vec::with_capacity(clips.len() + 1);
+            if let Some(system) = system {
+                messages.push(ChatMessage {
+                    role: "system".into(),
+                    content: Some(system.to_string()),
+                    tool_calls: None,
+                    tool_call_id: None,
+                });
+            }
             for id in &clips {
                 let e = events
                     .iter()
@@ -452,6 +509,10 @@ pub async fn policy_step(
                     "policy yielded tool outside its requires: {name}"
                 )));
             }
+            let mut args = args;
+            if let Some(store) = actx.store {
+                resolve_clip_args(store, actx.session, &mut args)?;
+            }
             let call = ToolCall {
                 id: ulid(),
                 name,
@@ -470,9 +531,10 @@ pub async fn run_policy_until_idle(
     tools: &[Arc<dyn Tool>],
     ctx: &an_agent_core::act::ToolCtx,
     max_steps: u32,
+    system: Option<&str>,
 ) -> Result<(), AgentError> {
     for _ in 0..max_steps {
-        if policy_step(actx, model, policy, tools, ctx).await? {
+        if policy_step(actx, model, policy, tools, ctx, system).await? {
             return Ok(());
         }
     }

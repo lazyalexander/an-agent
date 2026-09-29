@@ -1,0 +1,17 @@
+v: 1
+kind: spool
+name: discord
+version: 1.0.0
+summary: Bridge a Discord channel into the tape — poll new human messages, send replies
+constructor: host
+host: discord
+effect:
+  file: { op: none }
+  memory: { op: ignore }
+  net: egress
+  proc: none
+  flow: both
+# Sends are P8 irreversible external effects: what was posted to the
+# channel stays posted. Unmount only detaches the bridge.
+inverse: irreversible
+requires: []
