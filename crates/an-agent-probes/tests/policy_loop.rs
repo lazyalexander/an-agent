@@ -105,7 +105,7 @@ async fn policy_drives_model_tool_and_halt() {
     seed_task(&store, "s1").unwrap();
 
     let tools: Vec<Arc<dyn Tool>> = vec![Arc::new(Echo)];
-    run_policy_until_idle(&actx, &Fake, &policy, &tools, &ctx(), 10)
+    run_policy_until_idle(&actx, &Fake, &policy, &tools, &ctx(), 10, None)
         .await
         .unwrap();
 
@@ -190,7 +190,7 @@ async fn policy_cannot_yield_tool_outside_requires() {
     let policy = Arc::new(RhaiPolicy::from_descriptor(desc).unwrap());
     let tools: Vec<Arc<dyn Tool>> = vec![Arc::new(Echo)];
 
-    let err = policy_step(&actx, &Fake, &policy, &tools, &ctx())
+    let err = policy_step(&actx, &Fake, &policy, &tools, &ctx(), None)
         .await
         .unwrap_err();
     assert!(matches!(err, AgentError::Model(_)));

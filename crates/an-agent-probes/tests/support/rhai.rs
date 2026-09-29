@@ -273,7 +273,15 @@ impl Continuation {
 /// that declares file/net/proc faces is rejected at construction, the
 /// same fail-fast gate as RhaiTool.
 pub struct RhaiPolicy {
-    desc: Descriptor,
+    name: String,
+    summary: String,
+    memory: an_agent_core::act::MemoryFacet,
+    /// Names this policy may yield in `invoke_tool` — the descriptor's
+    /// requires list, enforced by the host driver.
+    whitelist: Vec<String>,
+    /// Mount config, visible to the script as `config` — one body, many
+    /// mounts, different settings (e.g. a character's mention handle).
+    config: serde_json::Map<String, serde_json::Value>,
     script: String,
 }
 
@@ -297,22 +305,74 @@ impl RhaiPolicy {
             Constructor::Rhai { script } => script.clone(),
             _ => return Err("not a rhai descriptor".into()),
         };
-        Ok(Self { desc, script })
+        Ok(Self {
+            name: desc.name,
+            summary: desc.summary,
+            memory: desc.effect.memory,
+            whitelist: desc.requires.iter().map(|r| r.name.clone()).collect(),
+            config: serde_json::Map::new(),
+            script,
+        })
     }
 
-    /// Names this policy may yield in `invoke_tool` — the descriptor's
-    /// requires list, enforced by the host driver.
+    /// Same gate from a published spool: a policy is internal, so the flow
+    /// face must also be none — it reads a tape projection and yields
+    /// continuations; it never touches an environment itself.
+    pub fn from_spool(
+        spec: &an_agent_spool::spool::SpoolSpec,
+        config: serde_json::Map<String, serde_json::Value>,
+    ) -> Result<Self, String> {
+        use an_agent_core::act::FileFacet;
+        use an_agent_spool::descriptor::{Net, Proc};
+        use an_agent_spool::spool::{Constructor as SpoolCtor, Flow};
+        if spec.effect.file != FileFacet::None {
+            return Err(format!(
+                "policy declares a file face it cannot use: {:?}",
+                spec.effect.file
+            ));
+        }
+        if spec.effect.net != Net::None {
+            return Err("policy declares net it cannot use".into());
+        }
+        if spec.effect.proc_ != Proc::None {
+            return Err("policy declares proc it cannot use".into());
+        }
+        if spec.effect.flow != Flow::None {
+            return Err("policy declares a flow face it cannot use".into());
+        }
+        let script = match &spec.constructor {
+            SpoolCtor::Rhai { script } => script.clone(),
+            _ => return Err("not a rhai spool".into()),
+        };
+        Ok(Self {
+            name: spec.name.clone(),
+            summary: spec.summary.clone(),
+            memory: spec.effect.memory.clone(),
+            whitelist: spec.requires.iter().map(|r| r.name.clone()).collect(),
+            config,
+            script,
+        })
+    }
+
     pub fn whitelist(&self) -> Vec<String> {
-        self.desc.requires.iter().map(|r| r.name.clone()).collect()
+        self.whitelist.clone()
     }
 }
 
-fn run_policy_script(script: &str, args: serde_json::Value) -> Result<serde_json::Value, String> {
+fn run_policy_script(
+    script: &str,
+    args: serde_json::Value,
+    config: serde_json::Map<String, serde_json::Value>,
+) -> Result<serde_json::Value, String> {
     let engine = bounded_engine();
     let mut scope = rhai::Scope::new();
     scope.push(
         "params",
         rhai::serde::to_dynamic(args).map_err(|e| e.to_string())?,
+    );
+    scope.push(
+        "config",
+        rhai::serde::to_dynamic(config).map_err(|e| e.to_string())?,
     );
     let out = engine
         .eval_with_scope::<rhai::Dynamic>(&mut scope, script)
@@ -323,11 +383,11 @@ fn run_policy_script(script: &str, args: serde_json::Value) -> Result<serde_json
 #[async_trait::async_trait]
 impl Tool for RhaiPolicy {
     fn name(&self) -> &str {
-        &self.desc.name
+        &self.name
     }
 
     fn description(&self) -> &str {
-        &self.desc.summary
+        &self.summary
     }
 
     fn parameters(&self) -> serde_json::Value {
@@ -348,13 +408,15 @@ impl Tool for RhaiPolicy {
         Some(ToolTag {
             file: an_agent_core::act::FileFacet::None,
             permit: Permit::Go,
-            memory: self.desc.effect.memory.clone(),
+            memory: self.memory.clone(),
         })
     }
 
     async fn execute(&self, args: serde_json::Value, ctx: &ToolCtx) -> Result<String, String> {
         let script = self.script.clone();
-        let mut task = tokio::task::spawn_blocking(move || run_policy_script(&script, args));
+        let config = self.config.clone();
+        let mut task =
+            tokio::task::spawn_blocking(move || run_policy_script(&script, args, config));
         let value = tokio::select! {
             res = &mut task => res.map_err(|e| e.to_string())??,
             _ = wait_cancel(ctx.signal.clone()) => return Err("cancelled".into()),
