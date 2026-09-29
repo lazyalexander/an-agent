@@ -10,7 +10,12 @@ The core bet: an append-only event tape (memstream) is the single source of trut
 
 ## Layout
 
-- `crates/an-agent` — the Rust kernel (tape, admission, agent identity, tool admission) plus runnable probes under `tests/`. See its README for the module map and invariants.
+- `crates/an-agent-core` — the kernel: tape, admission, identity, runtime, and the steward workspace.
+- `crates/an-agent-factory` — bash registration and `BuiltAgent` construction. Spawn stays in the runtime.
+- `crates/an-agent-context` — per-session context assembly. The shared pool is not in this crate.
+- `crates/an-agent-spool` — capability spools: YAML descriptor admission and the append-only spool registry.
+- `crates/an-agent-workspace` — content-addressed store. It is not the steward workspace.
+- `crates/an-agent-probes` — probe tests only. Not a library.
 - `packages/causal-web` — zero-dependency tape viewer: drop in a `.jsonl` tape, see the causal threads, get the tape validated in-page.
 - `packages/lean-probe` — tiny Lake package used by the Lean 4 compatibility probe (no Mathlib).
 - `config/` — model endpoint configuration.
@@ -30,8 +35,8 @@ cargo test
 Live probes (need network + `MODEL_API_KEY`, skipped by default):
 
 ```sh
-cargo test -p an-agent --test react_live -- --ignored --nocapture
-cargo test -p an-agent --test web_search -- --ignored --nocapture
+cargo test -p an-agent-probes --test react_live -- --ignored --nocapture
+cargo test -p an-agent-probes --test web_search -- --ignored --nocapture
 ```
 
 The toolchain is pinned via `rust-toolchain.toml`. Upgrade one minor at a time; fix new lints in the same commit.

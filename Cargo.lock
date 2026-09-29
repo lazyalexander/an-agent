@@ -17,22 +17,85 @@ dependencies = [
 ]
 
 [[package]]
-name = "an-agent"
+name = "an-agent-context"
+version = "0.1.0"
+dependencies = [
+ "an-agent-core",
+ "an-agent-factory",
+ "serde",
+ "serde_json",
+ "sha2",
+ "thiserror",
+ "uuid",
+]
+
+[[package]]
+name = "an-agent-core"
 version = "0.1.0"
 dependencies = [
  "async-trait",
  "chrono",
- "libc",
  "rand 0.8.8",
- "reqwest",
- "rhai",
  "serde",
- "serde-saphyr",
  "serde_json",
  "sha2",
  "thiserror",
  "tokio",
  "ulid",
+ "uuid",
+]
+
+[[package]]
+name = "an-agent-factory"
+version = "0.1.0"
+dependencies = [
+ "an-agent-core",
+ "async-trait",
+ "libc",
+ "serde_json",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
+name = "an-agent-probes"
+version = "0.1.0"
+dependencies = [
+ "an-agent-core",
+ "an-agent-factory",
+ "an-agent-spool",
+ "async-trait",
+ "reqwest",
+ "rhai",
+ "serde",
+ "serde_json",
+ "sha2",
+ "thiserror",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
+name = "an-agent-spool"
+version = "0.1.0"
+dependencies = [
+ "an-agent-core",
+ "serde",
+ "serde-saphyr",
+ "serde_json",
+ "sha2",
+ "thiserror",
+]
+
+[[package]]
+name = "an-agent-workspace"
+version = "0.1.0"
+dependencies = [
+ "an-agent-core",
+ "serde",
+ "serde_json",
+ "sha2",
+ "thiserror",
  "uuid",
 ]
 
