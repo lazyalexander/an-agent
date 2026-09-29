@@ -1,5 +1,5 @@
 //! Content-addressed store. Resource mnemonics stay in the kernel because
-//! sentences name them. This crate is not the steward workspace (`Wp`).
+//! sentences name them. This crate is not the recorder workspace (`Wp`).
 
 mod id;
 mod store;

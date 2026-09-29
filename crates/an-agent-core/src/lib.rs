@@ -1,4 +1,4 @@
-//! Kernel: tape, admission, identity, runtime, steward workspace.
+//! Kernel: tape, admission, identity, runtime, recorder workspace.
 //! Tool constructors and context assembly live in the composition crate.
 //! Callers supply the tool registry to [`principal::factory::build_with`]
 //! and [`runtime::spawn_with`].

@@ -474,7 +474,7 @@ mod tests {
     use super::*;
     use an_agent_core::act::{FileFacet, MemoryFacet, Permit, ToolTag};
     use an_agent_core::principal::card::{AgentCard, ModelSpec, ToolGrant, Topology};
-    use an_agent_core::runtime::Steward;
+    use an_agent_core::runtime::Recorder;
     use an_agent_core::testkit::TempDir;
     use uuid::Uuid;
 
@@ -503,7 +503,7 @@ mod tests {
     }
 
     fn session(tmp: &TempDir) -> PathBuf {
-        let s = Steward::open(
+        let s = Recorder::open(
             &card(),
             tmp.path(),
             "{\"k\":1}",

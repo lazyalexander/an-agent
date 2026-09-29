@@ -1,23 +1,23 @@
 //! Runtime for the loop: private session, live agent, registration
-//! tree, bounded turn pool, steward, and the steward workspace.
+//! tree, bounded turn pool, recorder, and the recorder workspace.
 //! Context assembly lives in the composition crate.
 
 mod agent;
 mod pool;
+mod recorder;
 mod recover;
 mod session;
-mod steward;
 mod subwp;
 mod tree;
 mod wp;
 
 pub use agent::{Agent, AgentError};
 pub use pool::{Pool, PoolError, Turn};
+pub use recorder::{
+    Arrival, Lease, ProductPtr, Recorder, RecorderError, RestoredSeat, TurnKind, restore_seats,
+};
 pub use recover::{RecoverError, recover};
 pub use session::{Session, SessionError};
-pub use steward::{
-    Arrival, Lease, ProductPtr, RestoredSeat, Steward, StewardError, TurnKind, restore_seats,
-};
 pub use subwp::{SubWp, SubWpError};
 pub use tree::{Seat, Tree, TreeError};
 pub use wp::{CloseOut, DepEdge, Resolve, VerId, Wp, WpError, WriteMode};

@@ -1,5 +1,9 @@
 //! The one user-facing agent in a runtime. Spawn, mail, and link are
 //! verbs here — not tools. World-facing grants on its card must be Deny.
+//! The recorder is the tape-keeping identity: every verb is a tape append,
+//! and its state (seats, bounds, flags) is a projection rebuildable from
+//! the tape — see `restore_seats`. With world grants all Deny, the tape is
+//! its only effect channel.
 
 use std::collections::{HashMap, VecDeque};
 use std::fs;
@@ -23,8 +27,8 @@ use super::wp::{CloseOut, DepEdge, Wp, WpError};
 use super::{RuntimeError, spawn_with};
 
 #[derive(Debug, Error)]
-pub enum StewardError {
-    #[error("steward grant {0} is not deny")]
+pub enum RecorderError {
+    #[error("recorder grant {0} is not deny")]
     GrantNotDenied(String),
     #[error("worker grant {0} is outside the spawn bound")]
     OutsideBound(String),
@@ -64,7 +68,7 @@ pub enum StewardError {
 pub enum Arrival {
     /// Mail to the worker that already holds the turn.
     Steered,
-    /// Held on the steward until the pool is idle.
+    /// Held on the recorder until the pool is idle.
     Queued,
 }
 
@@ -91,7 +95,7 @@ impl ProductPtr {
         md_sha256: Option<String>,
         tree_id: Option<String>,
         subwp_sha256: Option<String>,
-    ) -> Result<Self, StewardError> {
+    ) -> Result<Self, RecorderError> {
         Ok(Self {
             child_session: child_session.into(),
             tape_sha256: hash_file(tape)?,
@@ -108,7 +112,7 @@ pub struct Intent {
     pub text: String,
 }
 
-pub struct Steward {
+pub struct Recorder {
     agent: Arc<Agent>,
     pool: Pool,
     seats: Mutex<Vec<Seat>>,
@@ -145,19 +149,19 @@ pub struct RestoredSeat {
     pub subwp: Option<String>,
 }
 
-impl Steward {
+impl Recorder {
     /// `config` and `context` are projection snapshots (config text, clip-id
     /// list). They are written beside the tape and also recorded as events
     /// so `recover` can rebuild the files. The prompt projection is the card
     /// hash, not a second copy of the prompt text. `registry` is the tool
-    /// constructors for this steward and every child it spawns.
+    /// constructors for this recorder and every child it spawns.
     pub fn open(
         card: &AgentCard,
         sessions_root: impl AsRef<Path>,
         config: &str,
         context: &str,
         registry: &[(&str, crate::principal::factory::ToolCtor)],
-    ) -> Result<Self, StewardError> {
+    ) -> Result<Self, RecorderError> {
         deny_world_grants(card)?;
         let root = sessions_root.as_ref().to_path_buf();
         let registry: Vec<(String, crate::principal::factory::ToolCtor)> = registry
@@ -183,7 +187,7 @@ impl Steward {
         write_if_absent(&projection_path(agent.session().root(), "config"), config)?;
         write_if_absent(&projection_path(agent.session().root(), "context"), context)?;
         let wp = Wp::open(&root)?;
-        let steward_id = agent.id();
+        let recorder_id = agent.id();
         Ok(Self {
             agent,
             pool,
@@ -193,7 +197,7 @@ impl Steward {
             wp,
             bounds: Mutex::new(HashMap::new()),
             flags: Mutex::new(HashMap::from([(
-                steward_id,
+                recorder_id,
                 Arc::new(AtomicBool::new(false)),
             )])),
             registry,
@@ -220,13 +224,13 @@ impl Steward {
     }
 
     /// `bound` is the parent's charter for this child. It is written on the
-    /// steward tape. Every tool grant on `card` must fit inside it.
+    /// recorder tape. Every tool grant on `card` must fit inside it.
     /// Registers one sub-workspace for the child.
     pub fn spawn_worker(
         &self,
         card: &AgentCard,
         bound: &ActSentence,
-    ) -> Result<Arc<Agent>, StewardError> {
+    ) -> Result<Arc<Agent>, RecorderError> {
         self.spawn_child(self.agent.id(), card, bound, true)
     }
 
@@ -236,7 +240,7 @@ impl Steward {
         parent: Uuid,
         card: &AgentCard,
         bound: &ActSentence,
-    ) -> Result<Arc<Agent>, StewardError> {
+    ) -> Result<Arc<Agent>, RecorderError> {
         self.spawn_child(parent, card, bound, true)
     }
 
@@ -246,16 +250,16 @@ impl Steward {
         &self,
         card: &AgentCard,
         bound: &ActSentence,
-    ) -> Result<Arc<Agent>, StewardError> {
+    ) -> Result<Arc<Agent>, RecorderError> {
         if !bound_is_fileless(bound) {
-            return Err(StewardError::LiteFile);
+            return Err(RecorderError::LiteFile);
         }
         self.spawn_child(self.agent.id(), card, bound, false)
     }
 
     /// Drop this seat and every descendant. Live sub-workspaces are abandoned
     /// with no view. Already published views stay.
-    pub fn release(&self, id: Uuid) -> Result<(), StewardError> {
+    pub fn release(&self, id: Uuid) -> Result<(), RecorderError> {
         let ids = self.pool.tree().descendants(id)?;
         self.append(
             &self.agent,
@@ -294,27 +298,27 @@ impl Steward {
 
     /// Parent cancels a direct child. Recorded on both tapes. A child cannot
     /// cancel its parent or a sibling.
-    pub fn cancel(&self, parent: Uuid, child: Uuid) -> Result<String, StewardError> {
+    pub fn cancel(&self, parent: Uuid, child: Uuid) -> Result<String, RecorderError> {
         let actual = self.pool.tree().parent(child)?;
         if actual != Some(parent) {
-            return Err(StewardError::SignalDenied("cancel"));
+            return Err(RecorderError::SignalDenied("cancel"));
         }
         let child_agent = self
             .pool
             .tree()
             .get(child)
-            .ok_or(StewardError::NotMounted(child))?;
+            .ok_or(RecorderError::NotMounted(child))?;
         let parent_agent = self
             .pool
             .tree()
             .get(parent)
-            .ok_or(StewardError::NotMounted(parent))?;
+            .ok_or(RecorderError::NotMounted(parent))?;
         self.record_both(&parent_agent, &child_agent, "cancel", "cancel")
     }
 
     /// Set this seat's cancel flag and record cancel down every child edge.
     /// The flag is the only thing a [`Lease`] carries.
-    pub fn propagate_cancel(&self, id: Uuid) -> Result<(), StewardError> {
+    pub fn propagate_cancel(&self, id: Uuid) -> Result<(), RecorderError> {
         if self
             .flags
             .lock()
@@ -323,7 +327,7 @@ impl Steward {
             .is_none()
             && id != self.agent.id()
         {
-            return Err(StewardError::NotMounted(id));
+            return Err(RecorderError::NotMounted(id));
         }
         self.mark_cancelled(id);
         let children = self.pool.tree().children(id).unwrap_or_default();
@@ -335,13 +339,13 @@ impl Steward {
                 .pool
                 .tree()
                 .parent(id)?
-                .ok_or(StewardError::NotMounted(id))?;
+                .ok_or(RecorderError::NotMounted(id))?;
             self.cancel(parent, id)?;
         }
         Ok(())
     }
 
-    pub fn lease(&self, id: Uuid) -> Result<Lease, StewardError> {
+    pub fn lease(&self, id: Uuid) -> Result<Lease, RecorderError> {
         let flags_map = self.flags.lock().unwrap_or_else(|e| e.into_inner());
         let mut flags = Vec::new();
         let mut cursor = id;
@@ -349,7 +353,7 @@ impl Steward {
             let flag = flags_map
                 .get(&cursor)
                 .cloned()
-                .ok_or(StewardError::NotMounted(cursor))?;
+                .ok_or(RecorderError::NotMounted(cursor))?;
             flags.push(flag);
             if cursor == self.agent.id() {
                 break;
@@ -358,62 +362,62 @@ impl Steward {
                 .pool
                 .tree()
                 .parent(cursor)?
-                .ok_or(StewardError::NotMounted(cursor))?;
+                .ok_or(RecorderError::NotMounted(cursor))?;
         }
         Ok(Lease { id, flags })
     }
 
     /// Child finishes and hands a result to its parent.
     /// Denied when the charter's complete face is Deny.
-    pub fn complete(&self, child: Uuid, text: &str) -> Result<String, StewardError> {
+    pub fn complete(&self, child: Uuid, text: &str) -> Result<String, RecorderError> {
         let parent = self
             .pool
             .tree()
             .parent(child)?
-            .ok_or(StewardError::NotMounted(child))?;
+            .ok_or(RecorderError::NotMounted(child))?;
         let bound = self.charter(child)?;
         if bound.signal().complete == Permit::Deny {
-            return Err(StewardError::SignalDenied("complete"));
+            return Err(RecorderError::SignalDenied("complete"));
         }
         let child_agent = self
             .pool
             .tree()
             .get(child)
-            .ok_or(StewardError::NotMounted(child))?;
+            .ok_or(RecorderError::NotMounted(child))?;
         let parent_agent = self
             .pool
             .tree()
             .get(parent)
-            .ok_or(StewardError::NotMounted(parent))?;
+            .ok_or(RecorderError::NotMounted(parent))?;
         self.record_both(&child_agent, &parent_agent, "complete", text)
     }
 
     /// Child sends a message. The parent is always allowed.
     /// Anyone else requires `audience: any`.
-    pub fn send(&self, from: Uuid, to: Uuid, text: &str) -> Result<String, StewardError> {
+    pub fn send(&self, from: Uuid, to: Uuid, text: &str) -> Result<String, RecorderError> {
         let parent = self
             .pool
             .tree()
             .parent(from)?
-            .ok_or(StewardError::NotMounted(from))?;
+            .ok_or(RecorderError::NotMounted(from))?;
         let bound = self.charter(from)?;
         if to != parent && bound.signal().audience != Audience::Any {
-            return Err(StewardError::SignalDenied("send"));
+            return Err(RecorderError::SignalDenied("send"));
         }
         let from_agent = self
             .pool
             .tree()
             .get(from)
-            .ok_or(StewardError::NotMounted(from))?;
+            .ok_or(RecorderError::NotMounted(from))?;
         let to_agent = self
             .pool
             .tree()
             .get(to)
-            .ok_or(StewardError::NotMounted(to))?;
+            .ok_or(RecorderError::NotMounted(to))?;
         self.record_both(&from_agent, &to_agent, "send", text)
     }
 
-    pub fn submit(&self, worker: Uuid, text: &str) -> Result<Arrival, StewardError> {
+    pub fn submit(&self, worker: Uuid, text: &str) -> Result<Arrival, RecorderError> {
         if self.pool.is_running(worker) {
             self.mail(worker, text)?;
             return Ok(Arrival::Steered);
@@ -428,30 +432,30 @@ impl Steward {
         Ok(Arrival::Queued)
     }
 
-    pub fn pop(&self) -> Result<Intent, StewardError> {
+    pub fn pop(&self) -> Result<Intent, RecorderError> {
         if self.pool.running() > 0 {
-            return Err(StewardError::Busy);
+            return Err(RecorderError::Busy);
         }
         self.queue
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .pop_front()
-            .ok_or(StewardError::Empty)
+            .ok_or(RecorderError::Empty)
     }
 
-    pub fn begin_turn(&self, worker: Uuid) -> Result<Turn<'_>, StewardError> {
+    pub fn begin_turn(&self, worker: Uuid) -> Result<Turn<'_>, RecorderError> {
         if self.pool.tree().get(worker).is_none() {
-            return Err(StewardError::NotMounted(worker));
+            return Err(RecorderError::NotMounted(worker));
         }
         Ok(self.pool.begin_turn(worker)?)
     }
 
-    pub fn mail(&self, worker: Uuid, text: &str) -> Result<String, StewardError> {
+    pub fn mail(&self, worker: Uuid, text: &str) -> Result<String, RecorderError> {
         let child = self
             .pool
             .tree()
             .get(worker)
-            .ok_or(StewardError::NotMounted(worker))?;
+            .ok_or(RecorderError::NotMounted(worker))?;
         let body = json!({
             "to_session": child.session().id_str(),
             "text": text,
@@ -468,22 +472,22 @@ impl Steward {
     }
 
     /// Publish the worker's sub-workspace if it wrote anything.
-    /// Steward does not write file bytes.
-    pub fn close_worker(&self, worker: Uuid, extra: &[DepEdge]) -> Result<CloseOut, StewardError> {
+    /// Recorder does not write file bytes.
+    pub fn close_worker(&self, worker: Uuid, extra: &[DepEdge]) -> Result<CloseOut, RecorderError> {
         let sub = self
             .wp
             .subwp_of(worker)
-            .ok_or(StewardError::NoSubwp(worker))?;
+            .ok_or(RecorderError::NoSubwp(worker))?;
         Ok(self.wp.close(&sub, extra)?)
     }
 
     /// Collect: record pointers only. Does not run tools.
-    pub fn collect(&self, product: &ProductPtr) -> Result<String, StewardError> {
+    pub fn collect(&self, product: &ProductPtr) -> Result<String, RecorderError> {
         let _kind = TurnKind::Collect;
         self.link(product)
     }
 
-    pub fn link(&self, product: &ProductPtr) -> Result<String, StewardError> {
+    pub fn link(&self, product: &ProductPtr) -> Result<String, RecorderError> {
         let body = json!({
             "child_session": product.child_session,
             "tape_sha256": product.tape_sha256,
@@ -495,24 +499,24 @@ impl Steward {
         self.append(&self.agent, "link", body, vec![])
     }
 
-    pub fn define_view(&self, name: &str, link_ids: &[String]) -> Result<String, StewardError> {
+    pub fn define_view(&self, name: &str, link_ids: &[String]) -> Result<String, RecorderError> {
         let body = json!({ "name": name, "links": link_ids }).to_string();
         self.append(&self.agent, "view", body, vec![])
     }
 
-    /// Latest definition of `name` on the steward tape. Read-only.
-    pub fn view(&self, name: &str) -> Result<Vec<String>, StewardError> {
+    /// Latest definition of `name` on the recorder tape. Read-only.
+    pub fn view(&self, name: &str) -> Result<Vec<String>, RecorderError> {
         let events = self.agent.session().tape().read_all()?;
         let found = events.iter().rev().find(|e| {
             e.tags.iter().any(|t| t == "view") && view_name(&e.content).as_deref() == Some(name)
         });
         let Some(event) = found else {
-            return Err(StewardError::Empty);
+            return Err(RecorderError::Empty);
         };
         let v: Value = serde_json::from_str(&event.content)?;
         let links = v["links"]
             .as_array()
-            .ok_or(StewardError::Empty)?
+            .ok_or(RecorderError::Empty)?
             .iter()
             .filter_map(|x| x.as_str().map(str::to_string))
             .collect();
@@ -525,19 +529,19 @@ impl Steward {
         card: &AgentCard,
         bound: &ActSentence,
         with_subwp: bool,
-    ) -> Result<Arc<Agent>, StewardError> {
+    ) -> Result<Arc<Agent>, RecorderError> {
         if self.pool.tree().get(parent).is_none() {
-            return Err(StewardError::NotMounted(parent));
+            return Err(RecorderError::NotMounted(parent));
         }
         if parent != self.agent.id() {
             let charter = self.charter(parent)?;
             if !bound.within(&charter) {
-                return Err(StewardError::WiderThanParent);
+                return Err(RecorderError::WiderThanParent);
             }
         }
         for grant in &card.tools {
             if !bound.allows(&grant.tag) {
-                return Err(StewardError::OutsideBound(grant.name.clone()));
+                return Err(RecorderError::OutsideBound(grant.name.clone()));
             }
         }
         let registry = self.listed_registry();
@@ -588,13 +592,13 @@ impl Steward {
         }
     }
 
-    fn charter(&self, worker: Uuid) -> Result<ActSentence, StewardError> {
+    fn charter(&self, worker: Uuid) -> Result<ActSentence, RecorderError> {
         self.bounds
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .get(&worker)
             .cloned()
-            .ok_or(StewardError::NotMounted(worker))
+            .ok_or(RecorderError::NotMounted(worker))
     }
 
     fn record_both(
@@ -603,7 +607,7 @@ impl Steward {
         to: &Agent,
         tag: &str,
         text: &str,
-    ) -> Result<String, StewardError> {
+    ) -> Result<String, RecorderError> {
         let body = json!({
             "to": to.id_str(),
             "text": text,
@@ -625,7 +629,7 @@ impl Steward {
         tag: &str,
         content: String,
         refs: Vec<String>,
-    ) -> Result<String, StewardError> {
+    ) -> Result<String, RecorderError> {
         let event = agent.session().tape().append(AppendEvent {
             from: agent.id_str().to_string(),
             from_kind: FromKind::Agent,
@@ -641,32 +645,32 @@ impl Steward {
     }
 }
 
-fn hash_file(path: &Path) -> Result<String, StewardError> {
+fn hash_file(path: &Path) -> Result<String, RecorderError> {
     let bytes = fs::read(path)?;
     Ok(format!("{:x}", Sha256::digest(bytes)))
 }
 
-pub fn restore_seats(session_dir: &Path) -> Result<Vec<RestoredSeat>, StewardError> {
+pub fn restore_seats(session_dir: &Path) -> Result<Vec<RestoredSeat>, RecorderError> {
     use crate::memstream::JsonlStore;
     let events = JsonlStore::open(session_dir.join("memory.jsonl"))?.read_all()?;
     let mut nodes: HashMap<Uuid, RestoredSeat> = HashMap::new();
-    let mut steward_id = None;
+    let mut recorder_id = None;
     for event in &events {
-        let Ok(steward) = event.from.parse::<Uuid>() else {
+        let Ok(recorder) = event.from.parse::<Uuid>() else {
             continue;
         };
         if event.tags.iter().any(|tag| tag == "spawn") {
-            steward_id = Some(steward);
+            recorder_id = Some(recorder);
             let value: Value = serde_json::from_str(&event.content)?;
             let id = value["worker"]
                 .as_str()
                 .unwrap_or_default()
                 .parse::<Uuid>()
-                .map_err(|_| StewardError::NotMounted(steward))?;
+                .map_err(|_| RecorderError::NotMounted(recorder))?;
             let parent = value["parent"]
                 .as_str()
                 .and_then(|text| text.parse().ok())
-                .unwrap_or(steward);
+                .unwrap_or(recorder);
             nodes.insert(
                 id,
                 RestoredSeat {
@@ -690,13 +694,13 @@ pub fn restore_seats(session_dir: &Path) -> Result<Vec<RestoredSeat>, StewardErr
             }
         }
     }
-    let Some(steward_id) = steward_id else {
+    let Some(recorder_id) = recorder_id else {
         return Ok(Vec::new());
     };
     let live: Vec<Uuid> = nodes
         .keys()
         .copied()
-        .filter(|id| parent_chain_reaches(*id, &nodes, steward_id))
+        .filter(|id| parent_chain_reaches(*id, &nodes, recorder_id))
         .collect();
     nodes.retain(|id, _| live.contains(id));
     let mut restored: Vec<_> = nodes.into_values().collect();
@@ -721,13 +725,13 @@ fn remove_subtree(nodes: &mut HashMap<Uuid, RestoredSeat>, root: Uuid) {
     }
 }
 
-fn parent_chain_reaches(id: Uuid, nodes: &HashMap<Uuid, RestoredSeat>, steward: Uuid) -> bool {
+fn parent_chain_reaches(id: Uuid, nodes: &HashMap<Uuid, RestoredSeat>, recorder: Uuid) -> bool {
     let mut cursor = id;
     for _ in 0..=nodes.len() {
         let Some(seat) = nodes.get(&cursor) else {
             return false;
         };
-        if seat.parent == steward {
+        if seat.parent == recorder {
             return true;
         }
         cursor = seat.parent;
@@ -745,16 +749,16 @@ fn bound_is_fileless(bound: &ActSentence) -> bool {
     )
 }
 
-fn deny_world_grants(card: &AgentCard) -> Result<(), StewardError> {
+fn deny_world_grants(card: &AgentCard) -> Result<(), RecorderError> {
     for grant in &card.tools {
         if grant.tag.permit != Permit::Deny {
-            return Err(StewardError::GrantNotDenied(grant.name.clone()));
+            return Err(RecorderError::GrantNotDenied(grant.name.clone()));
         }
     }
     Ok(())
 }
 
-fn note_projection(agent: &Agent, tag: &str, content: &str) -> Result<(), StewardError> {
+fn note_projection(agent: &Agent, tag: &str, content: &str) -> Result<(), RecorderError> {
     agent.session().tape().append(AppendEvent {
         from: agent.id_str().to_string(),
         from_kind: FromKind::Agent,
@@ -773,7 +777,7 @@ pub(crate) fn projection_path(root: &Path, name: &str) -> PathBuf {
     root.join(name)
 }
 
-fn write_if_absent(path: &Path, content: &str) -> Result<(), StewardError> {
+fn write_if_absent(path: &Path, content: &str) -> Result<(), RecorderError> {
     if path.exists() {
         return Ok(());
     }
@@ -800,8 +804,8 @@ mod tests {
         root: &std::path::Path,
         config: &str,
         context: &str,
-    ) -> Result<Steward, StewardError> {
-        Steward::open(card, root, config, context, &bash_registry())
+    ) -> Result<Recorder, RecorderError> {
+        Recorder::open(card, root, config, context, &bash_registry())
     }
 
     fn bare(id: &str, permit: Permit) -> AgentCard {
@@ -829,47 +833,47 @@ mod tests {
     }
 
     #[test]
-    fn go_grant_cannot_open_a_steward() {
-        let tmp = TempDir::new("steward-deny");
+    fn go_grant_cannot_open_a_recorder() {
+        let tmp = TempDir::new("recorder-deny");
         let err = open_at(
             &bare("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", Permit::Go),
             tmp.path(),
             "{}",
             "[]",
         );
-        assert!(matches!(err, Err(StewardError::GrantNotDenied(_))));
+        assert!(matches!(err, Err(RecorderError::GrantNotDenied(_))));
     }
 
     #[test]
-    fn only_the_steward_spawns_and_queue_steers() {
-        let tmp = TempDir::new("steward-queue");
-        let steward = open_at(
+    fn only_the_recorder_spawns_and_queue_steers() {
+        let tmp = TempDir::new("recorder-queue");
+        let recorder = open_at(
             &bare("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", Permit::Deny),
             tmp.path(),
             "{\"limit\":1}",
             "[\"c0\"]",
         )
         .unwrap();
-        let worker = steward
+        let worker = recorder
             .spawn_worker(
                 &bare("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb", Permit::Go),
                 &ActSentence::bare(Permit::Go, BareFile::None, Ingest::Ignore),
             )
             .unwrap();
         assert_eq!(
-            steward.pool.tree().parent(worker.id()).unwrap(),
-            Some(steward.id())
+            recorder.pool.tree().parent(worker.id()).unwrap(),
+            Some(recorder.id())
         );
         assert_eq!(
-            steward.submit(worker.id(), "later").unwrap(),
+            recorder.submit(worker.id(), "later").unwrap(),
             Arrival::Queued
         );
-        let turn = steward.begin_turn(worker.id()).unwrap();
+        let turn = recorder.begin_turn(worker.id()).unwrap();
         assert_eq!(
-            steward.submit(worker.id(), "also check tests").unwrap(),
+            recorder.submit(worker.id(), "also check tests").unwrap(),
             Arrival::Steered
         );
-        assert!(matches!(steward.pop(), Err(StewardError::Busy)));
+        assert!(matches!(recorder.pop(), Err(RecorderError::Busy)));
         let mailed = worker.session().tape().read_all().unwrap();
         assert!(
             mailed
@@ -878,9 +882,9 @@ mod tests {
                     && e.content.contains("also check tests"))
         );
         drop(turn);
-        let intent = steward.pop().unwrap();
+        let intent = recorder.pop().unwrap();
         assert_eq!(intent.text, "later");
-        let spawned = steward.agent().session().tape().read_all().unwrap();
+        let spawned = recorder.agent().session().tape().read_all().unwrap();
         assert!(
             spawned.iter().any(|e| {
                 e.tags.iter().any(|t| t == "spawn") && e.content.contains("\"bound\"")
@@ -890,27 +894,27 @@ mod tests {
 
     #[test]
     fn spawn_rejects_a_grant_wider_than_the_bound() {
-        let tmp = TempDir::new("steward-bound");
-        let steward = open_at(
+        let tmp = TempDir::new("recorder-bound");
+        let recorder = open_at(
             &bare("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", Permit::Deny),
             tmp.path(),
             "{}",
             "[]",
         )
         .unwrap();
-        let err = steward.spawn_worker(
+        let err = recorder.spawn_worker(
             &bare("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb", Permit::Go),
             &ActSentence::bare(Permit::Deny, BareFile::None, Ingest::Ignore),
         );
-        assert!(matches!(err, Err(StewardError::OutsideBound(_))));
+        assert!(matches!(err, Err(RecorderError::OutsideBound(_))));
         let id = Uuid::parse_str("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb").unwrap();
-        assert!(steward.workspace().subwp_of(id).is_none());
+        assert!(recorder.workspace().subwp_of(id).is_none());
     }
 
     #[test]
     fn lite_has_a_seat_no_subwp_and_finishes_by_complete() {
-        let tmp = TempDir::new("steward-lite");
-        let steward = open_at(
+        let tmp = TempDir::new("recorder-lite");
+        let recorder = open_at(
             &bare("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", Permit::Deny),
             tmp.path(),
             "{}",
@@ -919,38 +923,38 @@ mod tests {
         .unwrap();
         let wide = ActSentence::bare(Permit::Go, BareFile::Unbounded, Ingest::Ignore);
         assert!(matches!(
-            steward.spawn_lite(
+            recorder.spawn_lite(
                 &bare("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb", Permit::Go),
                 &wide
             ),
-            Err(StewardError::LiteFile)
+            Err(RecorderError::LiteFile)
         ));
         let bound = ActSentence::bare(Permit::Go, BareFile::None, Ingest::Ignore);
-        let lite = steward
+        let lite = recorder
             .spawn_lite(
                 &bare("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb", Permit::Go),
                 &bound,
             )
             .unwrap();
         assert_eq!(
-            steward.pool.tree().parent(lite.id()).unwrap(),
-            Some(steward.id())
+            recorder.pool.tree().parent(lite.id()).unwrap(),
+            Some(recorder.id())
         );
-        assert!(steward.workspace().subwp_of(lite.id()).is_none());
+        assert!(recorder.workspace().subwp_of(lite.id()).is_none());
         assert!(matches!(
-            steward.close_worker(lite.id(), &[]),
-            Err(StewardError::NoSubwp(_))
+            recorder.close_worker(lite.id(), &[]),
+            Err(RecorderError::NoSubwp(_))
         ));
-        steward.complete(lite.id(), "result").unwrap();
+        recorder.complete(lite.id(), "result").unwrap();
         assert!(tagged(&lite, "complete"));
-        assert!(tagged(steward.agent(), "complete"));
-        assert!(steward.workspace().current_paths().is_empty());
+        assert!(tagged(recorder.agent(), "complete"));
+        assert!(recorder.workspace().current_paths().is_empty());
     }
 
     #[test]
     fn release_drops_the_subtree_without_publishing_and_child_bound_cannot_widen() {
-        let tmp = TempDir::new("steward-release");
-        let steward = open_at(
+        let tmp = TempDir::new("recorder-release");
+        let recorder = open_at(
             &bare("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", Permit::Deny),
             tmp.path(),
             "{}",
@@ -958,7 +962,7 @@ mod tests {
         )
         .unwrap();
         let parent_bound = ActSentence::bare(Permit::Go, BareFile::None, Ingest::Ignore);
-        let parent = steward
+        let parent = recorder
             .spawn_worker(
                 &bare("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb", Permit::Go),
                 &parent_bound,
@@ -969,22 +973,22 @@ mod tests {
             audience: Audience::Any,
         });
         assert!(matches!(
-            steward.spawn_under(
+            recorder.spawn_under(
                 parent.id(),
                 &bare("cccccccc-cccc-cccc-cccc-cccccccccccc", Permit::Go),
                 &wider,
             ),
-            Err(StewardError::WiderThanParent)
+            Err(RecorderError::WiderThanParent)
         ));
-        let child = steward
+        let child = recorder
             .spawn_under(
                 parent.id(),
                 &bare("cccccccc-cccc-cccc-cccc-cccccccccccc", Permit::Go),
                 &parent_bound,
             )
             .unwrap();
-        let sub = steward.workspace().subwp_of(parent.id()).unwrap();
-        steward
+        let sub = recorder.workspace().subwp_of(parent.id()).unwrap();
+        recorder
             .workspace()
             .write(
                 &sub,
@@ -993,11 +997,11 @@ mod tests {
                 crate::runtime::WriteMode::Create,
             )
             .unwrap();
-        steward.release(parent.id()).unwrap();
-        assert!(steward.pool.tree().get(parent.id()).is_none());
-        assert!(steward.pool.tree().get(child.id()).is_none());
-        assert!(steward.workspace().subwp_of(parent.id()).is_none());
-        assert!(steward.workspace().current_paths().is_empty());
+        recorder.release(parent.id()).unwrap();
+        assert!(recorder.pool.tree().get(parent.id()).is_none());
+        assert!(recorder.pool.tree().get(child.id()).is_none());
+        assert!(recorder.workspace().subwp_of(parent.id()).is_none());
+        assert!(recorder.workspace().current_paths().is_empty());
     }
 
     fn tagged(agent: &Agent, tag: &str) -> bool {
@@ -1012,8 +1016,8 @@ mod tests {
 
     #[test]
     fn cancel_propagates_down_and_restore_skips_broken_chains() {
-        let tmp = TempDir::new("steward-lease");
-        let steward = open_at(
+        let tmp = TempDir::new("recorder-lease");
+        let recorder = open_at(
             &bare("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", Permit::Deny),
             tmp.path(),
             "{}",
@@ -1021,34 +1025,34 @@ mod tests {
         )
         .unwrap();
         let bound = ActSentence::bare(Permit::Go, BareFile::None, Ingest::Ignore);
-        let kept = steward
+        let kept = recorder
             .spawn_lite(
                 &bare("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb", Permit::Go),
                 &bound,
             )
             .unwrap();
-        let parent = steward
+        let parent = recorder
             .spawn_worker(
                 &bare("cccccccc-cccc-cccc-cccc-cccccccccccc", Permit::Go),
                 &bound,
             )
             .unwrap();
-        let child = steward
+        let child = recorder
             .spawn_under(
                 parent.id(),
                 &bare("dddddddd-dddd-dddd-dddd-dddddddddddd", Permit::Go),
                 &bound,
             )
             .unwrap();
-        let parent_lease = steward.lease(parent.id()).unwrap();
-        let child_lease = steward.lease(child.id()).unwrap();
-        let kept_lease = steward.lease(kept.id()).unwrap();
-        steward.propagate_cancel(parent.id()).unwrap();
+        let parent_lease = recorder.lease(parent.id()).unwrap();
+        let child_lease = recorder.lease(child.id()).unwrap();
+        let kept_lease = recorder.lease(kept.id()).unwrap();
+        recorder.propagate_cancel(parent.id()).unwrap();
         assert!(parent_lease.is_cancelled());
         assert!(child_lease.is_cancelled());
         assert!(!kept_lease.is_cancelled());
         assert!(tagged(&child, "cancel"));
-        let restored = restore_seats(steward.agent().session().root()).unwrap();
+        let restored = restore_seats(recorder.agent().session().root()).unwrap();
         assert!(restored.iter().any(|seat| seat.id == kept.id()));
         assert!(
             restored
@@ -1059,8 +1063,8 @@ mod tests {
 
     #[test]
     fn signals_follow_the_charter_and_only_parent_cancels() {
-        let tmp = TempDir::new("steward-signal");
-        let steward = open_at(
+        let tmp = TempDir::new("recorder-signal");
+        let recorder = open_at(
             &bare("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", Permit::Deny),
             tmp.path(),
             "{}",
@@ -1072,32 +1076,32 @@ mod tests {
                 complete: Permit::Deny,
                 audience: Audience::Parent,
             });
-        let worker = steward
+        let worker = recorder
             .spawn_worker(
                 &bare("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb", Permit::Go),
                 &bound,
             )
             .unwrap();
-        let sibling = steward
+        let sibling = recorder
             .spawn_worker(
                 &bare("cccccccc-cccc-cccc-cccc-cccccccccccc", Permit::Go),
                 &ActSentence::bare(Permit::Go, BareFile::None, Ingest::Ignore),
             )
             .unwrap();
         assert!(matches!(
-            steward.complete(worker.id(), "done"),
-            Err(StewardError::SignalDenied("complete"))
+            recorder.complete(worker.id(), "done"),
+            Err(RecorderError::SignalDenied("complete"))
         ));
         assert!(matches!(
-            steward.send(worker.id(), sibling.id(), "hi"),
-            Err(StewardError::SignalDenied("send"))
+            recorder.send(worker.id(), sibling.id(), "hi"),
+            Err(RecorderError::SignalDenied("send"))
         ));
         assert!(matches!(
-            steward.cancel(worker.id(), steward.id()),
-            Err(StewardError::SignalDenied("cancel"))
+            recorder.cancel(worker.id(), recorder.id()),
+            Err(RecorderError::SignalDenied("cancel"))
         ));
-        let id = steward.cancel(steward.id(), worker.id()).unwrap();
-        assert!(tagged(steward.agent(), "cancel"));
+        let id = recorder.cancel(recorder.id(), worker.id()).unwrap();
+        assert!(tagged(recorder.agent(), "cancel"));
         assert!(tagged(&worker, "cancel"));
         assert!(!tagged(&sibling, "cancel"));
         let back = worker.session().tape().read_all().unwrap();
@@ -1105,21 +1109,21 @@ mod tests {
             back.iter()
                 .any(|e| e.refs.first().map(String::as_str) == Some(id.as_str()))
         );
-        steward.send(worker.id(), steward.id(), "ping").unwrap();
+        recorder.send(worker.id(), recorder.id(), "ping").unwrap();
         assert!(tagged(&worker, "send"));
     }
 
     #[test]
     fn collect_records_pointers_not_bodies() {
-        let tmp = TempDir::new("steward-collect");
-        let steward = open_at(
+        let tmp = TempDir::new("recorder-collect");
+        let recorder = open_at(
             &bare("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", Permit::Deny),
             tmp.path(),
             "{}",
             "[]",
         )
         .unwrap();
-        let worker = steward
+        let worker = recorder
             .spawn_worker(
                 &bare("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb", Permit::Deny),
                 &ActSentence::bare(Permit::Deny, BareFile::None, Ingest::Ignore),
@@ -1150,8 +1154,8 @@ mod tests {
         )
         .unwrap();
         let digest = product.tape_sha256.clone();
-        let id = steward.collect(&product).unwrap();
-        let events = steward.agent().session().tape().read_all().unwrap();
+        let id = recorder.collect(&product).unwrap();
+        let events = recorder.agent().session().tape().read_all().unwrap();
         let link = events.iter().find(|e| e.id == id).unwrap();
         assert!(link.tags.iter().any(|t| t == "link"));
         assert!(!link.content.contains(marker));
@@ -1160,15 +1164,15 @@ mod tests {
 
     #[test]
     fn view_reads_linked_ids_only() {
-        let tmp = TempDir::new("steward-view");
-        let steward = open_at(
+        let tmp = TempDir::new("recorder-view");
+        let recorder = open_at(
             &bare("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", Permit::Deny),
             tmp.path(),
             "{}",
             "[]",
         )
         .unwrap();
-        let a = steward
+        let a = recorder
             .link(&ProductPtr {
                 child_session: "s1".into(),
                 tape_sha256: "aa".into(),
@@ -1177,7 +1181,7 @@ mod tests {
                 subwp_sha256: None,
             })
             .unwrap();
-        let b = steward
+        let b = recorder
             .link(&ProductPtr {
                 child_session: "s2".into(),
                 tape_sha256: "bb".into(),
@@ -1186,9 +1190,9 @@ mod tests {
                 subwp_sha256: None,
             })
             .unwrap();
-        steward
+        recorder
             .define_view("main", &[a.clone(), b.clone()])
             .unwrap();
-        assert_eq!(steward.view("main").unwrap(), vec![a, b]);
+        assert_eq!(recorder.view("main").unwrap(), vec![a, b]);
     }
 }
