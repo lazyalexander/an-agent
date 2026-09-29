@@ -4,4 +4,5 @@
 //! on this crate.
 
 pub mod descriptor;
+pub mod scope;
 pub mod spool;

@@ -23,7 +23,7 @@ use an_agent_factory::{Discord, DiscordConfig, Transport};
 use an_agent_spool::descriptor::{Net, Proc};
 use an_agent_spool::spool::{Faces, Flow, Registry};
 use serde_json::{Map, Value, json};
-use support::mount::{HostCtors, mount};
+use support::mount::{HostCtors, Mounter};
 use support::{AgentError, Assistant, Model, TempDir, run_policy_until_idle};
 
 const DISCORD_YAML: &str = include_str!("fixtures/discord.yaml");
@@ -191,42 +191,29 @@ async fn two_characters_answer_a_mention() {
         session: SESSION,
         card: None,
     };
-    let bridge = mount(
-        &hostx,
-        &registry,
-        DISCORD_YAML,
-        Map::from_iter([("channel_id".into(), Value::String("chan-1".into()))]),
-        &rights(),
-        &hosts,
-    )
-    .unwrap();
-    let ada = mount(
-        &hostx,
-        &registry,
-        CHARACTER_YAML,
-        character_config("ada"),
-        &rights(),
-        &hosts,
-    )
-    .unwrap();
-    let bob = mount(
-        &hostx,
-        &registry,
-        CHARACTER_YAML,
-        character_config("bob"),
-        &rights(),
-        &hosts,
-    )
-    .unwrap();
-
-    let mut call_id = 0u64;
-    poll_once(&hostx, &bridge.tool(), &mut call_id)
-        .await
+    let mut mounter = Mounter::new(&hostx, &registry, hosts);
+    let bridge = mounter
+        .mount(
+            None,
+            DISCORD_YAML,
+            Map::from_iter([("channel_id".into(), Value::String("chan-1".into()))]),
+            &rights(),
+        )
+        .unwrap();
+    let ada = mounter
+        .mount(None, CHARACTER_YAML, character_config("ada"), &rights())
+        .unwrap();
+    let bob = mounter
+        .mount(None, CHARACTER_YAML, character_config("bob"), &rights())
         .unwrap();
 
-    for (name, guard, reply) in [
-        ("ada", &ada, "ada says: fearless concurrency"),
-        ("bob", &bob, "bob says: borrow checker"),
+    let mut call_id = 0u64;
+    let bridge_tool = mounter.resolve("discord").unwrap();
+    poll_once(&hostx, &bridge_tool, &mut call_id).await.unwrap();
+
+    for (name, scope, reply) in [
+        ("ada", ada, "ada says: fearless concurrency"),
+        ("bob", bob, "bob says: borrow checker"),
     ] {
         let actx = ActCtx {
             store: Some(&store),
@@ -240,12 +227,12 @@ async fn two_characters_answer_a_mention() {
             system_seen: system_seen.clone(),
         };
         let persona = format!("You are {name}, a character in a discord channel.");
-        let policy = guard.policy().expect("character mounts a policy");
+        let policy = mounter.policy(scope).expect("character mounts a policy");
         run_policy_until_idle(
             &actx,
             &model,
             &policy,
-            &[bridge.tool()],
+            std::slice::from_ref(&bridge_tool),
             &ctx(),
             5,
             Some(&persona),
@@ -258,9 +245,7 @@ async fn two_characters_answer_a_mention() {
 
     // The characters' own sends come back from the channel; the bridge
     // drops them (bot-authored), so the tape never sees them as input.
-    poll_once(&hostx, &bridge.tool(), &mut call_id)
-        .await
-        .unwrap();
+    poll_once(&hostx, &bridge_tool, &mut call_id).await.unwrap();
 
     let events = store.read_all().unwrap();
     // Three mounts (bridge + two characters), all admitted.
@@ -307,9 +292,10 @@ async fn two_characters_answer_a_mention() {
 
     // Unmount everything: every mount is matched by an unmount that refs
     // it, and the irreversible bridge says so on tape.
-    assert!(ada.unmount().is_none());
-    assert!(bob.unmount().is_none());
-    assert!(bridge.unmount().is_none());
+    for scope in [ada, bob, bridge] {
+        let report = mounter.unmount(scope).unwrap();
+        assert_eq!(report.len(), 1);
+    }
     let events = store.read_all().unwrap();
     let mount_ids: Vec<&str> = mounts.iter().map(|e| e.id.as_str()).collect();
     let unmounts: Vec<_> = events
@@ -345,15 +331,16 @@ fn mount_denied_when_rights_do_not_cover_the_closure() {
         session: SESSION,
         card: None,
     };
+    let mut mounter = Mounter::new(&hostx, &registry, hosts);
     // No egress in the rights: a net-declaring spool cannot mount.
     let tight = Faces {
         net: Net::None,
         flow: Flow::None,
         ..rights()
     };
-    let err = mount(&hostx, &registry, DISCORD_YAML, Map::new(), &tight, &hosts)
-        .err()
-        .expect("mount should be denied");
+    let err = mounter
+        .mount(None, DISCORD_YAML, Map::new(), &tight)
+        .unwrap_err();
     assert!(err.to_string().contains("exceeds rights"));
     // The refusal is on tape as a Deny mount intent.
     let events = store.read_all().unwrap();
@@ -454,39 +441,21 @@ async fn live_discord_parley() {
             Value::String("AN_AGENT_DISCORD_TOKEN".into()),
         ),
     ]);
-    let bridge = mount(
-        &hostx,
-        &registry,
-        DISCORD_YAML,
-        bridge_cfg,
-        &rights(),
-        &hosts,
-    )
-    .unwrap();
-    let ada = mount(
-        &hostx,
-        &registry,
-        CHARACTER_YAML,
-        character_config("ada"),
-        &rights(),
-        &hosts,
-    )
-    .unwrap();
-    let bob = mount(
-        &hostx,
-        &registry,
-        CHARACTER_YAML,
-        character_config("bob"),
-        &rights(),
-        &hosts,
-    )
-    .unwrap();
+    let mut mounter = Mounter::new(&hostx, &registry, hosts);
+    let bridge = mounter
+        .mount(None, DISCORD_YAML, bridge_cfg, &rights())
+        .unwrap();
+    let ada = mounter
+        .mount(None, CHARACTER_YAML, character_config("ada"), &rights())
+        .unwrap();
+    let bob = mounter
+        .mount(None, CHARACTER_YAML, character_config("bob"), &rights())
+        .unwrap();
 
     let mut call_id = 0u64;
-    poll_once(&hostx, &bridge.tool(), &mut call_id)
-        .await
-        .unwrap();
-    for (name, guard) in [("ada", &ada), ("bob", &bob)] {
+    let bridge_tool = mounter.resolve("discord").unwrap();
+    poll_once(&hostx, &bridge_tool, &mut call_id).await.unwrap();
+    for (name, scope) in [("ada", ada), ("bob", bob)] {
         let actx = ActCtx {
             store: Some(&store),
             agent_id: name,
@@ -497,12 +466,12 @@ async fn live_discord_parley() {
         let persona = format!(
             "You are {name}, a character in a discord channel. Answer briefly, in character."
         );
-        let policy = guard.policy().expect("character mounts a policy");
+        let policy = mounter.policy(scope).expect("character mounts a policy");
         run_policy_until_idle(
             &actx,
             &model,
             &policy,
-            &[bridge.tool()],
+            std::slice::from_ref(&bridge_tool),
             &ctx(),
             5,
             Some(&persona),
@@ -510,8 +479,8 @@ async fn live_discord_parley() {
         .await
         .unwrap();
     }
-    ada.unmount();
-    bob.unmount();
-    bridge.unmount();
+    for scope in [ada, bob, bridge] {
+        mounter.unmount(scope).unwrap();
+    }
     eprintln!("parley tape: {}", dir.join("memory.jsonl").display());
 }
