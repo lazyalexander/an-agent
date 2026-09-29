@@ -59,8 +59,14 @@ pub struct Faces {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Inverse {
+    /// Nothing to undo: unmount is detach-only (e.g. a pure policy whose
+    /// effects all went through other spools' admitted acts).
+    None,
     Irreversible,
-    Spool { name: String, version: String },
+    Spool {
+        name: String,
+        version: String,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -231,6 +237,7 @@ pub fn parse(yaml: &str) -> Result<SpoolSpec, SpoolError> {
 
 fn parse_inverse(value: Value) -> Result<Inverse, SpoolError> {
     match value {
+        Value::String(s) if s == "none" => Ok(Inverse::None),
         Value::String(s) if s == "irreversible" => Ok(Inverse::Irreversible),
         Value::Object(map) => {
             let name = map
@@ -251,7 +258,7 @@ fn parse_inverse(value: Value) -> Result<Inverse, SpoolError> {
             Ok(Inverse::Spool { name, version })
         }
         _ => Err(invalid(
-            "inverse must be irreversible or a name and version",
+            "inverse must be none, irreversible, or a name and version",
         )),
     }
 }
@@ -533,6 +540,7 @@ impl Registry {
             version: spec.version.clone(),
             sha256: spec.sha256.clone(),
             inverse: match &spec.inverse {
+                Inverse::None => IndexInverse::Irreversible("none".into()),
                 Inverse::Irreversible => IndexInverse::Irreversible("irreversible".into()),
                 Inverse::Spool { name, version } => IndexInverse::Spool {
                     name: name.clone(),
@@ -841,5 +849,25 @@ requires:
         assert!(covers(&closure.ceiling, &root.effect));
         let read_only = reg.recover("fs_read", "1.0.0").unwrap();
         assert!(!covers(&read_only.effect, &closure.ceiling));
+    }
+
+    #[test]
+    fn inverse_none_parses_and_keeps_the_closure_reversible() {
+        let pure = read_yaml().replace("inverse: irreversible", "inverse: none");
+        let spec = parse(&pure).unwrap();
+        assert_eq!(spec.inverse, Inverse::None);
+        let tmp = TempDir::new("spool-inverse-none");
+        let reg = Registry::open(tmp.path()).unwrap();
+        reg.publish(&pure).unwrap();
+        // None means detach-only at unmount; unlike Irreversible it does
+        // not taint the whole closure's reversibility fold.
+        assert!(reg.closure("fs_read", "1.0.0").unwrap().reversible);
+        let garbage = read_yaml().replace("inverse: irreversible", "inverse: maybe");
+        assert!(
+            parse(&garbage)
+                .unwrap_err()
+                .to_string()
+                .contains("inverse must be")
+        );
     }
 }
