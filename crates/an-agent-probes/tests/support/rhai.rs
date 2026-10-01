@@ -422,6 +422,18 @@ impl RhaiPolicy {
     pub fn flow(&self) -> an_agent_spool::spool::Flow {
         self.flow
     }
+
+    /// The enhancer entry (S14): the script sees `params.envelope` and
+    /// returns the new payload — a transform, not a continuation. The
+    /// stamped fields never re-enter: the caller keeps from/to/call_id
+    /// and swaps only the payload.
+    pub fn enhance(&self, envelope: serde_json::Value) -> Result<serde_json::Value, String> {
+        run_policy_script(
+            &self.script,
+            serde_json::json!({ "envelope": envelope }),
+            self.config.clone(),
+        )
+    }
 }
 
 fn run_policy_script(

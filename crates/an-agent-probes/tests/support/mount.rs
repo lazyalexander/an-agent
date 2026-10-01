@@ -81,6 +81,45 @@ impl<'a> Mounter<'a> {
         &self.gate
     }
 
+    /// Attach an enhancer to a receiver's inbox (S14) and tape the link —
+    /// who filters whom is security-relevant configuration and belongs on
+    /// the tape.
+    pub fn link_enhancer(&mut self, receiver: &str, enhancer: &str) -> Result<(), AgentError> {
+        self.gate
+            .add_enhancer(receiver, enhancer)
+            .map_err(|e| AgentError::Model(e.to_string()))?;
+        if let Some(store) = self.store {
+            let _ = store.append(AppendEvent {
+                from: self.agent_id.clone(),
+                from_kind: FromKind::Agent,
+                kind: Kind::Action,
+                session: self.session.clone(),
+                content: json!({ "to": receiver, "enhancer": enhancer }).to_string(),
+                tags: vec!["silk".into(), "link".into()],
+                refs: vec![],
+                act: None,
+                card: self.card.clone(),
+            });
+        }
+        Ok(())
+    }
+
+    /// The receiver's enhancer chain, resolved to live policies, in
+    /// application order.
+    pub fn enhancer_chain(&self, receiver: &str) -> Vec<(String, Arc<RhaiPolicy>)> {
+        self.gate
+            .enhancer_aliases(receiver)
+            .iter()
+            .filter_map(|alias| {
+                let scope = self.gate.admission(alias)?.scope;
+                match self.constructed.get(&scope) {
+                    Some(Constructed::Policy(p)) => Some((alias.clone(), p.clone())),
+                    _ => None,
+                }
+            })
+            .collect()
+    }
+
     /// Publish and mount one spool. Mount-time config is merged over the
     /// body's config (mount wins) — one body, many mounts, different
     /// settings. The closure ceiling must fit inside `rights`; a refused
