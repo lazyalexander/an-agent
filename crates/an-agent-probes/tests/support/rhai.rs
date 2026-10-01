@@ -203,6 +203,15 @@ pub enum Continuation {
         name: String,
         args: serde_json::Value,
     },
+    /// Approve proposed call `index` from the invoke effect event `clip`:
+    /// the model proposes (taped with full args), the policy disposes by
+    /// reference — args never enter the script. Approval is the policy's
+    /// checkpoint: it lifts taint the way reconstruction does, with the
+    /// whole propose→approve→execute chain on tape.
+    Approve {
+        clip: String,
+        index: usize,
+    },
     /// A silk envelope handed to the driver: kind/to/payload (+ wake,
     /// + call_id for reply). Never carries `from` — the driver stamps it.
     Silk(crate::support::silk::OutEnvelope),
@@ -251,6 +260,19 @@ impl Continuation {
                     return Err("invoke_tool args must be an object".into());
                 }
                 Ok(Self::InvokeTool { name, args })
+            }
+            "approve" => {
+                let clip = v
+                    .get("clip")
+                    .and_then(|c| c.as_str())
+                    .ok_or("approve requires a string clip")?
+                    .to_string();
+                let index = v
+                    .get("index")
+                    .and_then(|i| i.as_u64())
+                    .ok_or("approve requires a non-negative integer index")?
+                    as usize;
+                Ok(Self::Approve { clip, index })
             }
             "silk" => {
                 let inner = v
@@ -319,6 +341,9 @@ impl Continuation {
                     inner["call_id"] = serde_json::Value::String(id.clone());
                 }
                 serde_json::json!({ "kind": "silk", "silk": inner })
+            }
+            Self::Approve { clip, index } => {
+                serde_json::json!({ "kind": "approve", "clip": clip, "index": index })
             }
         }
     }

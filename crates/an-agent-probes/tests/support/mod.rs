@@ -261,7 +261,12 @@ fn admit_invoke_effect(
     let env = invoke_envelope();
     let content = serde_json::json!({
         "content_hash": sha256_hex(assistant.content.as_bytes()),
-        "tool_calls": assistant.tool_calls.iter().map(|c| c.name.as_str()).collect::<Vec<_>>(),
+        // Full proposals, args included: a policy approves by reference
+        // (clip + index) and never copies arguments through the script.
+        "tool_calls": assistant.tool_calls.iter().map(|c| serde_json::json!({
+            "name": c.name,
+            "arguments": c.arguments,
+        })).collect::<Vec<_>>(),
         "usage": assistant.usage.map(|u| serde_json::json!({
             "prompt_tokens": u.prompt_tokens,
             "completion_tokens": u.completion_tokens,
@@ -572,9 +577,16 @@ pub async fn policy_step(
                 });
             }
             let invoke = admit_invoke_intent(actx, model, &messages)?;
-            // The policy owns control flow: the model is an oracle called
-            // without tools; any tool_calls it emits are ignored.
-            let assistant = model.complete(&messages, &[]).await?;
+            // The model is an oracle, but a bounded one: it only sees the
+            // policy's whitelisted tools (requires = static composition at
+            // the model surface too). Its proposals land on tape; whether
+            // they execute is the policy's approve decision.
+            let allowed: Vec<Arc<dyn Tool>> = tools
+                .iter()
+                .filter(|t| policy.whitelist().iter().any(|n| n == t.name()))
+                .cloned()
+                .collect();
+            let assistant = model.complete(&messages, &allowed).await?;
             admit_invoke_effect(actx, invoke.as_ref(), &assistant)?;
             if !assistant.content.is_empty() {
                 let _ = admit_utterance(actx, &assistant.content)?;
@@ -636,6 +648,56 @@ pub async fn policy_step(
                 id: ulid(),
                 name,
                 arguments: args.to_string(),
+            };
+            let _ = an_agent_core::act::run_tool_act(actx, tools, &call, ctx).await?;
+            Ok(false)
+        }
+        Continuation::Approve { clip, index } => {
+            let store = actx
+                .store
+                .ok_or_else(|| AgentError::Model("approve needs a store".into()))?;
+            let events = store.read_all()?;
+            let e = events
+                .iter()
+                .find(|e| e.id == clip && e.session.as_deref() == Some(actx.session))
+                .ok_or_else(|| AgentError::Model(format!("unknown clip id: {clip}")))?;
+            // Only one's own invoke effects can be quoted: approving from
+            // someone else's tape would launder their proposals.
+            if e.from != actx.agent_id || e.kind != Kind::Observation {
+                return Err(AgentError::Model(format!(
+                    "approve must quote an own invoke effect: {clip}"
+                )));
+            }
+            let body: serde_json::Value = serde_json::from_str(&e.content)
+                .map_err(|e| AgentError::Model(format!("clip is not an invoke effect: {e}")))?;
+            let calls = body
+                .get("tool_calls")
+                .and_then(|c| c.as_array())
+                .ok_or_else(|| AgentError::Model("clip carries no tool_calls".into()))?;
+            let proposed = calls
+                .get(index)
+                .ok_or_else(|| AgentError::Model(format!("no proposed call at index {index}")))?;
+            let name = proposed
+                .get("name")
+                .and_then(|n| n.as_str())
+                .ok_or_else(|| AgentError::Model("proposed call has no name".into()))?
+                .to_string();
+            let arguments = proposed
+                .get("arguments")
+                .and_then(|a| a.as_str())
+                .ok_or_else(|| AgentError::Model("proposed call has no arguments".into()))?
+                .to_string();
+            // Approval narrows, never widens: the whitelisted-requires
+            // check applies exactly as for invoke_tool.
+            if !policy.whitelist().iter().any(|n| n == &name) {
+                return Err(AgentError::Model(format!(
+                    "policy approved a tool outside its requires: {name}"
+                )));
+            }
+            let call = ToolCall {
+                id: ulid(),
+                name,
+                arguments,
             };
             let _ = an_agent_core::act::run_tool_act(actx, tools, &call, ctx).await?;
             Ok(false)
