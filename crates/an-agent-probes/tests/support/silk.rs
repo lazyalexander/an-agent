@@ -15,7 +15,7 @@ use thiserror::Error;
 
 use an_agent_core::memstream::{AppendEvent, FromKind, JsonlStore, Kind, Memevent};
 use an_agent_spool::scope::ScopeId;
-use an_agent_spool::spool::Flow;
+use an_agent_spool::spool::{Faces, Flow};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -81,6 +81,9 @@ pub struct Admission {
     pub name: String,
     pub closure: std::collections::HashSet<String>,
     pub flow: Flow,
+    /// The mount's declared effect — the taint check reads "writes the
+    /// world" from this declaration, never from a tool's good behavior.
+    pub effect: Faces,
     pub scope: ScopeId,
 }
 

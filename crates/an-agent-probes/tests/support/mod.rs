@@ -419,6 +419,48 @@ fn last_observation_preview(store: &JsonlStore, session: &str) -> Result<String,
         .unwrap_or_default())
 }
 
+/// Taint (S13): a Human-ingress clip is adversarial by default, and its
+/// verbatim content must not feed a world-writing effect (file w/rw /
+/// unbounded). The machine enforces the verbatim channel only — a
+/// script-authored string goes through the policy body's own
+/// responsibility, and the decision args on tape show exactly what it
+/// wrote. Reconstruction is the only detaint path, and it is auditable
+/// precisely because it passes through a named body or an enhance hop.
+fn check_tainted_clip_args(
+    store: &JsonlStore,
+    session: &str,
+    tool_name: &str,
+    args: &serde_json::Value,
+    world_write: bool,
+) -> Result<(), String> {
+    if !world_write {
+        return Ok(());
+    }
+    let Some(obj) = args.as_object() else {
+        return Ok(());
+    };
+    let clip_ids: Vec<&str> = obj
+        .values()
+        .filter_map(|v| v.as_object()?.get("$clip")?.as_str())
+        .collect();
+    if clip_ids.is_empty() {
+        return Ok(());
+    }
+    let events = store.read_all().map_err(|e| e.to_string())?;
+    for id in clip_ids {
+        let tainted = events
+            .iter()
+            .find(|e| e.id == id && e.session.as_deref() == Some(session))
+            .is_some_and(|e| e.from_kind == FromKind::Human);
+        if tainted {
+            return Err(format!(
+                "tainted clip {id} (human ingress) cannot feed world-writing tool {tool_name}"
+            ));
+        }
+    }
+    Ok(())
+}
+
 /// Resolve `{"$clip": "<id>"}` argument values against the tape: the policy
 /// only ever sees truncated previews, so when a continuation needs full
 /// text (e.g. forwarding a model reply), the host substitutes it from the
@@ -550,6 +592,44 @@ pub async fn policy_step(
             }
             let mut args = args;
             if let Some(store) = actx.store {
+                // "Writes the world" is read from the target mount's
+                // declared effect when a mounter is in scope, falling back
+                // to the tool's admission tag.
+                let world_write = match opts.silk.and_then(|m| m.silk_gate().admission(&name)) {
+                    Some(adm) => matches!(
+                        adm.effect.file,
+                        an_agent_core::act::FileFacet::Write { .. }
+                            | an_agent_core::act::FileFacet::ReadWrite { .. }
+                            | an_agent_core::act::FileFacet::Unbounded
+                    ),
+                    None => matches!(
+                        an_agent_core::act::tag_of(
+                            tools.iter().find(|t| t.name() == name).map(|t| t.as_ref())
+                        )
+                        .file,
+                        an_agent_core::act::FileFacet::Write { .. }
+                            | an_agent_core::act::FileFacet::ReadWrite { .. }
+                            | an_agent_core::act::FileFacet::Unbounded
+                    ),
+                };
+                if let Err(reason) =
+                    check_tainted_clip_args(store, actx.session, &name, &args, world_write)
+                {
+                    // S13 taped like a gate deny: the refusal and its
+                    // reason are audit, not silence.
+                    store.append(AppendEvent {
+                        from: actx.agent_id.into(),
+                        from_kind: FromKind::Agent,
+                        kind: Kind::Action,
+                        session: actx.session.into(),
+                        content: serde_json::json!({ "tool": name, "reason": reason }).to_string(),
+                        tags: vec!["deny".into(), "taint".into()],
+                        refs: vec![],
+                        act: None,
+                        card: actx.card.map(str::to_string),
+                    })?;
+                    return Err(AgentError::Model(reason));
+                }
                 resolve_clip_args(store, actx.session, &mut args)?;
             }
             let call = ToolCall {
