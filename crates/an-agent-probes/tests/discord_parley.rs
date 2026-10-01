@@ -260,6 +260,7 @@ async fn two_characters_answer_a_mention() {
             Map::from_iter([("channel_id".into(), Value::String("chan-1".into()))]),
             &rights(),
             None,
+            None,
         )
         .unwrap();
     let ada = mounter
@@ -269,6 +270,7 @@ async fn two_characters_answer_a_mention() {
             character_config("ada"),
             &rights(),
             Some("ada".into()),
+            None,
         )
         .unwrap();
     let bob = mounter
@@ -278,6 +280,7 @@ async fn two_characters_answer_a_mention() {
             character_config("bob"),
             &rights(),
             Some("bob".into()),
+            None,
         )
         .unwrap();
 
@@ -411,7 +414,7 @@ fn mount_denied_when_rights_do_not_cover_the_closure() {
         ..rights()
     };
     let err = mounter
-        .mount(None, DISCORD_YAML, Map::new(), &tight, None)
+        .mount(None, DISCORD_YAML, Map::new(), &tight, None, None)
         .unwrap_err();
     assert!(err.to_string().contains("exceeds rights"));
     // The refusal is on tape as a Deny mount intent.

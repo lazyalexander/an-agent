@@ -193,10 +193,10 @@ async fn policy_tell_is_stamped_and_taped() {
     };
     let mut mounter = Mounter::new(&hostx, &registry, HostCtors::new());
     mounter
-        .mount(None, MAILBOX_YAML, Map::new(), &rights(), None)
+        .mount(None, MAILBOX_YAML, Map::new(), &rights(), None, None)
         .unwrap();
     mounter
-        .mount(None, DEAF_YAML, Map::new(), &rights(), None)
+        .mount(None, DEAF_YAML, Map::new(), &rights(), None, None)
         .unwrap();
     let herald = mounter
         .mount(
@@ -205,6 +205,7 @@ async fn policy_tell_is_stamped_and_taped() {
             json!({"name": "ada"}).as_object().unwrap().clone(),
             &rights(),
             Some("ada".into()),
+            None,
         )
         .unwrap();
 
@@ -271,10 +272,17 @@ async fn self_named_sender_is_refused_and_the_attempt_is_taped() {
     };
     let mut mounter = Mounter::new(&hostx, &registry, HostCtors::new());
     mounter
-        .mount(None, MAILBOX_YAML, Map::new(), &rights(), None)
+        .mount(None, MAILBOX_YAML, Map::new(), &rights(), None, None)
         .unwrap();
     let forger = mounter
-        .mount(None, FORGER_YAML, Map::new(), &rights(), Some("eve".into()))
+        .mount(
+            None,
+            FORGER_YAML,
+            Map::new(),
+            &rights(),
+            Some("eve".into()),
+            None,
+        )
         .unwrap();
 
     let actx = ActCtx {
@@ -372,10 +380,10 @@ async fn receiver_admission_rejects_and_tapes_the_attempts() {
     };
     let mut mounter = Mounter::new(&hostx, &registry, HostCtors::new());
     mounter
-        .mount(None, MAILBOX_YAML, Map::new(), &rights(), None)
+        .mount(None, MAILBOX_YAML, Map::new(), &rights(), None, None)
         .unwrap();
     mounter
-        .mount(None, DEAF_YAML, Map::new(), &rights(), None)
+        .mount(None, DEAF_YAML, Map::new(), &rights(), None, None)
         .unwrap();
     // Mounted, silk-capable, but in nobody's requires closure.
     mounter
@@ -385,6 +393,7 @@ async fn receiver_admission_rejects_and_tapes_the_attempts() {
             Map::new(),
             &rights(),
             Some("outsider".into()),
+            None,
         )
         .unwrap();
 
@@ -413,6 +422,7 @@ async fn receiver_admission_rejects_and_tapes_the_attempts() {
                 courier(to),
                 &rights(),
                 Some("cour".into()),
+                None,
             )
             .unwrap();
         let policy = mounter.policy(scope).unwrap();
@@ -516,6 +526,7 @@ async fn inbox_crosses_partitions_and_partitions_hide_the_rest() {
             Map::new(),
             &rights(),
             Some("eve".into()),
+            Some("s2".into()),
         )
         .unwrap();
     let courier = mounter
@@ -528,6 +539,7 @@ async fn inbox_crosses_partitions_and_partitions_hide_the_rest() {
                 .clone(),
             &rights(),
             Some("cour".into()),
+            Some("s1".into()),
         )
         .unwrap();
 
