@@ -14,6 +14,8 @@ use serde_json::Value;
 use thiserror::Error;
 
 use an_agent_core::memstream::{AppendEvent, FromKind, JsonlStore, Kind, Memevent};
+use an_agent_spool::scope::ScopeId;
+use an_agent_spool::spool::Flow;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -66,6 +68,84 @@ pub enum SilkError {
     Store(#[from] an_agent_core::memstream::StoreError),
     #[error("{0}")]
     Reject(String),
+}
+
+// --- receiver admission (S12) ---
+
+/// What the gate knows about one mounted alias: its spool name, the names
+/// in its requires closure (its address book), its silk direction, and the
+/// scope it hangs from. Registered at mount, removed at unmount — presence
+/// in the gate means the mount is live.
+#[derive(Debug, Clone)]
+pub struct Admission {
+    pub name: String,
+    pub closure: std::collections::HashSet<String>,
+    pub flow: Flow,
+    pub scope: ScopeId,
+}
+
+/// The receiver-admission gate. The requires graph is the trust graph,
+/// and this is where that sentence becomes real: before any envelope is
+/// taped, the gate checks that the sender is a live mount, the address
+/// resolves to a live mount, the receiver's spool name sits in the
+/// sender's requires closure, and the two flow faces are compatible.
+#[derive(Debug, Default)]
+pub struct Gate {
+    by_alias: std::collections::HashMap<String, Admission>,
+    by_scope: std::collections::HashMap<ScopeId, String>,
+}
+
+impl Gate {
+    pub fn register(&mut self, alias: String, admission: Admission) -> Result<(), SilkError> {
+        if self.by_alias.contains_key(&alias) {
+            return Err(reject(format!("silk address is already mounted: {alias}")));
+        }
+        self.by_scope.insert(admission.scope, alias.clone());
+        self.by_alias.insert(alias, admission);
+        Ok(())
+    }
+
+    pub fn unregister(&mut self, scope: ScopeId) {
+        if let Some(alias) = self.by_scope.remove(&scope) {
+            self.by_alias.remove(&alias);
+        }
+    }
+
+    pub fn admission(&self, alias: &str) -> Option<&Admission> {
+        self.by_alias.get(alias)
+    }
+
+    /// The three checks, in order. A miss names its reason; the caller
+    /// tapes the attempt and drops the envelope.
+    pub fn check(&self, sender: &str, out: &OutEnvelope) -> Result<(), SilkError> {
+        let Some(sender_adm) = self.by_alias.get(sender) else {
+            return Err(reject(format!(
+                "sender is not a mounted silk address: {sender}"
+            )));
+        };
+        let Some(receiver_adm) = self.by_alias.get(&out.to) else {
+            return Err(reject(format!("no such silk address: {}", out.to)));
+        };
+        if !sender_adm.closure.contains(&receiver_adm.name) {
+            return Err(reject(format!(
+                "{} is outside the sender's requires closure: {}",
+                out.to, sender
+            )));
+        }
+        if !matches!(sender_adm.flow, Flow::Out | Flow::Both) {
+            return Err(reject(format!(
+                "{sender} has flow {:?} and may not send silk",
+                sender_adm.flow
+            )));
+        }
+        if !matches!(receiver_adm.flow, Flow::In | Flow::Both) {
+            return Err(reject(format!(
+                "{} has flow {:?} and may not receive silk",
+                out.to, receiver_adm.flow
+            )));
+        }
+        Ok(())
+    }
 }
 
 fn reject(msg: impl Into<String>) -> SilkError {

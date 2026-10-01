@@ -41,6 +41,7 @@ pub struct Mounter<'a> {
     registry: &'a Registry,
     hosts: HostCtors,
     tree: ScopeTree,
+    gate: crate::support::silk::Gate,
     constructed: HashMap<ScopeId, Constructed>,
     mount_events: HashMap<ScopeId, String>,
 }
@@ -55,6 +56,7 @@ impl<'a> Mounter<'a> {
             registry,
             hosts,
             tree: ScopeTree::new(),
+            gate: crate::support::silk::Gate::default(),
             constructed: HashMap::new(),
             mount_events: HashMap::new(),
         }
@@ -75,17 +77,24 @@ impl<'a> Mounter<'a> {
         &self.tree
     }
 
+    pub fn silk_gate(&self) -> &crate::support::silk::Gate {
+        &self.gate
+    }
+
     /// Publish and mount one spool. Mount-time config is merged over the
     /// body's config (mount wins) — one body, many mounts, different
     /// settings. The closure ceiling must fit inside `rights`; a refused
     /// mount is taped as a Deny before the error returns, so the audit
-    /// keeps the attempt.
+    /// keeps the attempt. `alias` is the mount's silk address — its tape
+    /// identity; default is the spool name, and duplicates are refused
+    /// because an ambiguous address is worse than none.
     pub fn mount(
         &mut self,
         parent: Option<ScopeId>,
         yaml: &str,
         config: Map<String, Value>,
         rights: &Faces,
+        alias: Option<String>,
     ) -> Result<ScopeId, AgentError> {
         let spec = self
             .registry
@@ -110,6 +119,14 @@ impl<'a> Mounter<'a> {
             return Err(AgentError::Model(format!(
                 "mount denied: closure of {} {} exceeds rights",
                 spec.name, spec.version
+            )));
+        }
+        // Checked before anything is built: a duplicate alias must fail
+        // the mount before the tree changes, not after.
+        let alias = alias.unwrap_or_else(|| spec.name.clone());
+        if self.gate.admission(&alias).is_some() {
+            return Err(AgentError::Model(format!(
+                "silk address is already mounted: {alias}"
             )));
         }
         let (tool, constructed) = match &spec.constructor {
@@ -144,6 +161,17 @@ impl<'a> Mounter<'a> {
                 },
             )
             .map_err(|e| AgentError::Model(e.to_string()))?;
+        self.gate
+            .register(
+                alias,
+                crate::support::silk::Admission {
+                    name: spec.name.clone(),
+                    closure: closure.members.iter().map(|(n, _)| n.clone()).collect(),
+                    flow: spec.effect.flow,
+                    scope: id,
+                },
+            )
+            .map_err(|e| AgentError::Model(e.to_string()))?;
         if let Some(event) = self.tape_mount(
             &spec,
             &merged,
@@ -167,6 +195,7 @@ impl<'a> Mounter<'a> {
             .map_err(|e| AgentError::Model(e.to_string()))?;
         for entry in &report {
             self.tape_unmount(entry.scope, entry);
+            self.gate.unregister(entry.scope);
             self.constructed.remove(&entry.scope);
             self.mount_events.remove(&entry.scope);
         }

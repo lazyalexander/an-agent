@@ -22,7 +22,7 @@ use an_agent_spool::descriptor::{Net, Proc};
 use an_agent_spool::spool::{Faces, Flow, Registry};
 use serde_json::{Map, Value, json};
 use support::mount::{HostCtors, Mounter};
-use support::{AgentError, Assistant, Model, TempDir, run_policy_until_idle};
+use support::{AgentError, Assistant, Model, StepOpts, TempDir, run_policy_until_idle};
 
 const DISCORD_YAML: &str = include_str!("fixtures/discord.yaml");
 const CHARACTER_YAML: &str = include_str!("fixtures/ai_character.yaml");
@@ -259,13 +259,26 @@ async fn two_characters_answer_a_mention() {
             DISCORD_YAML,
             Map::from_iter([("channel_id".into(), Value::String("chan-1".into()))]),
             &rights(),
+            None,
         )
         .unwrap();
     let ada = mounter
-        .mount(None, CHARACTER_YAML, character_config("ada"), &rights())
+        .mount(
+            None,
+            CHARACTER_YAML,
+            character_config("ada"),
+            &rights(),
+            Some("ada".into()),
+        )
         .unwrap();
     let bob = mounter
-        .mount(None, CHARACTER_YAML, character_config("bob"), &rights())
+        .mount(
+            None,
+            CHARACTER_YAML,
+            character_config("bob"),
+            &rights(),
+            Some("bob".into()),
+        )
         .unwrap();
 
     let mut call_id = 0u64;
@@ -296,7 +309,10 @@ async fn two_characters_answer_a_mention() {
             std::slice::from_ref(&bridge_tool),
             &ctx(),
             5,
-            Some(&persona),
+            StepOpts {
+                system: Some(&persona),
+                ..StepOpts::default()
+            },
         )
         .await
         .unwrap();
@@ -395,7 +411,7 @@ fn mount_denied_when_rights_do_not_cover_the_closure() {
         ..rights()
     };
     let err = mounter
-        .mount(None, DISCORD_YAML, Map::new(), &tight)
+        .mount(None, DISCORD_YAML, Map::new(), &tight, None)
         .unwrap_err();
     assert!(err.to_string().contains("exceeds rights"));
     // The refusal is on tape as a Deny mount intent.
