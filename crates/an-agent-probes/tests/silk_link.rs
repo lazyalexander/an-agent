@@ -19,7 +19,7 @@ use an_agent_spool::spool::{Faces, Flow, Registry};
 use serde_json::{Map, json};
 use support::mount::{HostCtors, Mounter};
 use support::silk::{Envelope, OutEnvelope, SilkKind};
-use support::{AgentError, Assistant, Model, TempDir, policy_step};
+use support::{AgentError, Assistant, Model, StepOpts, TempDir, policy_step};
 
 const SESSION: &str = "s1";
 
@@ -29,12 +29,12 @@ v: 1
 kind: spool
 name: herald
 version: 1.0.0
-summary: tell bob hello, then halt
+summary: tell the mailbox hello, then halt
 constructor: rhai
 script: |
-  let told = params.clips.filter(|c| c.who == config.name && c.kind == "action" && c.tags.contains("silk"));
+  let told = params.clips.filter(|c| c.who == config.name && c.kind == "action" && c.tags.contains("tell"));
   if told.is_empty() {
-      #{ kind: "silk", silk: #{ kind: "tell", to: "bob", payload: #{ text: "hello" } } }
+      #{ kind: "silk", silk: #{ kind: "tell", to: "mailbox", payload: #{ text: "hello" } } }
   } else {
       #{ kind: "halt" }
   }
@@ -47,6 +47,7 @@ effect:
 inverse: none
 requires:
   - { name: mailbox, version: 1.0.0 }
+  - { name: deaf, version: 1.0.0 }
 "#;
 
 /// A self-naming policy: malformed by S11, refused, attempt taped.
@@ -58,7 +59,7 @@ version: 1.0.0
 summary: tries to name its own sender
 constructor: rhai
 script: |
-  #{ kind: "silk", silk: #{ kind: "tell", from: "bob", to: "bob", payload: #{} } }
+  #{ kind: "silk", silk: #{ kind: "tell", from: "bob", to: "mailbox", payload: #{} } }
 effect:
   file: { op: none }
   memory: { op: ignore }
@@ -89,6 +90,54 @@ effect:
   flow: in
 inverse: none
 requires: []
+"#;
+
+/// In the address book but deaf: flow none must not receive.
+const DEAF_YAML: &str = r#"
+v: 1
+kind: spool
+name: deaf
+version: 1.0.0
+summary: present but not silk-capable
+constructor: rhai
+script: |
+  #{ kind: "halt" }
+effect:
+  file: { op: none }
+  memory: { op: ignore }
+  net: none
+  proc: none
+  flow: none
+inverse: none
+requires: []
+"#;
+
+/// Sends one tell to a caller-chosen address, then halts — the probe's
+/// negative-space instrument (unmounted / outside-closure / deaf targets).
+const COURIER_YAML: &str = r#"
+v: 1
+kind: spool
+name: courier
+version: 1.0.0
+summary: tell the address in config.to, then halt
+constructor: rhai
+script: |
+  let told = params.clips.filter(|c| c.who == config.name && c.kind == "action" && c.tags.contains("tell"));
+  if told.is_empty() {
+      #{ kind: "silk", silk: #{ kind: "tell", to: config.to, payload: #{} } }
+  } else {
+      #{ kind: "halt" }
+  }
+effect:
+  file: { op: none }
+  memory: { op: ignore }
+  net: none
+  proc: none
+  flow: out
+inverse: none
+requires:
+  - { name: mailbox, version: 1.0.0 }
+  - { name: deaf, version: 1.0.0 }
 "#;
 
 struct NoModel;
@@ -144,7 +193,10 @@ async fn policy_tell_is_stamped_and_taped() {
     };
     let mut mounter = Mounter::new(&hostx, &registry, HostCtors::new());
     mounter
-        .mount(None, MAILBOX_YAML, Map::new(), &rights())
+        .mount(None, MAILBOX_YAML, Map::new(), &rights(), None)
+        .unwrap();
+    mounter
+        .mount(None, DEAF_YAML, Map::new(), &rights(), None)
         .unwrap();
     let herald = mounter
         .mount(
@@ -152,6 +204,7 @@ async fn policy_tell_is_stamped_and_taped() {
             HERALD_YAML,
             json!({"name": "ada"}).as_object().unwrap().clone(),
             &rights(),
+            Some("ada".into()),
         )
         .unwrap();
 
@@ -162,14 +215,21 @@ async fn policy_tell_is_stamped_and_taped() {
         card: None,
     };
     let policy = mounter.policy(herald).unwrap();
+    let gate = mounter.silk_gate();
     // Step one yields the tell, step two halts.
     assert!(
-        !policy_step(&actx, &NoModel, &policy, &[], &ctx(), None)
+        !policy_step(&actx, &NoModel, &policy, &[], &ctx(), StepOpts {
+            gate: Some(gate),
+            ..StepOpts::default()
+        })
             .await
             .unwrap()
     );
     assert!(
-        policy_step(&actx, &NoModel, &policy, &[], &ctx(), None)
+        policy_step(&actx, &NoModel, &policy, &[], &ctx(), StepOpts {
+            gate: Some(gate),
+            ..StepOpts::default()
+        })
             .await
             .unwrap()
     );
@@ -179,7 +239,7 @@ async fn policy_tell_is_stamped_and_taped() {
     let env = &envelopes[0];
     assert_eq!(env.kind, SilkKind::Tell);
     assert_eq!(env.from, "ada"); // stamped with the mount's tape identity
-    assert_eq!(env.to, "bob");
+    assert_eq!(env.to, "mailbox");
     assert_eq!(env.payload, json!({"text": "hello"}));
     assert_eq!(env.v, 0);
 }
@@ -197,10 +257,10 @@ async fn self_named_sender_is_refused_and_the_attempt_is_taped() {
     };
     let mut mounter = Mounter::new(&hostx, &registry, HostCtors::new());
     mounter
-        .mount(None, MAILBOX_YAML, Map::new(), &rights())
+        .mount(None, MAILBOX_YAML, Map::new(), &rights(), None)
         .unwrap();
     let forger = mounter
-        .mount(None, FORGER_YAML, Map::new(), &rights())
+        .mount(None, FORGER_YAML, Map::new(), &rights(), Some("eve".into()))
         .unwrap();
 
     let actx = ActCtx {
@@ -212,9 +272,19 @@ async fn self_named_sender_is_refused_and_the_attempt_is_taped() {
     let policy = mounter.policy(forger).unwrap();
     // The malformed continuation fails at the policy's own boundary: the
     // step errors, and the reason is on tape as the decision's effect.
-    let err = policy_step(&actx, &NoModel, &policy, &[], &ctx(), None)
-        .await
-        .unwrap_err();
+    let err = policy_step(
+            &actx,
+            &NoModel,
+            &policy,
+            &[],
+            &ctx(),
+            StepOpts {
+                gate: Some(mounter.silk_gate()),
+                ..StepOpts::default()
+            },
+        )
+    .await
+    .unwrap_err();
     assert!(err.to_string().contains("not a continuation"), "{err}");
     // No envelope landed; the refusal reason is on tape.
     assert!(silk_envelopes(&store).is_empty());
@@ -271,4 +341,90 @@ async fn ask_reply_terminates_exactly_once() {
             .to_string()
             .contains("terminated")
     );
+}
+
+/// S12's three checks, one policy, three bad targets: unmounted address,
+/// mounted but outside the requires closure, in the closure but deaf.
+#[tokio::test]
+async fn receiver_admission_rejects_and_tapes_the_attempts() {
+    let tmp = TempDir::new("silk-gate");
+    let store = JsonlStore::open(tmp.path().join("memory.jsonl")).unwrap();
+    let registry = Registry::open(tmp.path().join("spools")).unwrap();
+    let hostx = ActCtx {
+        store: Some(&store),
+        agent_id: "parley-host",
+        session: SESSION,
+        card: None,
+    };
+    let mut mounter = Mounter::new(&hostx, &registry, HostCtors::new());
+    mounter
+        .mount(None, MAILBOX_YAML, Map::new(), &rights(), None)
+        .unwrap();
+    mounter
+        .mount(None, DEAF_YAML, Map::new(), &rights(), None)
+        .unwrap();
+    // Mounted, silk-capable, but in nobody's requires closure.
+    mounter
+        .mount(
+            None,
+            FORGER_YAML,
+            Map::new(),
+            &rights(),
+            Some("outsider".into()),
+        )
+        .unwrap();
+
+    let courier = |to: &str| {
+        json!({"name": "cour", "to": to})
+            .as_object()
+            .unwrap()
+            .clone()
+    };
+    let actx = ActCtx {
+        store: Some(&store),
+        agent_id: "cour",
+        session: SESSION,
+        card: None,
+    };
+
+    for (to, reason) in [
+        ("ghost", "no such silk address"),
+        ("outsider", "requires closure"),
+        ("deaf", "may not receive"),
+    ] {
+        let scope = mounter
+            .mount(
+                None,
+                COURIER_YAML,
+                courier(to),
+                &rights(),
+                Some("cour".into()),
+            )
+            .unwrap();
+        let policy = mounter.policy(scope).unwrap();
+        let err = policy_step(
+            &actx,
+            &NoModel,
+            &policy,
+            &[],
+            &ctx(),
+            StepOpts {
+                gate: Some(mounter.silk_gate()),
+                ..StepOpts::default()
+            },
+        )
+        .await
+        .unwrap_err();
+        assert!(err.to_string().contains(reason), "to {to}: {err}");
+        // The attempt is visible on tape as a silk deny with the reason;
+        // no envelope landed.
+        let events = store.read_all().unwrap();
+        assert!(events.iter().any(|e| {
+            e.kind == Kind::Action
+                && e.tags.iter().any(|t| t == "deny")
+                && e.content.contains(reason)
+        }));
+        assert!(silk_envelopes(&store).is_empty());
+        mounter.unmount(scope).unwrap();
+    }
 }

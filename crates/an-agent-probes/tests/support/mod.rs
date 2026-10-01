@@ -304,6 +304,14 @@ pub fn last_assistant_text(state: &AgentState) -> String {
 use self::rhai::{Continuation, RhaiPolicy};
 use an_agent_core::memstream::JsonlStore;
 
+/// Per-step options: the persona prompt (mount-owned, host-injected) and
+/// the silk admission gate (None = no silk capability — default deny).
+#[derive(Debug, Default, Clone, Copy)]
+pub struct StepOpts<'a> {
+    pub system: Option<&'a str>,
+    pub gate: Option<&'a crate::support::silk::Gate>,
+}
+
 /// How many recent events the policy sees, newest first.
 const PROJECTION_TAIL: usize = 20;
 const CLIP_PREVIEW_CHARS: usize = 200;
@@ -433,7 +441,7 @@ pub async fn policy_step(
     policy: &Arc<RhaiPolicy>,
     tools: &[Arc<dyn Tool>],
     ctx: &an_agent_core::act::ToolCtx,
-    system: Option<&str>,
+    opts: StepOpts<'_>,
 ) -> Result<bool, AgentError> {
     let (clips, last_obs) = match actx.store {
         Some(store) => (
@@ -467,7 +475,7 @@ pub async fn policy_step(
             // script never touches full text or the model itself.
             let events = store.read_all()?;
             let mut messages = Vec::with_capacity(clips.len() + 1);
-            if let Some(system) = system {
+            if let Some(system) = opts.system {
                 messages.push(ChatMessage {
                     role: "system".into(),
                     content: Some(system.to_string()),
@@ -526,18 +534,34 @@ pub async fn policy_step(
             let store = actx
                 .store
                 .ok_or_else(|| AgentError::Model("silk needs a store".into()))?;
-            // The flow face is the silk capability: only out/both policies
-            // may send. The decision is on tape; the refusal returns here.
-            use an_agent_spool::spool::Flow;
-            if !matches!(policy.flow(), Flow::Out | Flow::Both) {
-                return Err(AgentError::Model(format!(
-                    "policy {} has flow {:?} and may not send silk",
-                    policy.name(),
-                    policy.flow()
-                )));
+            // Receiver admission (S12): sender mounted, address resolves,
+            // inside the requires closure, flow faces compatible. No gate
+            // means no silk capability at all — default deny.
+            let gate =
+                opts.gate.ok_or_else(|| AgentError::Model("silk needs an admission gate".into()))?;
+            if let Err(e) = gate.check(actx.agent_id, &out) {
+                // The refusal is taped with its reason: an admission deny
+                // is as much audit as the envelopes that pass.
+                store.append(AppendEvent {
+                    from: actx.agent_id.into(),
+                    from_kind: FromKind::Agent,
+                    kind: Kind::Action,
+                    session: actx.session.into(),
+                    content: serde_json::json!({
+                        "to": out.to,
+                        "kind": out.kind.as_str(),
+                        "reason": e.to_string(),
+                    })
+                    .to_string(),
+                    tags: vec!["silk".into(), "deny".into()],
+                    refs: vec![],
+                    act: None,
+                    card: actx.card.map(str::to_string),
+                })?;
+                return Err(AgentError::Model(e.to_string()));
             }
-            // The driver stamps from/to validity here; the script's view
-            // of itself is its tape identity, nothing else.
+            // The driver stamps `from` here; the script's view of itself
+            // is its tape identity, nothing else.
             crate::support::silk::deliver(store, actx.agent_id, actx.session, out)
                 .map_err(|e| AgentError::Model(e.to_string()))?;
             Ok(false)
@@ -552,10 +576,10 @@ pub async fn run_policy_until_idle(
     tools: &[Arc<dyn Tool>],
     ctx: &an_agent_core::act::ToolCtx,
     max_steps: u32,
-    system: Option<&str>,
+    opts: StepOpts<'_>,
 ) -> Result<(), AgentError> {
     for _ in 0..max_steps {
-        if policy_step(actx, model, policy, tools, ctx, system).await? {
+        if policy_step(actx, model, policy, tools, ctx, opts).await? {
             return Ok(());
         }
     }
