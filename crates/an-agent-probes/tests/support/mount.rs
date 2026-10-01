@@ -212,6 +212,7 @@ impl<'a> Mounter<'a> {
                     name: spec.name.clone(),
                     closure: closure.members.iter().map(|(n, _)| n.clone()).collect(),
                     flow: spec.effect.flow,
+                    effect: spec.effect.clone(),
                     scope: id,
                 },
             )
