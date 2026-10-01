@@ -89,10 +89,17 @@ pub struct Admission {
 /// taped, the gate checks that the sender is a live mount, the address
 /// resolves to a live mount, the receiver's spool name sits in the
 /// sender's requires closure, and the two flow faces are compatible.
+///
+/// The gate also holds the enhancer chains (S14): receiver-attached
+/// transforms that every inbound envelope passes through. An enhancer
+/// must be in the receiver's own requires closure and declare flow both
+/// (it receives the envelope and its output continues the send).
 #[derive(Debug, Default)]
 pub struct Gate {
     by_alias: std::collections::HashMap<String, Admission>,
     by_scope: std::collections::HashMap<ScopeId, String>,
+    /// receiver alias -> enhancer aliases, in application order.
+    enhancers: std::collections::HashMap<String, Vec<String>>,
 }
 
 impl Gate {
@@ -108,11 +115,55 @@ impl Gate {
     pub fn unregister(&mut self, scope: ScopeId) {
         if let Some(alias) = self.by_scope.remove(&scope) {
             self.by_alias.remove(&alias);
+            // An unmounted enhancer leaves every chain; an unmounted
+            // receiver's chain goes with it.
+            self.enhancers.remove(&alias);
+            for chain in self.enhancers.values_mut() {
+                chain.retain(|a| a != &alias);
+            }
         }
     }
 
     pub fn admission(&self, alias: &str) -> Option<&Admission> {
         self.by_alias.get(alias)
+    }
+
+    /// Attach an enhancer to a receiver's inbox. The receiver delegates
+    /// its filtering, so the enhancer must sit in the receiver's closure;
+    /// an enhancer sees envelopes and re-emits them, so its flow is both.
+    pub fn add_enhancer(&mut self, receiver: &str, enhancer: &str) -> Result<(), SilkError> {
+        let Some(r) = self.by_alias.get(receiver) else {
+            return Err(reject(format!("no such silk address: {receiver}")));
+        };
+        let Some(e) = self.by_alias.get(enhancer) else {
+            return Err(reject(format!(
+                "enhancer is not a mounted silk address: {enhancer}"
+            )));
+        };
+        if !r.closure.contains(&e.name) {
+            return Err(reject(format!(
+                "enhancer {enhancer} is outside the receiver's requires closure: {receiver}"
+            )));
+        }
+        if e.flow != Flow::Both {
+            return Err(reject(format!(
+                "enhancer {enhancer} must declare flow both, has {:?}",
+                e.flow
+            )));
+        }
+        let chain = self.enhancers.entry(receiver.to_string()).or_default();
+        if chain.iter().any(|a| a == enhancer) {
+            return Err(reject(format!("enhancer {enhancer} already on {receiver}")));
+        }
+        chain.push(enhancer.to_string());
+        Ok(())
+    }
+
+    pub fn enhancer_aliases(&self, receiver: &str) -> &[String] {
+        self.enhancers
+            .get(receiver)
+            .map(Vec::as_slice)
+            .unwrap_or(&[])
     }
 
     /// The three checks, in order. A miss names its reason; the caller
@@ -227,11 +278,23 @@ pub fn deliver(
     session: &str,
     out: OutEnvelope,
 ) -> Result<String, SilkError> {
+    deliver_with_refs(store, sender, session, out, vec![])
+}
+
+/// `extra_refs` links the envelope to what shaped it in transit — the
+/// enhance link events of the receiver's chain (S14).
+pub fn deliver_with_refs(
+    store: &JsonlStore,
+    sender: &str,
+    session: &str,
+    out: OutEnvelope,
+    extra_refs: Vec<String>,
+) -> Result<String, SilkError> {
     if out.to.trim().is_empty() {
         return Err(reject("envelope requires a non-empty to"));
     }
     let events = silk_events(store)?;
-    let mut refs = vec![];
+    let mut refs = extra_refs;
     let call_id = match out.kind {
         SilkKind::Tell => {
             if out.call_id.is_some() {

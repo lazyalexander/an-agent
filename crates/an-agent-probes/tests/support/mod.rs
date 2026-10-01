@@ -305,11 +305,12 @@ use self::rhai::{Continuation, RhaiPolicy};
 use an_agent_core::memstream::JsonlStore;
 
 /// Per-step options: the persona prompt (mount-owned, host-injected) and
-/// the silk admission gate (None = no silk capability — default deny).
-#[derive(Debug, Default, Clone, Copy)]
+/// the mounter for silk (admission gate + enhancer chains; None = no silk
+/// capability — default deny).
+#[derive(Default, Clone, Copy)]
 pub struct StepOpts<'a> {
     pub system: Option<&'a str>,
-    pub gate: Option<&'a crate::support::silk::Gate>,
+    pub silk: Option<&'a crate::support::mount::Mounter<'a>>,
 }
 
 /// How many recent events the policy sees, newest first.
@@ -566,10 +567,10 @@ pub async fn policy_step(
             // Receiver admission (S12): sender mounted, address resolves,
             // inside the requires closure, flow faces compatible. No gate
             // means no silk capability at all — default deny.
-            let gate = opts
-                .gate
-                .ok_or_else(|| AgentError::Model("silk needs an admission gate".into()))?;
-            if let Err(e) = gate.check(actx.agent_id, &out) {
+            let mounter = opts
+                .silk
+                .ok_or_else(|| AgentError::Model("silk needs a mounter".into()))?;
+            if let Err(e) = mounter.silk_gate().check(actx.agent_id, &out) {
                 // The refusal is taped with its reason: an admission deny
                 // is as much audit as the envelopes that pass.
                 store.append(AppendEvent {
@@ -590,10 +591,53 @@ pub async fn policy_step(
                 })?;
                 return Err(AgentError::Model(e.to_string()));
             }
-            // The driver stamps `from` here; the script's view of itself
-            // is its tape identity, nothing else.
-            crate::support::silk::deliver(store, actx.agent_id, actx.session, out)
-                .map_err(|e| AgentError::Model(e.to_string()))?;
+            // Enhancers on the receiver's inbox transform the payload, in
+            // order (S14). Each hop is taped with before/after hashes and
+            // linked into the envelope's refs; the stamped fields
+            // (from/to/call_id/wake) are never re-read from a transform.
+            let mut out = out;
+            let mut enhance_refs = vec![];
+            for (alias, enhancer) in mounter.enhancer_chain(&out.to) {
+                let orig_hash = sha256_hex(serde_json::to_vec(&out.payload).unwrap_or_default());
+                let envelope_json = serde_json::json!({
+                    "kind": out.kind.as_str(),
+                    "to": out.to,
+                    "from": actx.agent_id,
+                    "call_id": out.call_id,
+                    "payload": out.payload,
+                });
+                let new_payload = enhancer
+                    .enhance(envelope_json)
+                    .map_err(|e| AgentError::Model(format!("enhancer {alias} failed: {e}")))?;
+                let new_hash = sha256_hex(serde_json::to_vec(&new_payload).unwrap_or_default());
+                let link_id = store.append(AppendEvent {
+                    from: actx.agent_id.into(),
+                    from_kind: FromKind::Agent,
+                    kind: Kind::Action,
+                    session: actx.session.into(),
+                    content: serde_json::json!({
+                        "enhancer": alias,
+                        "to": out.to,
+                        "orig_hash": orig_hash,
+                        "new_hash": new_hash,
+                    })
+                    .to_string(),
+                    tags: vec!["silk".into(), "enhance".into()],
+                    refs: vec![],
+                    act: None,
+                    card: actx.card.map(str::to_string),
+                })?;
+                enhance_refs.push(link_id.id);
+                out.payload = new_payload;
+            }
+            crate::support::silk::deliver_with_refs(
+                store,
+                actx.agent_id,
+                actx.session,
+                out,
+                enhance_refs,
+            )
+            .map_err(|e| AgentError::Model(e.to_string()))?;
             Ok(false)
         }
     }
