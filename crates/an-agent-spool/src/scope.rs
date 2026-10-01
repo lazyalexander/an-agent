@@ -64,6 +64,10 @@ pub struct MountInfo {
     pub sha256: String,
     pub config: Map<String, Value>,
     pub inverse: Inverse,
+    /// The component set this mount belongs to (v0: the tape partition it
+    /// runs in). Wrapping across sets is refused — wrap is a strong
+    /// modification channel and stays inside the set's trust boundary.
+    pub set: String,
     pub instance: Arc<dyn Tool>,
 }
 
@@ -82,6 +86,15 @@ pub enum ScopeError {
     },
     #[error("wrap target is not mounted: {0}")]
     NoTarget(String),
+    #[error(
+        "wrap cannot cross component sets: {wrapper} in \"{wrapper_set}\", {target} in \"{target_set}\""
+    )]
+    CrossSet {
+        wrapper: String,
+        wrapper_set: String,
+        target: String,
+        target_set: String,
+    },
 }
 
 /// One disposed node, reported in disposal order (children first) — the
@@ -102,6 +115,7 @@ struct Node {
     #[allow(dead_code)] // carried for the update path and future acceptors
     config: Map<String, Value>,
     inverse: Inverse,
+    set: String,
     parent: Option<ScopeId>,
     children: Vec<ScopeId>,
     disposables: Vec<(String, Disposable)>,
@@ -175,12 +189,14 @@ impl ScopeTree {
             self.node(p)?;
         }
         let id = ScopeId(self.nodes.len() as u32);
+        let set = info.set.clone();
         self.nodes.push(Some(Node {
             name: info.name.clone(),
             version: info.version,
             sha256: info.sha256,
             config: info.config,
             inverse: info.inverse,
+            set,
             parent,
             children: vec![],
             disposables: vec![],
@@ -217,6 +233,23 @@ impl ScopeTree {
         decorate: Decorate,
     ) -> Result<(), ScopeError> {
         self.node(scope)?;
+        // Wrap stays inside the component set: the check compares the
+        // wrapper's set against the set of the scope that mounted the
+        // name's current top instance.
+        let Some((target_scope, _)) = self.instances.get(target).and_then(|stack| stack.last())
+        else {
+            return Err(ScopeError::NoTarget(target.to_string()));
+        };
+        let wrapper_node = self.node(scope)?;
+        let target_node = self.node(*target_scope)?;
+        if wrapper_node.set != target_node.set {
+            return Err(ScopeError::CrossSet {
+                wrapper: wrapper_node.name.clone(),
+                wrapper_set: wrapper_node.set.clone(),
+                target: target.to_string(),
+                target_set: target_node.set.clone(),
+            });
+        }
         let inner = self
             .resolve(target)
             .ok_or_else(|| ScopeError::NoTarget(target.to_string()))?;
@@ -416,7 +449,15 @@ mod tests {
             sha256: format!("hash-{name}-{version}"),
             config: Map::new(),
             inverse: Inverse::None,
+            set: "s".into(),
             instance: echo(tool),
+        }
+    }
+
+    fn info_in_set(name: &str, tool: &'static str, set: &str) -> MountInfo {
+        MountInfo {
+            set: set.into(),
+            ..info(name, "1.0.0", tool)
         }
     }
 
@@ -523,6 +564,25 @@ mod tests {
         tree.unmount(a).unwrap();
         tree.unmount(b).unwrap();
         assert!(tree.resolve("b").is_none());
+    }
+
+    #[test]
+    fn wrap_cannot_cross_component_sets() {
+        let mut tree = ScopeTree::new();
+        tree.mount(None, info_in_set("b", "b", "s1")).unwrap();
+        let a = tree.mount(None, info_in_set("a", "a", "s2")).unwrap();
+        let err = tree
+            .wrap(
+                a,
+                "b",
+                Box::new(|inner| Arc::new(Mark("a", inner)) as Arc<dyn Tool>),
+            )
+            .unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("cannot cross"), "{msg}");
+        assert!(msg.contains("s1") && msg.contains("s2"), "{msg}");
+        // The target is untouched and unwrapped.
+        assert!(!tree.wrappers.contains_key("b"));
     }
 
     #[test]

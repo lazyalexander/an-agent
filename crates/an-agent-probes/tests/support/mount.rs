@@ -95,6 +95,7 @@ impl<'a> Mounter<'a> {
         config: Map<String, Value>,
         rights: &Faces,
         alias: Option<String>,
+        set: Option<String>,
     ) -> Result<ScopeId, AgentError> {
         let spec = self
             .registry
@@ -108,6 +109,8 @@ impl<'a> Mounter<'a> {
         for (k, v) in &config {
             merged.insert(k.clone(), v.clone());
         }
+        // Resolved before the rights check so a denial tapes it too.
+        let set = set.unwrap_or_else(|| self.session.clone());
         if !covers(rights, &closure.ceiling) {
             self.tape_mount(
                 &spec,
@@ -115,6 +118,7 @@ impl<'a> Mounter<'a> {
                 &closure.members,
                 closure.reversible,
                 Permit::Deny,
+                &set,
             );
             return Err(AgentError::Model(format!(
                 "mount denied: closure of {} {} exceeds rights",
@@ -157,6 +161,7 @@ impl<'a> Mounter<'a> {
                     sha256: spec.sha256.clone(),
                     config: merged.clone(),
                     inverse: spec.inverse.clone(),
+                    set: set.clone(),
                     instance: tool,
                 },
             )
@@ -178,6 +183,7 @@ impl<'a> Mounter<'a> {
             &closure.members,
             closure.reversible,
             Permit::Go,
+            &set,
         ) {
             self.mount_events.insert(id, event);
         }
@@ -243,6 +249,7 @@ impl<'a> Mounter<'a> {
         members: &[(String, String)],
         reversible: bool,
         permit: Permit,
+        set: &str,
     ) -> Option<String> {
         let store = self.store?;
         let env = ActEnvelope {
@@ -263,6 +270,7 @@ impl<'a> Mounter<'a> {
                     "config": config,
                     "members": members,
                     "reversible": reversible,
+                    "set": set,
                     "body": spec.body,
                 })
                 .to_string(),
