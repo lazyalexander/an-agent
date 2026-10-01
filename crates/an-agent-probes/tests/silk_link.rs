@@ -1172,3 +1172,173 @@ async fn tainted_clip_cannot_feed_world_write_but_reconstruction_can() {
         ["a human asked about something"]
     );
 }
+
+/// P0's exit criterion: tear the link down and read the whole story back
+/// from the tape alone — who translated what for whom, who was refused,
+/// and that nothing outlived its audit trail.
+#[tokio::test]
+async fn teardown_cascades_and_the_tape_tells_the_whole_story() {
+    let tmp = TempDir::new("silk-teardown");
+    let store = JsonlStore::open(tmp.path().join("memory.jsonl")).unwrap();
+    let registry = Registry::open(tmp.path().join("spools")).unwrap();
+    let hostx = ActCtx {
+        store: Some(&store),
+        agent_id: "parley-host",
+        session: SESSION,
+        card: None,
+    };
+    let mut mounter = Mounter::new(&hostx, &registry, HostCtors::new());
+    let tr = mounter
+        .mount(
+            None,
+            TRANSLATOR_YAML,
+            Map::new(),
+            &rights(),
+            Some("tr".into()),
+            None,
+        )
+        .unwrap();
+    let half = mounter
+        .mount(
+            None,
+            HALF_YAML,
+            Map::new(),
+            &rights(),
+            Some("half".into()),
+            None,
+        )
+        .unwrap();
+    let bx = mounter
+        .mount(
+            None,
+            SCREENED_YAML,
+            Map::new(),
+            &rights(),
+            Some("box".into()),
+            None,
+        )
+        .unwrap();
+    // The teller hangs under the screened box: tearing the box down must
+    // take the teller with it, child first.
+    let tl = mounter
+        .mount(
+            Some(bx),
+            TELLER_YAML,
+            json!({"name": "tl", "to": "box"})
+                .as_object()
+                .unwrap()
+                .clone(),
+            &rights(),
+            Some("tl".into()),
+            None,
+        )
+        .unwrap();
+    mounter.link_enhancer("box", "tr").unwrap();
+
+    let tl_ctx = ActCtx {
+        store: Some(&store),
+        agent_id: "tl",
+        session: SESSION,
+        card: None,
+    };
+    let policy = mounter.policy(tl).unwrap();
+    policy_step(
+        &tl_ctx,
+        &NoModel,
+        &policy,
+        &[],
+        &ctx(),
+        StepOpts {
+            silk: Some(&mounter),
+            ..StepOpts::default()
+        },
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        silk_envelopes(&store)[0].payload,
+        json!({"text": "译:hello"})
+    );
+
+    // Cascade: unmounting the box disposes the teller first.
+    let report = mounter.unmount(bx).unwrap();
+    assert_eq!(report.len(), 2);
+    assert_eq!(report[0].name, "teller");
+    assert_eq!(report[1].name, "screened");
+    assert_eq!(report[0].scope, tl);
+    assert_eq!(report[1].scope, bx);
+
+    // A tell to the now-dead address is refused and taped with its reason.
+    let tl2 = mounter
+        .mount(
+            None,
+            TELLER_YAML,
+            json!({"name": "tl2", "to": "box"})
+                .as_object()
+                .unwrap()
+                .clone(),
+            &rights(),
+            Some("tl2".into()),
+            None,
+        )
+        .unwrap();
+    let tl2_ctx = ActCtx {
+        store: Some(&store),
+        agent_id: "tl2",
+        session: SESSION,
+        card: None,
+    };
+    let policy2 = mounter.policy(tl2).unwrap();
+    let err = policy_step(
+        &tl2_ctx,
+        &NoModel,
+        &policy2,
+        &[],
+        &ctx(),
+        StepOpts {
+            silk: Some(&mounter),
+            ..StepOpts::default()
+        },
+    )
+    .await
+    .unwrap_err();
+    assert!(err.to_string().contains("no such silk address"), "{err}");
+
+    mounter.unmount(tr).unwrap();
+    mounter.unmount(half).unwrap();
+    mounter.unmount(tl2).unwrap();
+
+    // --- read the story back, tape only ---
+    let events = store.read_all().unwrap();
+    let mounts: Vec<_> = events
+        .iter()
+        .filter(|e| e.kind == Kind::Action && e.act.as_ref().is_some_and(|a| a.kind == "mount"))
+        .collect();
+    let unmounts: Vec<_> = events
+        .iter()
+        .filter(|e| e.kind == Kind::Action && e.act.as_ref().is_some_and(|a| a.kind == "unmount"))
+        .collect();
+    let mount_ids: Vec<&str> = mounts.iter().map(|e| e.id.as_str()).collect();
+    // Every mount met exactly one unmount, ref'd back.
+    assert_eq!(mounts.len(), 5);
+    assert_eq!(unmounts.len(), 5);
+    for u in &unmounts {
+        assert_eq!(u.refs.len(), 1);
+        assert!(mount_ids.contains(&u.refs[0].as_str()));
+    }
+    // The translated envelope refs its enhance hop; the hop carries both
+    // hashes; the dead-address refusal is on tape with its reason.
+    let envelope = events
+        .iter()
+        .find(|e| e.tags.iter().any(|t| t == "tell"))
+        .unwrap();
+    let enhance = events
+        .iter()
+        .find(|e| e.tags.iter().any(|t| t == "enhance"))
+        .unwrap();
+    assert_eq!(envelope.refs, vec![enhance.id.clone()]);
+    assert!(enhance.content.contains("orig_hash") && enhance.content.contains("new_hash"));
+    assert!(events.iter().any(|e| {
+        e.tags.iter().any(|t| t == "deny") && e.content.contains("no such silk address")
+    }));
+}
