@@ -355,12 +355,41 @@ pub fn mount_policy(
 /// Clip ids + metadata + truncated preview, newest first — not full text.
 /// The script pulls full content only indirectly, by naming clip ids in
 /// `invoke_model` and letting the host assemble the context.
-fn tape_projection(store: &JsonlStore, session: &str) -> Result<serde_json::Value, AgentError> {
+///
+/// Isolation (S14): the projection covers the mount's own tape partition
+/// plus its silk inbox — envelopes addressed to `alias` cross partitions
+/// into the projection, everything else in other partitions does not
+/// exist as far as the script is concerned.
+fn tape_projection(
+    store: &JsonlStore,
+    session: &str,
+    alias: Option<&str>,
+) -> Result<serde_json::Value, AgentError> {
     let events = store.read_all()?;
-    let clips: Vec<serde_json::Value> = events
+    let mut clips: Vec<&an_agent_core::memstream::Memevent> = events
         .iter()
-        .rev()
         .filter(|e| e.session.as_deref() == Some(session))
+        .collect();
+    if let Some(alias) = alias {
+        for e in events
+            .iter()
+            .filter(|e| e.session.as_deref() != Some(session))
+        {
+            let for_me = e.tags.iter().any(|t| t == "silk")
+                && serde_json::from_str::<serde_json::Value>(&e.content)
+                    .ok()
+                    .and_then(|v| v.get("to")?.as_str().map(str::to_string))
+                    .as_deref()
+                    == Some(alias);
+            if for_me {
+                clips.push(e);
+            }
+        }
+    }
+    // seq is store-global and monotonic; merge by it, newest first.
+    clips.sort_by_key(|e| std::cmp::Reverse(e.seq));
+    let clips: Vec<serde_json::Value> = clips
+        .into_iter()
         .take(PROJECTION_TAIL)
         .map(|e| {
             serde_json::json!({
@@ -445,7 +474,7 @@ pub async fn policy_step(
 ) -> Result<bool, AgentError> {
     let (clips, last_obs) = match actx.store {
         Some(store) => (
-            tape_projection(store, actx.session)?,
+            tape_projection(store, actx.session, Some(actx.agent_id))?,
             last_observation_preview(store, actx.session)?,
         ),
         None => (serde_json::json!([]), String::new()),
@@ -537,8 +566,9 @@ pub async fn policy_step(
             // Receiver admission (S12): sender mounted, address resolves,
             // inside the requires closure, flow faces compatible. No gate
             // means no silk capability at all — default deny.
-            let gate =
-                opts.gate.ok_or_else(|| AgentError::Model("silk needs an admission gate".into()))?;
+            let gate = opts
+                .gate
+                .ok_or_else(|| AgentError::Model("silk needs an admission gate".into()))?;
             if let Err(e) = gate.check(actx.agent_id, &out) {
                 // The refusal is taped with its reason: an admission deny
                 // is as much audit as the envelopes that pass.

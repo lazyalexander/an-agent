@@ -16,8 +16,8 @@ use an_agent_core::memstream::{AppendEvent, FromKind, JsonlStore, Kind};
 use serde_json::json;
 use support::rhai::RhaiPolicy;
 use support::{
-    AgentError, Assistant, ChatMessage, Model, TempDir, Usage, mount_policy, policy_step,
-    run_policy_until_idle, StepOpts,
+    AgentError, Assistant, ChatMessage, Model, StepOpts, TempDir, Usage, mount_policy, policy_step,
+    run_policy_until_idle,
 };
 
 const POLICY_YAML: &str = include_str!("fixtures/echo_policy.yaml");
@@ -105,9 +105,17 @@ async fn policy_drives_model_tool_and_halt() {
     seed_task(&store, "s1").unwrap();
 
     let tools: Vec<Arc<dyn Tool>> = vec![Arc::new(Echo)];
-    run_policy_until_idle(&actx, &Fake, &policy, &tools, &ctx(), 10, StepOpts::default())
-        .await
-        .unwrap();
+    run_policy_until_idle(
+        &actx,
+        &Fake,
+        &policy,
+        &tools,
+        &ctx(),
+        10,
+        StepOpts::default(),
+    )
+    .await
+    .unwrap();
 
     let events = store.read_all().unwrap();
     // The mount event carries the full descriptor (script inline) and its
