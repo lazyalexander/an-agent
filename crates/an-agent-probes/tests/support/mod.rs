@@ -11,6 +11,7 @@
 pub mod lean;
 pub mod mount;
 pub mod rhai;
+pub mod silk;
 pub mod ts_tool;
 
 use std::path::PathBuf;
@@ -519,6 +520,26 @@ pub async fn policy_step(
                 arguments: args.to_string(),
             };
             let _ = an_agent_core::act::run_tool_act(actx, tools, &call, ctx).await?;
+            Ok(false)
+        }
+        Continuation::Silk(out) => {
+            let store = actx
+                .store
+                .ok_or_else(|| AgentError::Model("silk needs a store".into()))?;
+            // The flow face is the silk capability: only out/both policies
+            // may send. The decision is on tape; the refusal returns here.
+            use an_agent_spool::spool::Flow;
+            if !matches!(policy.flow(), Flow::Out | Flow::Both) {
+                return Err(AgentError::Model(format!(
+                    "policy {} has flow {:?} and may not send silk",
+                    policy.name(),
+                    policy.flow()
+                )));
+            }
+            // The driver stamps from/to validity here; the script's view
+            // of itself is its tape identity, nothing else.
+            crate::support::silk::deliver(store, actx.agent_id, actx.session, out)
+                .map_err(|e| AgentError::Model(e.to_string()))?;
             Ok(false)
         }
     }
