@@ -21,9 +21,17 @@ use support::{
     AgentError, Assistant, ChatMessage, Model, StepOpts, TempDir, Usage, run_policy_until_idle,
 };
 
-const AGENT_LOOP_YAML: &str = include_str!("fixtures/agent_loop.yaml");
-const ECHO_YAML: &str = include_str!("fixtures/echo.yaml");
 const SESSION: &str = "s1";
+
+/// The library is the source of the bodies — the probe is also the
+/// library's CI: a malformed entry fails here first.
+fn library_body(name: &str) -> String {
+    let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../spools")
+        .join(name)
+        .join(format!("{name}.yaml"));
+    an_agent_spool::library::load(&path).unwrap()
+}
 
 /// A model with a canned script of responses.
 struct ScriptedModel {
@@ -160,13 +168,15 @@ async fn the_loop_propose_approve_execute_halt() {
         card: None,
     };
     let mut mounter = Mounter::new(&hostx, &registry, hosts);
+    let echo_body = library_body("echo");
+    let agent_loop_body = library_body("agent_loop");
     mounter
-        .mount(None, ECHO_YAML, Map::new(), &rights(), None, None)
+        .mount(None, &echo_body, Map::new(), &rights(), None, None)
         .unwrap();
     let lo = mounter
         .mount(
             None,
-            AGENT_LOOP_YAML,
+            &agent_loop_body,
             json!({"name": "lo"}).as_object().unwrap().clone(),
             &rights(),
             Some("lo".into()),
@@ -280,13 +290,15 @@ async fn approving_outside_the_requires_closure_executes_nothing() {
         card: None,
     };
     let mut mounter = Mounter::new(&hostx, &registry, hosts);
+    let echo_body = library_body("echo");
+    let agent_loop_body = library_body("agent_loop");
     mounter
-        .mount(None, ECHO_YAML, Map::new(), &rights(), None, None)
+        .mount(None, &echo_body, Map::new(), &rights(), None, None)
         .unwrap();
     let lo = mounter
         .mount(
             None,
-            AGENT_LOOP_YAML,
+            &agent_loop_body,
             json!({"name": "lo"}).as_object().unwrap().clone(),
             &rights(),
             Some("lo".into()),

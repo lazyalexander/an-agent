@@ -1,0 +1,30 @@
+// One task in, one answer out. The model is an oracle bounded to the
+// requires whitelist; its proposals land on tape (full args) and are
+// executed only when this policy approves them by reference. Nothing
+// enters the script verbatim but previews; nothing leaves without an
+// admitted act.
+fn pos(clips, id) {
+    for i in 0..clips.len() {
+        if clips[i].id == id { return i; }
+    }
+    -1
+}
+let me = config.name;
+let human = params.clips.filter(|c| c.kind == "utterance" && c.from == "human");
+let fx = params.clips.filter(|c| c.kind == "observation" && c.who == me && c.preview.contains("tool_calls"));
+let results = params.clips.filter(|c| c.kind == "observation" && c.who == me && !c.preview.starts_with("{"));
+if human.is_empty() {
+    #{ kind: "halt" }
+} else if fx.is_empty() {
+    #{ kind: "invoke_model", clips: [human[0].id] }
+} else if fx[0].preview.contains("\"tool_calls\":[{") {
+    if results.is_empty() || pos(params.clips, results[0].id) > pos(params.clips, fx[0].id) {
+        #{ kind: "approve", clip: fx[0].id, index: 0 }
+    } else {
+        #{ kind: "invoke_model", clips: [human[0].id, results[0].id] }
+    }
+} else if pos(params.clips, human[0].id) < pos(params.clips, fx[0].id) {
+    #{ kind: "invoke_model", clips: [human[0].id] }
+} else {
+    #{ kind: "halt" }
+}
