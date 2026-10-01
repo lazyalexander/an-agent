@@ -1,0 +1,15 @@
+v: 1
+kind: spool
+name: echo
+version: 1.0.0
+summary: echo the text back
+constructor: host
+host: echo
+effect:
+  file: { op: none }
+  memory: { op: ignore }
+  net: none
+  proc: none
+  flow: none
+inverse: none
+requires: []
