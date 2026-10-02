@@ -17,6 +17,7 @@ The core bet: an append-only event tape (memstream) is the single source of trut
 - `crates/an-agent-workspace` — content-addressed store. It is not the recorder workspace.
 - `crates/an-agent-probes` — probe tests only. Not a library.
 - `packages/causal-web` — zero-dependency tape viewer: drop in a `.jsonl` tape, see the causal threads, get the tape validated in-page.
+- `packages/translated-tell` — one-tape walkthrough of the translated-tell probe. `bun serve` in that directory.
 - `packages/lean-probe` — tiny Lake package used by the Lean 4 compatibility probe (no Mathlib).
 - `config/` — model endpoint configuration.
 
