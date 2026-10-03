@@ -1,4 +1,4 @@
-//! The one user-facing agent in a runtime. Spawn, mail, and link are
+//! User-facing agent for the file workspace. Not the process. Spawn, mail, and link are
 //! verbs here — not tools. World-facing grants on its card must be Deny.
 //! The recorder is the tape-keeping identity: every verb is a tape append,
 //! and its state (seats, bounds, flags) is a projection rebuildable from

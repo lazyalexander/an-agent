@@ -10,7 +10,9 @@ pub use registry::{Registration, RegistryError, Tier, ToolRegistry};
 pub use resource::{Resource, ResourceKind};
 pub use sense::{Effect, effect_from_tag};
 pub use tag::{FileFacet, MemoryFacet, Permit, ToolTag};
-pub use tool::{ActCtx, Tool, ToolCall, ToolCtx, ToolError, ToolMessage, run_tool_act, tag_of};
+pub use tool::{
+    ActCtx, Tool, ToolActResult, ToolCall, ToolCtx, ToolError, ToolMessage, run_tool_act, tag_of,
+};
 
 /// Intent-domain vocabulary only. The channel (via tool / direct / model)
 /// is carried by `ActEnvelope.tool`: Some(name) = via tool, None = direct

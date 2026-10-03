@@ -1,6 +1,6 @@
 //! Bash is the one constructor this crate registers. The kernel builds
 //! grants from whatever list the caller passes. `spawn` opens a session
-//! with that list. Worker seats stay on the runtime.
+//! with that list. Worker seats stay with the recorder.
 
 mod bash;
 

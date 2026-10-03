@@ -1,8 +1,11 @@
-//! Runtime for the loop: private session, live agent, registration
-//! tree, bounded turn pool, recorder, and the recorder workspace.
+//! Process-local loop pieces: private session, live agent, registration
+//! tree, bounded turn pool, recorder, and the recorder file workspace.
+//! There is no runtime type. The host face is [`AgentControl`], and it
+//! writes the tape. This module name is a directory, not a concept.
 //! Context assembly lives in the composition crate.
 
 mod agent;
+mod control;
 mod pool;
 mod recorder;
 mod recover;
@@ -12,6 +15,7 @@ mod tree;
 mod wp;
 
 pub use agent::{Agent, AgentError};
+pub use control::{AgentControl, ControlError};
 pub use pool::{Pool, PoolError, Turn};
 pub use recorder::{
     Arrival, Lease, ProductPtr, Recorder, RecorderError, RestoredSeat, TurnKind, restore_seats,
