@@ -6,8 +6,8 @@ use std::sync::Mutex;
 use thiserror::Error;
 use uuid::Uuid;
 
-use super::agent::Agent;
 use super::tree::{Tree, TreeError};
+use crate::agent::Agent;
 
 #[derive(Debug, Error)]
 pub enum PoolError {

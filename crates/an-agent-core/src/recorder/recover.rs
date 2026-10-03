@@ -8,7 +8,7 @@ use thiserror::Error;
 
 use crate::memstream::JsonlStore;
 
-use super::recorder::projection_path;
+use super::projection_path;
 
 #[derive(Debug, Error)]
 pub enum RecoverError {
@@ -60,7 +60,7 @@ mod tests {
     use crate::act::Permit;
     use crate::act::{FileFacet, MemoryFacet, ToolTag};
     use crate::principal::card::{AgentCard, ModelSpec, ToolGrant, Topology};
-    use crate::runtime::Recorder;
+    use crate::recorder::Recorder;
     use crate::testkit::TempDir;
     use uuid::Uuid;
 
@@ -119,7 +119,7 @@ mod tests {
     fn missing_card_hash_event_fails_closed() {
         let tmp = TempDir::new("recover-miss");
         let agent_id = Uuid::parse_str("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa").unwrap();
-        let session = crate::runtime::Session::create(tmp.path(), agent_id).unwrap();
+        let session = crate::agent::Session::create(tmp.path(), agent_id).unwrap();
         let err = recover(session.root()).unwrap_err();
         assert!(matches!(err, RecoverError::Missing("prompt")));
     }

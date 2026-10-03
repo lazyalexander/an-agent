@@ -741,7 +741,7 @@ mod tests {
     use super::*;
     use crate::act::{Charter, FileFacet, MemoryFacet, Permit, ToolTag};
     use crate::principal::card::{AgentCard, ModelSpec, ToolGrant, Topology};
-    use crate::runtime::Recorder;
+    use crate::recorder::Recorder;
     use crate::testkit::TempDir;
 
     fn card(id: &str, permit: Permit) -> AgentCard {
@@ -783,7 +783,7 @@ mod tests {
         Charter::new(ToolTag::none_permit(Permit::Go))
     }
 
-    fn worker(s: &Recorder) -> (std::sync::Arc<crate::runtime::Agent>, String) {
+    fn worker(s: &Recorder) -> (std::sync::Arc<crate::agent::Agent>, String) {
         let w = s
             .spawn_worker(
                 &card("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb", Permit::Go),
@@ -967,7 +967,7 @@ mod tests {
         );
         assert!(matches!(
             err,
-            Err(crate::runtime::RecorderError::Wp(WpError::Cycle))
+            Err(crate::recorder::RecorderError::Wp(WpError::Cycle))
         ));
         assert!(s.workspace().is_live(&sub));
     }

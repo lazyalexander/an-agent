@@ -474,7 +474,7 @@ mod tests {
     use super::*;
     use an_agent_core::act::{FileFacet, MemoryFacet, Permit, ToolTag};
     use an_agent_core::principal::card::{AgentCard, ModelSpec, ToolGrant, Topology};
-    use an_agent_core::runtime::Recorder;
+    use an_agent_core::recorder::Recorder;
     use an_agent_core::testkit::TempDir;
     use uuid::Uuid;
 

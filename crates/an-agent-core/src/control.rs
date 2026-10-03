@@ -22,9 +22,8 @@ use crate::memstream::{AppendEvent, FromKind, Kind, Memevent, StoreError};
 use crate::principal::card::AgentCard;
 use crate::principal::factory::ToolCtor;
 
-use super::pool::{Pool, PoolError};
-use super::tree::{Seat, TreeError};
-use super::{RuntimeError, spawn_with};
+use crate::agent::{Agent, SpawnError, spawn_with};
+use crate::seat::{Pool, PoolError, Seat, TreeError};
 
 #[derive(Debug, Error)]
 pub enum ControlError {
@@ -39,7 +38,7 @@ pub enum ControlError {
     #[error("a thread cannot send to itself: {0}")]
     SameThread(Uuid),
     #[error(transparent)]
-    Runtime(#[from] RuntimeError),
+    Spawn(#[from] SpawnError),
     #[error(transparent)]
     Pool(#[from] PoolError),
     #[error(transparent)]
@@ -243,7 +242,7 @@ impl AgentControl {
             .collect()
     }
 
-    fn live(&self, id: Uuid) -> Result<Arc<super::agent::Agent>, ControlError> {
+    fn live(&self, id: Uuid) -> Result<Arc<Agent>, ControlError> {
         let threads = self.inner.threads.lock().unwrap_or_else(|e| e.into_inner());
         let thread = threads.get(&id).ok_or(ControlError::NotOpen(id))?;
         if thread.finished {
@@ -288,12 +287,7 @@ impl AgentControl {
         Ok(thread.cancel.subscribe())
     }
 
-    fn append(
-        &self,
-        agent: &super::agent::Agent,
-        tag: &str,
-        content: String,
-    ) -> Result<String, ControlError> {
+    fn append(&self, agent: &Agent, tag: &str, content: String) -> Result<String, ControlError> {
         let event = agent.session().tape().append(AppendEvent {
             from: agent.id_str().to_string(),
             from_kind: FromKind::Agent,

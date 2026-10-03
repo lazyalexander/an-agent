@@ -7,7 +7,7 @@ use std::sync::{Arc, Mutex};
 use thiserror::Error;
 use uuid::Uuid;
 
-use super::agent::Agent;
+use crate::agent::Agent;
 
 #[derive(Debug, Error)]
 pub enum TreeError {
