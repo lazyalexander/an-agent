@@ -13,6 +13,7 @@ pub mod memstream;
 pub mod principal;
 pub mod recorder;
 pub mod seat;
+pub mod workspace;
 
 #[cfg(any(test, feature = "testkit"))]
 pub mod testkit;

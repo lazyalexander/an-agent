@@ -24,6 +24,7 @@ use crate::principal::factory::ToolCtor;
 
 use crate::agent::{Agent, SpawnError, spawn_with};
 use crate::seat::{Pool, PoolError, Seat, TreeError};
+use crate::workspace::{Workspace, WorkspaceCite, WorkspaceRecord};
 
 #[derive(Debug, Error)]
 pub enum ControlError {
@@ -47,6 +48,8 @@ pub enum ControlError {
     Tool(#[from] ToolError),
     #[error(transparent)]
     Store(#[from] StoreError),
+    #[error(transparent)]
+    Workspace(#[from] crate::workspace::WorkspaceError),
 }
 
 struct ThreadInner {
@@ -63,6 +66,7 @@ struct Inner {
     pool: Pool,
     seats: Mutex<Vec<Seat>>,
     threads: Mutex<HashMap<Uuid, ThreadInner>>,
+    workspace: Workspace,
 }
 
 /// The handle a host software uses to drive agents in this process.
@@ -88,8 +92,34 @@ impl AgentControl {
                 pool: Pool::new(1)?,
                 seats: Mutex::new(Vec::new()),
                 threads: Mutex::new(HashMap::new()),
+                workspace: Workspace::open(sessions_root.as_ref().join("workspace"))?,
             }),
         })
+    }
+
+    /// Append one software event. Repeated text is a new event.
+    pub fn push_event(&self, body: &str) -> Result<WorkspaceRecord, ControlError> {
+        Ok(self.inner.workspace.push_event(body)?)
+    }
+
+    /// Store precise bytes. Identical bytes keep the previous id.
+    pub fn put_config(&self, bytes: &[u8]) -> Result<WorkspaceRecord, ControlError> {
+        Ok(self.inner.workspace.put_config(bytes)?)
+    }
+
+    /// Replace the environment markdown. Identical text keeps the previous id.
+    pub fn put_env(&self, markdown: &str) -> Result<WorkspaceRecord, ControlError> {
+        Ok(self.inner.workspace.put_env(markdown)?)
+    }
+
+    /// Current config id, env generation id, and env text.
+    pub fn workspace_cite(&self) -> Result<WorkspaceCite, ControlError> {
+        Ok(self.inner.workspace.cite()?)
+    }
+
+    /// The workspace log. This is the listen port. It does not poll.
+    pub fn workspace_log(&self) -> Result<Vec<WorkspaceRecord>, ControlError> {
+        Ok(self.inner.workspace.log()?)
     }
 
     /// Birth one thread and its tape. The id is the card id. Opening the

@@ -323,7 +323,8 @@ pub fn assemble_thread(
         });
     }
     let events = control.events(thread)?;
-    if let Some(hit) = cache_hit(&dir, &events, mode, budget_chars)? {
+    let cite = control.workspace_cite()?;
+    if let Some(hit) = cache_hit(&dir, &events, mode, budget_chars, &cite)? {
         return Ok(Assembly {
             prompt,
             config,
@@ -337,10 +338,30 @@ pub fn assemble_thread(
     } else {
         config
     };
+    if let Some(id) = &cite.config_id {
+        assembly.context.push(Piece {
+            kind: "config",
+            event_id: None,
+            segment: None,
+            outside: Some(id.clone()),
+            text: String::new(),
+        });
+    }
+    if let Some(id) = &cite.env_id {
+        assembly.context.push(Piece {
+            kind: "env",
+            event_id: None,
+            segment: None,
+            outside: Some(id.clone()),
+            text: cite.env_markdown.clone(),
+        });
+    }
     let refs = piece_refs(&assembly.context);
     let body = json!({
         "mode": mode_name(mode),
         "budget_chars": budget_chars,
+        "config_id": cite.config_id,
+        "env_id": cite.env_id,
         "pieces": assembly.context.iter().map(piece_body).collect::<Vec<_>>(),
     })
     .to_string();
@@ -393,6 +414,7 @@ fn cache_hit(
     events: &[Memevent],
     mode: AssembleMode,
     budget_chars: usize,
+    cite: &an_agent_core::workspace::WorkspaceCite,
 ) -> Result<Option<Vec<Piece>>, ContextError> {
     let Some(pos) = events
         .iter()
@@ -407,6 +429,11 @@ fn cache_hit(
     if body["mode"] != mode_name(mode) || body["budget_chars"] != budget_chars {
         return Ok(None);
     }
+    if body["config_id"].as_str() != cite.config_id.as_deref()
+        || body["env_id"].as_str() != cite.env_id.as_deref()
+    {
+        return Ok(None);
+    }
     let Some(listed) = body["pieces"].as_array() else {
         return Ok(None);
     };
@@ -416,7 +443,11 @@ fn cache_hit(
         let event_id = item["event_id"].as_str().map(str::to_string);
         let segment = item["segment"].as_str().map(str::to_string);
         let outside = item["outside"].as_str().map(str::to_string);
-        let text = if let Some(id) = &event_id {
+        let text = if kind == "config" {
+            String::new()
+        } else if kind == "env" {
+            cite.env_markdown.clone()
+        } else if let Some(id) = &event_id {
             let Some(event) = events.iter().find(|event| event.id == *id) else {
                 return Ok(None);
             };
@@ -436,6 +467,8 @@ fn cache_hit(
                 "recent" => "recent",
                 "hot" => "hot",
                 "summary" => "summary",
+                "config" => "config",
+                "env" => "env",
                 _ => return Ok(None),
             },
             event_id,
@@ -940,5 +973,27 @@ mod tests {
         let alone = assemble_thread(&control, id, AssembleMode::Independent, 10_000).unwrap();
         assert!(alone.context.is_empty());
         assert_eq!(alone.prompt, "prompt-text");
+        let config = control.put_config(b"{\"theme\":\"quiet\"}").unwrap();
+        let env = control.put_env("# now\n\nprefers short diffs\n").unwrap();
+        let cited = assemble_thread(&control, id, AssembleMode::Continue, 10_000).unwrap();
+        assert!(cited.context.iter().any(|piece| {
+            piece.kind == "config" && piece.outside.as_deref() == Some(config.id.as_str())
+        }));
+        assert!(cited.context.iter().any(|piece| {
+            piece.kind == "env"
+                && piece.outside.as_deref() == Some(env.id.as_str())
+                && piece.text.contains("short diffs")
+        }));
+        let again = assemble_thread(&control, id, AssembleMode::Continue, 10_000).unwrap();
+        assert_eq!(again.context, cited.context);
+        control.put_env("# now\n\nprefers tests first\n").unwrap();
+        let moved = assemble_thread(&control, id, AssembleMode::Continue, 10_000).unwrap();
+        assert!(
+            moved
+                .context
+                .iter()
+                .any(|piece| piece.text.contains("tests first"))
+        );
+        assert_ne!(moved.context, cited.context);
     }
 }
