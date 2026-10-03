@@ -30,8 +30,7 @@ impl RhaiTool {
     ) -> Result<Self, String> {
         // The probe wires only the net face: rhai gets no FS host fns and
         // no exec. A descriptor declaring a face the constructor cannot
-        // honor must fail here, not at first call — a file r/w/rw tag would
-        // die in admission (MissingResource) and proc: spawn has no effector.
+        // honor must fail here, not at first call.
         use an_agent_core::act::FileFacet;
         use an_agent_spool::descriptor::Proc;
         if matches!(

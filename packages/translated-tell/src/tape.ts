@@ -1,11 +1,7 @@
-export type FromKind = "human" | "agent" | "unknown";
-export type Kind = "utterance" | "action" | "observation";
-
 export interface ActOnEvent {
   kind: string;
   permit?: string;
   tool?: string;
-  effect?: unknown;
 }
 
 export interface Memevent {
@@ -14,8 +10,8 @@ export interface Memevent {
   seq: number;
   ts: string;
   from: string;
-  from_kind: FromKind;
-  kind: Kind;
+  from_kind: string;
+  kind: string;
   session?: string;
   content: string;
   tags: string[];
@@ -41,4 +37,16 @@ export function parseTape(text: string): ParsedTape {
     }
   });
   return { events, parseErrors };
+}
+
+export function jsonContent(event: Memevent): Record<string, unknown> | null {
+  try {
+    const value = JSON.parse(event.content) as unknown;
+    if (value && typeof value === "object" && !Array.isArray(value)) {
+      return value as Record<string, unknown>;
+    }
+  } catch {
+    return null;
+  }
+  return null;
 }

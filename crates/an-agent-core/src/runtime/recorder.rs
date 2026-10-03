@@ -16,7 +16,7 @@ use sha2::{Digest, Sha256};
 use thiserror::Error;
 use uuid::Uuid;
 
-use crate::act::{ActSentence, Audience, Permit};
+use crate::act::{Audience, Charter, Permit};
 use crate::memstream::{AppendEvent, FromKind, Kind};
 use crate::principal::card::AgentCard;
 
@@ -119,7 +119,7 @@ pub struct Recorder {
     queue: Mutex<VecDeque<Intent>>,
     root: PathBuf,
     wp: Wp,
-    bounds: Mutex<HashMap<Uuid, ActSentence>>,
+    bounds: Mutex<HashMap<Uuid, Charter>>,
     flags: Mutex<HashMap<Uuid, Arc<AtomicBool>>>,
     registry: Vec<(String, crate::principal::factory::ToolCtor)>,
 }
@@ -229,7 +229,7 @@ impl Recorder {
     pub fn spawn_worker(
         &self,
         card: &AgentCard,
-        bound: &ActSentence,
+        bound: &Charter,
     ) -> Result<Arc<Agent>, RecorderError> {
         self.spawn_child(self.agent.id(), card, bound, true)
     }
@@ -239,7 +239,7 @@ impl Recorder {
         &self,
         parent: Uuid,
         card: &AgentCard,
-        bound: &ActSentence,
+        bound: &Charter,
     ) -> Result<Arc<Agent>, RecorderError> {
         self.spawn_child(parent, card, bound, true)
     }
@@ -249,9 +249,9 @@ impl Recorder {
     pub fn spawn_lite(
         &self,
         card: &AgentCard,
-        bound: &ActSentence,
+        bound: &Charter,
     ) -> Result<Arc<Agent>, RecorderError> {
-        if !bound_is_fileless(bound) {
+        if !bound.file_is_none() {
             return Err(RecorderError::LiteFile);
         }
         self.spawn_child(self.agent.id(), card, bound, false)
@@ -376,7 +376,7 @@ impl Recorder {
             .parent(child)?
             .ok_or(RecorderError::NotMounted(child))?;
         let bound = self.charter(child)?;
-        if bound.signal().complete == Permit::Deny {
+        if bound.signal.complete == Permit::Deny {
             return Err(RecorderError::SignalDenied("complete"));
         }
         let child_agent = self
@@ -401,7 +401,7 @@ impl Recorder {
             .parent(from)?
             .ok_or(RecorderError::NotMounted(from))?;
         let bound = self.charter(from)?;
-        if to != parent && bound.signal().audience != Audience::Any {
+        if to != parent && bound.signal.audience != Audience::Any {
             return Err(RecorderError::SignalDenied("send"));
         }
         let from_agent = self
@@ -527,7 +527,7 @@ impl Recorder {
         &self,
         parent: Uuid,
         card: &AgentCard,
-        bound: &ActSentence,
+        bound: &Charter,
         with_subwp: bool,
     ) -> Result<Arc<Agent>, RecorderError> {
         if self.pool.tree().get(parent).is_none() {
@@ -592,7 +592,7 @@ impl Recorder {
         }
     }
 
-    fn charter(&self, worker: Uuid) -> Result<ActSentence, RecorderError> {
+    fn charter(&self, worker: Uuid) -> Result<Charter, RecorderError> {
         self.bounds
             .lock()
             .unwrap_or_else(|e| e.into_inner())
@@ -739,16 +739,6 @@ fn parent_chain_reaches(id: Uuid, nodes: &HashMap<Uuid, RestoredSeat>, recorder:
     false
 }
 
-fn bound_is_fileless(bound: &ActSentence) -> bool {
-    matches!(
-        bound,
-        ActSentence::Bare {
-            file: crate::act::BareFile::None,
-            ..
-        } | ActSentence::Forget { .. }
-    )
-}
-
 fn deny_world_grants(card: &AgentCard) -> Result<(), RecorderError> {
     for grant in &card.tools {
         if grant.tag.permit != Permit::Deny {
@@ -793,9 +783,7 @@ fn view_name(content: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::act::{
-        ActSentence, Audience, BareFile, FileFacet, Ingest, MemoryFacet, Signal, ToolTag,
-    };
+    use crate::act::{Audience, Charter, FileFacet, MemoryFacet, Permit, Signal, ToolTag};
     use crate::principal::card::{ModelSpec, ToolGrant, Topology};
     use crate::testkit::{TempDir, bash_registry};
 
@@ -857,7 +845,7 @@ mod tests {
         let worker = recorder
             .spawn_worker(
                 &bare("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb", Permit::Go),
-                &ActSentence::bare(Permit::Go, BareFile::None, Ingest::Ignore),
+                &Charter::new(ToolTag::none_permit(Permit::Go)),
             )
             .unwrap();
         assert_eq!(
@@ -904,7 +892,7 @@ mod tests {
         .unwrap();
         let err = recorder.spawn_worker(
             &bare("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb", Permit::Go),
-            &ActSentence::bare(Permit::Deny, BareFile::None, Ingest::Ignore),
+            &Charter::new(ToolTag::none_permit(Permit::Deny)),
         );
         assert!(matches!(err, Err(RecorderError::OutsideBound(_))));
         let id = Uuid::parse_str("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb").unwrap();
@@ -921,7 +909,11 @@ mod tests {
             "[]",
         )
         .unwrap();
-        let wide = ActSentence::bare(Permit::Go, BareFile::Unbounded, Ingest::Ignore);
+        let wide = Charter::new(ToolTag {
+            file: FileFacet::Unbounded,
+            permit: Permit::Go,
+            memory: MemoryFacet::Ignore,
+        });
         assert!(matches!(
             recorder.spawn_lite(
                 &bare("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb", Permit::Go),
@@ -929,7 +921,7 @@ mod tests {
             ),
             Err(RecorderError::LiteFile)
         ));
-        let bound = ActSentence::bare(Permit::Go, BareFile::None, Ingest::Ignore);
+        let bound = Charter::new(ToolTag::none_permit(Permit::Go));
         let lite = recorder
             .spawn_lite(
                 &bare("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb", Permit::Go),
@@ -961,7 +953,7 @@ mod tests {
             "[]",
         )
         .unwrap();
-        let parent_bound = ActSentence::bare(Permit::Go, BareFile::None, Ingest::Ignore);
+        let parent_bound = Charter::new(ToolTag::none_permit(Permit::Go));
         let parent = recorder
             .spawn_worker(
                 &bare("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb", Permit::Go),
@@ -1024,7 +1016,7 @@ mod tests {
             "[]",
         )
         .unwrap();
-        let bound = ActSentence::bare(Permit::Go, BareFile::None, Ingest::Ignore);
+        let bound = Charter::new(ToolTag::none_permit(Permit::Go));
         let kept = recorder
             .spawn_lite(
                 &bare("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb", Permit::Go),
@@ -1071,11 +1063,10 @@ mod tests {
             "[]",
         )
         .unwrap();
-        let bound =
-            ActSentence::bare(Permit::Go, BareFile::None, Ingest::Ignore).with_signal(Signal {
-                complete: Permit::Deny,
-                audience: Audience::Parent,
-            });
+        let bound = Charter::new(ToolTag::none_permit(Permit::Go)).with_signal(Signal {
+            complete: Permit::Deny,
+            audience: Audience::Parent,
+        });
         let worker = recorder
             .spawn_worker(
                 &bare("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb", Permit::Go),
@@ -1085,7 +1076,7 @@ mod tests {
         let sibling = recorder
             .spawn_worker(
                 &bare("cccccccc-cccc-cccc-cccc-cccccccccccc", Permit::Go),
-                &ActSentence::bare(Permit::Go, BareFile::None, Ingest::Ignore),
+                &Charter::new(ToolTag::none_permit(Permit::Go)),
             )
             .unwrap();
         assert!(matches!(
@@ -1126,7 +1117,7 @@ mod tests {
         let worker = recorder
             .spawn_worker(
                 &bare("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb", Permit::Deny),
-                &ActSentence::bare(Permit::Deny, BareFile::None, Ingest::Ignore),
+                &Charter::new(ToolTag::none_permit(Permit::Deny)),
             )
             .unwrap();
         let marker = "BODY_SHOULD_NOT_APPEAR";

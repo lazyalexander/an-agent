@@ -971,9 +971,8 @@ impl Tool for ScriptedEditor {
     }
 
     fn tag_seed(&self) -> Option<ToolTag> {
-        // No file face on the admission tag: a file-facet tag would need
-        // a workspace resource the probe does not have. The taint check
-        // reads the write face from the spool's declared effect instead.
+        // The taint check reads the write face from the spool's declared
+        // effect, not from this tag.
         Some(ToolTag::none())
     }
 

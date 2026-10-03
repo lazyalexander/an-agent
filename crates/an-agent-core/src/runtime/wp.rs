@@ -739,7 +739,7 @@ fn clean_path(path: &str) -> Result<String, WpError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::act::{ActSentence, BareFile, FileFacet, Ingest, MemoryFacet, Permit, ToolTag};
+    use crate::act::{Charter, FileFacet, MemoryFacet, Permit, ToolTag};
     use crate::principal::card::{AgentCard, ModelSpec, ToolGrant, Topology};
     use crate::runtime::Recorder;
     use crate::testkit::TempDir;
@@ -779,8 +779,8 @@ mod tests {
         .unwrap()
     }
 
-    fn bound() -> ActSentence {
-        ActSentence::bare(Permit::Go, BareFile::None, Ingest::Ignore)
+    fn bound() -> Charter {
+        Charter::new(ToolTag::none_permit(Permit::Go))
     }
 
     fn worker(s: &Recorder) -> (std::sync::Arc<crate::runtime::Agent>, String) {

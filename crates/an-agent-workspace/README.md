@@ -8,4 +8,4 @@ Content-addressed store. This is not the recorder workspace (`Wp` in the kernel)
 
 **Single-lead discipline:** `NotLead` is caller discipline, not a lock. Two writers holding the same lead id race. A crash mid-commit can leave HEAD, the branch ref, and `meta` pointing at different trees. Objects are content-addressed, so recovery is rebuild.
 
-**Dependencies:** `an-agent-core` for `Resource`, `ResourceKind`, and `det_seam`. Resource mnemonics stay in the kernel because sentences name them.
+**Dependencies:** `an-agent-core` for `Resource`, `ResourceKind`, and `det_seam`. Resource mnemonics stay in the kernel.

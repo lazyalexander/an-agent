@@ -4,9 +4,8 @@ use async_trait::async_trait;
 use serde_json::Value;
 use thiserror::Error;
 
-use super::sense::effect_from_sentence;
-use super::sentence::{ActSentence, Ingest};
-use super::tag::{Permit, ToolTag};
+use super::sense::effect_from_tag;
+use super::tag::{MemoryFacet, Permit, ToolTag};
 use super::{ActEnvelope, ActKind};
 use crate::memstream::{ActOnEvent, AppendEvent, FromKind, JsonlStore, Kind, Memevent, StoreError};
 
@@ -95,7 +94,7 @@ fn remember_clip(
         .unwrap_or_default();
     let clip_env = ActEnvelope {
         kind: ActKind::Remember,
-        sentence: env.sentence.clone(),
+        permit: env.permit,
         tool: env.tool.clone(),
     };
     Ok(Some(store.append(AppendEvent {
@@ -119,54 +118,12 @@ pub async fn run_tool_act(
 ) -> Result<ToolActResult, ToolError> {
     let tool = tools.iter().find(|t| t.name() == call.name);
     let tag = tag_of(tool.map(|t| t.as_ref()));
-    let sentence = match ActSentence::from_seed(&tag, None) {
-        Ok(s) => s,
-        Err(e) => {
-            let env = ActEnvelope {
-                kind: ActKind::Invoke,
-                sentence: ActSentence::bare(
-                    tag.permit,
-                    super::sentence::BareFile::None,
-                    super::sentence::Ingest::Ignore,
-                ),
-                tool: Some(call.name.clone()),
-            };
-            let action = admit(
-                actx,
-                Kind::Action,
-                format!("{} {}", call.name, call.arguments),
-                vec![],
-                Some(ActOnEvent::intent(&env)),
-            )?;
-            let refs = action
-                .as_ref()
-                .map(|a| vec![a.id.clone()])
-                .unwrap_or_default();
-            let observation = admit(
-                actx,
-                Kind::Observation,
-                e.to_string(),
-                refs,
-                Some(ActOnEvent::with_effect(
-                    &env,
-                    effect_from_sentence(&env.sentence),
-                )),
-            )?;
-            return Ok(ToolActResult {
-                action,
-                observation,
-                message: ToolMessage {
-                    tool_call_id: call.id.clone(),
-                    content: e.to_string(),
-                },
-            });
-        }
-    };
     let env = ActEnvelope {
         kind: ActKind::Invoke,
-        sentence,
+        permit: tag.permit,
         tool: Some(call.name.clone()),
     };
+    let effect = effect_from_tag(&tag, None);
 
     let action = admit(
         actx,
@@ -186,10 +143,7 @@ pub async fn run_tool_act(
             Kind::Observation,
             content.clone(),
             refs,
-            Some(ActOnEvent::with_effect(
-                &env,
-                effect_from_sentence(&env.sentence),
-            )),
+            Some(ActOnEvent::with_effect(&env, effect.clone())),
         )?;
         Ok(ToolActResult {
             action,
@@ -204,7 +158,7 @@ pub async fn run_tool_act(
     let Some(tool) = tool else {
         return fail(format!("unknown tool: {}", call.name), action);
     };
-    if env.sentence.permit() == Permit::Deny {
+    if tag.permit == Permit::Deny {
         return fail("deny".into(), action);
     }
     let args = match parse_args(&call.arguments) {
@@ -214,8 +168,8 @@ pub async fn run_tool_act(
     // act is the only writer: a remember-facet tool just returns the fact
     // text; admission emits the clip. A failed execution leaves nothing to
     // remember.
-    let content = match (tool.execute(args, ctx).await, env.sentence.ingest()) {
-        (Ok(text), Some(Ingest::Remember { .. })) => match remember_clip(actx, &env, &text)? {
+    let content = match (tool.execute(args, ctx).await, &tag.memory) {
+        (Ok(text), MemoryFacet::Remember { .. }) => match remember_clip(actx, &env, &text)? {
             Some(clip) => format!("remembered as {}", clip.id),
             None => text,
         },

@@ -264,7 +264,7 @@ fn parse_inverse(value: Value) -> Result<Inverse, SpoolError> {
 }
 
 /// `ceiling` covers `effect` when every face of the effect is inside it.
-/// Rights and the card's sentence both use this. The caller decides whether
+/// Mount rights use this. The caller decides whether
 /// a miss is Forbidden or Deny.
 pub fn covers(ceiling: &Faces, effect: &Faces) -> bool {
     file_covers(&ceiling.file, &effect.file)

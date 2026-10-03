@@ -19,7 +19,6 @@ function ulid(ms: number, rnd: number): string {
   return s;
 }
 
-const BARE = { form: "bare", permit: "go", file: "none", memory: "ignore" };
 const EFFECT = { reads: [], writes: [], unbounded: false, memory: "ignore" };
 const session = "11111111-2222-3333-4444-555555555555";
 const base = Date.parse("2026-09-16T10:00:00.000Z");
@@ -61,45 +60,45 @@ ev(
   "Who created the Rust programming language, and at which company? Search the web, remember the key fact, then answer.",
 );
 ev(900, "agent", "utterance", "I'll search for this.", {
-  act: { kind: "utterance", tag: BARE },
+  act: { kind: "utterance", permit: "go" },
 });
 const a1 = ev(901, "agent", "action", 'web_search {"query": "Rust creator company"}', {
-  act: { kind: "tool", tag: BARE, tool: "web_search" },
+  act: { kind: "tool", permit: "go", tool: "web_search" },
 });
 ev(
   2400,
   "agent",
   "observation",
   "Rust (programming language): Graydon Hoare created Rust in 2006 while working at Mozilla, which officially sponsored the project in 2009.",
-  { refs: [a1], act: { kind: "tool", tag: BARE, tool: "web_search", effect: EFFECT } },
+  { refs: [a1], act: { kind: "tool", permit: "go", tool: "web_search", effect: EFFECT } },
 );
 ev(3100, "agent", "utterance", "Confirmed. Storing the fact.", {
-  act: { kind: "utterance", tag: BARE },
+  act: { kind: "utterance", permit: "go" },
 });
 const a2 = ev(
   3101,
   "agent",
   "action",
   'remember {"text": "Rust was created by Graydon Hoare in 2006 while working at Mozilla; Mozilla sponsored the project from 2009."}',
-  { act: { kind: "tool", tag: BARE, tool: "remember" } },
+  { act: { kind: "tool", permit: "go", tool: "remember" } },
 );
 const clip = ev(
   3101,
   "agent",
   "utterance",
   "Rust was created by Graydon Hoare in 2006 while working at Mozilla; Mozilla sponsored the project from 2009.",
-  { tags: ["memory"], act: { kind: "remember", tag: BARE, tool: "remember" } },
+  { tags: ["memory"], act: { kind: "remember", permit: "go", tool: "remember" } },
 );
 ev(3102, "agent", "observation", `remembered as ${clip}`, {
   refs: [a2],
-  act: { kind: "tool", tag: BARE, tool: "remember", effect: EFFECT },
+  act: { kind: "tool", permit: "go", tool: "remember", effect: EFFECT },
 });
 ev(
   3900,
   "agent",
   "utterance",
   "Rust was created by Graydon Hoare in 2006, while working at Mozilla (sponsored from 2009). I've stored this fact.",
-  { act: { kind: "utterance", tag: BARE } },
+  { act: { kind: "utterance", permit: "go" } },
 );
 
 await Bun.write(
