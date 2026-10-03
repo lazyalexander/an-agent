@@ -287,15 +287,85 @@ impl AgentControl {
         Ok(thread.cancel.subscribe())
     }
 
+    /// Private directory of the thread. Context files live under it.
+    pub fn directory(&self, id: Uuid) -> Result<PathBuf, ControlError> {
+        Ok(self.mounted(id)?.session().root().to_path_buf())
+    }
+
+    /// Card prompt for this thread.
+    pub fn prompt(&self, id: Uuid) -> Result<String, ControlError> {
+        Ok(self.mounted(id)?.prompt().to_string())
+    }
+
+    /// Append a host utterance. Does not take the beat slot.
+    pub fn note(&self, id: Uuid, tag: &str, text: &str) -> Result<String, ControlError> {
+        let agent = self.live(id)?;
+        self.append_event(&agent, Kind::Utterance, tag, text.to_string(), Vec::new())
+    }
+
+    /// Record a cut the assembler already wrote under `ctx/`.
+    pub fn commit_compress(
+        &self,
+        id: Uuid,
+        md_sha256: &str,
+        event_ids: &[String],
+    ) -> Result<String, ControlError> {
+        let agent = self.live(id)?;
+        let content = json!({ "md_sha256": md_sha256, "events": event_ids }).to_string();
+        self.append_event(
+            &agent,
+            Kind::Action,
+            "compress",
+            content,
+            event_ids.to_vec(),
+        )
+    }
+
+    /// Record the piece ids chosen for the next read. The text stays in `ctx/`.
+    pub fn commit_context(
+        &self,
+        id: Uuid,
+        content: &str,
+        refs: &[String],
+    ) -> Result<String, ControlError> {
+        let agent = self.live(id)?;
+        self.append_event(
+            &agent,
+            Kind::Action,
+            "context",
+            content.to_string(),
+            refs.to_vec(),
+        )
+    }
+
+    fn mounted(&self, id: Uuid) -> Result<Arc<Agent>, ControlError> {
+        self.inner
+            .pool
+            .tree()
+            .get(id)
+            .ok_or(ControlError::NotOpen(id))
+    }
+
     fn append(&self, agent: &Agent, tag: &str, content: String) -> Result<String, ControlError> {
+        self.append_event(agent, Kind::Action, tag, content, Vec::new())
+    }
+
+    fn append_event(
+        &self,
+        agent: &Agent,
+        kind: Kind,
+        tag: &str,
+        content: String,
+        refs: Vec<String>,
+    ) -> Result<String, ControlError> {
         let event = agent.session().tape().append(AppendEvent {
             from: agent.id_str().to_string(),
             from_kind: FromKind::Agent,
-            kind: Kind::Action,
+            kind,
             session: agent.session().id_str().to_string(),
             content,
             tags: vec![tag.to_string()],
-            refs: vec![],
+            refs,
             act: None,
             card: Some(agent.card_hash().to_string()),
         })?;
