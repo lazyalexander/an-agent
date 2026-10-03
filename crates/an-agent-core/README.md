@@ -7,7 +7,7 @@ The kernel. Spool constructors live in `an-agent-spool`. Bash registration and s
 | module | role |
 |---|---|
 | `memstream` | The tape. Append-only JSONL; events carry kind, refs (causal edges), act envelopes, and the producing card's hash. Readers absorb schema drift (serde defaults + `skip_serializing_if`); history is never rewritten. |
-| `act` | Admission. Every effect-ful action passes here: a sentence (permit × file × memory facets) is decided, intent is taped before execution, effect after. Resource mnemonics live here so a sentence can name one. `ActKind` is intent-domain vocabulary only; the channel (tool vs model) rides on `ActEnvelope.tool`. |
+| `act` | Admission. Intent is taped before execution, effect after. An act carries `permit` and an effect projected from the tool tag. A spawn `Charter` (tool tag plus signal) is a ceiling, not an act field. Resource mnemonics live here. `ActKind` is intent-domain vocabulary only; the channel (tool vs model) rides on `ActEnvelope.tool`. |
 | `principal` | Agent identity. An `AgentCard` = model spec + prompt + tool grants + kernel ref — immutable, content-addressed, versioned by supersession, never mutated. Cards hold no memory and no keys. `factory::build_with` takes the caller's tool constructors; this crate registers none. |
 | `runtime` | One process. Private `Session`, live `Agent`, registration `Tree`, bounded turn `Pool`, recorder, and the recorder workspace (`wp`, one sub-workspace per worker). `spawn_with` takes the same constructor list as the factory. The factory product is a `BuiltAgent`, not a runtime. |
 | `det_seam` | The determinism seam — the only place allowed to touch OS time and entropy. Enforced by `clippy.toml` disallowed-methods, not by reviewer vigilance. |

@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use thiserror::Error;
 
-use crate::act::{FileFacet, Tool, ToolCtx, ToolTag};
+use crate::act::{Tool, ToolCtx, ToolTag};
 
 use super::card::AgentCard;
 
@@ -15,11 +15,6 @@ use super::card::AgentCard;
 pub enum FactoryError {
     #[error("unknown tool in grants: {0}")]
     UnknownTool(String),
-    // act cannot resolve workspace resources yet (ActCtx carries none), so
-    // a file-faced grant would die at run time with MissingResource. Fail
-    // at build instead of implying the tool is runnable.
-    #[error("grant for {0} declares a file face admission cannot wire yet")]
-    UnsupportedFace(String),
 }
 
 /// What a card builds: identity, prompt, and the granted tool set. Model
@@ -75,12 +70,6 @@ pub fn build_with(
             .iter()
             .find(|(name, _)| *name == grant.name)
             .ok_or_else(|| FactoryError::UnknownTool(grant.name.clone()))?;
-        if matches!(
-            grant.tag.file,
-            FileFacet::Read { .. } | FileFacet::Write { .. } | FileFacet::ReadWrite { .. }
-        ) {
-            return Err(FactoryError::UnsupportedFace(grant.name.clone()));
-        }
         tools.push(Arc::new(Granted {
             inner: ctor(),
             tag: grant.tag.clone(),
@@ -150,12 +139,31 @@ mod tests {
         assert!(matches!(build(&c, "h"), Err(FactoryError::UnknownTool(_))));
     }
 
-    #[test]
-    fn file_faced_grant_is_rejected_until_act_wires_resources() {
-        let c = card(ToolTag::read("/x"));
-        assert!(
-            matches!(build(&c, "h"), Err(FactoryError::UnsupportedFace(name)) if name == "bash")
-        );
+    #[tokio::test]
+    async fn path_scoped_grant_runs_and_records_the_path() {
+        let c = card(ToolTag::write("/src/a.txt"));
+        let rt = build(&c, "hash-w").unwrap();
+        assert_eq!(rt.tools[0].tag_seed(), Some(ToolTag::write("/src/a.txt")));
+        let tmp = TempDir::new("factory-path");
+        let store = JsonlStore::open(tmp.path().join("memory.jsonl")).unwrap();
+        let actx = ActCtx {
+            store: Some(&store),
+            agent_id: &rt.agent_id,
+            session: "s1",
+            card: Some(&rt.card_hash),
+        };
+        let call = ToolCall {
+            id: "c1".into(),
+            name: "bash".into(),
+            arguments: r#"{"command":"true"}"#.into(),
+        };
+        let result = run_tool_act(&actx, &rt.tools, &call, &ctx()).await.unwrap();
+        assert_eq!(result.message.content, "ran");
+        let events = store.read_all().unwrap();
+        let obs = events.iter().find(|e| e.kind == Kind::Observation).unwrap();
+        let effect = obs.act.as_ref().unwrap().effect.as_ref().unwrap();
+        assert_eq!(effect.writes, vec!["/src/a.txt".to_string()]);
+        assert_eq!(obs.act.as_ref().unwrap().permit, Permit::Ask);
     }
 
     #[tokio::test]

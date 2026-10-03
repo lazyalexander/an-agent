@@ -3,7 +3,7 @@ export type Kind = "utterance" | "action" | "observation";
 
 export interface ActOnEvent {
   kind: string;
-  tag?: unknown;
+  permit?: string;
   tool?: string;
   effect?: unknown;
 }

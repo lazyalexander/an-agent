@@ -1,14 +1,14 @@
+mod charter;
 mod registry;
 mod resource;
 mod sense;
-mod sentence;
 mod tag;
 mod tool;
 
+pub use charter::{Audience, Charter, Signal};
 pub use registry::{Registration, RegistryError, Tier, ToolRegistry};
 pub use resource::{Resource, ResourceKind};
-pub use sense::{Effect, effect_from_sentence, effect_from_tag};
-pub use sentence::{Access, ActSentence, Audience, BareFile, Ingest, SentenceError, Signal};
+pub use sense::{Effect, effect_from_tag};
 pub use tag::{FileFacet, MemoryFacet, Permit, ToolTag};
 pub use tool::{ActCtx, Tool, ToolCall, ToolCtx, ToolError, ToolMessage, run_tool_act, tag_of};
 
@@ -46,10 +46,12 @@ impl ActKind {
     }
 }
 
+/// What an act records. `permit` is this act's grant. File and memory
+/// ceilings live on the tool tag and on the spawn charter, not here.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ActEnvelope {
     pub kind: ActKind,
-    pub sentence: ActSentence,
+    pub permit: Permit,
     pub tool: Option<String>,
 }
 
@@ -59,22 +61,15 @@ mod tests {
 
     #[test]
     fn senses_file_faces() {
-        let none = effect_from_sentence(&ActSentence::from_seed(&ToolTag::none(), None).unwrap());
+        let none = effect_from_tag(&ToolTag::none(), None);
         assert!(!none.unbounded);
         assert!(none.reads.is_empty());
-        let wp = uuid::Uuid::parse_str("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa").unwrap();
-        let res = Resource::new(wp, ResourceKind::File, ["src", "a.ts"]);
-        let read = effect_from_sentence(
-            &ActSentence::from_seed(&ToolTag::read("/src/a.ts"), Some(res.clone())).unwrap(),
-        );
-        assert!(read.reads.iter().any(|p| p.ends_with("/src/a.ts")));
-        let write = effect_from_sentence(
-            &ActSentence::from_seed(&ToolTag::write("/src/a.ts"), Some(res)).unwrap(),
-        );
-        assert!(write.writes.iter().any(|p| p.ends_with("/src/a.ts")));
-        assert!(
-            effect_from_sentence(&ActSentence::from_seed(&ToolTag::unbounded(), None).unwrap())
-                .unbounded
-        );
+        let read = effect_from_tag(&ToolTag::read("/src/a.ts"), Some("wp".into()));
+        assert_eq!(read.reads, vec!["/src/a.ts".to_string()]);
+        assert_eq!(read.workplace.as_deref(), Some("wp"));
+        let write = effect_from_tag(&ToolTag::write("/src/a.ts"), None);
+        assert_eq!(write.writes, vec!["/src/a.ts".to_string()]);
+        assert!(write.workplace.is_none());
+        assert!(effect_from_tag(&ToolTag::unbounded(), None).unbounded);
     }
 }

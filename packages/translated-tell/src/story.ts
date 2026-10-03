@@ -7,7 +7,7 @@ export interface Claim {
 }
 
 function permit(event: Memevent): string | undefined {
-  return event.act?.tag?.permit;
+  return event.act?.permit;
 }
 
 function isMount(event: Memevent, name: string, how: "go" | "deny"): boolean {

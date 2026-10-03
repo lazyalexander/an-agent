@@ -88,7 +88,7 @@ pub struct Admission {
 }
 
 /// The receiver-admission gate. The requires graph is the trust graph,
-/// and this is where that sentence becomes real: before any envelope is
+/// and this is where that closure is checked: before any envelope is
 /// taped, the gate checks that the sender is a live mount, the address
 /// resolves to a live mount, the receiver's spool name sits in the
 /// sender's requires closure, and the two flow faces are compatible.

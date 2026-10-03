@@ -423,5 +423,5 @@ fn mount_denied_when_rights_do_not_cover_the_closure() {
         .iter()
         .find(|e| e.kind == Kind::Action && e.act.as_ref().is_some_and(|a| a.kind == "mount"))
         .unwrap();
-    assert_eq!(deny.act.as_ref().unwrap().tag.permit(), Permit::Deny);
+    assert_eq!(deny.act.as_ref().unwrap().permit, Permit::Deny);
 }

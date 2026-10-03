@@ -9,9 +9,7 @@ use std::sync::Arc;
 
 use serde_json::{Map, Value, json};
 
-use an_agent_core::act::{
-    ActCtx, ActEnvelope, ActKind, ActSentence, BareFile, Ingest, Permit, Tool,
-};
+use an_agent_core::act::{ActCtx, ActEnvelope, ActKind, Permit, Tool};
 use an_agent_core::memstream::{ActOnEvent, AppendEvent, FromKind, JsonlStore, Kind};
 use an_agent_spool::scope::{MountInfo, ScopeId, ScopeTree, Unmounted};
 use an_agent_spool::spool::{Constructor, Faces, Inverse, Registry, SpoolSpec, covers};
@@ -261,7 +259,7 @@ impl<'a> Mounter<'a> {
         };
         let env = ActEnvelope {
             kind: ActKind::Unmount,
-            sentence: ActSentence::bare(Permit::Go, BareFile::None, Ingest::Ignore),
+            permit: Permit::Go,
             tool: Some(entry.name.clone()),
         };
         let _ = store.append(AppendEvent {
@@ -294,7 +292,7 @@ impl<'a> Mounter<'a> {
         let store = self.store?;
         let env = ActEnvelope {
             kind: ActKind::Mount,
-            sentence: ActSentence::bare(permit, BareFile::None, Ingest::Ignore),
+            permit,
             tool: Some(spec.name.clone()),
         };
         let event = store

@@ -20,10 +20,7 @@ use std::sync::Arc;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use an_agent_core::act::{
-    ActEnvelope, ActKind, ActSentence, BareFile, Ingest, Permit, Tool, ToolCall,
-    effect_from_sentence,
-};
+use an_agent_core::act::{ActEnvelope, ActKind, Permit, Tool, ToolCall, ToolTag, effect_from_tag};
 use an_agent_core::memstream::{ActOnEvent, AppendEvent, FromKind, Kind, Memevent};
 
 // --- wire types (OpenAI-style chat completions; vendor detail) ---
@@ -189,7 +186,7 @@ fn admit_utterance(
     };
     let env = ActEnvelope {
         kind: ActKind::Utterance,
-        sentence: ActSentence::bare(Permit::Go, BareFile::None, Ingest::Ignore),
+        permit: Permit::Go,
         tool: None,
     };
     Ok(Some(store.append(AppendEvent {
@@ -208,7 +205,7 @@ fn admit_utterance(
 fn invoke_envelope() -> ActEnvelope {
     ActEnvelope {
         kind: ActKind::Invoke,
-        sentence: ActSentence::bare(Permit::Go, BareFile::None, Ingest::Ignore),
+        permit: Permit::Go,
         tool: None,
     }
 }
@@ -283,7 +280,7 @@ fn admit_invoke_effect(
         refs,
         act: Some(ActOnEvent::with_effect(
             &env,
-            effect_from_sentence(&env.sentence),
+            effect_from_tag(&ToolTag::none(), None),
         )),
         card: actx.card.map(str::to_string),
     })?))
@@ -341,7 +338,7 @@ pub fn mount_policy(
     };
     let env = ActEnvelope {
         kind: ActKind::Mount,
-        sentence: ActSentence::bare(Permit::Go, BareFile::None, Ingest::Ignore),
+        permit: Permit::Go,
         tool: Some(name.to_string()),
     };
     store.append(AppendEvent {

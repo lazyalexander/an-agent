@@ -1,7 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use super::sentence::{Access, ActSentence, BareFile, Ingest};
-use super::tag::ToolTag;
+use super::tag::{FileFacet, ToolTag};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Effect {
@@ -19,69 +18,24 @@ pub struct Effect {
     pub blob: Option<String>,
 }
 
-fn ingest_name(m: &Ingest) -> String {
-    match m {
-        Ingest::Ignore => "ignore".into(),
-        Ingest::Remember { .. } => "remember".into(),
-    }
-}
-
-fn empty_effect(workplace: Option<String>, memory: String, unbounded: bool) -> Effect {
+/// Project an effect from the tool tag. A path on the tag is the effect
+/// path. No workspace resource is required, and a missing one is not a refusal.
+pub fn effect_from_tag(tag: &ToolTag, workplace: Option<String>) -> Effect {
+    let (reads, writes, unbounded) = match &tag.file {
+        FileFacet::None => (Vec::new(), Vec::new(), false),
+        FileFacet::Unbounded => (Vec::new(), Vec::new(), true),
+        FileFacet::Read { path, .. } => (vec![path.clone()], Vec::new(), false),
+        FileFacet::Write { path, .. } => (Vec::new(), vec![path.clone()], false),
+        FileFacet::ReadWrite { path, .. } => (vec![path.clone()], vec![path.clone()], false),
+    };
     Effect {
-        reads: vec![],
-        writes: vec![],
+        reads,
+        writes,
         unbounded,
         workplace,
-        memory,
+        memory: tag.memory.op_name().into(),
         from_head: None,
         to_head: None,
         blob: None,
-    }
-}
-
-pub fn effect_from_sentence(sentence: &ActSentence) -> Effect {
-    match sentence {
-        ActSentence::Bare { file, memory, .. } => empty_effect(
-            None,
-            ingest_name(memory),
-            matches!(file, BareFile::Unbounded),
-        ),
-        ActSentence::OnResource {
-            resource,
-            access,
-            memory,
-            ..
-        } => {
-            let path = resource.to_string();
-            let (reads, writes) = match access {
-                Access::R { .. } => (vec![path], vec![]),
-                Access::W { .. } => (vec![], vec![resource.to_string()]),
-                Access::Rw { .. } => (vec![path.clone()], vec![path]),
-            };
-            Effect {
-                reads,
-                writes,
-                unbounded: false,
-                workplace: Some(resource.workplace.to_string()),
-                memory: ingest_name(memory),
-                from_head: None,
-                to_head: None,
-                blob: None,
-            }
-        }
-        ActSentence::Forget { .. } => empty_effect(None, "forget".into(), false),
-    }
-}
-
-pub fn effect_from_tag(tag: &ToolTag, workplace: Option<String>) -> Effect {
-    match ActSentence::from_seed(tag, None) {
-        Ok(s) => {
-            let mut e = effect_from_sentence(&s);
-            if e.workplace.is_none() {
-                e.workplace = workplace;
-            }
-            e
-        }
-        Err(_) => empty_effect(workplace, tag.memory.op_name().into(), false),
     }
 }

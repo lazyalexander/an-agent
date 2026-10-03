@@ -1,6 +1,6 @@
 export interface ActOnEvent {
   kind: string;
-  tag?: { form?: string; permit?: string };
+  permit?: string;
   tool?: string;
 }
 

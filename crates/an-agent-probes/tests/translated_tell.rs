@@ -391,20 +391,20 @@ async fn translated_tell() {
     );
     assert!(mounter.tree().active_roots().is_empty());
     let events = store.read_all().unwrap();
-    assert!(mount_events(&events, "clerk").iter().any(|e| {
-        e.act
-            .as_ref()
-            .is_some_and(|a| a.tag.permit() == Permit::Deny)
-    }));
-    assert!(mount_events(&events, "scribe").iter().any(|e| {
-        e.act
-            .as_ref()
-            .is_some_and(|a| a.tag.permit() == Permit::Deny)
-    }));
+    assert!(
+        mount_events(&events, "clerk")
+            .iter()
+            .any(|e| { e.act.as_ref().is_some_and(|a| a.permit == Permit::Deny) })
+    );
+    assert!(
+        mount_events(&events, "scribe")
+            .iter()
+            .any(|e| { e.act.as_ref().is_some_and(|a| a.permit == Permit::Deny) })
+    );
     assert!(events.iter().all(|e| {
         e.act
             .as_ref()
-            .is_none_or(|a| a.kind != "mount" || a.tag.permit() == Permit::Deny)
+            .is_none_or(|a| a.kind != "mount" || a.permit == Permit::Deny)
     }));
 
     mounter
