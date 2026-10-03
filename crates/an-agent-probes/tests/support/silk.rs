@@ -46,7 +46,7 @@ pub struct OutEnvelope {
     pub payload: Value,
 }
 
-/// What lands on tape. `origin` is reserved for cross-runtime identity;
+/// What lands on tape. `origin` is reserved for cross-process identity;
 /// single-sidecar v0 always writes null.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Envelope {

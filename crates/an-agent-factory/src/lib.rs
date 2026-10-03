@@ -1,6 +1,6 @@
 //! Bash is the one constructor this crate registers. The kernel builds
 //! grants from whatever list the caller passes. `spawn` opens a session
-//! with that list. Worker seats stay on the runtime.
+//! with that list. Worker seats stay with the recorder.
 
 mod bash;
 
@@ -9,9 +9,9 @@ pub use bash::Bash;
 use std::path::Path;
 use std::sync::Arc;
 
+use an_agent_core::agent::{Agent, SpawnError};
 use an_agent_core::principal::card::AgentCard;
 use an_agent_core::principal::factory::{self, BuiltAgent, FactoryError, ToolCtor};
-use an_agent_core::runtime::{Agent, RuntimeError};
 
 pub fn tool_registry() -> Vec<(&'static str, ToolCtor)> {
     vec![("bash", || Arc::new(Bash::default()))]
@@ -21,14 +21,14 @@ pub fn build(card: &AgentCard, card_hash: &str) -> Result<BuiltAgent, FactoryErr
     factory::build_with(card, card_hash, &tool_registry())
 }
 
-pub fn spawn(card: &AgentCard, sessions_root: impl AsRef<Path>) -> Result<Agent, RuntimeError> {
-    an_agent_core::runtime::spawn_with(card, sessions_root, &tool_registry())
+pub fn spawn(card: &AgentCard, sessions_root: impl AsRef<Path>) -> Result<Agent, SpawnError> {
+    an_agent_core::agent::spawn_with(card, sessions_root, &tool_registry())
 }
 
 pub fn spawn_arc(
     card: &AgentCard,
     sessions_root: impl AsRef<Path>,
-) -> Result<Arc<Agent>, RuntimeError> {
+) -> Result<Arc<Agent>, SpawnError> {
     Ok(Arc::new(spawn(card, sessions_root)?))
 }
 

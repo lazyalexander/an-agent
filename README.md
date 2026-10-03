@@ -10,8 +10,8 @@ The core bet: an append-only event tape (memstream) is the single source of trut
 
 ## Layout
 
-- `crates/an-agent-core` — the kernel: tape, admission, identity, runtime, and the recorder workspace.
-- `crates/an-agent-factory` — bash registration and `BuiltAgent` construction. Spawn stays in the runtime.
+- `crates/an-agent-core` — the kernel: tape, admission, identity, `AgentControl`, seats, and the recorder file workspace.
+- `crates/an-agent-factory` — bash registration and `BuiltAgent` construction. `spawn` returns an `Agent` and is not the host face.
 - `crates/an-agent-context` — per-session context assembly. The shared pool is not in this crate.
 - `crates/an-agent-spool` — capability spools: YAML descriptor admission and the append-only spool registry.
 - `crates/an-agent-workspace` — content-addressed store. It is not the recorder workspace.

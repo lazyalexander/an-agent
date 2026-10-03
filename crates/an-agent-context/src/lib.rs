@@ -1,17 +1,20 @@
-//! Two-layer context for one session. The tape stays the record. Compressed
-//! markdown cites event ids. The sidecar index can be deleted and rebuilt.
+//! Two-layer context for one thread tape. The tape stays the record.
+//! Compressed markdown cites event ids. The sidecar index can be deleted
+//! and rebuilt. This crate writes `ctx/` only. `AgentControl` writes the tape.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
+use an_agent_core::control::{AgentControl, ControlError};
 use serde::{Deserialize, Serialize};
-use serde_json::json;
+use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
+use uuid::Uuid;
 
-use an_agent_core::memstream::{AppendEvent, FromKind, JsonlStore, Kind, Memevent};
+use an_agent_core::memstream::Memevent;
 
 #[derive(Debug, Error)]
 pub enum ContextError {
@@ -25,6 +28,8 @@ pub enum ContextError {
     Empty,
     #[error("md missing sources")]
     BadMd,
+    #[error(transparent)]
+    Control(#[from] ControlError),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -38,7 +43,17 @@ pub struct Piece {
     pub kind: &'static str,
     pub event_id: Option<String>,
     pub segment: Option<String>,
+    /// An id that is not on this thread. Assemble does not set it.
+    /// Workspace config and env generations use this later.
+    pub outside: Option<String>,
     pub text: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Cut {
+    pub path: PathBuf,
+    pub sha256: String,
+    pub events: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -62,31 +77,14 @@ struct Segment {
     sources: Vec<(String, f64)>,
 }
 
-/// Record a user summary and freeze everything since the previous cut into a
-/// new md file. Earlier md files are not rewritten.
-pub fn record_summary(session_dir: &Path, text: &str) -> Result<PathBuf, ContextError> {
-    let tape = JsonlStore::open(session_dir.join("memory.jsonl"))?;
-    let prior = tape.read_all()?;
-    let anchor = prior.last().ok_or(ContextError::Empty)?;
-    tape.append(AppendEvent {
-        from: anchor.from.clone(),
-        from_kind: anchor.from_kind,
-        kind: Kind::Utterance,
-        session: anchor.session.clone().unwrap_or_default(),
-        content: text.to_string(),
-        tags: vec!["summary".into()],
-        refs: vec![],
-        act: None,
-        card: anchor.card.clone(),
-    })?;
-    cut_since_last(session_dir)
-}
-
 /// Freeze the uncompressed tail when its text is at least `max_chars`.
-pub fn cut_if_long(session_dir: &Path, max_chars: usize) -> Result<Option<PathBuf>, ContextError> {
-    let tape = JsonlStore::open(session_dir.join("memory.jsonl"))?;
-    let events = tape.read_all()?;
-    let span = uncompressed(&events);
+/// Does not write the tape.
+pub fn cut_if_long(
+    session_dir: &Path,
+    events: &[Memevent],
+    max_chars: usize,
+) -> Result<Option<Cut>, ContextError> {
+    let span = uncompressed(events);
     let n: usize = span.iter().map(|e| e.content.len()).sum();
     if n < max_chars || span.is_empty() {
         return Ok(None);
@@ -96,6 +94,7 @@ pub fn cut_if_long(session_dir: &Path, max_chars: usize) -> Result<Option<PathBu
 
 pub fn assemble(
     session_dir: &Path,
+    events: &[Memevent],
     mode: AssembleMode,
     budget_chars: usize,
 ) -> Result<Assembly, ContextError> {
@@ -109,13 +108,11 @@ pub fn assemble(
         });
     }
     if !index_path(session_dir).exists() {
-        rebuild_index(session_dir)?;
+        rebuild_index(session_dir, events)?;
     }
-    let tape = JsonlStore::open(session_dir.join("memory.jsonl"))?;
-    let events = tape.read_all()?;
-    let mut rows = sync_rows(&events, load_rows(session_dir)?);
+    let mut rows = sync_rows(events, load_rows(session_dir)?);
     let segments = load_segments(session_dir)?;
-    let recent: Vec<&Memevent> = uncompressed(&events);
+    let recent: Vec<&Memevent> = uncompressed(events);
     let mut pieces = Vec::new();
     let mut used = 0usize;
     let mut selected_events: BTreeSet<String> = BTreeSet::new();
@@ -130,6 +127,7 @@ pub fn assemble(
                 kind: "recent",
                 event_id: Some(event.id.clone()),
                 segment: None,
+                outside: None,
                 text: event.content.clone(),
             },
         ) {
@@ -153,6 +151,7 @@ pub fn assemble(
                 kind: "hot",
                 event_id: None,
                 segment: Some(seg.id.clone()),
+                outside: None,
                 text: seg.text.clone(),
             },
         )
@@ -183,6 +182,7 @@ pub fn assemble(
                 kind: "summary",
                 event_id: None,
                 segment: Some(seg.id.clone()),
+                outside: None,
                 text: seg.text.clone(),
             },
         ) {
@@ -206,9 +206,7 @@ pub fn assemble(
     })
 }
 
-pub fn rebuild_index(session_dir: &Path) -> Result<(), ContextError> {
-    let tape = JsonlStore::open(session_dir.join("memory.jsonl"))?;
-    let events = tape.read_all()?;
+pub fn rebuild_index(session_dir: &Path, events: &[Memevent]) -> Result<(), ContextError> {
     let segments = load_segments(session_dir)?;
     let mut cited: BTreeMap<String, String> = BTreeMap::new();
     for seg in &segments {
@@ -247,18 +245,10 @@ pub fn segment_sources(
     Ok(out)
 }
 
-fn cut_since_last(session_dir: &Path) -> Result<PathBuf, ContextError> {
-    let tape = JsonlStore::open(session_dir.join("memory.jsonl"))?;
-    let events = tape.read_all()?;
-    let span = uncompressed(&events);
-    write_cut(session_dir, &span)
-}
-
-fn write_cut(session_dir: &Path, span: &[&Memevent]) -> Result<PathBuf, ContextError> {
+fn write_cut(session_dir: &Path, span: &[&Memevent]) -> Result<Cut, ContextError> {
     if span.is_empty() {
         return Err(ContextError::Empty);
     }
-    let anchor = span[span.len() - 1];
     let mut body = String::from("# cut\n\n");
     let mut ids = Vec::new();
     for (i, event) in span.iter().enumerate() {
@@ -277,24 +267,184 @@ fn write_cut(session_dir: &Path, span: &[&Memevent]) -> Result<PathBuf, ContextE
     if !path.exists() {
         fs::write(&path, &bytes)?;
     }
-    let tape = JsonlStore::open(session_dir.join("memory.jsonl"))?;
-    tape.append(AppendEvent {
-        from: anchor.from.clone(),
-        from_kind: FromKind::Agent,
-        kind: Kind::Action,
-        session: anchor.session.clone().unwrap_or_default(),
-        content: json!({ "md_sha256": sha, "events": ids }).to_string(),
-        tags: vec!["compress".into()],
-        refs: ids_of(span),
-        act: None,
-        card: anchor.card.clone(),
-    })?;
-    rebuild_index(session_dir)?;
-    Ok(path)
+    Ok(Cut {
+        path,
+        sha256: sha,
+        events: ids,
+    })
 }
 
-fn ids_of(span: &[&Memevent]) -> Vec<String> {
-    span.iter().map(|e| e.id.clone()).collect()
+/// Note a summary, cut the tail, and record the cut. The tape writes go
+/// through `AgentControl`.
+pub fn summarize_thread(
+    control: &AgentControl,
+    thread: Uuid,
+    text: &str,
+) -> Result<Cut, ContextError> {
+    control.note(thread, "summary", text)?;
+    cut_thread_since(control, thread)
+}
+
+/// Cut the uncompressed tail when it is long enough. Short tails return
+/// `Ok(None)` and write nothing.
+pub fn cut_thread(
+    control: &AgentControl,
+    thread: Uuid,
+    max_chars: usize,
+) -> Result<Option<Cut>, ContextError> {
+    let dir = control.directory(thread)?;
+    let events = control.events(thread)?;
+    let Some(cut) = cut_if_long(&dir, &events, max_chars)? else {
+        return Ok(None);
+    };
+    control.commit_compress(thread, &cut.sha256, &cut.events)?;
+    let events = control.events(thread)?;
+    rebuild_index(&dir, &events)?;
+    Ok(Some(cut))
+}
+
+/// Choose pieces for this thread. A second call with the same mode, the
+/// same budget, and no new tape events returns the same pieces and does
+/// not rewrite markdown or the index.
+pub fn assemble_thread(
+    control: &AgentControl,
+    thread: Uuid,
+    mode: AssembleMode,
+    budget_chars: usize,
+) -> Result<Assembly, ContextError> {
+    let dir = control.directory(thread)?;
+    let prompt = control.prompt(thread)?;
+    let config = read_proj(&dir, "config");
+    if mode == AssembleMode::Independent {
+        return Ok(Assembly {
+            prompt,
+            config,
+            context: Vec::new(),
+        });
+    }
+    let events = control.events(thread)?;
+    if let Some(hit) = cache_hit(&dir, &events, mode, budget_chars)? {
+        return Ok(Assembly {
+            prompt,
+            config,
+            context: hit,
+        });
+    }
+    let mut assembly = assemble(&dir, &events, mode, budget_chars)?;
+    assembly.prompt = prompt;
+    assembly.config = if config.is_empty() {
+        assembly.config
+    } else {
+        config
+    };
+    let refs = piece_refs(&assembly.context);
+    let body = json!({
+        "mode": mode_name(mode),
+        "budget_chars": budget_chars,
+        "pieces": assembly.context.iter().map(piece_body).collect::<Vec<_>>(),
+    })
+    .to_string();
+    control.commit_context(thread, &body, &refs)?;
+    Ok(assembly)
+}
+
+fn cut_thread_since(control: &AgentControl, thread: Uuid) -> Result<Cut, ContextError> {
+    let dir = control.directory(thread)?;
+    let events = control.events(thread)?;
+    let span = uncompressed(&events);
+    let cut = write_cut(&dir, &span)?;
+    control.commit_compress(thread, &cut.sha256, &cut.events)?;
+    let events = control.events(thread)?;
+    rebuild_index(&dir, &events)?;
+    Ok(cut)
+}
+
+fn mode_name(mode: AssembleMode) -> &'static str {
+    match mode {
+        AssembleMode::Continue => "continue",
+        AssembleMode::Independent => "independent",
+    }
+}
+
+fn piece_refs(pieces: &[Piece]) -> Vec<String> {
+    pieces
+        .iter()
+        .filter_map(|piece| {
+            piece
+                .event_id
+                .clone()
+                .or_else(|| piece.segment.clone())
+                .or_else(|| piece.outside.clone())
+        })
+        .collect()
+}
+
+fn piece_body(piece: &Piece) -> Value {
+    json!({
+        "kind": piece.kind,
+        "event_id": piece.event_id,
+        "segment": piece.segment,
+        "outside": piece.outside,
+    })
+}
+
+fn cache_hit(
+    dir: &Path,
+    events: &[Memevent],
+    mode: AssembleMode,
+    budget_chars: usize,
+) -> Result<Option<Vec<Piece>>, ContextError> {
+    let Some(pos) = events
+        .iter()
+        .rposition(|event| event.tags.iter().any(|tag| tag == "context"))
+    else {
+        return Ok(None);
+    };
+    if pos + 1 != events.len() {
+        return Ok(None);
+    }
+    let body: Value = serde_json::from_str(&events[pos].content)?;
+    if body["mode"] != mode_name(mode) || body["budget_chars"] != budget_chars {
+        return Ok(None);
+    }
+    let Some(listed) = body["pieces"].as_array() else {
+        return Ok(None);
+    };
+    let mut pieces = Vec::new();
+    for item in listed {
+        let kind = item["kind"].as_str().unwrap_or("");
+        let event_id = item["event_id"].as_str().map(str::to_string);
+        let segment = item["segment"].as_str().map(str::to_string);
+        let outside = item["outside"].as_str().map(str::to_string);
+        let text = if let Some(id) = &event_id {
+            let Some(event) = events.iter().find(|event| event.id == *id) else {
+                return Ok(None);
+            };
+            event.content.clone()
+        } else if let Some(id) = &segment {
+            let Some(seg) = load_segments(dir)?.into_iter().find(|seg| seg.id == *id) else {
+                return Ok(None);
+            };
+            seg.text
+        } else if outside.is_some() {
+            String::new()
+        } else {
+            return Ok(None);
+        };
+        pieces.push(Piece {
+            kind: match kind {
+                "recent" => "recent",
+                "hot" => "hot",
+                "summary" => "summary",
+                _ => return Ok(None),
+            },
+            event_id,
+            segment,
+            outside,
+            text,
+        });
+    }
+    Ok(Some(pieces))
 }
 
 fn uncompressed(events: &[Memevent]) -> Vec<&Memevent> {
@@ -305,7 +455,14 @@ fn uncompressed(events: &[Memevent]) -> Vec<&Memevent> {
         .unwrap_or(0);
     events[start..]
         .iter()
-        .filter(|e| !e.tags.iter().any(|t| t == "compress"))
+        .filter(|event| {
+            !event.tags.iter().any(|tag| {
+                matches!(
+                    tag.as_str(),
+                    "compress" | "context" | "thread" | "cancel" | "finish" | "send"
+                )
+            })
+        })
         .collect()
 }
 
@@ -473,9 +630,11 @@ fn read_proj(session_dir: &Path, name: &str) -> String {
 mod tests {
     use super::*;
     use an_agent_core::act::{FileFacet, MemoryFacet, Permit, ToolTag};
+    use an_agent_core::control::AgentControl;
+    use an_agent_core::memstream::{AppendEvent, FromKind, JsonlStore, Kind};
     use an_agent_core::principal::card::{AgentCard, ModelSpec, ToolGrant, Topology};
-    use an_agent_core::runtime::Recorder;
-    use an_agent_core::testkit::TempDir;
+    use an_agent_core::recorder::Recorder;
+    use an_agent_core::testkit::{TempDir, bash_registry};
     use uuid::Uuid;
 
     fn card() -> AgentCard {
@@ -500,6 +659,40 @@ mod tests {
             kernel: "0.1.0".into(),
             supersedes: None,
         }
+    }
+
+    fn seal(store: &JsonlStore, dir: &Path, summary: &str) -> PathBuf {
+        let anchor = store.read_all().unwrap().pop().unwrap();
+        store
+            .append(AppendEvent {
+                from: anchor.from.clone(),
+                from_kind: FromKind::Agent,
+                kind: Kind::Utterance,
+                session: anchor.session.clone().unwrap_or_default(),
+                content: summary.to_string(),
+                tags: vec!["summary".into()],
+                refs: vec![],
+                act: None,
+                card: anchor.card.clone(),
+            })
+            .unwrap();
+        let events = store.read_all().unwrap();
+        let cut = cut_if_long(dir, &events, 0).unwrap().unwrap();
+        store
+            .append(AppendEvent {
+                from: anchor.from,
+                from_kind: FromKind::Agent,
+                kind: Kind::Action,
+                session: anchor.session.unwrap_or_default(),
+                content: json!({ "md_sha256": cut.sha256, "events": cut.events }).to_string(),
+                tags: vec!["compress".into()],
+                refs: cut.events,
+                act: None,
+                card: anchor.card,
+            })
+            .unwrap();
+        rebuild_index(dir, &store.read_all().unwrap()).unwrap();
+        cut.path
     }
 
     fn session(tmp: &TempDir) -> PathBuf {
@@ -532,7 +725,7 @@ mod tests {
             card: anchor.card.clone(),
         })
         .unwrap();
-        let first = record_summary(&dir, "user summary one").unwrap();
+        let first = seal(&tape, &dir, "user summary one");
         let first_bytes = fs::read(&first).unwrap();
         let sources = segment_sources(&dir, &first).unwrap();
         let sum: f64 = sources.iter().map(|(_, c)| c).sum();
@@ -550,7 +743,7 @@ mod tests {
             card: anchor.card.clone(),
         })
         .unwrap();
-        let second = record_summary(&dir, "user summary two").unwrap();
+        let second = seal(&tape, &dir, "user summary two");
         assert_ne!(first, second);
         assert_eq!(fs::read(&first).unwrap(), first_bytes);
     }
@@ -573,7 +766,7 @@ mod tests {
             card: anchor.card.clone(),
         })
         .unwrap();
-        record_summary(&dir, "sum").unwrap();
+        seal(&tape, &dir, "sum");
         tape.append(AppendEvent {
             from: anchor.from.clone(),
             from_kind: FromKind::Agent,
@@ -586,7 +779,13 @@ mod tests {
             card: anchor.card.clone(),
         })
         .unwrap();
-        let got = assemble(&dir, AssembleMode::Continue, 10_000).unwrap();
+        let got = assemble(
+            &dir,
+            &tape.read_all().unwrap(),
+            AssembleMode::Continue,
+            10_000,
+        )
+        .unwrap();
         assert!(
             got.context
                 .iter()
@@ -625,16 +824,39 @@ mod tests {
             card: anchor.card,
         })
         .unwrap();
-        assert!(cut_if_long(&dir, 20).unwrap().is_some());
-        assert!(cut_if_long(&dir, 20).unwrap().is_none());
+        let events = tape.read_all().unwrap();
+        let cut = cut_if_long(&dir, &events, 20).unwrap().unwrap();
+        tape.append(AppendEvent {
+            from: "a".into(),
+            from_kind: FromKind::Agent,
+            kind: Kind::Action,
+            session: "s".into(),
+            content: json!({ "md_sha256": cut.sha256, "events": cut.events }).to_string(),
+            tags: vec!["compress".into()],
+            refs: cut.events.clone(),
+            act: None,
+            card: None,
+        })
+        .unwrap();
+        let bytes = fs::read(&cut.path).unwrap();
+        let again = cut_if_long(&dir, &tape.read_all().unwrap(), 20).unwrap();
+        assert!(again.is_none());
+        assert_eq!(fs::read(&cut.path).unwrap(), bytes);
     }
 
     #[test]
     fn independent_task_has_no_context() {
         let tmp = TempDir::new("ctx-empty");
         let dir = session(&tmp);
-        record_summary(&dir, "sum").unwrap();
-        let got = assemble(&dir, AssembleMode::Independent, 10_000).unwrap();
+        let tape = JsonlStore::open(dir.join("memory.jsonl")).unwrap();
+        seal(&tape, &dir, "sum");
+        let got = assemble(
+            &dir,
+            &tape.read_all().unwrap(),
+            AssembleMode::Independent,
+            10_000,
+        )
+        .unwrap();
         assert!(got.context.is_empty());
         assert_eq!(got.config, "{\"k\":1}");
         assert!(!got.prompt.is_empty());
@@ -658,13 +880,65 @@ mod tests {
             card: anchor.card,
         })
         .unwrap();
-        let md = record_summary(&dir, "sum").unwrap();
+        let md = seal(&tape, &dir, "sum");
         fs::remove_file(dir.join("ctx/index.jsonl")).unwrap();
-        rebuild_index(&dir).unwrap();
+        rebuild_index(&dir, &tape.read_all().unwrap()).unwrap();
         let rows = load_rows(&dir).unwrap();
         let sources = segment_sources(&dir, &md).unwrap();
         for (id, _) in sources {
             assert!(rows.iter().any(|r| r.event_id == id && r.segment.is_some()));
         }
+    }
+
+    fn thread_card(id: &str) -> AgentCard {
+        AgentCard {
+            v: 1,
+            id: Uuid::parse_str(id).unwrap(),
+            model: ModelSpec {
+                base_url: "https://example.com".into(),
+                model: "m".into(),
+                extra_body: None,
+            },
+            prompt: "prompt-text".into(),
+            tools: vec![ToolGrant {
+                name: "bash".into(),
+                tag: ToolTag::none_permit(Permit::Deny),
+            }],
+            topology: Topology::Leaf,
+            kernel: "0.1.0".into(),
+            supersedes: None,
+        }
+    }
+
+    #[test]
+    fn thread_cut_is_written_by_the_host_and_a_hit_does_not_rewrite() {
+        let tmp = TempDir::new("ctx-thread");
+        let control = AgentControl::open(tmp.path(), &bash_registry()).unwrap();
+        let id = control
+            .open_thread(&thread_card("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"))
+            .unwrap();
+        control.advance(id, "hello from the host").unwrap();
+        let cut = summarize_thread(&control, id, "the summary").unwrap();
+        let md = fs::read(&cut.path).unwrap();
+        let first = assemble_thread(&control, id, AssembleMode::Continue, 10_000).unwrap();
+        assert!(
+            first
+                .context
+                .iter()
+                .any(|piece| piece.text == "the summary")
+        );
+        assert_eq!(first.prompt, "prompt-text");
+        assert!(first.context.iter().all(|piece| piece.outside.is_none()));
+        let index = fs::read(control.directory(id).unwrap().join("ctx/index.jsonl")).unwrap();
+        let second = assemble_thread(&control, id, AssembleMode::Continue, 10_000).unwrap();
+        assert_eq!(second.context, first.context);
+        assert_eq!(fs::read(&cut.path).unwrap(), md);
+        assert_eq!(
+            fs::read(control.directory(id).unwrap().join("ctx/index.jsonl")).unwrap(),
+            index
+        );
+        let alone = assemble_thread(&control, id, AssembleMode::Independent, 10_000).unwrap();
+        assert!(alone.context.is_empty());
+        assert_eq!(alone.prompt, "prompt-text");
     }
 }

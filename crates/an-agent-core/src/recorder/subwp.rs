@@ -178,7 +178,7 @@ mod tests {
     use crate::act::Permit;
     use crate::act::{Charter, FileFacet, MemoryFacet, ToolTag};
     use crate::principal::card::{AgentCard, ModelSpec, ToolGrant, Topology};
-    use crate::runtime::{ProductPtr, Recorder};
+    use crate::recorder::{ProductPtr, Recorder};
     use crate::testkit::TempDir;
     use uuid::Uuid;
 

@@ -1,9 +1,13 @@
-//! The one user-facing agent in a runtime. Spawn, mail, and link are
+//! User-facing agent for the file workspace. Not the process. Spawn, mail, and link are
 //! verbs here — not tools. World-facing grants on its card must be Deny.
 //! The recorder is the tape-keeping identity: every verb is a tape append,
 //! and its state (seats, bounds, flags) is a projection rebuildable from
 //! the tape — see `restore_seats`. With world grants all Deny, the tape is
 //! its only effect channel.
+
+mod recover;
+mod subwp;
+mod wp;
 
 use std::collections::{HashMap, VecDeque};
 use std::fs;
@@ -16,15 +20,16 @@ use sha2::{Digest, Sha256};
 use thiserror::Error;
 use uuid::Uuid;
 
+pub use recover::{RecoverError, recover};
+pub use subwp::{SubWp, SubWpError};
+pub use wp::{CloseOut, DepEdge, Resolve, VerId, Wp, WpError, WriteMode};
+
 use crate::act::{Audience, Charter, Permit};
 use crate::memstream::{AppendEvent, FromKind, Kind};
 use crate::principal::card::AgentCard;
 
-use super::agent::Agent;
-use super::pool::{Pool, PoolError, Turn};
-use super::tree::Seat;
-use super::wp::{CloseOut, DepEdge, Wp, WpError};
-use super::{RuntimeError, spawn_with};
+use crate::agent::{Agent, SpawnError, spawn_with};
+use crate::seat::{Pool, PoolError, Seat, TreeError, Turn};
 
 #[derive(Debug, Error)]
 pub enum RecorderError {
@@ -49,11 +54,11 @@ pub enum RecorderError {
     #[error("worker is not mounted: {0}")]
     NotMounted(Uuid),
     #[error(transparent)]
-    Runtime(#[from] RuntimeError),
+    Spawn(#[from] SpawnError),
     #[error(transparent)]
     Pool(#[from] PoolError),
     #[error(transparent)]
-    Tree(#[from] super::tree::TreeError),
+    Tree(#[from] TreeError),
     #[error(transparent)]
     Wp(#[from] WpError),
     #[error("store: {0}")]
@@ -982,12 +987,7 @@ mod tests {
         let sub = recorder.workspace().subwp_of(parent.id()).unwrap();
         recorder
             .workspace()
-            .write(
-                &sub,
-                "src/a.txt",
-                b"draft",
-                crate::runtime::WriteMode::Create,
-            )
+            .write(&sub, "src/a.txt", b"draft", super::wp::WriteMode::Create)
             .unwrap();
         recorder.release(parent.id()).unwrap();
         assert!(recorder.pool.tree().get(parent.id()).is_none());
