@@ -3,6 +3,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use uuid::Uuid;
 
@@ -15,6 +16,8 @@ pub enum SessionError {
     Io(#[from] std::io::Error),
     #[error("store: {0}")]
     Store(#[from] StoreError),
+    #[error("session manifest: {0}")]
+    Manifest(String),
 }
 
 /// One engagement's private world. Layout:
@@ -90,6 +93,47 @@ impl Session {
 
     pub fn tape_path(&self) -> PathBuf {
         self.root.join("memory.jsonl")
+    }
+}
+
+/// Recoverable head of one session: the thread directory plus the workspace
+/// generation it was sealed against. The file is rewritten on each seal.
+/// Each seal is also appended to the thread tape.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SessionManifest {
+    pub id: Uuid,
+    pub agent_id: Uuid,
+    pub card_hash: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub config_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub config_sha256: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub env_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub env_sha256: Option<String>,
+    pub at: String,
+}
+
+impl SessionManifest {
+    pub fn path(dir: &Path) -> PathBuf {
+        dir.join("session.json")
+    }
+
+    pub fn write(&self, dir: &Path) -> Result<(), SessionError> {
+        let tmp = dir.join("session.json.tmp");
+        fs::write(
+            &tmp,
+            serde_json::to_vec_pretty(self)
+                .map_err(|err| SessionError::Manifest(err.to_string()))?,
+        )?;
+        fs::rename(tmp, Self::path(dir))?;
+        Ok(())
+    }
+
+    pub fn read(dir: &Path) -> Result<Self, SessionError> {
+        let bytes = fs::read(Self::path(dir))?;
+        serde_json::from_slice(&bytes).map_err(|err| SessionError::Manifest(err.to_string()))
     }
 }
 

@@ -22,7 +22,8 @@ use crate::memstream::{AppendEvent, FromKind, Kind, Memevent, StoreError};
 use crate::principal::card::AgentCard;
 use crate::principal::factory::ToolCtor;
 
-use crate::agent::{Agent, SpawnError, spawn_with};
+use crate::agent::{Agent, SessionError, SessionManifest, SpawnError, spawn_resume, spawn_with};
+use crate::det_seam::Clock;
 use crate::seat::{Pool, PoolError, Seat, TreeError};
 use crate::workspace::{Workspace, WorkspaceCite, WorkspaceRecord};
 
@@ -38,6 +39,10 @@ pub enum ControlError {
     Busy(Uuid),
     #[error("a thread cannot send to itself: {0}")]
     SameThread(Uuid),
+    #[error("thread is not finished: {0}")]
+    NotFinished(Uuid),
+    #[error("session manifest does not match this card")]
+    ManifestMismatch,
     #[error(transparent)]
     Spawn(#[from] SpawnError),
     #[error(transparent)]
@@ -50,6 +55,8 @@ pub enum ControlError {
     Store(#[from] StoreError),
     #[error(transparent)]
     Workspace(#[from] crate::workspace::WorkspaceError),
+    #[error(transparent)]
+    Session(#[from] SessionError),
 }
 
 struct ThreadInner {
@@ -112,6 +119,14 @@ impl AgentControl {
         Ok(self.inner.workspace.put_env(markdown)?)
     }
 
+    pub fn config_bytes(&self, sha256_hex: &str) -> Result<Vec<u8>, ControlError> {
+        Ok(self.inner.workspace.config_bytes(sha256_hex)?)
+    }
+
+    pub fn env_bytes(&self, sha256_hex: &str) -> Result<Vec<u8>, ControlError> {
+        Ok(self.inner.workspace.env_bytes(sha256_hex)?)
+    }
+
     /// Current config id, env generation id, and env text.
     pub fn workspace_cite(&self) -> Result<WorkspaceCite, ControlError> {
         Ok(self.inner.workspace.cite()?)
@@ -120,6 +135,112 @@ impl AgentControl {
     /// The workspace log. This is the listen port. It does not poll.
     pub fn workspace_log(&self) -> Result<Vec<WorkspaceRecord>, ControlError> {
         Ok(self.inner.workspace.log()?)
+    }
+
+    /// Bind this thread's directory and context index to the current
+    /// workspace generation. Rewrites `session.json`. Appends one tape event.
+    pub fn seal_session(&self, id: Uuid) -> Result<SessionManifest, ControlError> {
+        let agent = self.mounted(id)?;
+        let cite = self.workspace_cite()?;
+        let manifest = SessionManifest {
+            id: agent.session().id(),
+            agent_id: agent.id(),
+            card_hash: agent.card_hash().to_string(),
+            config_id: cite.config_id,
+            config_sha256: cite.config_sha256,
+            env_id: cite.env_id,
+            env_sha256: cite.env_sha256,
+            at: Clock::wall().now_iso(),
+        };
+        manifest.write(agent.session().root())?;
+        let content = serde_json::to_string(&manifest)
+            .map_err(|err| ControlError::Session(SessionError::Manifest(err.to_string())))?;
+        self.append_event(&agent, Kind::Action, "session", content, Vec::new())?;
+        Ok(manifest)
+    }
+
+    /// Drop a finished thread's seat. The directory stays on disk.
+    pub fn release(&self, id: Uuid) -> Result<(), ControlError> {
+        if self.inner.pool.is_running(id) {
+            return Err(ControlError::Busy(id));
+        }
+        {
+            let threads = self
+                .inner
+                .threads
+                .lock()
+                .unwrap_or_else(|err| err.into_inner());
+            let thread = threads.get(&id).ok_or(ControlError::NotOpen(id))?;
+            if !thread.finished {
+                return Err(ControlError::NotFinished(id));
+            }
+        }
+        let mut seats = self
+            .inner
+            .seats
+            .lock()
+            .unwrap_or_else(|err| err.into_inner());
+        let Some(pos) = seats.iter().position(|seat| seat.id() == id) else {
+            return Err(ControlError::NotOpen(id));
+        };
+        let seat = seats.remove(pos);
+        drop(seats);
+        seat.unmount();
+        self.inner
+            .threads
+            .lock()
+            .unwrap_or_else(|err| err.into_inner())
+            .remove(&id);
+        Ok(())
+    }
+
+    /// Mount a sealed session. The card must be the one named by the manifest.
+    /// Does not change the live workspace.
+    pub fn resume_session(&self, card: &AgentCard, session_id: Uuid) -> Result<Uuid, ControlError> {
+        if self
+            .inner
+            .threads
+            .lock()
+            .unwrap_or_else(|err| err.into_inner())
+            .contains_key(&card.id)
+        {
+            return Err(ControlError::Tree(TreeError::Duplicate(card.id)));
+        }
+        let listed = self.listed_registry();
+        let agent = Arc::new(spawn_resume(card, &self.inner.root, session_id, &listed)?);
+        let manifest = SessionManifest::read(agent.session().root())?;
+        if manifest.id != session_id
+            || manifest.agent_id != card.id
+            || manifest.card_hash != agent.card_hash()
+        {
+            return Err(ControlError::ManifestMismatch);
+        }
+        let id = agent.id();
+        let seat = self.inner.pool.tree().mount(Arc::clone(&agent), None)?;
+        self.inner
+            .seats
+            .lock()
+            .unwrap_or_else(|err| err.into_inner())
+            .push(seat);
+        let (cancel, _rx) = watch::channel(false);
+        self.inner
+            .threads
+            .lock()
+            .unwrap_or_else(|err| err.into_inner())
+            .insert(
+                id,
+                ThreadInner {
+                    finished: false,
+                    cancelled: Arc::new(AtomicBool::new(false)),
+                    cancel,
+                },
+            );
+        self.append(
+            &agent,
+            "resume",
+            serde_json::json!({ "session": session_id.to_string() }).to_string(),
+        )?;
+        Ok(id)
     }
 
     /// Birth one thread and its tape. The id is the card id. Opening the
@@ -663,5 +784,58 @@ mod tests {
                 && event.content.contains("ping")
                 && event.content.contains(&from.to_string())
         }));
+    }
+
+    #[test]
+    fn seal_records_the_workspace_generation_and_resume_reopens_the_tape() {
+        let tmp = TempDir::new("control-session");
+        let control = AgentControl::open(tmp.path(), &bash_registry()).unwrap();
+        let spec = card("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", "bash", Permit::Deny);
+        let config = control.put_config(b"{\"a\":1}").unwrap();
+        let env = control.put_env("# alpha\n").unwrap();
+        let id = control.open_thread(&spec).unwrap();
+        control.advance(id, "remember this").unwrap();
+        let manifest = control.seal_session(id).unwrap();
+        assert_eq!(manifest.config_id.as_deref(), Some(config.id.as_str()));
+        assert_eq!(manifest.env_id.as_deref(), Some(env.id.as_str()));
+        control.put_env("# beta\n").unwrap();
+        let old_sha = manifest.env_sha256.clone().unwrap();
+        assert_eq!(control.env_bytes(&old_sha).unwrap(), b"# alpha\n");
+        control.finish(id, "done").unwrap();
+        control.release(id).unwrap();
+        let resumed = control.resume_session(&spec, manifest.id).unwrap();
+        assert_eq!(resumed, id);
+        assert!(
+            control
+                .events(id)
+                .unwrap()
+                .iter()
+                .any(|event| { event.content.contains("remember this") })
+        );
+        assert!(
+            control
+                .events(id)
+                .unwrap()
+                .iter()
+                .any(|event| { event.tags.iter().any(|tag| tag == "resume") })
+        );
+        control.finish(id, "done").unwrap();
+        control.release(id).unwrap();
+        control.open_thread(&spec).unwrap();
+        assert!(
+            control
+                .events(id)
+                .unwrap()
+                .iter()
+                .all(|event| !event.content.contains("remember this"))
+        );
+        let old = crate::agent::Session::open(tmp.path(), spec.id, manifest.id).unwrap();
+        assert!(
+            old.tape()
+                .read_all()
+                .unwrap()
+                .iter()
+                .any(|event| { event.content.contains("remember this") })
+        );
     }
 }

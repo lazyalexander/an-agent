@@ -41,7 +41,9 @@ pub struct WorkspaceRecord {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WorkspaceCite {
     pub config_id: Option<String>,
+    pub config_sha256: Option<String>,
     pub env_id: Option<String>,
+    pub env_sha256: Option<String>,
     pub env_markdown: String,
 }
 
@@ -54,6 +56,7 @@ impl Workspace {
     pub fn open(root: impl AsRef<Path>) -> Result<Self, WorkspaceError> {
         let root = root.as_ref().to_path_buf();
         fs::create_dir_all(root.join("config"))?;
+        fs::create_dir_all(root.join("env"))?;
         if !root.join("env.md").exists() {
             fs::write(root.join("env.md"), b"")?;
         }
@@ -110,6 +113,10 @@ impl Workspace {
         {
             return Ok(existing);
         }
+        let blob = self.env_path(&sha)?;
+        if !blob.exists() {
+            fs::write(&blob, markdown.as_bytes())?;
+        }
         let tmp = self.root.join("env.md.tmp");
         fs::write(&tmp, markdown.as_bytes())?;
         fs::rename(&tmp, self.root.join("env.md"))?;
@@ -126,12 +133,14 @@ impl Workspace {
 
     pub fn cite(&self) -> Result<WorkspaceCite, WorkspaceError> {
         let _guard = self.lock.lock().unwrap_or_else(|err| err.into_inner());
-        let config_id = self.last_kind("config")?.map(|record| record.id);
-        let env_id = self.last_kind("env")?.map(|record| record.id);
+        let config = self.last_kind("config")?;
+        let env = self.last_kind("env")?;
         let env_markdown = fs::read_to_string(self.root.join("env.md")).unwrap_or_default();
         Ok(WorkspaceCite {
-            config_id,
-            env_id,
+            config_id: config.as_ref().map(|record| record.id.clone()),
+            config_sha256: config.and_then(|record| record.sha256),
+            env_id: env.as_ref().map(|record| record.id.clone()),
+            env_sha256: env.and_then(|record| record.sha256),
             env_markdown,
         })
     }
@@ -139,6 +148,14 @@ impl Workspace {
     pub fn log(&self) -> Result<Vec<WorkspaceRecord>, WorkspaceError> {
         let _guard = self.lock.lock().unwrap_or_else(|err| err.into_inner());
         self.read_log()
+    }
+
+    pub fn env_bytes(&self, sha256_hex: &str) -> Result<Vec<u8>, WorkspaceError> {
+        let path = self.env_path(sha256_hex)?;
+        if !path.exists() {
+            return Err(WorkspaceError::UnknownConfig(sha256_hex.to_string()));
+        }
+        Ok(fs::read(path)?)
     }
 
     pub fn config_bytes(&self, sha256_hex: &str) -> Result<Vec<u8>, WorkspaceError> {
@@ -183,10 +200,18 @@ impl Workspace {
     }
 
     fn config_path(&self, sha256_hex: &str) -> Result<PathBuf, WorkspaceError> {
+        Ok(self.root.join("config").join(self.hex_name(sha256_hex)?))
+    }
+
+    fn env_path(&self, sha256_hex: &str) -> Result<PathBuf, WorkspaceError> {
+        Ok(self.root.join("env").join(self.hex_name(sha256_hex)?))
+    }
+
+    fn hex_name(&self, sha256_hex: &str) -> Result<String, WorkspaceError> {
         if sha256_hex.len() != 64 || !sha256_hex.bytes().all(|b| b.is_ascii_hexdigit()) {
             return Err(WorkspaceError::UnknownConfig(sha256_hex.to_string()));
         }
-        Ok(self.root.join("config").join(sha256_hex))
+        Ok(sha256_hex.to_string())
     }
 }
 
@@ -222,6 +247,8 @@ mod tests {
             fs::read_to_string(tmp.path().join("workspace/env.md")).unwrap(),
             "# stage\n\nbeta\n"
         );
+        let old_env = env.sha256.clone().unwrap();
+        assert_eq!(space.env_bytes(&old_env).unwrap(), b"# stage\n\nalpha\n");
         let log = space.log().unwrap();
         assert_eq!(log.iter().filter(|record| record.kind == "env").count(), 2);
 
