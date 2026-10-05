@@ -150,6 +150,14 @@ fn listed(events: &[(&str, &[&str])], config: &[&str], env: &[&str]) -> Registra
     }
 }
 
+/// The mount-time claim: workspace events a body receives or may emit.
+fn declares(consumes: &[&str], produces: &[&str]) -> SpoolDeclaration {
+    SpoolDeclaration {
+        consumes: consumes.iter().map(|name| (*name).to_string()).collect(),
+        produces: produces.iter().map(|name| (*name).to_string()).collect(),
+    }
+}
+
 mod session;
 mod spool;
 mod thread;

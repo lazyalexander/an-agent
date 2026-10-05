@@ -18,6 +18,8 @@ effect:
   flow: in
 inverse: irreversible
 requires: []
+consumes: []
+produces: []
 "#
     .to_string()
 }
@@ -45,6 +47,8 @@ config:
   timeout_ms: 1000
 requires:
   - { name: fs_read, version: 1.0.0 }
+consumes: []
+produces: []
 "#
     .to_string()
 }
@@ -197,4 +201,34 @@ fn inverse_none_parses_and_keeps_the_closure_reversible() {
             .to_string()
             .contains("inverse must be")
     );
+}
+
+/// The workspace-event claim is explicit and validated: both lists are
+/// required, names are non-empty and whitespace-free, duplicates refused.
+#[test]
+fn consumes_and_produces_are_the_mount_time_claim() {
+    let talkative = read_yaml()
+        .replace("consumes: []", "consumes: [discord.message, stroke]")
+        .replace("produces: []", "produces: [discord.post]");
+    let spec = parse(&talkative).unwrap();
+    assert_eq!(spec.consumes, vec!["discord.message", "stroke"]);
+    assert_eq!(spec.produces, vec!["discord.post"]);
+    let declaration = spec.declaration();
+    assert_eq!(declaration.consumes, spec.consumes);
+    assert_eq!(declaration.produces, spec.produces);
+
+    for (from, to) in [
+        ("consumes: []", "consumes: [stroke, stroke]"),
+        ("produces: []", "produces: [stroke, stroke]"),
+        ("consumes: []", "consumes: [\"\"]"),
+        ("consumes: []", "consumes: [\"bad name\"]"),
+    ] {
+        assert!(
+            parse(&read_yaml().replace(from, to)).is_err(),
+            "{from} -> {to}"
+        );
+    }
+    // Both lists are required fields — the claim is never assumed.
+    let missing = read_yaml().replace("consumes: []\n", "");
+    assert!(parse(&missing).is_err());
 }

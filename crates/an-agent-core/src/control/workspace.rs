@@ -205,7 +205,7 @@ impl AgentControl {
     pub fn workspace_log(&self) -> Result<Vec<WorkspaceRecord>, ControlError> {
         Ok(self.inner.workspace.log()?)
     }
-    fn current_registration(&self) -> Result<Registration, ControlError> {
+    pub(super) fn current_registration(&self) -> Result<Registration, ControlError> {
         let cite = self.inner.workspace.cite()?;
         let Some(sha) = cite.register_sha256 else {
             return Err(ControlError::NotRegistered);

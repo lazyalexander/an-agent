@@ -88,6 +88,13 @@ pub struct SpoolSpec {
     pub requires: Vec<Require>,
     pub inverse: Inverse,
     pub config: Map<String, Value>,
+    /// Workspace events this spool receives. Matched against the
+    /// workspace register at mount (`AgentControl::mount_spool`) — the
+    /// bind point — not on the delivery path.
+    pub consumes: Vec<String>,
+    /// Workspace events this spool may emit. Register membership is
+    /// checked at mount; the emit channel itself is a later slice.
+    pub produces: Vec<String>,
     pub sha256: String,
     pub body: String,
 }
@@ -108,6 +115,10 @@ struct Raw {
     #[serde(default)]
     config: Value,
     requires: Vec<RawRequire>,
+    // Strict: both lists must be present (may be []) — the workspace-event
+    // claim is explicit, never assumed.
+    consumes: Vec<String>,
+    produces: Vec<String>,
 }
 
 #[derive(Deserialize)]
@@ -210,6 +221,8 @@ pub fn parse(yaml: &str) -> Result<SpoolSpec, SpoolError> {
         Value::Object(map) => map,
         _ => return Err(invalid("config must be a mapping")),
     };
+    let consumes = check_event_names(&raw.consumes, "consumes")?;
+    let produces = check_event_names(&raw.produces, "produces")?;
     let inverse = parse_inverse(raw.inverse)?;
     Ok(SpoolSpec {
         name: raw.name,
@@ -226,9 +239,40 @@ pub fn parse(yaml: &str) -> Result<SpoolSpec, SpoolError> {
         requires,
         inverse,
         config,
+        consumes,
+        produces,
         sha256: sha256(yaml),
         body: yaml.to_string(),
     })
+}
+
+fn check_event_names(names: &[String], face: &str) -> Result<Vec<String>, SpoolError> {
+    let mut seen = std::collections::HashSet::new();
+    let mut out = Vec::with_capacity(names.len());
+    for name in names {
+        // Event names follow the register's discipline (non-empty), not
+        // the spool-name one: dotted names like `discord.message` are
+        // legitimate events. Whitespace is refused as a typo magnet.
+        if name.is_empty() || name.chars().any(char::is_whitespace) {
+            return Err(invalid(format!("invalid {face} event name: {name:?}")));
+        }
+        if !seen.insert(name.clone()) {
+            return Err(invalid(format!("duplicate {face} event: {name}")));
+        }
+        out.push(name.clone());
+    }
+    Ok(out)
+}
+
+impl SpoolSpec {
+    /// The mount-time claim, handed to `AgentControl::mount_spool` for the
+    /// bind-time match against the workspace register.
+    pub fn declaration(&self) -> an_agent_core::control::SpoolDeclaration {
+        an_agent_core::control::SpoolDeclaration {
+            consumes: self.consumes.clone(),
+            produces: self.produces.clone(),
+        }
+    }
 }
 
 fn parse_inverse(value: Value) -> Result<Inverse, SpoolError> {

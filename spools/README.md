@@ -14,6 +14,11 @@ Rules of the shelf:
   published (name, version) never changes: a fix is a new version.
 - `requires` entries must already be published — publish order is
   topological.
+- `consumes` / `produces` are required (use `[]`): the spool's claim about
+  workspace events. They are matched against the workspace register at
+  mount (`AgentControl::mount_spool`), in both directions — consumed
+  events must be registered and routed to the spool, produced events must
+  be registered, and a route naming the spool must be consumed by it.
 - Scripts see a tape projection (clip ids + previews) and mount config
   (`config`); they yield continuations (`halt / utter / invoke_model /
   invoke_tool / approve`); they never hold full text, handles, or

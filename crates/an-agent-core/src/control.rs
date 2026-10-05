@@ -38,7 +38,7 @@ mod session;
 mod spool;
 mod workspace;
 
-pub use spool::{SpoolBeat, SpoolReply};
+pub use spool::{SpoolBeat, SpoolDeclaration, SpoolReply};
 pub use workspace::{EventRoute, HookHandler, Hooks, Registration, WorkspaceConfig};
 
 #[derive(Debug, Error)]
@@ -61,6 +61,8 @@ pub enum ControlError {
     NotMounted(String),
     #[error("spool is already mounted: {0}")]
     AlreadyMounted(String),
+    #[error("spool {name} does not match the register: {}", .reasons.join("; "))]
+    MountMismatch { name: String, reasons: Vec<String> },
     #[error("workspace has no event")]
     NoEvent,
     #[error("spool {name} failed: {reason}")]
