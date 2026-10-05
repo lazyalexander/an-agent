@@ -15,15 +15,13 @@ The core bet: an append-only event tape (memstream) is the single source of trut
 - `crates/an-agent-context` — per-session context assembly. The shared pool is not in this crate.
 - `crates/an-agent-spool` — capability spools: YAML descriptor admission and the append-only spool registry.
 - `crates/an-agent-workspace` — content-addressed store. It is not the recorder workspace.
-- `crates/an-agent-probes` — probe tests only. Not a library.
 - `packages/causal-web` — zero-dependency tape viewer: drop in a `.jsonl` tape, see the causal threads, get the tape validated in-page.
-- `packages/translated-tell` — one-tape walkthrough of the translated-tell probe. `bun serve` in that directory.
-- `packages/lean-probe` — tiny Lake package used by the Lean 4 compatibility probe (no Mathlib).
+- `packages/lean-probe` — tiny Lake package from a Lean 4 compatibility experiment (no Mathlib).
 - `config/` — model endpoint configuration.
 
 ## Status
 
-Early research, built in thin slices. The kernel compiles clean under a pinned toolchain with deny-level lints. The ReAct loop and HTTP client deliberately live in `tests/` as probe scaffolding — not in the kernel — until their shape stabilizes. Design contracts are being drafted alongside the code and will be published when the slices they govern land.
+Early research, built in thin slices. The kernel compiles clean under a pinned toolchain with deny-level lints. The probe harness (model clients, the ReAct loop, link probes) was retired once the host face (`AgentControl`) landed; what survived the retirement lives in `an-agent-spool` as the rhai policy constructor. Design contracts are being drafted alongside the code and will be published when the slices they govern land.
 
 ## Develop
 
@@ -31,13 +29,6 @@ Early research, built in thin slices. The kernel compiles clean under a pinned t
 cargo check --all-targets
 cargo clippy --all-targets   # deny-level lints; disallowed-methods enforce the determinism seam
 cargo test
-```
-
-Live probes (need network + `MODEL_API_KEY`, skipped by default):
-
-```sh
-cargo test -p an-agent-probes --test react_live -- --ignored --nocapture
-cargo test -p an-agent-probes --test web_search -- --ignored --nocapture
 ```
 
 The toolchain is pinned via `rust-toolchain.toml`. Upgrade one minor at a time; fix new lints in the same commit.

@@ -16,7 +16,7 @@ Rules of the shelf:
   topological.
 - Scripts see a tape projection (clip ids + previews) and mount config
   (`config`); they yield continuations (`halt / utter / invoke_model /
-  invoke_tool / approve / silk`); they never hold full text, handles, or
+  invoke_tool / approve`); they never hold full text, handles, or
   secrets.
 
 Current entries:
