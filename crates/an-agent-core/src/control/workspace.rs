@@ -8,6 +8,10 @@ use serde::{Deserialize, Serialize};
 use super::{AgentControl, ControlError};
 use crate::workspace::{WorkspaceCite, WorkspaceRecord};
 
+mod schema;
+
+use schema::Schema;
+
 /// One event name and the spools that receive it, in delivery order.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct EventRoute {
@@ -56,15 +60,16 @@ pub struct SpoolRequirement {
     pub config: toml::Table,
 }
 
-/// The IO contract of one event name.
+/// The IO contract of one event name. The schema is enforced at
+/// `push_event`: a contract-bound event carries a JSON body that
+/// satisfies it.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct EventContract {
     /// Spools that consume this event, in delivery order.
     #[serde(default)]
     pub consumers: Vec<String>,
-    /// Payload contract, kept as an opaque TOML value until enforcement
-    /// lands. The kernel does not interpret it.
+    /// Payload contract — the strict JSON Schema subset in `schema.rs`.
     pub schema: Option<toml::Value>,
 }
 
@@ -133,6 +138,11 @@ impl WorkspaceConfig {
                     )));
                 }
             }
+            if let Some(schema) = &contract.schema {
+                Schema::from_toml(schema.clone()).map_err(|reason| {
+                    ControlError::InvalidConfig(format!("event {name} schema: {reason}"))
+                })?;
+            }
         }
         for hook in self.hooks.before.iter().chain(self.hooks.after.iter()) {
             match hook {
@@ -185,9 +195,48 @@ impl AgentControl {
     }
 
     /// Append one registered software event. Repeated text is a new event.
+    /// If the current config binds a contract to this name, the body must
+    /// be JSON and satisfy it.
     pub fn push_event(&self, name: &str, body: &str) -> Result<WorkspaceRecord, ControlError> {
         self.admit("event", name)?;
+        if let Some(schema) = self.contract_schema(name)? {
+            let value: serde_json::Value =
+                serde_json::from_str(body).map_err(|err| ControlError::EventContract {
+                    name: name.to_string(),
+                    reason: format!("body is not JSON: {err}"),
+                })?;
+            schema
+                .check(&value)
+                .map_err(|reason| ControlError::EventContract {
+                    name: name.to_string(),
+                    reason,
+                })?;
+        }
         Ok(self.inner.workspace.push_event(name, body)?)
+    }
+
+    /// The contract for one event, from the current config — the latest
+    /// config record, the same "current" `workspace_cite` and seal see.
+    fn contract_schema(&self, name: &str) -> Result<Option<Schema>, ControlError> {
+        let cite = self.inner.workspace.cite()?;
+        let Some(sha) = cite.config_sha256 else {
+            return Ok(None);
+        };
+        let bytes = self.inner.workspace.config_bytes(&sha)?;
+        let text = std::str::from_utf8(&bytes)
+            .map_err(|err| ControlError::InvalidConfig(err.to_string()))?;
+        let config: WorkspaceConfig =
+            toml::from_str(text).map_err(|err| ControlError::InvalidConfig(err.to_string()))?;
+        config
+            .event
+            .get(name)
+            .and_then(|contract| contract.schema.clone())
+            .map(|value| {
+                // Validated at put_config; a failure here means the stored
+                // bytes predate validation.
+                Schema::from_toml(value).map_err(ControlError::InvalidConfig)
+            })
+            .transpose()
     }
 
     /// Store one TOML document under a registered name. The host injects
