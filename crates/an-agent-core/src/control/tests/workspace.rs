@@ -70,7 +70,12 @@ fn registration_is_a_snapshot_and_unknown_writes_are_refused() {
         Err(ControlError::InvalidConfig(_))
     ));
     assert_eq!(control.workspace_log().unwrap().len(), before);
-    control.put_config("canvas", b"{\"w\":512}").unwrap();
+    control
+        .put_config(
+            "canvas",
+            b"[[spool]]\nname = \"clip\"\nversion = \"1.0.0\"\n",
+        )
+        .unwrap();
     control.put_env("stage", "# draw\n").unwrap();
     control.push_event("stroke", "20,20").unwrap();
 
@@ -81,4 +86,67 @@ fn registration_is_a_snapshot_and_unknown_writes_are_refused() {
         control.registration_bytes(&sha).unwrap(),
         serde_json::to_vec(&spec).unwrap()
     );
+}
+
+/// Config admission: TOML parsed as WorkspaceConfig, strict on shape.
+#[test]
+fn config_is_toml_and_strict() {
+    let tmp = TempDir::new("control-config-toml");
+    let control = AgentControl::open(tmp.path(), &bash_registry()).unwrap();
+    control.register(&listed(&[], &["canvas"], &[])).unwrap();
+
+    // A full document parses: spool pin with mount config, event contract,
+    // hook chains.
+    let full = br#"
+[[spool]]
+name = "translator"
+version = "1.2.0"
+config = { target_lang = "en" }
+
+[event."discord.message"]
+consumers = ["translator"]
+schema = { type = "object", required = ["text"] }
+
+[hooks]
+before = ["schema_check"]
+after = ["reply_contract"]
+"#;
+    control.put_config("canvas", full).unwrap();
+
+    // An empty document is a legal (all-default) config.
+    control.put_config("canvas", b"").unwrap();
+
+    // JSON bytes are no longer config: the format broke deliberately.
+    assert!(matches!(
+        control.put_config("canvas", br#"{"w":512}"#),
+        Err(ControlError::InvalidConfig(_))
+    ));
+    // Unknown top-level key: refused, not ignored.
+    assert!(matches!(
+        control.put_config("canvas", b"chef = 1\n"),
+        Err(ControlError::InvalidConfig(_))
+    ));
+    // Duplicate spool name.
+    assert!(matches!(
+        control.put_config(
+            "canvas",
+            b"[[spool]]\nname = \"a\"\nversion = \"1.0.0\"\n[[spool]]\nname = \"a\"\nversion = \"2.0.0\"\n"
+        ),
+        Err(ControlError::InvalidConfig(_))
+    ));
+    // Loose version: the shelf pins exact x.y.z.
+    assert!(matches!(
+        control.put_config("canvas", b"[[spool]]\nname = \"a\"\nversion = \"1\"\n"),
+        Err(ControlError::InvalidConfig(_))
+    ));
+    // Empty event name.
+    assert!(matches!(
+        control.put_config("canvas", b"[event.\"\"]\n"),
+        Err(ControlError::InvalidConfig(_))
+    ));
+    // Empty hook name.
+    assert!(matches!(
+        control.put_config("canvas", b"[hooks]\nbefore = [\"\"]\n"),
+        Err(ControlError::InvalidConfig(_))
+    ));
 }
