@@ -1,16 +1,12 @@
 //! Names the plugin registered, and the config and env it injects.
 //! Config is a TOML document (`WorkspaceConfig`). Env is markdown text.
 
-use std::collections::{BTreeMap, HashSet};
+use std::collections::HashSet;
 
 use serde::{Deserialize, Serialize};
 
 use super::{AgentControl, ControlError};
 use crate::workspace::{WorkspaceCite, WorkspaceRecord};
-
-mod schema;
-
-use schema::Schema;
 
 /// One event name and the spools that receive it, in delivery order.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -28,8 +24,11 @@ pub struct Registration {
 }
 
 /// The workspace's hard requirements, one TOML document per registered
-/// config name. Strict: unknown fields are refused — loosening is a
-/// deliberate schema change, not a parse accident.
+/// config name: which spools (pinned), their mount parameters, and the
+/// hook chains. Strict: unknown fields are refused — loosening is a
+/// deliberate schema change, not a parse accident. IO contracts are not
+/// here: they belong to the spool declaration, and matching is mutual
+/// (2026-10-05 ruling — a workspace-side filter was tried and withdrawn).
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct WorkspaceConfig {
@@ -38,10 +37,6 @@ pub struct WorkspaceConfig {
     /// document's act.
     #[serde(default)]
     pub spool: Vec<SpoolRequirement>,
-    /// IO contract per event name. `schema` is carried, not enforced yet —
-    /// enforcement joins `push_event` admission in a later slice.
-    #[serde(default)]
-    pub event: BTreeMap<String, EventContract>,
     /// Hook chain order and parameters. Implementations live in the host;
     /// the kernel validates shape only, never that a named hook exists.
     #[serde(default)]
@@ -58,19 +53,6 @@ pub struct SpoolRequirement {
     /// Mount config handed to the spool body.
     #[serde(default)]
     pub config: toml::Table,
-}
-
-/// The IO contract of one event name. The schema is enforced at
-/// `push_event`: a contract-bound event carries a JSON body that
-/// satisfies it.
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct EventContract {
-    /// Spools that consume this event, in delivery order.
-    #[serde(default)]
-    pub consumers: Vec<String>,
-    /// Payload contract — the strict JSON Schema subset in `schema.rs`.
-    pub schema: Option<toml::Value>,
 }
 
 /// One hook handler: a tagged mechanism, never a bare name. Data declares
@@ -127,23 +109,6 @@ impl WorkspaceConfig {
                 )));
             }
         }
-        for (name, contract) in &self.event {
-            if name.is_empty() {
-                return Err(ControlError::InvalidConfig("empty event name".into()));
-            }
-            for consumer in &contract.consumers {
-                if consumer.is_empty() {
-                    return Err(ControlError::InvalidConfig(format!(
-                        "empty consumer on event {name}"
-                    )));
-                }
-            }
-            if let Some(schema) = &contract.schema {
-                Schema::from_toml(schema.clone()).map_err(|reason| {
-                    ControlError::InvalidConfig(format!("event {name} schema: {reason}"))
-                })?;
-            }
-        }
         for hook in self.hooks.before.iter().chain(self.hooks.after.iter()) {
             match hook {
                 HookHandler::Spool { name, version } => {
@@ -195,48 +160,11 @@ impl AgentControl {
     }
 
     /// Append one registered software event. Repeated text is a new event.
-    /// If the current config binds a contract to this name, the body must
-    /// be JSON and satisfy it.
+    /// The kernel admits by name only: what a spool accepts is the spool's
+    /// declaration, and matching happens at bind time, not here.
     pub fn push_event(&self, name: &str, body: &str) -> Result<WorkspaceRecord, ControlError> {
         self.admit("event", name)?;
-        if let Some(schema) = self.contract_schema(name)? {
-            let value: serde_json::Value =
-                serde_json::from_str(body).map_err(|err| ControlError::EventContract {
-                    name: name.to_string(),
-                    reason: format!("body is not JSON: {err}"),
-                })?;
-            schema
-                .check(&value)
-                .map_err(|reason| ControlError::EventContract {
-                    name: name.to_string(),
-                    reason,
-                })?;
-        }
         Ok(self.inner.workspace.push_event(name, body)?)
-    }
-
-    /// The contract for one event, from the current config — the latest
-    /// config record, the same "current" `workspace_cite` and seal see.
-    fn contract_schema(&self, name: &str) -> Result<Option<Schema>, ControlError> {
-        let cite = self.inner.workspace.cite()?;
-        let Some(sha) = cite.config_sha256 else {
-            return Ok(None);
-        };
-        let bytes = self.inner.workspace.config_bytes(&sha)?;
-        let text = std::str::from_utf8(&bytes)
-            .map_err(|err| ControlError::InvalidConfig(err.to_string()))?;
-        let config: WorkspaceConfig =
-            toml::from_str(text).map_err(|err| ControlError::InvalidConfig(err.to_string()))?;
-        config
-            .event
-            .get(name)
-            .and_then(|contract| contract.schema.clone())
-            .map(|value| {
-                // Validated at put_config; a failure here means the stored
-                // bytes predate validation.
-                Schema::from_toml(value).map_err(ControlError::InvalidConfig)
-            })
-            .transpose()
     }
 
     /// Store one TOML document under a registered name. The host injects

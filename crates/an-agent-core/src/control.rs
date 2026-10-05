@@ -73,8 +73,6 @@ pub enum ControlError {
     InvalidRegistration(String),
     #[error("config is not valid toml: {0}")]
     InvalidConfig(String),
-    #[error("event {name} violates its contract: {reason}")]
-    EventContract { name: String, reason: String },
     #[error(transparent)]
     Spawn(#[from] SpawnError),
     #[error(transparent)]

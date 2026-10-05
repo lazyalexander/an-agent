@@ -95,17 +95,12 @@ fn config_is_toml_and_strict() {
     let control = AgentControl::open(tmp.path(), &bash_registry()).unwrap();
     control.register(&listed(&[], &["canvas"], &[])).unwrap();
 
-    // A full document parses: spool pin with mount config, event contract,
-    // hook chains.
+    // A full document parses: spool pins with mount config, hook chains.
     let full = br#"
 [[spool]]
 name = "translator"
 version = "1.2.0"
 config = { target_lang = "en" }
-
-[event."discord.message"]
-consumers = ["translator"]
-schema = { type = "object", required = ["text"] }
 
 [hooks]
 before = [{ type = "spool", name = "schema_check", version = "1.0.0" }]
@@ -137,11 +132,6 @@ after = [{ type = "mcp", server = "guard", tool = "screen_reply" }]
     // Loose version: the shelf pins exact x.y.z.
     assert!(matches!(
         control.put_config("canvas", b"[[spool]]\nname = \"a\"\nversion = \"1\"\n"),
-        Err(ControlError::InvalidConfig(_))
-    ));
-    // Empty event name.
-    assert!(matches!(
-        control.put_config("canvas", b"[event.\"\"]\n"),
         Err(ControlError::InvalidConfig(_))
     ));
     // Hook handlers are tagged mechanisms: a bare string no longer parses,
@@ -180,60 +170,4 @@ after = [{ type = "mcp", server = "guard", tool = "screen_reply" }]
         ),
         Err(ControlError::InvalidConfig(_))
     ));
-    // A bad schema is refused at admission, not at first event.
-    assert!(matches!(
-        control.put_config(
-            "canvas",
-            b"[event.stroke]\nschema = { type = \"object\", cereal = 1 }\n"
-        ),
-        Err(ControlError::InvalidConfig(_))
-    ));
-}
-
-/// push_event honors the current config's event contracts. The current
-/// config is the latest config record, the same one cite and seal see.
-#[test]
-fn event_contracts_are_enforced() {
-    let tmp = TempDir::new("control-event-contract");
-    let control = AgentControl::open(tmp.path(), &bash_registry()).unwrap();
-    control
-        .register(&listed(&[("stroke", &[]), ("note", &[])], &["canvas"], &[]))
-        .unwrap();
-    control
-        .put_config(
-            "canvas",
-            br#"
-[event.stroke]
-schema = { type = "object", required = ["text"], additionalProperties = false, properties = { text = { type = "string" }, pressure = { type = "integer" } } }
-"#,
-        )
-        .unwrap();
-
-    control
-        .push_event("stroke", r#"{"text":"hi","pressure":3}"#)
-        .unwrap();
-    // Closed when asked: extra keys refused.
-    assert!(matches!(
-        control.push_event("stroke", r#"{"text":"hi","extra":1}"#),
-        Err(ControlError::EventContract { .. })
-    ));
-    assert!(matches!(
-        control.push_event("stroke", r#"{"pressure":3}"#),
-        Err(ControlError::EventContract { .. })
-    ));
-    assert!(matches!(
-        control.push_event("stroke", r#"{"text":42}"#),
-        Err(ControlError::EventContract { .. })
-    ));
-    // A contract-bound event must carry JSON at all.
-    assert!(matches!(
-        control.push_event("stroke", "20,20"),
-        Err(ControlError::EventContract { .. })
-    ));
-    // An event with no contract stays free text.
-    control.push_event("note", "anything at all").unwrap();
-
-    // A new config generation without the contract lifts enforcement.
-    control.put_config("canvas", b"").unwrap();
-    control.push_event("stroke", "20,20").unwrap();
 }
