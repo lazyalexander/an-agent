@@ -2,10 +2,19 @@
 //! the current beat, and finishes it. One thread has one writer and one tape.
 //! The tape is born here.
 //!
-//! Scheduling, mount, mail, and code execution belong on this face. This step
-//! has no workspace, no spool, and no session product. The pulse never enters
-//! a spool: there is nothing to poll. `spawn_with` stays a card-and-tape
-//! constructor. It is not this entry.
+//! Config and env belong to the workspace. The host injects them. Config is
+//! a JSON document. Env is markdown. A spool does not store either one.
+//!
+//! A plugin registers the names this process watches. Writes outside that
+//! list are refused. The list is a snapshot: a new list is a new id, and
+//! the old bytes stay.
+//!
+//! `offer` hands one already recorded workspace event to one mounted body.
+//! `dispatch` walks that event's registered spool list, in order. The body
+//! does not read the log and does not write the tape. A missing body is
+//! noted and skipped. A failed body is unmounted. On `offer` the beat ends.
+//! On `dispatch` the rest of the list still runs. The workspace event stays.
+//! `spawn_with` stays a card-and-tape constructor. It is not this entry.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -18,13 +27,19 @@ use tokio::sync::watch;
 use uuid::Uuid;
 
 use crate::act::{ToolCall, ToolCtx, ToolError, run_tool_act};
+use crate::agent::{Agent, SessionError, SpawnError, spawn_with};
 use crate::memstream::{AppendEvent, FromKind, Kind, Memevent, StoreError};
 use crate::principal::card::AgentCard;
 use crate::principal::factory::ToolCtor;
-
-use crate::agent::{Agent, SpawnError, spawn_with};
 use crate::seat::{Pool, PoolError, Seat, TreeError};
-use crate::workspace::{Workspace, WorkspaceCite, WorkspaceRecord};
+use crate::workspace::Workspace;
+
+mod session;
+mod spool;
+mod workspace;
+
+pub use spool::{SpoolBeat, SpoolReply};
+pub use workspace::{EventRoute, Registration};
 
 #[derive(Debug, Error)]
 pub enum ControlError {
@@ -38,6 +53,26 @@ pub enum ControlError {
     Busy(Uuid),
     #[error("a thread cannot send to itself: {0}")]
     SameThread(Uuid),
+    #[error("thread is not finished: {0}")]
+    NotFinished(Uuid),
+    #[error("session manifest does not match this card")]
+    ManifestMismatch,
+    #[error("spool is not mounted: {0}")]
+    NotMounted(String),
+    #[error("spool is already mounted: {0}")]
+    AlreadyMounted(String),
+    #[error("workspace has no event")]
+    NoEvent,
+    #[error("spool {name} failed: {reason}")]
+    SpoolFailed { name: String, reason: String },
+    #[error("workspace has no registration")]
+    NotRegistered,
+    #[error("name is not registered: {0}")]
+    Unregistered(String),
+    #[error("registration is invalid: {0}")]
+    InvalidRegistration(String),
+    #[error("config is not json: {0}")]
+    InvalidConfig(String),
     #[error(transparent)]
     Spawn(#[from] SpawnError),
     #[error(transparent)]
@@ -50,6 +85,8 @@ pub enum ControlError {
     Store(#[from] StoreError),
     #[error(transparent)]
     Workspace(#[from] crate::workspace::WorkspaceError),
+    #[error(transparent)]
+    Session(#[from] SessionError),
 }
 
 struct ThreadInner {
@@ -67,6 +104,7 @@ struct Inner {
     seats: Mutex<Vec<Seat>>,
     threads: Mutex<HashMap<Uuid, ThreadInner>>,
     workspace: Workspace,
+    bodies: Mutex<Vec<(String, Arc<dyn SpoolBeat>)>>,
 }
 
 /// The handle a host software uses to drive agents in this process.
@@ -93,33 +131,9 @@ impl AgentControl {
                 seats: Mutex::new(Vec::new()),
                 threads: Mutex::new(HashMap::new()),
                 workspace: Workspace::open(sessions_root.as_ref().join("workspace"))?,
+                bodies: Mutex::new(Vec::new()),
             }),
         })
-    }
-
-    /// Append one software event. Repeated text is a new event.
-    pub fn push_event(&self, body: &str) -> Result<WorkspaceRecord, ControlError> {
-        Ok(self.inner.workspace.push_event(body)?)
-    }
-
-    /// Store precise bytes. Identical bytes keep the previous id.
-    pub fn put_config(&self, bytes: &[u8]) -> Result<WorkspaceRecord, ControlError> {
-        Ok(self.inner.workspace.put_config(bytes)?)
-    }
-
-    /// Replace the environment markdown. Identical text keeps the previous id.
-    pub fn put_env(&self, markdown: &str) -> Result<WorkspaceRecord, ControlError> {
-        Ok(self.inner.workspace.put_env(markdown)?)
-    }
-
-    /// Current config id, env generation id, and env text.
-    pub fn workspace_cite(&self) -> Result<WorkspaceCite, ControlError> {
-        Ok(self.inner.workspace.cite()?)
-    }
-
-    /// The workspace log. This is the listen port. It does not poll.
-    pub fn workspace_log(&self) -> Result<Vec<WorkspaceRecord>, ControlError> {
-        Ok(self.inner.workspace.log()?)
     }
 
     /// Birth one thread and its tape. The id is the card id. Opening the
@@ -367,7 +381,6 @@ impl AgentControl {
             refs.to_vec(),
         )
     }
-
     fn mounted(&self, id: Uuid) -> Result<Arc<Agent>, ControlError> {
         self.inner
             .pool
@@ -404,264 +417,4 @@ impl AgentControl {
 }
 
 #[cfg(test)]
-mod tests {
-    use std::sync::Arc;
-
-    use super::*;
-    use crate::act::{Permit, Tool, ToolCtx, ToolTag};
-    use crate::principal::card::{ModelSpec, ToolGrant, Topology};
-    use crate::testkit::{TempDir, bash_registry};
-    use async_trait::async_trait;
-    use serde_json::Value;
-
-    fn card(id: &str, name: &str, permit: Permit) -> AgentCard {
-        AgentCard {
-            v: 1,
-            id: Uuid::parse_str(id).unwrap(),
-            model: ModelSpec {
-                base_url: "https://example.com".into(),
-                model: "m".into(),
-                extra_body: None,
-            },
-            prompt: "p".into(),
-            tools: vec![ToolGrant {
-                name: name.into(),
-                tag: ToolTag::none_permit(permit),
-            }],
-            topology: Topology::Leaf,
-            kernel: "0.1.0".into(),
-            supersedes: None,
-        }
-    }
-
-    struct Gate {
-        started: Arc<tokio::sync::Notify>,
-        release: Arc<tokio::sync::Notify>,
-    }
-
-    #[async_trait]
-    impl Tool for Gate {
-        fn name(&self) -> &str {
-            "gate"
-        }
-        fn description(&self) -> &str {
-            "holds the beat until released"
-        }
-        fn parameters(&self) -> Value {
-            json!({})
-        }
-        async fn execute(&self, _args: Value, ctx: &ToolCtx) -> Result<String, String> {
-            self.started.notify_one();
-            let abort = async {
-                if let Some(mut rx) = ctx.signal.clone() {
-                    loop {
-                        if *rx.borrow() {
-                            return;
-                        }
-                        if rx.changed().await.is_err() {
-                            std::future::pending::<()>().await;
-                        }
-                    }
-                } else {
-                    std::future::pending::<()>().await;
-                }
-            };
-            tokio::select! {
-                _ = abort => Ok("cancelled".into()),
-                _ = self.release.notified() => Ok("ran".into()),
-            }
-        }
-    }
-
-    #[test]
-    fn open_thread_births_one_tape() {
-        let tmp = TempDir::new("control-open");
-        let control = AgentControl::open(tmp.path(), &bash_registry()).unwrap();
-        let id = control
-            .open_thread(&card(
-                "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
-                "bash",
-                Permit::Deny,
-            ))
-            .unwrap();
-        let events = control.events(id).unwrap();
-        assert_eq!(events.len(), 1);
-        assert!(events[0].tags.iter().any(|tag| tag == "thread"));
-        assert!(events[0].content.contains(&id.to_string()));
-        assert!(matches!(
-            control.open_thread(&card(
-                "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
-                "bash",
-                Permit::Deny,
-            )),
-            Err(ControlError::Tree(TreeError::Duplicate(_)))
-        ));
-    }
-
-    #[test]
-    fn advance_then_finish_refuses_another_beat() {
-        let tmp = TempDir::new("control-finish");
-        let control = AgentControl::open(tmp.path(), &bash_registry()).unwrap();
-        let id = control
-            .open_thread(&card(
-                "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
-                "bash",
-                Permit::Deny,
-            ))
-            .unwrap();
-        control.advance(id, "look here").unwrap();
-        control.finish(id, "done").unwrap();
-        assert!(matches!(
-            control.advance(id, "again"),
-            Err(ControlError::Finished(_))
-        ));
-        let events = control.events(id).unwrap();
-        assert!(events.iter().any(|event| {
-            event.tags.iter().any(|tag| tag == "advance") && event.content.contains("look here")
-        }));
-        assert!(
-            events
-                .iter()
-                .any(|event| event.tags.iter().any(|tag| tag == "finish"))
-        );
-    }
-
-    #[tokio::test]
-    async fn cancel_consumes_one_beat_and_does_not_run_the_tool() {
-        let tmp = TempDir::new("control-cancel");
-        let control = AgentControl::open(tmp.path(), &bash_registry()).unwrap();
-        let id = control
-            .open_thread(&card(
-                "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
-                "bash",
-                Permit::Go,
-            ))
-            .unwrap();
-        control.cancel(id).unwrap();
-        let call = ToolCall {
-            id: "c1".into(),
-            name: "bash".into(),
-            arguments: r#"{"command":"true"}"#.into(),
-        };
-        assert!(matches!(
-            control.run(id, &call).await,
-            Err(ControlError::Cancelled(_))
-        ));
-        control.advance(id, "next").unwrap();
-        let events = control.events(id).unwrap();
-        assert!(
-            events
-                .iter()
-                .any(|event| event.tags.iter().any(|tag| tag == "cancel"))
-        );
-        assert!(events.iter().any(|event| event.content.contains("next")));
-        assert!(events.iter().all(|event| event.content != "ran"));
-    }
-
-    #[tokio::test]
-    async fn a_running_beat_holds_the_only_slot() {
-        let tmp = TempDir::new("control-slot");
-        let gate = shared_gate();
-        let control = AgentControl::open(tmp.path(), &[("gate", gate_ctor)]).unwrap();
-        let running = control
-            .open_thread(&card(
-                "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
-                "gate",
-                Permit::Go,
-            ))
-            .unwrap();
-        let other = control
-            .open_thread(&card(
-                "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
-                "gate",
-                Permit::Go,
-            ))
-            .unwrap();
-        let worker = control.clone();
-        let task = tokio::spawn(async move {
-            worker
-                .run(
-                    running,
-                    &ToolCall {
-                        id: "c1".into(),
-                        name: "gate".into(),
-                        arguments: "{}".into(),
-                    },
-                )
-                .await
-        });
-        gate.started.notified().await;
-        assert!(matches!(
-            control.advance(other, "wait"),
-            Err(ControlError::Pool(PoolError::AtCapacity(1)))
-        ));
-        gate.release.notify_one();
-        let result = task.await.unwrap().unwrap();
-        assert_eq!(result.message.content, "ran");
-        control.advance(other, "wait").unwrap();
-    }
-
-    fn shared_gate() -> &'static Gate {
-        use std::sync::OnceLock;
-        static GATE: OnceLock<Gate> = OnceLock::new();
-        GATE.get_or_init(|| Gate {
-            started: Arc::new(tokio::sync::Notify::new()),
-            release: Arc::new(tokio::sync::Notify::new()),
-        })
-    }
-
-    fn gate_ctor() -> Arc<dyn Tool> {
-        Arc::new(SharedGate(shared_gate()))
-    }
-
-    struct SharedGate(&'static Gate);
-
-    #[async_trait]
-    impl Tool for SharedGate {
-        fn name(&self) -> &str {
-            self.0.name()
-        }
-        fn description(&self) -> &str {
-            self.0.description()
-        }
-        fn parameters(&self) -> Value {
-            self.0.parameters()
-        }
-        async fn execute(&self, args: Value, ctx: &ToolCtx) -> Result<String, String> {
-            self.0.execute(args, ctx).await
-        }
-    }
-
-    #[test]
-    fn send_writes_both_tapes() {
-        let tmp = TempDir::new("control-send");
-        let control = AgentControl::open(tmp.path(), &bash_registry()).unwrap();
-        let from = control
-            .open_thread(&card(
-                "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
-                "bash",
-                Permit::Deny,
-            ))
-            .unwrap();
-        let to = control
-            .open_thread(&card(
-                "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
-                "bash",
-                Permit::Deny,
-            ))
-            .unwrap();
-        control.send(from, to, "ping").unwrap();
-        assert!(matches!(
-            control.send(from, from, "no"),
-            Err(ControlError::SameThread(_))
-        ));
-        assert!(control.events(from).unwrap().iter().any(|event| {
-            event.tags.iter().any(|tag| tag == "send") && event.content.contains("ping")
-        }));
-        assert!(control.events(to).unwrap().iter().any(|event| {
-            event.tags.iter().any(|tag| tag == "send")
-                && event.content.contains("ping")
-                && event.content.contains(&from.to_string())
-        }));
-    }
-}
+mod tests;

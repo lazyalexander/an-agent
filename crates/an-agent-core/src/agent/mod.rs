@@ -14,7 +14,7 @@ use crate::act::{ActCtx, Tool};
 use crate::principal::card::AgentCard;
 use crate::principal::factory::{self, BuiltAgent, FactoryError};
 
-pub use session::{Session, SessionError};
+pub use session::{Session, SessionError, SessionManifest};
 
 #[derive(Debug, Error)]
 pub enum AgentError {
@@ -111,6 +111,19 @@ pub fn spawn_with(
     let hash = card.hash()?;
     let built = factory::build_with(card, &hash, registry)?;
     let session = Session::create(sessions_root, card.id)?;
+    Ok(Agent::from_built(built, session)?)
+}
+
+/// Bind a card to an existing session directory. Does not create a tape.
+pub fn spawn_resume(
+    card: &AgentCard,
+    sessions_root: impl AsRef<Path>,
+    session_id: Uuid,
+    registry: &[(&str, factory::ToolCtor)],
+) -> Result<Agent, SpawnError> {
+    let hash = card.hash()?;
+    let built = factory::build_with(card, &hash, registry)?;
+    let session = Session::open(sessions_root, card.id, session_id)?;
     Ok(Agent::from_built(built, session)?)
 }
 

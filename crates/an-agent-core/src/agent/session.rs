@@ -3,6 +3,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use uuid::Uuid;
 
@@ -15,6 +16,8 @@ pub enum SessionError {
     Io(#[from] std::io::Error),
     #[error("store: {0}")]
     Store(#[from] StoreError),
+    #[error("session manifest: {0}")]
+    Manifest(String),
 }
 
 /// One engagement's private world. Layout:
@@ -93,6 +96,51 @@ impl Session {
     }
 }
 
+/// Recoverable head of one session: the thread directory plus the workspace
+/// generation it was sealed against. The file is rewritten on each seal.
+/// Each seal is also appended to the thread tape.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SessionManifest {
+    pub id: Uuid,
+    pub agent_id: Uuid,
+    pub card_hash: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub config_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub config_sha256: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub env_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub env_sha256: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub register_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub register_sha256: Option<String>,
+    pub at: String,
+}
+
+impl SessionManifest {
+    pub fn path(dir: &Path) -> PathBuf {
+        dir.join("session.json")
+    }
+
+    pub fn write(&self, dir: &Path) -> Result<(), SessionError> {
+        let tmp = dir.join("session.json.tmp");
+        fs::write(
+            &tmp,
+            serde_json::to_vec_pretty(self)
+                .map_err(|err| SessionError::Manifest(err.to_string()))?,
+        )?;
+        fs::rename(tmp, Self::path(dir))?;
+        Ok(())
+    }
+
+    pub fn read(dir: &Path) -> Result<Self, SessionError> {
+        let bytes = fs::read(Self::path(dir))?;
+        serde_json::from_slice(&bytes).map_err(|err| SessionError::Manifest(err.to_string()))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -123,5 +171,15 @@ mod tests {
         assert_eq!(session.tape().read_all().unwrap().len(), 1);
         let reopened = Session::open(tmp.path(), agent, session.id()).unwrap();
         assert_eq!(reopened.tape().read_all().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn an_old_manifest_without_a_registration_still_reads() {
+        let manifest: SessionManifest = serde_json::from_str(
+            r#"{"id":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","agent_id":"bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb","card_hash":"abc","at":"2026-10-03T00:00:00Z"}"#,
+        )
+        .unwrap();
+        assert_eq!(manifest.register_id, None);
+        assert_eq!(manifest.config_id, None);
     }
 }
