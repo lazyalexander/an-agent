@@ -25,9 +25,38 @@ pub struct SpoolReply {
     pub reply: String,
 }
 
+/// A mounted body's claim about workspace events: which it receives
+/// (`consumes`) and which it may emit (`produces`). Matched against the
+/// register at mount — the bind point — and only there: the delivery path
+/// stays name-only. Matching is mutual, both directions:
+///
+/// - every consumed event must be registered *and* routed to this spool
+///   (the workspace must be able to deliver what the spool asks for);
+/// - every produced event must be registered (the workspace must admit
+///   what the spool may emit);
+/// - every route naming this spool must be in its `consumes` (the spool
+///   must have asked for what the workspace promises to deliver).
+///
+/// Shape schemas are not matched yet: the workspace declares names only,
+/// so there is nothing to compare a payload shape against.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct SpoolDeclaration {
+    pub consumes: Vec<String>,
+    pub produces: Vec<String>,
+}
+
 impl AgentControl {
     /// Mount a body under `name`. A second mount of the same name is refused.
-    pub fn mount_spool(&self, name: &str, body: Arc<dyn SpoolBeat>) -> Result<(), ControlError> {
+    /// The declaration is matched against the current registration; a
+    /// mismatch refuses the mount. With no registration at all, only a
+    /// silent body (no consumes, no produces) mounts.
+    pub fn mount_spool(
+        &self,
+        name: &str,
+        body: Arc<dyn SpoolBeat>,
+        declaration: &SpoolDeclaration,
+    ) -> Result<(), ControlError> {
+        self.match_declaration(name, declaration)?;
         let mut bodies = self
             .inner
             .bodies
@@ -38,6 +67,65 @@ impl AgentControl {
         }
         bodies.push((name.to_string(), body));
         Ok(())
+    }
+
+    /// The bind-time match. All mismatches are reported together, so one
+    /// failed mount names every broken promise, not just the first.
+    fn match_declaration(
+        &self,
+        name: &str,
+        declaration: &SpoolDeclaration,
+    ) -> Result<(), ControlError> {
+        let registration = match self.current_registration() {
+            Ok(registration) => registration,
+            // No counterpart to match against: a silent body mounts, an
+            // event-taking one reports the missing register.
+            Err(ControlError::NotRegistered)
+                if declaration.consumes.is_empty() && declaration.produces.is_empty() =>
+            {
+                return Ok(());
+            }
+            Err(err) => return Err(err),
+        };
+        let mut mismatches = Vec::new();
+        for event in &declaration.consumes {
+            match registration
+                .events
+                .iter()
+                .find(|route| &route.name == event)
+            {
+                None => mismatches.push(format!("consumes unregistered event {event}")),
+                Some(route) if !route.spools.iter().any(|spool| spool == name) => mismatches.push(
+                    format!("consumes {event} but its route does not name {name}"),
+                ),
+                Some(_) => {}
+            }
+        }
+        for event in &declaration.produces {
+            if !registration.events.iter().any(|route| &route.name == event) {
+                mismatches.push(format!("produces unregistered event {event}"));
+            }
+        }
+        for route in registration
+            .events
+            .iter()
+            .filter(|route| route.spools.iter().any(|spool| spool == name))
+        {
+            if !declaration.consumes.contains(&route.name) {
+                mismatches.push(format!(
+                    "route {} names {name} but it is not consumed",
+                    route.name
+                ));
+            }
+        }
+        if mismatches.is_empty() {
+            Ok(())
+        } else {
+            Err(ControlError::MountMismatch {
+                name: name.to_string(),
+                reasons: mismatches,
+            })
+        }
     }
 
     /// Remove a mounted body. The workspace log is left as it is.
