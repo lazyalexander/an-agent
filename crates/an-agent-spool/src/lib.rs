@@ -5,5 +5,6 @@
 
 pub mod descriptor;
 pub mod library;
+pub mod policy;
 pub mod scope;
 pub mod spool;
