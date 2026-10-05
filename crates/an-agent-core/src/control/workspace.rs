@@ -1,7 +1,7 @@
 //! Names the plugin registered, and the config and env it injects.
-//! Config is a JSON document. Env is markdown text.
+//! Config is a TOML document (`WorkspaceConfig`). Env is markdown text.
 
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 
 use serde::{Deserialize, Serialize};
 
@@ -21,6 +21,152 @@ pub struct Registration {
     pub events: Vec<EventRoute>,
     pub config: Vec<String>,
     pub env: Vec<String>,
+}
+
+/// The workspace's hard requirements, one TOML document per registered
+/// config name. Strict: unknown fields are refused — loosening is a
+/// deliberate schema change, not a parse accident.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct WorkspaceConfig {
+    /// Spool packages the workspace asks for, pinned by version. Mounting
+    /// (with the requires-closure check) is the host's follow-up, not this
+    /// document's act.
+    #[serde(default)]
+    pub spool: Vec<SpoolRequirement>,
+    /// IO contract per event name. `schema` is carried, not enforced yet —
+    /// enforcement joins `push_event` admission in a later slice.
+    #[serde(default)]
+    pub event: BTreeMap<String, EventContract>,
+    /// Hook chain order and parameters. Implementations live in the host;
+    /// the kernel validates shape only, never that a named hook exists.
+    #[serde(default)]
+    pub hooks: Hooks,
+}
+
+/// One pinned spool the workspace asks for.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SpoolRequirement {
+    pub name: String,
+    /// Exact `x.y.z`, same discipline as the spool shelf.
+    pub version: String,
+    /// Mount config handed to the spool body.
+    #[serde(default)]
+    pub config: toml::Table,
+}
+
+/// The IO contract of one event name.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct EventContract {
+    /// Spools that consume this event, in delivery order.
+    #[serde(default)]
+    pub consumers: Vec<String>,
+    /// Payload contract, kept as an opaque TOML value until enforcement
+    /// lands. The kernel does not interpret it.
+    pub schema: Option<toml::Value>,
+}
+
+/// One hook handler: a tagged mechanism, never a bare name. Data declares
+/// *how* to invoke, the same shape as codex's `HookHandlerConfig`
+/// (command/mcp/prompt/agent) — minus `command`: arbitrary host commands
+/// would bypass admission, and if one is ever wanted it is admitted like
+/// bash, not smuggled in as a hook.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
+pub enum HookHandler {
+    /// A spool from the shelf, pinned. A rhai policy is the natural
+    /// gate/transform: pure computation over the event, verdict out.
+    Spool { name: String, version: String },
+    /// An MCP tool call — the only kind of tool we have. External-world
+    /// checks (and their cost) stay visible as tool calls.
+    Mcp {
+        server: String,
+        tool: String,
+        #[serde(default)]
+        input: toml::Table,
+    },
+}
+
+/// Before/after hook chains around spool delivery: two fixed points on
+/// the delivery path, not open-ended names.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Hooks {
+    #[serde(default)]
+    pub before: Vec<HookHandler>,
+    #[serde(default)]
+    pub after: Vec<HookHandler>,
+}
+
+impl WorkspaceConfig {
+    /// Shape checks beyond parsing. Refuses what TOML cannot: empty or
+    /// duplicated names, loose versions.
+    fn validate(&self) -> Result<(), ControlError> {
+        let mut spools = HashSet::new();
+        for req in &self.spool {
+            if req.name.is_empty() {
+                return Err(ControlError::InvalidConfig("empty spool name".into()));
+            }
+            if !spools.insert(req.name.as_str()) {
+                return Err(ControlError::InvalidConfig(format!(
+                    "duplicate spool: {}",
+                    req.name
+                )));
+            }
+            if !exact_version(&req.version) {
+                return Err(ControlError::InvalidConfig(format!(
+                    "spool {} version must be exact x.y.z: {}",
+                    req.name, req.version
+                )));
+            }
+        }
+        for (name, contract) in &self.event {
+            if name.is_empty() {
+                return Err(ControlError::InvalidConfig("empty event name".into()));
+            }
+            for consumer in &contract.consumers {
+                if consumer.is_empty() {
+                    return Err(ControlError::InvalidConfig(format!(
+                        "empty consumer on event {name}"
+                    )));
+                }
+            }
+        }
+        for hook in self.hooks.before.iter().chain(self.hooks.after.iter()) {
+            match hook {
+                HookHandler::Spool { name, version } => {
+                    if name.is_empty() {
+                        return Err(ControlError::InvalidConfig("empty hook spool name".into()));
+                    }
+                    if !exact_version(version) {
+                        return Err(ControlError::InvalidConfig(format!(
+                            "hook spool {name} version must be exact x.y.z: {version}"
+                        )));
+                    }
+                }
+                HookHandler::Mcp { server, tool, .. } => {
+                    if server.is_empty() || tool.is_empty() {
+                        return Err(ControlError::InvalidConfig(
+                            "hook mcp server and tool must be non-empty".into(),
+                        ));
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
+/// Exact `x.y.z` — the shelf pins versions, so anything naming a spool
+/// does too.
+fn exact_version(version: &str) -> bool {
+    let parts: Vec<&str> = version.split('.').collect();
+    parts.len() == 3
+        && parts
+            .iter()
+            .all(|p| !p.is_empty() && p.bytes().all(|b| b.is_ascii_digit()))
 }
 
 impl AgentControl {
@@ -44,13 +190,16 @@ impl AgentControl {
         Ok(self.inner.workspace.push_event(name, body)?)
     }
 
-    /// Store one JSON document under a registered name. The host injects
-    /// the bytes. The kernel checks that they parse and does not read the
-    /// fields. Identical bytes for that name keep the previous id.
+    /// Store one TOML document under a registered name. The host injects
+    /// the bytes. The kernel parses them as a `WorkspaceConfig` and checks
+    /// the shape. Identical bytes for that name keep the previous id.
     pub fn put_config(&self, name: &str, bytes: &[u8]) -> Result<WorkspaceRecord, ControlError> {
         self.admit("config", name)?;
-        serde_json::from_slice::<serde_json::Value>(bytes)
+        let text = std::str::from_utf8(bytes)
             .map_err(|err| ControlError::InvalidConfig(err.to_string()))?;
+        let parsed: WorkspaceConfig =
+            toml::from_str(text).map_err(|err| ControlError::InvalidConfig(err.to_string()))?;
+        parsed.validate()?;
         Ok(self.inner.workspace.put_config(name, bytes)?)
     }
 

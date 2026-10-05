@@ -3,7 +3,7 @@
 //! The tape is born here.
 //!
 //! Config and env belong to the workspace. The host injects them. Config is
-//! a JSON document. Env is markdown. A spool does not store either one.
+//! a TOML document. Env is markdown. A spool does not store either one.
 //!
 //! A plugin registers the names this process watches. Writes outside that
 //! list are refused. The list is a snapshot: a new list is a new id, and
@@ -39,7 +39,7 @@ mod spool;
 mod workspace;
 
 pub use spool::{SpoolBeat, SpoolReply};
-pub use workspace::{EventRoute, Registration};
+pub use workspace::{EventRoute, HookHandler, Hooks, Registration, WorkspaceConfig};
 
 #[derive(Debug, Error)]
 pub enum ControlError {
