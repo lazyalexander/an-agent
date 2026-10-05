@@ -108,8 +108,8 @@ consumers = ["translator"]
 schema = { type = "object", required = ["text"] }
 
 [hooks]
-before = ["schema_check"]
-after = ["reply_contract"]
+before = [{ type = "spool", name = "schema_check", version = "1.0.0" }]
+after = [{ type = "mcp", server = "guard", tool = "screen_reply" }]
 "#;
     control.put_config("canvas", full).unwrap();
 
@@ -144,9 +144,40 @@ after = ["reply_contract"]
         control.put_config("canvas", b"[event.\"\"]\n"),
         Err(ControlError::InvalidConfig(_))
     ));
-    // Empty hook name.
+    // Hook handlers are tagged mechanisms: a bare string no longer parses,
+    // and a "command" handler is refused by the type system — arbitrary
+    // host commands are not a hook kind.
     assert!(matches!(
-        control.put_config("canvas", b"[hooks]\nbefore = [\"\"]\n"),
+        control.put_config("canvas", b"[hooks]\nbefore = [\"schema_check\"]\n"),
+        Err(ControlError::InvalidConfig(_))
+    ));
+    assert!(matches!(
+        control.put_config(
+            "canvas",
+            b"[hooks]\nbefore = [{ type = \"command\", command = \"rm -rf /\" }]\n"
+        ),
+        Err(ControlError::InvalidConfig(_))
+    ));
+    // Empty names inside a handler.
+    assert!(matches!(
+        control.put_config(
+            "canvas",
+            b"[hooks]\nbefore = [{ type = \"spool\", name = \"\", version = \"1.0.0\" }]\n"
+        ),
+        Err(ControlError::InvalidConfig(_))
+    ));
+    assert!(matches!(
+        control.put_config(
+            "canvas",
+            b"[hooks]\nafter = [{ type = \"mcp\", server = \"\", tool = \"x\" }]\n"
+        ),
+        Err(ControlError::InvalidConfig(_))
+    ));
+    assert!(matches!(
+        control.put_config(
+            "canvas",
+            b"[hooks]\nbefore = [{ type = \"spool\", name = \"a\", version = \"1\" }]\n"
+        ),
         Err(ControlError::InvalidConfig(_))
     ));
 }

@@ -68,14 +68,36 @@ pub struct EventContract {
     pub schema: Option<toml::Value>,
 }
 
-/// Before/after hook chains around spool delivery.
+/// One hook handler: a tagged mechanism, never a bare name. Data declares
+/// *how* to invoke, the same shape as codex's `HookHandlerConfig`
+/// (command/mcp/prompt/agent) — minus `command`: arbitrary host commands
+/// would bypass admission, and if one is ever wanted it is admitted like
+/// bash, not smuggled in as a hook.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
+pub enum HookHandler {
+    /// A spool from the shelf, pinned. A rhai policy is the natural
+    /// gate/transform: pure computation over the event, verdict out.
+    Spool { name: String, version: String },
+    /// An MCP tool call — the only kind of tool we have. External-world
+    /// checks (and their cost) stay visible as tool calls.
+    Mcp {
+        server: String,
+        tool: String,
+        #[serde(default)]
+        input: toml::Table,
+    },
+}
+
+/// Before/after hook chains around spool delivery: two fixed points on
+/// the delivery path, not open-ended names.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Hooks {
     #[serde(default)]
-    pub before: Vec<String>,
+    pub before: Vec<HookHandler>,
     #[serde(default)]
-    pub after: Vec<String>,
+    pub after: Vec<HookHandler>,
 }
 
 impl WorkspaceConfig {
@@ -93,12 +115,7 @@ impl WorkspaceConfig {
                     req.name
                 )));
             }
-            let parts: Vec<&str> = req.version.split('.').collect();
-            let exact = parts.len() == 3
-                && parts
-                    .iter()
-                    .all(|p| !p.is_empty() && p.bytes().all(|b| b.is_ascii_digit()));
-            if !exact {
+            if !exact_version(&req.version) {
                 return Err(ControlError::InvalidConfig(format!(
                     "spool {} version must be exact x.y.z: {}",
                     req.name, req.version
@@ -118,12 +135,38 @@ impl WorkspaceConfig {
             }
         }
         for hook in self.hooks.before.iter().chain(self.hooks.after.iter()) {
-            if hook.is_empty() {
-                return Err(ControlError::InvalidConfig("empty hook name".into()));
+            match hook {
+                HookHandler::Spool { name, version } => {
+                    if name.is_empty() {
+                        return Err(ControlError::InvalidConfig("empty hook spool name".into()));
+                    }
+                    if !exact_version(version) {
+                        return Err(ControlError::InvalidConfig(format!(
+                            "hook spool {name} version must be exact x.y.z: {version}"
+                        )));
+                    }
+                }
+                HookHandler::Mcp { server, tool, .. } => {
+                    if server.is_empty() || tool.is_empty() {
+                        return Err(ControlError::InvalidConfig(
+                            "hook mcp server and tool must be non-empty".into(),
+                        ));
+                    }
+                }
             }
         }
         Ok(())
     }
+}
+
+/// Exact `x.y.z` — the shelf pins versions, so anything naming a spool
+/// does too.
+fn exact_version(version: &str) -> bool {
+    let parts: Vec<&str> = version.split('.').collect();
+    parts.len() == 3
+        && parts
+            .iter()
+            .all(|p| !p.is_empty() && p.bytes().all(|b| b.is_ascii_digit()))
 }
 
 impl AgentControl {

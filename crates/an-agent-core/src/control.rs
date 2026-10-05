@@ -39,7 +39,7 @@ mod spool;
 mod workspace;
 
 pub use spool::{SpoolBeat, SpoolReply};
-pub use workspace::{EventRoute, Registration, WorkspaceConfig};
+pub use workspace::{EventRoute, HookHandler, Hooks, Registration, WorkspaceConfig};
 
 #[derive(Debug, Error)]
 pub enum ControlError {
