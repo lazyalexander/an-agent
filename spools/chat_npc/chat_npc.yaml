@@ -1,0 +1,17 @@
+v: 1
+kind: spool
+name: chat_npc
+version: 1.0.0
+summary: a discord character — answers one message in persona
+constructor: rhai
+script: "@chat_npc.rhai"
+effect:
+  file: { op: none }
+  memory: { op: ignore }
+  net: none
+  proc: none
+  flow: none
+inverse: none
+requires: []
+consumes: [discord.message]
+produces: [discord.post]
