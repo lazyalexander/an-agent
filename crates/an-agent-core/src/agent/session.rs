@@ -112,6 +112,10 @@ pub struct SessionManifest {
     pub env_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub env_sha256: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub register_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub register_sha256: Option<String>,
     pub at: String,
 }
 
@@ -167,5 +171,15 @@ mod tests {
         assert_eq!(session.tape().read_all().unwrap().len(), 1);
         let reopened = Session::open(tmp.path(), agent, session.id()).unwrap();
         assert_eq!(reopened.tape().read_all().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn an_old_manifest_without_a_registration_still_reads() {
+        let manifest: SessionManifest = serde_json::from_str(
+            r#"{"id":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","agent_id":"bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb","card_hash":"abc","at":"2026-10-03T00:00:00Z"}"#,
+        )
+        .unwrap();
+        assert_eq!(manifest.register_id, None);
+        assert_eq!(manifest.config_id, None);
     }
 }
