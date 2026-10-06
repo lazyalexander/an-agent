@@ -1,0 +1,17 @@
+v: 1
+kind: spool
+name: discord
+version: 0.1.0
+summary: the discord channel — consumes posts to send, produces inbound messages
+constructor: host
+host: discord_bridge
+effect:
+  file: { op: none }
+  memory: { op: ignore }
+  net: egress
+  proc: none
+  flow: both
+inverse: none
+requires: []
+consumes: [discord.post]
+produces: [discord.message]

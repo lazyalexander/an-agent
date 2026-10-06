@@ -205,7 +205,7 @@ impl RhaiPolicy {
 
 /// Spool scripts run untrusted-ish registry content: hard resource
 /// bounds, not just an operation budget.
-fn bounded_engine() -> rhai::Engine {
+pub(crate) fn bounded_engine() -> rhai::Engine {
     let mut engine = rhai::Engine::new();
     engine.set_max_operations(100_000);
     engine.set_max_string_size(1 << 20);

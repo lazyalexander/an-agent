@@ -3,6 +3,7 @@
 //! are content-addressed and never rewritten. The kernel does not depend
 //! on this crate.
 
+pub mod beat;
 pub mod descriptor;
 pub mod library;
 pub mod policy;
