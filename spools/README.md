@@ -23,9 +23,22 @@ Rules of the shelf:
   (`config`); they yield continuations (`halt / utter / invoke_model /
   invoke_tool / approve`); they never hold full text, handles, or
   secrets.
+- The rhai constructor has two sorts: a **policy** (tape projection in,
+  continuation out — `an_agent_spool::policy`) and a **beat** (one
+  workspace event in, a string reply out — `an_agent_spool::beat`).
+  Beats are compiled at mount: a syntax error fails the mount, never
+  the first event. Authoring gotcha: rhai's `trim()` mutates in place
+  and returns unit — don't use it in expressions.
 
 Current entries:
 
 - `agent_loop/` — the thin loop as a policy: model proposes (bounded to
   the requires whitelist), the policy approves by reference.
 - `echo/` — the trivial host-constructor spool, the library's hello world.
+- `chat_npc/` — a discord character (rhai beat): answers one
+  `discord.message` in persona, replies become `discord.post`. One body,
+  many mounts — the persona is mount config.
+- `discord/` — the channel envelope (host constructor): consumes
+  `discord.post` to send, produces inbound `discord.message`, net
+  egress. The scripted parley case (`an-agent-spool/tests/
+  discord_parley.rs`) stands in for the real bridge.
