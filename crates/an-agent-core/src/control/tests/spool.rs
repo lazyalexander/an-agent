@@ -1,7 +1,7 @@
 //! Offer and dispatch. A failed body is unmounted. The event stays.
 
 use super::*;
-use super::{Boom, Clip, Ink, listed, stroke_card};
+use super::{Boom, Clip, Ink, declares, listed, stroke_card};
 
 #[test]
 fn offer_hands_each_spool_the_recorded_event() {
@@ -19,11 +19,11 @@ fn offer_hands_each_spool_the_recorded_event() {
         Err(ControlError::NotMounted(_))
     ));
     assert!(matches!(
-        control.mount_spool("clip", Arc::new(Clip)),
+        control.mount_spool("clip", Arc::new(Clip), &declares(&["stroke"], &[])),
         Ok(())
     ));
     assert!(matches!(
-        control.mount_spool("clip", Arc::new(Clip)),
+        control.mount_spool("clip", Arc::new(Clip), &declares(&["stroke"], &[])),
         Err(ControlError::AlreadyMounted(_))
     ));
 
@@ -36,7 +36,11 @@ fn offer_hands_each_spool_the_recorded_event() {
         seen: Mutex::new(None),
     });
     control
-        .mount_spool("ink", Arc::clone(&ink) as Arc<dyn SpoolBeat>)
+        .mount_spool(
+            "ink",
+            Arc::clone(&ink) as Arc<dyn SpoolBeat>,
+            &declares(&["stroke"], &[]),
+        )
         .unwrap();
     let painted = control.offer(id, "ink").unwrap();
     assert_eq!(painted.spool, "ink");
@@ -89,9 +93,15 @@ fn a_failed_spool_is_unmounted_and_the_event_stays() {
     let ink = Arc::new(Ink {
         seen: Mutex::new(None),
     });
-    control.mount_spool("boom", Arc::new(Boom)).unwrap();
     control
-        .mount_spool("ink", Arc::clone(&ink) as Arc<dyn SpoolBeat>)
+        .mount_spool("boom", Arc::new(Boom), &declares(&["stroke"], &[]))
+        .unwrap();
+    control
+        .mount_spool(
+            "ink",
+            Arc::clone(&ink) as Arc<dyn SpoolBeat>,
+            &declares(&["stroke"], &[]),
+        )
         .unwrap();
     assert!(matches!(
         control.offer(id, "boom"),
@@ -143,10 +153,18 @@ fn dispatch_follows_the_route_and_continues_after_a_crash() {
     let ink = Arc::new(Ink {
         seen: Mutex::new(None),
     });
-    control.mount_spool("clip", Arc::new(Clip)).unwrap();
-    control.mount_spool("boom", Arc::new(Boom)).unwrap();
     control
-        .mount_spool("ink", Arc::clone(&ink) as Arc<dyn SpoolBeat>)
+        .mount_spool("clip", Arc::new(Clip), &declares(&["stroke"], &[]))
+        .unwrap();
+    control
+        .mount_spool("boom", Arc::new(Boom), &declares(&["stroke"], &[]))
+        .unwrap();
+    control
+        .mount_spool(
+            "ink",
+            Arc::clone(&ink) as Arc<dyn SpoolBeat>,
+            &declares(&["stroke"], &[]),
+        )
         .unwrap();
 
     let replies = control.dispatch(id).unwrap();
@@ -192,7 +210,7 @@ fn dispatch_follows_the_route_and_continues_after_a_crash() {
         );
     }
     assert!(matches!(
-        control.mount_spool("boom", Arc::new(Boom)),
+        control.mount_spool("boom", Arc::new(Boom), &declares(&["stroke"], &[])),
         Ok(())
     ));
     assert!(matches!(
@@ -200,7 +218,8 @@ fn dispatch_follows_the_route_and_continues_after_a_crash() {
             "ink",
             Arc::new(Ink {
                 seen: Mutex::new(None)
-            })
+            }),
+            &declares(&["stroke"], &[]),
         ),
         Err(ControlError::AlreadyMounted(_))
     ));
@@ -211,5 +230,68 @@ fn dispatch_follows_the_route_and_continues_after_a_crash() {
     assert!(matches!(
         control.dispatch(id),
         Err(ControlError::Unregistered(name)) if name == "stroke"
+    ));
+}
+
+/// Mount is the bind point: a body's declaration and the register must
+/// agree, in both directions, or the mount is refused.
+#[test]
+fn mount_matches_declaration_against_the_register() {
+    let tmp = TempDir::new("control-mount-match");
+    let control = AgentControl::open(tmp.path(), &bash_registry()).unwrap();
+
+    // No registration: only a silent body mounts.
+    assert!(matches!(
+        control.mount_spool("clip", Arc::new(Clip), &declares(&["stroke"], &[])),
+        Err(ControlError::NotRegistered)
+    ));
+    control
+        .mount_spool(
+            "quiet",
+            Arc::new(Ink {
+                seen: Mutex::new(None),
+            }),
+            &declares(&[], &[]),
+        )
+        .unwrap();
+    control.unmount_spool("quiet").unwrap();
+
+    control
+        .register(&listed(&[("stroke", &["clip"]), ("note", &[])], &[], &[]))
+        .unwrap();
+    // Happy path: consumed, registered, routed to this spool.
+    control
+        .mount_spool("clip", Arc::new(Clip), &declares(&["stroke"], &[]))
+        .unwrap();
+
+    // Consumed but not registered.
+    assert!(matches!(
+        control.mount_spool("ink", Arc::new(Ink { seen: Mutex::new(None) }), &declares(&["ghost"], &[])),
+        Err(ControlError::MountMismatch { name, reasons }) if name == "ink" && reasons.iter().any(|r| r.contains("unregistered event ghost"))
+    ));
+    // Registered, but the route delivers to someone else.
+    assert!(matches!(
+        control.mount_spool("ink", Arc::new(Ink { seen: Mutex::new(None) }), &declares(&["stroke"], &[])),
+        Err(ControlError::MountMismatch { reasons, .. }) if reasons.iter().any(|r| r.contains("route does not name ink"))
+    ));
+    // Produced but not registered.
+    assert!(matches!(
+        control.mount_spool("ink", Arc::new(Ink { seen: Mutex::new(None) }), &declares(&[], &["ghost"])),
+        Err(ControlError::MountMismatch { reasons, .. }) if reasons.iter().any(|r| r.contains("produces unregistered event ghost"))
+    ));
+    // The reverse direction: the route names clip, so clip cannot stay silent.
+    assert!(matches!(
+        control.mount_spool("clip2", Arc::new(Clip), &declares(&[], &[])),
+        Ok(())
+    ));
+    control.unmount_spool("clip").unwrap();
+    assert!(matches!(
+        control.mount_spool("clip", Arc::new(Clip), &declares(&[], &[])),
+        Err(ControlError::MountMismatch { reasons, .. }) if reasons.iter().any(|r| r.contains("route stroke names clip"))
+    ));
+    // All mismatches are reported together.
+    assert!(matches!(
+        control.mount_spool("ink", Arc::new(Ink { seen: Mutex::new(None) }), &declares(&["ghost", "stroke"], &["ghost"])),
+        Err(ControlError::MountMismatch { reasons, .. }) if reasons.len() == 3
     ));
 }

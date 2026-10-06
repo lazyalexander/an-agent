@@ -110,6 +110,8 @@ effect:
   flow: none
 inverse: none
 requires: []
+consumes: []
+produces: []
 "#;
 
     #[test]
