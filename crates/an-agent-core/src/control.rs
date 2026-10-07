@@ -35,10 +35,12 @@ use crate::principal::factory::ToolCtor;
 use crate::seat::{Pool, PoolError, Seat, TreeError};
 use crate::workspace::Workspace;
 
+mod hooks;
 mod session;
 mod spool;
 mod workspace;
 
+pub use hooks::{HookRunner, HookVerdict};
 pub use spool::{SpoolBeat, SpoolDeclaration, SpoolReply};
 pub use workspace::{EventRoute, HookHandler, Hooks, Registration, WorkspaceConfig};
 
@@ -68,6 +70,10 @@ pub enum ControlError {
     NoEvent,
     #[error("workspace has no such event: {0}")]
     UnknownEvent(String),
+    #[error("hook denied on the {chain} chain: {reason}")]
+    HookDenied { chain: String, reason: String },
+    #[error("config declares hooks but no hook runner is installed")]
+    HookRunnerMissing,
     #[error("spool {name} failed: {reason}")]
     SpoolFailed { name: String, reason: String },
     #[error("workspace has no registration")]
@@ -110,6 +116,7 @@ struct Inner {
     threads: Mutex<HashMap<Uuid, ThreadInner>>,
     workspace: Workspace,
     bodies: Mutex<Vec<(String, Arc<dyn SpoolBeat>)>>,
+    hook_runner: Mutex<Option<Arc<dyn HookRunner>>>,
 }
 
 /// The handle a host software uses to drive agents in this process.
@@ -137,6 +144,7 @@ impl AgentControl {
                 threads: Mutex::new(HashMap::new()),
                 workspace: Workspace::open(sessions_root.as_ref().join("workspace"))?,
                 bodies: Mutex::new(Vec::new()),
+                hook_runner: Mutex::new(None),
             }),
         })
     }

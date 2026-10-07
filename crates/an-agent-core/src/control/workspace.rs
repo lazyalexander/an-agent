@@ -215,6 +215,21 @@ impl AgentControl {
             .map_err(|err| ControlError::InvalidRegistration(err.to_string()))
     }
 
+    /// The current config document — the latest config record, the same
+    /// "current" cite and seal see. `None` until the first put_config.
+    pub(super) fn current_config(&self) -> Result<Option<WorkspaceConfig>, ControlError> {
+        let cite = self.inner.workspace.cite()?;
+        let Some(sha) = cite.config_sha256 else {
+            return Ok(None);
+        };
+        let bytes = self.inner.workspace.config_bytes(&sha)?;
+        let text = std::str::from_utf8(&bytes)
+            .map_err(|err| ControlError::InvalidConfig(err.to_string()))?;
+        let config: WorkspaceConfig =
+            toml::from_str(text).map_err(|err| ControlError::InvalidConfig(err.to_string()))?;
+        Ok(Some(config))
+    }
+
     pub(super) fn spools_for(&self, name: &str) -> Result<Vec<String>, ControlError> {
         let registration = self.current_registration()?;
         registration
