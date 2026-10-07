@@ -1,5 +1,7 @@
 //! Mounted bodies and delivery. A body receives one workspace event.
 //! It does not read the log, write the tape, or store config or env.
+//! The host lands a reply in software; [`AgentControl::applied`] records
+//! that landing on the thread tape.
 
 use std::sync::Arc;
 
@@ -18,11 +20,14 @@ pub trait SpoolBeat: Send + Sync {
 }
 
 /// What one offered body returned. The workspace event was already on the log.
+/// `tape_id` is the spool note on the thread tape. The host cites it when
+/// it records [`AgentControl::applied`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SpoolReply {
     pub spool: String,
     pub event_id: String,
     pub reply: String,
+    pub tape_id: String,
 }
 
 /// A mounted body's claim about workspace events: which it receives
@@ -143,69 +148,121 @@ impl AgentControl {
     }
 
     /// One beat. The named body receives the latest workspace event.
+    pub fn offer(&self, id: Uuid, name: &str) -> Result<SpoolReply, ControlError> {
+        let event = self.latest_event()?;
+        self.offer_on(id, name, &event.id)
+    }
+
+    /// One beat. The named body receives the workspace event `event_id`.
     /// Core writes the reply on the thread tape. The body does not.
     /// A failure unmounts that body only. The event stays on the log.
-    pub fn offer(&self, id: Uuid, name: &str) -> Result<SpoolReply, ControlError> {
+    pub fn offer_on(
+        &self,
+        id: Uuid,
+        name: &str,
+        event_id: &str,
+    ) -> Result<SpoolReply, ControlError> {
         self.enter_beat(id)?;
         let turn = self.inner.pool.begin_turn(id)?;
-        let event = self.latest_event()?;
-        let Some(body) = self.body_named(name) else {
-            return Err(ControlError::NotMounted(name.to_string()));
-        };
-        match body.receive(&event) {
-            Ok(reply) => {
-                self.note_spool(turn.agent(), name, &event.id, Ok(reply.as_str()))?;
-                Ok(SpoolReply {
-                    spool: name.to_string(),
-                    event_id: event.id,
-                    reply,
-                })
-            }
-            Err(reason) => {
-                self.drop_body(name);
-                self.note_spool(turn.agent(), name, &event.id, Err(reason.as_str()))?;
-                Err(ControlError::SpoolFailed {
-                    name: name.to_string(),
-                    reason,
-                })
-            }
+        let event = self.event_by_id(event_id)?;
+        match self.invoke(turn.agent(), name, &event)? {
+            Ok(reply) => Ok(reply),
+            Err(reason) => Err(ControlError::SpoolFailed {
+                name: name.to_string(),
+                reason,
+            }),
         }
     }
 
     /// One beat. The latest event goes to each spool on its route, in order.
+    pub fn dispatch(&self, id: Uuid) -> Result<Vec<SpoolReply>, ControlError> {
+        let event = self.latest_event()?;
+        self.dispatch_on(id, &event.id)
+    }
+
+    /// One beat. The named event goes to each spool on its route, in order.
     /// A missing spool is noted and skipped. A failed spool is unmounted and
     /// the rest still run. Replies are returned to the host. They are not
     /// written as new workspace events.
-    pub fn dispatch(&self, id: Uuid) -> Result<Vec<SpoolReply>, ControlError> {
+    pub fn dispatch_on(&self, id: Uuid, event_id: &str) -> Result<Vec<SpoolReply>, ControlError> {
         self.enter_beat(id)?;
         let turn = self.inner.pool.begin_turn(id)?;
-        let event = self.latest_event()?;
+        let event = self.event_by_id(event_id)?;
         let event_name = event.name.clone().unwrap_or_default();
         let route = self.spools_for(&event_name)?;
         let mut replies = Vec::new();
         for spool in route {
-            let Some(body) = self.body_named(&spool) else {
-                self.note_spool(turn.agent(), &spool, &event.id, Err("missing"))?;
-                continue;
-            };
-            match body.receive(&event) {
-                Ok(reply) => {
-                    self.note_spool(turn.agent(), &spool, &event.id, Ok(reply.as_str()))?;
-                    replies.push(SpoolReply {
-                        spool,
-                        event_id: event.id.clone(),
-                        reply,
-                    });
+            match self.invoke(turn.agent(), &spool, &event) {
+                Ok(Ok(reply)) => replies.push(reply),
+                Ok(Err(_)) => {}
+                Err(ControlError::NotMounted(_)) => {
+                    self.note_spool(turn.agent(), &spool, &event.id, Err("missing"))?;
                 }
-                Err(reason) => {
-                    self.drop_body(&spool);
-                    self.note_spool(turn.agent(), &spool, &event.id, Err(reason.as_str()))?;
-                }
+                Err(err) => return Err(err),
             }
         }
         drop(turn);
         Ok(replies)
     }
+
+    /// The host landed `reply` in software. Core writes that claim on the
+    /// thread tape and cites the spool note. It does not mutate the host.
+    /// Does not take the beat slot.
+    pub fn applied(
+        &self,
+        id: Uuid,
+        reply: &SpoolReply,
+        note: &str,
+    ) -> Result<String, ControlError> {
+        let agent = self.live(id)?;
+        let content = json!({
+            "spool": reply.spool,
+            "event": reply.event_id,
+            "reply": reply.reply,
+            "note": note,
+        })
+        .to_string();
+        let refs = if reply.tape_id.is_empty() {
+            Vec::new()
+        } else {
+            vec![reply.tape_id.clone()]
+        };
+        self.append_event(
+            &agent,
+            crate::memstream::Kind::Action,
+            "applied",
+            content,
+            refs,
+        )
+    }
+
+    fn invoke(
+        &self,
+        agent: &Agent,
+        name: &str,
+        event: &WorkspaceRecord,
+    ) -> Result<Result<SpoolReply, String>, ControlError> {
+        let Some(body) = self.body_named(name) else {
+            return Err(ControlError::NotMounted(name.to_string()));
+        };
+        match body.receive(event) {
+            Ok(reply) => {
+                let tape_id = self.note_spool(agent, name, &event.id, Ok(reply.as_str()))?;
+                Ok(Ok(SpoolReply {
+                    spool: name.to_string(),
+                    event_id: event.id.clone(),
+                    reply,
+                    tape_id,
+                }))
+            }
+            Err(reason) => {
+                self.drop_body(name);
+                self.note_spool(agent, name, &event.id, Err(reason.as_str()))?;
+                Ok(Err(reason))
+            }
+        }
+    }
+
     fn body_named(&self, name: &str) -> Option<Arc<dyn SpoolBeat>> {
         let bodies = self
             .inner
@@ -233,14 +290,14 @@ impl AgentControl {
         spool: &str,
         event_id: &str,
         outcome: Result<&str, &str>,
-    ) -> Result<(), ControlError> {
+    ) -> Result<String, ControlError> {
         let content = match outcome {
             Ok(reply) => json!({ "spool": spool, "event": event_id, "reply": reply }),
             Err(reason) => json!({ "spool": spool, "event": event_id, "error": reason }),
         };
-        self.append(agent, "spool", content.to_string())?;
-        Ok(())
+        self.append(agent, "spool", content.to_string())
     }
+
     fn latest_event(&self) -> Result<WorkspaceRecord, ControlError> {
         self.inner
             .workspace
@@ -249,5 +306,14 @@ impl AgentControl {
             .rev()
             .find(|record| record.kind == "event")
             .ok_or(ControlError::NoEvent)
+    }
+
+    fn event_by_id(&self, event_id: &str) -> Result<WorkspaceRecord, ControlError> {
+        self.inner
+            .workspace
+            .log()?
+            .into_iter()
+            .find(|record| record.kind == "event" && record.id == event_id)
+            .ok_or_else(|| ControlError::UnknownEvent(event_id.to_string()))
     }
 }

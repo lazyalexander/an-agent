@@ -9,12 +9,13 @@
 //! list are refused. The list is a snapshot: a new list is a new id, and
 //! the old bytes stay.
 //!
-//! `offer` hands one already recorded workspace event to one mounted body.
-//! `dispatch` walks that event's registered spool list, in order. The body
-//! does not read the log and does not write the tape. A missing body is
-//! noted and skipped. A failed body is unmounted. On `offer` the beat ends.
-//! On `dispatch` the rest of the list still runs. The workspace event stays.
-//! `spawn_with` stays a card-and-tape constructor. It is not this entry.
+//! `offer` / `dispatch` wake mounted bodies from a workspace event (latest,
+//! or a named id via `offer_on` / `dispatch_on`). The body does not read the
+//! log, write the tape, or mutate the host. A missing body is noted and
+//! skipped. A failed body is unmounted. Replies go to the tape and back to
+//! the caller. The host lands them in software, then `applied` records that
+//! landing. The workspace event stays. `spawn_with` stays a card-and-tape
+//! constructor. It is not this entry.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -65,6 +66,8 @@ pub enum ControlError {
     MountMismatch { name: String, reasons: Vec<String> },
     #[error("workspace has no event")]
     NoEvent,
+    #[error("workspace has no such event: {0}")]
+    UnknownEvent(String),
     #[error("spool {name} failed: {reason}")]
     SpoolFailed { name: String, reason: String },
     #[error("workspace has no registration")]
