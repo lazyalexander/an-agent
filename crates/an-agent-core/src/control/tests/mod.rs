@@ -158,6 +158,7 @@ fn declares(consumes: &[&str], produces: &[&str]) -> SpoolDeclaration {
     }
 }
 
+mod hooks;
 mod session;
 mod spool;
 mod thread;

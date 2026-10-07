@@ -156,6 +156,7 @@ impl AgentControl {
     /// One beat. The named body receives the workspace event `event_id`.
     /// Core writes the reply on the thread tape. The body does not.
     /// A failure unmounts that body only. The event stays on the log.
+    /// The event passes the before chain; the reply passes the after chain.
     pub fn offer_on(
         &self,
         id: Uuid,
@@ -165,8 +166,12 @@ impl AgentControl {
         self.enter_beat(id)?;
         let turn = self.inner.pool.begin_turn(id)?;
         let event = self.event_by_id(event_id)?;
+        self.hooks_before(turn.agent(), &event)?;
         match self.invoke(turn.agent(), name, &event)? {
-            Ok(reply) => Ok(reply),
+            Ok(reply) => {
+                self.hooks_after(turn.agent(), &reply)?;
+                Ok(reply)
+            }
             Err(reason) => Err(ControlError::SpoolFailed {
                 name: name.to_string(),
                 reason,
@@ -183,17 +188,24 @@ impl AgentControl {
     /// One beat. The named event goes to each spool on its route, in order.
     /// A missing spool is noted and skipped. A failed spool is unmounted and
     /// the rest still run. Replies are returned to the host. They are not
-    /// written as new workspace events.
+    /// written as new workspace events. The event passes the before chain
+    /// once; each reply passes the after chain — a denied reply does not
+    /// reach the host, and the denial is taped.
     pub fn dispatch_on(&self, id: Uuid, event_id: &str) -> Result<Vec<SpoolReply>, ControlError> {
         self.enter_beat(id)?;
         let turn = self.inner.pool.begin_turn(id)?;
         let event = self.event_by_id(event_id)?;
+        self.hooks_before(turn.agent(), &event)?;
         let event_name = event.name.clone().unwrap_or_default();
         let route = self.spools_for(&event_name)?;
         let mut replies = Vec::new();
         for spool in route {
             match self.invoke(turn.agent(), &spool, &event) {
-                Ok(Ok(reply)) => replies.push(reply),
+                Ok(Ok(reply)) => match self.hooks_after(turn.agent(), &reply) {
+                    Ok(()) => replies.push(reply),
+                    Err(ControlError::HookDenied { .. }) => {}
+                    Err(err) => return Err(err),
+                },
                 Ok(Err(_)) => {}
                 Err(ControlError::NotMounted(_)) => {
                     self.note_spool(turn.agent(), &spool, &event.id, Err("missing"))?;
