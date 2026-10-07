@@ -50,6 +50,10 @@ pub struct SpoolRequirement {
     pub name: String,
     /// Exact `x.y.z`, same discipline as the spool shelf.
     pub version: String,
+    /// Instance name to mount under; defaults to `name`. One body mounts
+    /// as many instances — personas are mount config, not code.
+    #[serde(default)]
+    pub mount: Option<String>,
     /// Mount config handed to the spool body.
     #[serde(default)]
     pub config: toml::Table,
@@ -89,17 +93,25 @@ pub struct Hooks {
 
 impl WorkspaceConfig {
     /// Shape checks beyond parsing. Refuses what TOML cannot: empty or
-    /// duplicated names, loose versions.
+    /// duplicated instance names, loose versions. Uniqueness is by
+    /// instance (`mount` or `name`), not package: one body may mount as
+    /// many instances with different config.
     fn validate(&self) -> Result<(), ControlError> {
         let mut spools = HashSet::new();
         for req in &self.spool {
             if req.name.is_empty() {
                 return Err(ControlError::InvalidConfig("empty spool name".into()));
             }
-            if !spools.insert(req.name.as_str()) {
+            let instance = req.mount.as_deref().unwrap_or(req.name.as_str());
+            if instance.is_empty() {
                 return Err(ControlError::InvalidConfig(format!(
-                    "duplicate spool: {}",
+                    "empty mount name on spool {}",
                     req.name
+                )));
+            }
+            if !spools.insert(instance) {
+                return Err(ControlError::InvalidConfig(format!(
+                    "duplicate spool instance: {instance}"
                 )));
             }
             if !exact_version(&req.version) {
@@ -228,6 +240,13 @@ impl AgentControl {
         let config: WorkspaceConfig =
             toml::from_str(text).map_err(|err| ControlError::InvalidConfig(err.to_string()))?;
         Ok(Some(config))
+    }
+
+    /// The current config document, public face: hosts read mount
+    /// requirements and parameters from it. The same bytes cite and seal
+    /// see — `None` until the first put_config.
+    pub fn workspace_config(&self) -> Result<Option<WorkspaceConfig>, ControlError> {
+        self.current_config()
     }
 
     pub(super) fn spools_for(&self, name: &str) -> Result<Vec<String>, ControlError> {
