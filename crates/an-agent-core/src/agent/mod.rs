@@ -11,7 +11,7 @@ use thiserror::Error;
 use uuid::Uuid;
 
 use crate::act::{ActCtx, Tool};
-use crate::principal::card::AgentCard;
+use crate::principal::card::{AgentCard, ModelSpec};
 use crate::principal::factory::{self, BuiltAgent, FactoryError};
 
 pub use session::{Session, SessionError, SessionManifest};
@@ -30,12 +30,17 @@ pub struct Agent {
     id_str: String,
     card_hash: String,
     prompt: String,
+    model: ModelSpec,
     tools: Vec<Arc<dyn Tool>>,
     session: Session,
 }
 
 impl Agent {
-    pub fn from_built(rt: BuiltAgent, session: Session) -> Result<Self, AgentError> {
+    pub fn from_built(
+        rt: BuiltAgent,
+        session: Session,
+        model: ModelSpec,
+    ) -> Result<Self, AgentError> {
         let id: Uuid = rt
             .agent_id
             .parse()
@@ -51,6 +56,7 @@ impl Agent {
             id_str: rt.agent_id,
             card_hash: rt.card_hash,
             prompt: rt.prompt,
+            model,
             tools: rt.tools,
             session,
         })
@@ -70,6 +76,11 @@ impl Agent {
 
     pub fn prompt(&self) -> &str {
         &self.prompt
+    }
+
+    /// The card's model spec — the grant every admitted model call cites.
+    pub fn model(&self) -> &ModelSpec {
+        &self.model
     }
 
     pub fn tools(&self) -> &[Arc<dyn Tool>] {
@@ -111,7 +122,7 @@ pub fn spawn_with(
     let hash = card.hash()?;
     let built = factory::build_with(card, &hash, registry)?;
     let session = Session::create(sessions_root, card.id)?;
-    Ok(Agent::from_built(built, session)?)
+    Ok(Agent::from_built(built, session, card.model.clone())?)
 }
 
 /// Bind a card to an existing session directory. Does not create a tape.
@@ -124,7 +135,7 @@ pub fn spawn_resume(
     let hash = card.hash()?;
     let built = factory::build_with(card, &hash, registry)?;
     let session = Session::open(sessions_root, card.id, session_id)?;
-    Ok(Agent::from_built(built, session)?)
+    Ok(Agent::from_built(built, session, card.model.clone())?)
 }
 
 pub fn spawn_arc_with(

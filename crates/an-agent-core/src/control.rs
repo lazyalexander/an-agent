@@ -35,11 +35,13 @@ use crate::principal::factory::ToolCtor;
 use crate::seat::{Pool, PoolError, Seat, TreeError};
 use crate::workspace::Workspace;
 
+mod agent_beat;
 mod hooks;
 mod session;
 mod spool;
 mod workspace;
 
+pub use agent_beat::{AgentBody, BeatStep, ModelClient, ModelMessage};
 pub use hooks::{HookRunner, HookVerdict};
 use spool::Mounted;
 pub use spool::{ReplyIntent, SpoolBeat, SpoolDeclaration, SpoolReply};
@@ -77,6 +79,12 @@ pub enum ControlError {
     HookDenied { chain: String, reason: String },
     #[error("config declares hooks but no hook runner is installed")]
     HookRunnerMissing,
+    #[error("agent body asked for a model call but no model client is installed")]
+    ModelClientMissing,
+    #[error("model call for spool {spool} failed: {reason}")]
+    ModelFailed { spool: String, reason: String },
+    #[error("tape has no such clip: {0}")]
+    UnknownClip(String),
     #[error("spool {name} failed: {reason}")]
     SpoolFailed { name: String, reason: String },
     #[error("workspace has no registration")]
@@ -120,6 +128,7 @@ struct Inner {
     workspace: Workspace,
     bodies: Mutex<Vec<Mounted>>,
     hook_runner: Mutex<Option<Arc<dyn HookRunner>>>,
+    model_client: Mutex<Option<Arc<dyn ModelClient>>>,
 }
 
 /// The handle a host software uses to drive agents in this process.
@@ -148,6 +157,7 @@ impl AgentControl {
                 workspace: Workspace::open(sessions_root.as_ref().join("workspace"))?,
                 bodies: Mutex::new(Vec::new()),
                 hook_runner: Mutex::new(None),
+                model_client: Mutex::new(None),
             }),
         })
     }

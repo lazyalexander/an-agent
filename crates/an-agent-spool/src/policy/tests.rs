@@ -109,3 +109,37 @@ fn evaluate_yields_a_validated_continuation() {
     let policy = RhaiPolicy::from_spool(&garbage, serde_json::Map::new()).unwrap();
     assert!(policy.evaluate(serde_json::json!({})).is_err());
 }
+
+/// The AgentBody mapping: every continuation becomes the matching beat
+/// step, except `approve`, which belongs to the thread loop and errors.
+#[test]
+fn as_agent_body_approve_is_refused() {
+    use an_agent_core::control::{AgentBody, BeatStep};
+    let with_script = |script: &str| {
+        let yaml = format!(
+            "v: 1\nkind: spool\nname: pol\nversion: 1.0.0\nsummary: p\nconstructor: rhai\nscript: |\n  {script}\neffect:\n  net: none\n  file: {{ op: none }}\n  proc: none\n  memory: {{ op: ignore }}\n  flow: none\ninverse: none\nrequires: []\nconsumes: []\nproduces: []\n"
+        );
+        RhaiPolicy::from_spool(&crate::spool::parse(&yaml).unwrap(), serde_json::Map::new())
+            .unwrap()
+    };
+    let projection = serde_json::json!({});
+    let policy = with_script("#{ kind: \"utter\", text: \"hi\" }");
+    assert_eq!(
+        AgentBody::evaluate(&policy, &projection).unwrap(),
+        BeatStep::Utter { text: "hi".into() }
+    );
+    let policy = with_script("#{ kind: \"invoke_model\", clips: [\"c1\"] }");
+    assert_eq!(
+        AgentBody::evaluate(&policy, &projection).unwrap(),
+        BeatStep::InvokeModel {
+            clips: vec!["c1".into()]
+        }
+    );
+    let policy = with_script("#{ kind: \"approve\", clip: \"c1\", index: 0 }");
+    assert!(
+        AgentBody::evaluate(&policy, &projection)
+            .err()
+            .unwrap()
+            .contains("thread loop")
+    );
+}

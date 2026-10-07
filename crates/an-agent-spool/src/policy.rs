@@ -12,6 +12,7 @@
 use serde_json::Value;
 
 use an_agent_core::act::MemoryFacet;
+use an_agent_core::control::{AgentBody, BeatStep};
 
 use crate::spool::{Constructor, Flow, SpoolSpec};
 
@@ -200,6 +201,23 @@ impl RhaiPolicy {
     pub fn evaluate(&self, args: Value) -> Result<Continuation, String> {
         let value = run_script(&self.script, args, self.config.clone())?;
         Continuation::from_value(&value)
+    }
+}
+
+/// A policy on the delivery path: core hands it the projection and drives
+/// the continuation it yields. `Approve` is refused here — approving a
+/// model-proposed tool call belongs to the thread loop, not a spool beat.
+impl AgentBody for RhaiPolicy {
+    fn evaluate(&self, projection: &Value) -> Result<BeatStep, String> {
+        match RhaiPolicy::evaluate(self, projection.clone())? {
+            Continuation::Halt => Ok(BeatStep::Halt),
+            Continuation::Utter { text } => Ok(BeatStep::Utter { text }),
+            Continuation::InvokeModel { clips } => Ok(BeatStep::InvokeModel { clips }),
+            Continuation::InvokeTool { name, args } => Ok(BeatStep::InvokeTool { name, args }),
+            Continuation::Approve { .. } => {
+                Err("approve belongs to the thread loop, not a spool beat".into())
+            }
+        }
     }
 }
 

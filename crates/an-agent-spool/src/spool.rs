@@ -44,6 +44,19 @@ pub enum Flow {
     Both,
 }
 
+/// What kind of mounted body this spool forms. `Beat` is a pure function
+/// event → reply. `Policy` is an agent body: it yields steps and core
+/// drives them (model calls admitted and taped per step). `Gate` is a
+/// hook-chain body — built by the host's hook wiring, never mounted.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Sort {
+    #[default]
+    Beat,
+    Gate,
+    Policy,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Faces {
     pub file: FileFacet,
@@ -83,6 +96,9 @@ pub struct SpoolSpec {
     pub name: String,
     pub version: String,
     pub summary: String,
+    /// Body sort: beat (default), gate, or policy. Absent means beat, so
+    /// descriptors published before sorts parse unchanged.
+    pub sort: Sort,
     pub constructor: Constructor,
     pub effect: Faces,
     pub requires: Vec<Require>,
@@ -107,6 +123,8 @@ struct Raw {
     name: String,
     version: String,
     summary: String,
+    #[serde(default)]
+    sort: Sort,
     constructor: String,
     script: Option<String>,
     host: Option<String>,
@@ -228,6 +246,7 @@ pub fn parse(yaml: &str) -> Result<SpoolSpec, SpoolError> {
         name: raw.name,
         version: raw.version,
         summary: raw.summary,
+        sort: raw.sort,
         constructor,
         effect: Faces {
             file,

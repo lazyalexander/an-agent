@@ -63,6 +63,26 @@ fn parses_a_hosted_spool() {
     assert_eq!(spec.sha256.len(), 64);
 }
 
+/// `sort` defaults to beat, so descriptors published before sorts parse
+/// unchanged; the three sorts round-trip.
+#[test]
+fn sort_defaults_to_beat_and_parses_each_sort() {
+    assert_eq!(parse(&read_yaml()).unwrap().sort, Sort::Beat);
+    for (word, sort) in [
+        ("beat", Sort::Beat),
+        ("gate", Sort::Gate),
+        ("policy", Sort::Policy),
+    ] {
+        let yaml = read_yaml().replace(
+            "summary: Read a workspace file",
+            &format!("summary: s\nsort: {word}"),
+        );
+        assert_eq!(parse(&yaml).unwrap().sort, sort, "{word}");
+    }
+    let yaml = read_yaml().replace("summary: Read a workspace file", "summary: s\nsort: mayor");
+    assert!(parse(&yaml).is_err());
+}
+
 #[test]
 fn rejects_a_tool_an_mcp_block_and_a_permit() {
     let tool = read_yaml().replace("kind: spool", "kind: tool");

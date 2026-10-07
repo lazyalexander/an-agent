@@ -23,12 +23,20 @@ Rules of the shelf:
   (`config`); they yield continuations (`halt / utter / invoke_model /
   invoke_tool / approve`); they never hold full text, handles, or
   secrets.
-- The rhai constructor has two sorts: a **policy** (tape projection in,
-  continuation out — `an_agent_spool::policy`) and a **beat** (one
-  workspace event in, a string reply out — `an_agent_spool::beat`).
-  Beats are compiled at mount: a syntax error fails the mount, never
-  the first event. Authoring gotcha: rhai's `trim()` mutates in place
-  and returns unit — don't use it in expressions.
+- `sort` (optional, default `beat`) names the kind of mounted body:
+  - **beat** — one workspace event in, a string reply out
+    (`an_agent_spool::beat`). Beats are compiled at mount: a syntax error
+    fails the mount, never the first event. Authoring gotcha: rhai's
+    `trim()` mutates in place and returns unit — don't use it in
+    expressions.
+  - **policy** — an agent body: tape projection in, continuation out
+    (`an_agent_spool::policy`), driven step by step by core; every model
+    call is admitted against the thread's card and taped as its own
+    anchored action + observation. On the delivery path `approve` is
+    refused (it belongs to the thread loop) and `invoke_tool` is not
+    admitted yet.
+  - **gate** — hook-chain machinery, built by the host's hook wiring
+    (`HostHooks`); refused at mount.
 
 Current entries:
 
