@@ -41,7 +41,8 @@ mod spool;
 mod workspace;
 
 pub use hooks::{HookRunner, HookVerdict};
-pub use spool::{SpoolBeat, SpoolDeclaration, SpoolReply};
+use spool::Mounted;
+pub use spool::{ReplyIntent, SpoolBeat, SpoolDeclaration, SpoolReply};
 pub use workspace::{EventRoute, HookHandler, Hooks, Registration, WorkspaceConfig};
 
 #[derive(Debug, Error)]
@@ -115,7 +116,7 @@ struct Inner {
     seats: Mutex<Vec<Seat>>,
     threads: Mutex<HashMap<Uuid, ThreadInner>>,
     workspace: Workspace,
-    bodies: Mutex<Vec<(String, Arc<dyn SpoolBeat>)>>,
+    bodies: Mutex<Vec<Mounted>>,
     hook_runner: Mutex<Option<Arc<dyn HookRunner>>>,
 }
 

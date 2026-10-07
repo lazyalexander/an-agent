@@ -5,6 +5,7 @@
 
 use std::sync::Arc;
 
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 use uuid::Uuid;
 
@@ -19,21 +20,95 @@ pub trait SpoolBeat: Send + Sync {
     fn receive(&self, event: &WorkspaceRecord) -> Result<String, String>;
 }
 
+/// One intent a reply asks the host to execute. A spool has no initiation
+/// channel of its own — it expresses, the host decides whether and when to
+/// execute. The after hook chain is the gate before execution.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum ReplyIntent {
+    /// Say this to the user — what "say" means is the host's business.
+    Utter { text: String },
+    /// Ask the host to push a workspace event. Admitted only when the
+    /// event is in the spool's declared `produces`; anything else is
+    /// stripped and the denial taped.
+    Raise { event: String, body: String },
+}
+
+/// The wire convention: a reply string that parses *cleanly* as
+/// `{"utter": "...", "raise": [{"event": "...", "body": "..."}]}` (either
+/// key optional, no unknown keys) is structured intents. Anything else —
+/// plain prose, other JSON, a near-miss with a mistyped field — is one
+/// `Utter` carrying the raw string. The boundary is a full clean parse,
+/// nothing looser, so an intent the kernel does not know yet can never
+/// vanish silently: it degrades to visible text.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct IntentsDoc {
+    utter: Option<String>,
+    raise: Option<Vec<RaiseDoc>>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RaiseDoc {
+    event: String,
+    #[serde(default)]
+    body: String,
+}
+
+fn parse_intents(reply: &str) -> Vec<ReplyIntent> {
+    let plain = || {
+        vec![ReplyIntent::Utter {
+            text: reply.to_string(),
+        }]
+    };
+    let Ok(doc) = serde_json::from_str::<IntentsDoc>(reply) else {
+        return plain();
+    };
+    if doc.utter.is_none() && doc.raise.is_none() {
+        return plain();
+    }
+    let mut intents = Vec::new();
+    if let Some(text) = doc.utter {
+        intents.push(ReplyIntent::Utter { text });
+    }
+    for raise in doc.raise.unwrap_or_default() {
+        intents.push(ReplyIntent::Raise {
+            event: raise.event,
+            body: raise.body,
+        });
+    }
+    intents
+}
+
 /// What one offered body returned. The workspace event was already on the log.
 /// `tape_id` is the spool note on the thread tape. The host cites it when
-/// it records [`AgentControl::applied`].
+/// it records [`AgentControl::applied`]. `intents` is the admitted view of
+/// what the reply asks for — always populated; a plain-text reply is one
+/// `Utter`. The host iterates intents; `reply` stays the raw taped form.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SpoolReply {
     pub spool: String,
     pub event_id: String,
     pub reply: String,
     pub tape_id: String,
+    pub intents: Vec<ReplyIntent>,
+}
+
+/// A mounted body and the declaration it was matched with. The declaration
+/// stays: `produces` gates each reply's raise intents at delivery, not
+/// only at mount.
+pub(super) struct Mounted {
+    pub name: String,
+    pub body: Arc<dyn SpoolBeat>,
+    pub declaration: SpoolDeclaration,
 }
 
 /// A mounted body's claim about workspace events: which it receives
 /// (`consumes`) and which it may emit (`produces`). Matched against the
-/// register at mount — the bind point — and only there: the delivery path
-/// stays name-only. Matching is mutual, both directions:
+/// register at mount — the bind point — and kept afterwards: `produces`
+/// is also the whitelist that gates each reply's raise intents at
+/// delivery. Matching at mount is mutual, both directions:
 ///
 /// - every consumed event must be registered *and* routed to this spool
 ///   (the workspace must be able to deliver what the spool asks for);
@@ -67,10 +142,14 @@ impl AgentControl {
             .bodies
             .lock()
             .unwrap_or_else(|err| err.into_inner());
-        if bodies.iter().any(|(mounted, _)| mounted == name) {
+        if bodies.iter().any(|mounted| mounted.name == name) {
             return Err(ControlError::AlreadyMounted(name.to_string()));
         }
-        bodies.push((name.to_string(), body));
+        bodies.push(Mounted {
+            name: name.to_string(),
+            body,
+            declaration: declaration.clone(),
+        });
         Ok(())
     }
 
@@ -140,7 +219,7 @@ impl AgentControl {
             .bodies
             .lock()
             .unwrap_or_else(|err| err.into_inner());
-        let Some(pos) = bodies.iter().position(|(mounted, _)| mounted == name) else {
+        let Some(pos) = bodies.iter().position(|mounted| mounted.name == name) else {
             return Err(ControlError::NotMounted(name.to_string()));
         };
         bodies.remove(pos);
@@ -254,17 +333,25 @@ impl AgentControl {
         name: &str,
         event: &WorkspaceRecord,
     ) -> Result<Result<SpoolReply, String>, ControlError> {
-        let Some(body) = self.body_named(name) else {
+        let Some((body, declaration)) = self.body_named(name) else {
             return Err(ControlError::NotMounted(name.to_string()));
         };
         match body.receive(event) {
             Ok(reply) => {
                 let tape_id = self.note_spool(agent, name, &event.id, Ok(reply.as_str()))?;
+                let intents = self.admit_intents(
+                    agent,
+                    name,
+                    &event.id,
+                    &declaration,
+                    parse_intents(&reply),
+                )?;
                 Ok(Ok(SpoolReply {
                     spool: name.to_string(),
                     event_id: event.id.clone(),
                     reply,
                     tape_id,
+                    intents,
                 }))
             }
             Err(reason) => {
@@ -275,7 +362,39 @@ impl AgentControl {
         }
     }
 
-    fn body_named(&self, name: &str) -> Option<Arc<dyn SpoolBeat>> {
+    /// The produces whitelist, applied per intent at delivery: an
+    /// undeclared raise is stripped and the denial taped (tag `intent`),
+    /// after the spool note so the tape reads ask-then-rule. The rest of
+    /// the reply still travels — a spool that overreaches on one intent
+    /// does not forfeit the ones it declared.
+    fn admit_intents(
+        &self,
+        agent: &Agent,
+        spool: &str,
+        event_id: &str,
+        declaration: &SpoolDeclaration,
+        intents: Vec<ReplyIntent>,
+    ) -> Result<Vec<ReplyIntent>, ControlError> {
+        let mut admitted = Vec::with_capacity(intents.len());
+        for intent in intents {
+            match &intent {
+                ReplyIntent::Raise { event, .. } if !declaration.produces.contains(event) => {
+                    let content = json!({
+                        "spool": spool,
+                        "event": event_id,
+                        "verdict": "deny",
+                        "intent": intent,
+                        "reason": format!("raise of {event} is not in the mounted produces"),
+                    });
+                    self.append(agent, "intent", content.to_string())?;
+                }
+                _ => admitted.push(intent),
+            }
+        }
+        Ok(admitted)
+    }
+
+    fn body_named(&self, name: &str) -> Option<(Arc<dyn SpoolBeat>, SpoolDeclaration)> {
         let bodies = self
             .inner
             .bodies
@@ -283,8 +402,8 @@ impl AgentControl {
             .unwrap_or_else(|err| err.into_inner());
         bodies
             .iter()
-            .find(|(mounted, _)| mounted == name)
-            .map(|(_, body)| Arc::clone(body))
+            .find(|mounted| mounted.name == name)
+            .map(|mounted| (Arc::clone(&mounted.body), mounted.declaration.clone()))
     }
 
     fn drop_body(&self, name: &str) {
@@ -293,7 +412,7 @@ impl AgentControl {
             .bodies
             .lock()
             .unwrap_or_else(|err| err.into_inner());
-        bodies.retain(|(mounted, _)| mounted != name);
+        bodies.retain(|mounted| mounted.name != name);
     }
 
     fn note_spool(
