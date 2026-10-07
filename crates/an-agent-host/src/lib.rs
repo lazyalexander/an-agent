@@ -14,11 +14,15 @@
 //!
 //! Deliberately not here: raised events are not re-dispatched inside a
 //! pump — the loop bound and the self-loop guard stay the app's call
-//! (the host has initiative; core never wakes anyone on its own). The
-//! hook runner is also absent: it waits on the MCP shape, and lands as
-//! its own slice.
+//! (the host has initiative; core never wakes anyone on its own). MCP
+//! hook handlers fail closed in [`HostHooks`] until the factory grows
+//! MCP — an unimplemented mechanism denies, loudly, on tape.
 //!
 //! [`applied`]: an_agent_core::control::AgentControl::applied
+
+mod hooks;
+
+pub use hooks::HostHooks;
 
 use std::collections::HashMap;
 use std::sync::Arc;

@@ -28,19 +28,7 @@ impl RhaiBeat {
     /// gate: the constructor must be rhai, the effector faces must be
     /// empty, and the script must compile.
     pub fn from_spool(spec: &SpoolSpec, config: Map<String, Value>) -> Result<Self, String> {
-        use an_agent_core::act::FileFacet;
-        if spec.effect.file != FileFacet::None {
-            return Err(format!(
-                "beat declares a file face it cannot use: {:?}",
-                spec.effect.file
-            ));
-        }
-        if spec.effect.net != Net::None {
-            return Err("beat declares net it cannot use".into());
-        }
-        if spec.effect.proc_ != Proc::None {
-            return Err("beat declares proc it cannot use".into());
-        }
+        require_effectless(spec)?;
         let script = match &spec.constructor {
             Constructor::Rhai { script } => script,
             _ => return Err("not a rhai spool".into()),
@@ -53,6 +41,26 @@ impl RhaiBeat {
             config: rhai::serde::to_dynamic(config).map_err(|e| e.to_string())?,
         })
     }
+}
+
+/// The shared fail-fast face check for the script sorts (beat, gate):
+/// the effector faces must be empty — anything effectful leaves as the
+/// returned value and the host disposes.
+pub(crate) fn require_effectless(spec: &SpoolSpec) -> Result<(), String> {
+    use an_agent_core::act::FileFacet;
+    if spec.effect.file != FileFacet::None {
+        return Err(format!(
+            "spool declares a file face it cannot use: {:?}",
+            spec.effect.file
+        ));
+    }
+    if spec.effect.net != Net::None {
+        return Err("spool declares net it cannot use".into());
+    }
+    if spec.effect.proc_ != Proc::None {
+        return Err("spool declares proc it cannot use".into());
+    }
+    Ok(())
 }
 
 impl SpoolBeat for RhaiBeat {
