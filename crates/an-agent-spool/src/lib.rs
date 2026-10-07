@@ -5,6 +5,7 @@
 
 pub mod beat;
 pub mod descriptor;
+pub mod gate;
 pub mod library;
 pub mod policy;
 pub mod scope;
