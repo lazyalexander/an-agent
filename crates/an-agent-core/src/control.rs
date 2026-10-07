@@ -43,7 +43,9 @@ mod workspace;
 pub use hooks::{HookRunner, HookVerdict};
 use spool::Mounted;
 pub use spool::{ReplyIntent, SpoolBeat, SpoolDeclaration, SpoolReply};
-pub use workspace::{EventRoute, HookHandler, Hooks, Registration, WorkspaceConfig};
+pub use workspace::{
+    EventRoute, HookHandler, Hooks, Registration, SpoolRequirement, WorkspaceConfig,
+};
 
 #[derive(Debug, Error)]
 pub enum ControlError {

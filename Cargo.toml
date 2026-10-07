@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/an-agent-core", "crates/an-agent-context", "crates/an-agent-factory", "crates/an-agent-spool", "crates/an-agent-workspace"]
+members = ["crates/an-agent-core", "crates/an-agent-context", "crates/an-agent-factory", "crates/an-agent-host", "crates/an-agent-spool", "crates/an-agent-workspace"]
 
 [workspace.package]
 version = "0.1.0"

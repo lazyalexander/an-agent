@@ -1,0 +1,21 @@
+[package]
+name = "an-agent-host"
+description = "The embedding surface: mount spools from workspace config, pump replies into intents and applied landings"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+an-agent-core = { path = "../an-agent-core" }
+an-agent-spool = { path = "../an-agent-spool" }
+serde_json.workspace = true
+thiserror.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+an-agent-core = { path = "../an-agent-core", features = ["testkit"] }
+an-agent-spool = { path = "../an-agent-spool" }
+uuid.workspace = true
