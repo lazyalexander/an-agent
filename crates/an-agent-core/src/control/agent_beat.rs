@@ -8,6 +8,9 @@
 //!
 //! The model client is the host's, injected like the hook runner. A body
 //! that yields `InvokeModel` with no client installed fails closed.
+//! What the model sees is composed on the thread side
+//! (`crate::agent::context`) from card, workspace, and host ingredients —
+//! control gathers them and tapes the call; it does not compose.
 //! `InvokeTool` is refused in v1: tool acts are async and this driver is
 //! deliberately synchronous, like the policy sort — the async tool step
 //! lands with the thread-loop driver.
@@ -18,9 +21,14 @@ use serde_json::{Value, json};
 
 use super::{AgentControl, ControlError, SpoolReply};
 use crate::agent::Agent;
+use crate::agent::context::{self, Clip, Envelope, SystemFacts};
 use crate::memstream::Kind;
 use crate::principal::card::ModelSpec;
 use crate::workspace::WorkspaceRecord;
+
+/// Re-exported: the message type the composition produces and the client
+/// consumes. Its home is the thread side (`agent::context`).
+pub use crate::agent::context::ModelMessage;
 
 /// Hard cap on driven steps per beat. A runaway body burns at most this
 /// many model calls, then fails like any failed spool.
@@ -29,17 +37,9 @@ const MAX_STEPS: usize = 8;
 /// How many recent tape events the projection carries.
 const PROJECTION_CLIPS: usize = 20;
 
-/// One message handed to the model client. Roles follow the chat
-/// convention (system / user / assistant); assembly is core's job.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ModelMessage {
-    pub role: String,
-    pub content: String,
-}
-
-/// The host's model client. Core assembles and tapes; the client only
-/// carries bytes to the model and back. Sync like the policy sort — an
-/// async client wraps its own runtime.
+/// The host's model client. The thread composes and core tapes; the
+/// client only carries bytes to the model and back. Sync like the policy
+/// sort — an async client wraps its own runtime.
 pub trait ModelClient: Send + Sync {
     fn complete(&self, spec: &ModelSpec, messages: Vec<ModelMessage>) -> Result<String, String>;
 }
@@ -106,6 +106,17 @@ impl AgentControl {
         *slot = Some(client);
     }
 
+    /// The embedding software's own label ("dsh-shuttle", "canvas-app").
+    /// Stated in the model envelope's host facts. Defaults to `an-agent`.
+    pub fn set_host_label(&self, label: &str) {
+        let mut slot = self
+            .inner
+            .host_label
+            .lock()
+            .unwrap_or_else(|err| err.into_inner());
+        *slot = label.to_string();
+    }
+
     fn model_client(&self) -> Result<Arc<dyn ModelClient>, ControlError> {
         self.inner
             .model_client
@@ -168,9 +179,12 @@ impl AgentControl {
         ))))
     }
 
-    /// One admitted, taped model call. The action anchors the clips it
-    /// read; the observation anchors the action. The response joins the
-    /// projection for the body's next step.
+    /// One admitted, taped model call. Control gathers the workspace
+    /// ingredients and the host facts; the thread side composes the
+    /// envelope (`agent::context`). The action anchors the clips it read
+    /// and cites the env/config it saw by content address; the
+    /// observation anchors the action. The response joins the projection
+    /// for the body's next step.
     fn model_step(
         &self,
         agent: &Agent,
@@ -180,35 +194,46 @@ impl AgentControl {
     ) -> Result<(), ControlError> {
         let client = self.model_client()?;
         let tape = agent.session().tape().read_all()?;
-        let mut context = String::new();
-        let mut found = Vec::new();
+        let mut resolved = Vec::with_capacity(clips.len());
         for clip in clips {
             match tape.iter().find(|e| &e.id == clip) {
-                Some(e) => {
-                    let tag = e.tags.first().map(String::as_str).unwrap_or("event");
-                    context.push_str(&format!("[{tag}] {}\n", e.content));
-                    found.push(clip.clone());
-                }
+                Some(e) => resolved.push((
+                    e.tags.first().cloned().unwrap_or_else(|| "event".into()),
+                    e.content.clone(),
+                )),
                 None => return Err(ControlError::UnknownClip(clip.clone())),
             }
         }
-        let messages = vec![
-            ModelMessage {
-                role: "system".into(),
-                content: agent.prompt().to_string(),
-            },
-            ModelMessage {
-                role: "user".into(),
-                content: context,
-            },
-        ];
+        let views: Vec<Clip> = resolved
+            .iter()
+            .map(|(tag, content)| Clip { tag, content })
+            .collect();
+        let cite = self.workspace_cite()?;
+        let guardrails = self
+            .current_config()?
+            .map(|config| config.guard.rules)
+            .unwrap_or_default();
+        let messages = context::compose(&Envelope {
+            prompt: agent.prompt(),
+            facts: &self.system_facts(),
+            env: &cite.env_markdown,
+            guardrails: &guardrails,
+            clips: &views,
+        });
         let action = self.append_event(
             agent,
             Kind::Action,
             "invoke",
-            json!({ "spool": name, "event": event.id, "model": agent.model().model, "clips": clips })
-                .to_string(),
-            found,
+            json!({
+                "spool": name,
+                "event": event.id,
+                "model": agent.model().model,
+                "clips": clips,
+                "env": cite.env_sha256,
+                "config": cite.config_sha256,
+            })
+            .to_string(),
+            clips.to_vec(),
         )?;
         let response = client.complete(agent.model(), messages).map_err(|reason| {
             ControlError::ModelFailed {
@@ -224,5 +249,16 @@ impl AgentControl {
             vec![action],
         )?;
         Ok(())
+    }
+
+    /// The host label plus platform facts, composed fresh each call.
+    fn system_facts(&self) -> SystemFacts {
+        let label = self
+            .inner
+            .host_label
+            .lock()
+            .unwrap_or_else(|err| err.into_inner())
+            .clone();
+        SystemFacts::new(label)
     }
 }

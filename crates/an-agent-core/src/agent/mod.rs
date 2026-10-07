@@ -2,6 +2,7 @@
 //! `spawn_with` binds a built card to a fresh directory and its tape.
 //! It is not the host face.
 
+pub mod context;
 mod session;
 
 use std::path::Path;

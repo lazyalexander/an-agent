@@ -98,13 +98,27 @@ fn stub_model() -> Arc<StubModel> {
 
 /// The persona beat: scene noted on the tape, the body asks for one model
 /// call over it, and the answer comes back as the reply. Both halves of
-/// the model call are taped with their anchor refs.
+/// the model call are taped with their anchor refs. The envelope the
+/// client receives is the thread's composition: card prompt, host facts,
+/// workspace env, and declared guardrails.
 #[test]
 fn an_agent_body_thinks_and_every_step_is_taped() {
     let tmp = TempDir::new("control-agent-beat");
     let control = AgentControl::open(tmp.path(), &bash_registry()).unwrap();
     control
-        .register(&listed(&[("scene", &["npc"])], &[], &[]))
+        .register(&listed(&[("scene", &["npc"])], &["main"], &["main"]))
+        .unwrap();
+    control
+        .put_env("main", "# The Tavern\nA quiet place.")
+        .unwrap();
+    control
+        .put_config(
+            "main",
+            br#"
+[guard]
+rules = ["stay in character", "replies under 280 characters"]
+"#,
+        )
         .unwrap();
     let id = control.open_thread(&stroke_card()).unwrap();
     control.push_event("scene", "a traveler enters").unwrap();
@@ -112,6 +126,7 @@ fn an_agent_body_thinks_and_every_step_is_taped() {
 
     let model = stub_model();
     control.set_model_client(model.clone());
+    control.set_host_label("test-app");
     let stage = Arc::new(Stage {
         seen: Mutex::new(Vec::new()),
     });
@@ -124,12 +139,21 @@ fn an_agent_body_thinks_and_every_step_is_taped() {
     assert!(reply.reply.contains("canned reply"));
     assert_eq!(reply.intents.len(), 1);
 
-    // The client saw the card's model and prompt, plus the cited clip.
+    // The client saw the card's model and the composed envelope: prompt,
+    // host facts, workspace env, declared guardrails, plus the cited clip.
     let calls = model.calls.lock().unwrap_or_else(|err| err.into_inner());
     assert_eq!(calls.len(), 1);
     assert_eq!(calls[0].0, "m");
-    assert_eq!(calls[0].1[0].role, "system");
-    assert_eq!(calls[0].1[0].content, "p");
+    let system = &calls[0].1[0];
+    assert_eq!(system.role, "system");
+    for needle in [
+        "p\n\n# Host",
+        "test-app on ",
+        "# Environment\n# The Tavern\nA quiet place.",
+        "# Guardrails\n- stay in character\n- replies under 280 characters",
+    ] {
+        assert!(system.content.contains(needle), "{needle}");
+    }
     assert!(calls[0].1[1].content.contains("a traveler enters"));
     drop(calls);
 

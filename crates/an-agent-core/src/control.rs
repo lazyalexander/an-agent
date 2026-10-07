@@ -46,7 +46,7 @@ pub use hooks::{HookRunner, HookVerdict};
 use spool::Mounted;
 pub use spool::{ReplyIntent, SpoolBeat, SpoolDeclaration, SpoolReply};
 pub use workspace::{
-    EventRoute, HookHandler, Hooks, Registration, SpoolRequirement, WorkspaceConfig,
+    EventRoute, Guard, HookHandler, Hooks, Registration, SpoolRequirement, WorkspaceConfig,
 };
 
 #[derive(Debug, Error)]
@@ -129,6 +129,8 @@ struct Inner {
     bodies: Mutex<Vec<Mounted>>,
     hook_runner: Mutex<Option<Arc<dyn HookRunner>>>,
     model_client: Mutex<Option<Arc<dyn ModelClient>>>,
+    /// The embedding software's label, stated in the model envelope.
+    host_label: Mutex<String>,
 }
 
 /// The handle a host software uses to drive agents in this process.
@@ -158,6 +160,7 @@ impl AgentControl {
                 bodies: Mutex::new(Vec::new()),
                 hook_runner: Mutex::new(None),
                 model_client: Mutex::new(None),
+                host_label: Mutex::new("an-agent".to_string()),
             }),
         })
     }
