@@ -158,6 +158,7 @@ fn declares(consumes: &[&str], produces: &[&str]) -> SpoolDeclaration {
     }
 }
 
+mod agent_beat;
 mod hooks;
 mod intents;
 mod session;

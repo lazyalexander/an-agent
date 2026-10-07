@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use uuid::Uuid;
 
+use super::agent_beat::AgentBody;
 use super::{AgentControl, ControlError};
 use crate::agent::Agent;
 use crate::workspace::WorkspaceRecord;
@@ -56,7 +57,7 @@ struct RaiseDoc {
     body: String,
 }
 
-fn parse_intents(reply: &str) -> Vec<ReplyIntent> {
+pub(super) fn parse_intents(reply: &str) -> Vec<ReplyIntent> {
     let plain = || {
         vec![ReplyIntent::Utter {
             text: reply.to_string(),
@@ -100,8 +101,17 @@ pub struct SpoolReply {
 /// only at mount.
 pub(super) struct Mounted {
     pub name: String,
-    pub body: Arc<dyn SpoolBeat>,
+    pub body: MountedBody,
     pub declaration: SpoolDeclaration,
+}
+
+/// The two sorts of mounted body. A `Beat` is a pure function event →
+/// reply; an `Agent` yields steps and core drives them (see
+/// `agent_beat`). Mount, matching, and delivery rules are shared.
+#[derive(Clone)]
+pub(super) enum MountedBody {
+    Beat(Arc<dyn SpoolBeat>),
+    Agent(Arc<dyn AgentBody>),
 }
 
 /// A mounted body's claim about workspace events: which it receives
@@ -147,7 +157,34 @@ impl AgentControl {
         }
         bodies.push(Mounted {
             name: name.to_string(),
-            body,
+            body: MountedBody::Beat(body),
+            declaration: declaration.clone(),
+        });
+        Ok(())
+    }
+
+    /// Mount an agent body under `name`. Same rules as [`Self::mount_spool`]:
+    /// the declaration is matched at mount, a second mount of the name is
+    /// refused. The body additionally needs a model client installed before
+    /// it can ask for model calls.
+    pub fn mount_agent(
+        &self,
+        name: &str,
+        body: Arc<dyn AgentBody>,
+        declaration: &SpoolDeclaration,
+    ) -> Result<(), ControlError> {
+        self.match_declaration(name, declaration)?;
+        let mut bodies = self
+            .inner
+            .bodies
+            .lock()
+            .unwrap_or_else(|err| err.into_inner());
+        if bodies.iter().any(|mounted| mounted.name == name) {
+            return Err(ControlError::AlreadyMounted(name.to_string()));
+        }
+        bodies.push(Mounted {
+            name: name.to_string(),
+            body: MountedBody::Agent(body),
             declaration: declaration.clone(),
         });
         Ok(())
@@ -247,11 +284,20 @@ impl AgentControl {
         let event = self.event_by_id(event_id)?;
         self.hooks_before(turn.agent(), &event)?;
         match self.invoke(turn.agent(), name, &event)? {
-            Ok(reply) => {
+            Some(Ok(reply)) => {
                 self.hooks_after(turn.agent(), &reply)?;
                 Ok(reply)
             }
-            Err(reason) => Err(ControlError::SpoolFailed {
+            // A halt is a silence: taped inside the driver, nothing for the
+            // host to land. The empty reply carries no intents.
+            None => Ok(SpoolReply {
+                spool: name.to_string(),
+                event_id: event.id.clone(),
+                reply: String::new(),
+                tape_id: String::new(),
+                intents: Vec::new(),
+            }),
+            Some(Err(reason)) => Err(ControlError::SpoolFailed {
                 name: name.to_string(),
                 reason,
             }),
@@ -280,12 +326,14 @@ impl AgentControl {
         let mut replies = Vec::new();
         for spool in route {
             match self.invoke(turn.agent(), &spool, &event) {
-                Ok(Ok(reply)) => match self.hooks_after(turn.agent(), &reply) {
+                Ok(Some(Ok(reply))) => match self.hooks_after(turn.agent(), &reply) {
                     Ok(()) => replies.push(reply),
                     Err(ControlError::HookDenied { .. }) => {}
                     Err(err) => return Err(err),
                 },
-                Ok(Err(_)) => {}
+                // A halt is a silence: taped by the driver, skipped here.
+                Ok(None) => {}
+                Ok(Some(Err(_))) => {}
                 Err(ControlError::NotMounted(_)) => {
                     self.note_spool(turn.agent(), &spool, &event.id, Err("missing"))?;
                 }
@@ -327,38 +375,52 @@ impl AgentControl {
         )
     }
 
+    /// Deliver one event to one mounted body. `Ok(None)` is a halt — the
+    /// driver already taped the silence note. A body failure unmounts the
+    /// body and is returned as `Some(Err(reason))`, never as a
+    /// `ControlError`.
     fn invoke(
         &self,
         agent: &Agent,
         name: &str,
         event: &WorkspaceRecord,
-    ) -> Result<Result<SpoolReply, String>, ControlError> {
+    ) -> Result<Option<Result<SpoolReply, String>>, ControlError> {
         let Some((body, declaration)) = self.body_named(name) else {
             return Err(ControlError::NotMounted(name.to_string()));
         };
-        match body.receive(event) {
-            Ok(reply) => {
-                let tape_id = self.note_spool(agent, name, &event.id, Ok(reply.as_str()))?;
-                let intents = self.admit_intents(
-                    agent,
-                    name,
-                    &event.id,
-                    &declaration,
-                    parse_intents(&reply),
-                )?;
-                Ok(Ok(SpoolReply {
-                    spool: name.to_string(),
-                    event_id: event.id.clone(),
-                    reply,
-                    tape_id,
-                    intents,
-                }))
-            }
-            Err(reason) => {
-                self.drop_body(name);
-                self.note_spool(agent, name, &event.id, Err(reason.as_str()))?;
-                Ok(Err(reason))
-            }
+        match body {
+            MountedBody::Agent(body) => match self.agent_invoke(agent, name, &body, event)? {
+                Some(Err(reason)) => {
+                    self.drop_body(name);
+                    self.note_spool(agent, name, &event.id, Err(reason.as_str()))?;
+                    Ok(Some(Err(reason)))
+                }
+                outcome => Ok(outcome),
+            },
+            MountedBody::Beat(body) => match body.receive(event) {
+                Ok(reply) => {
+                    let tape_id = self.note_spool(agent, name, &event.id, Ok(reply.as_str()))?;
+                    let intents = self.admit_intents(
+                        agent,
+                        name,
+                        &event.id,
+                        &declaration,
+                        parse_intents(&reply),
+                    )?;
+                    Ok(Some(Ok(SpoolReply {
+                        spool: name.to_string(),
+                        event_id: event.id.clone(),
+                        reply,
+                        tape_id,
+                        intents,
+                    })))
+                }
+                Err(reason) => {
+                    self.drop_body(name);
+                    self.note_spool(agent, name, &event.id, Err(reason.as_str()))?;
+                    Ok(Some(Err(reason)))
+                }
+            },
         }
     }
 
@@ -367,7 +429,7 @@ impl AgentControl {
     /// after the spool note so the tape reads ask-then-rule. The rest of
     /// the reply still travels — a spool that overreaches on one intent
     /// does not forfeit the ones it declared.
-    fn admit_intents(
+    pub(super) fn admit_intents(
         &self,
         agent: &Agent,
         spool: &str,
@@ -394,7 +456,7 @@ impl AgentControl {
         Ok(admitted)
     }
 
-    fn body_named(&self, name: &str) -> Option<(Arc<dyn SpoolBeat>, SpoolDeclaration)> {
+    fn body_named(&self, name: &str) -> Option<(MountedBody, SpoolDeclaration)> {
         let bodies = self
             .inner
             .bodies
@@ -403,7 +465,15 @@ impl AgentControl {
         bodies
             .iter()
             .find(|mounted| mounted.name == name)
-            .map(|mounted| (Arc::clone(&mounted.body), mounted.declaration.clone()))
+            .map(|mounted| (mounted.body.clone(), mounted.declaration.clone()))
+    }
+
+    /// The declaration a mounted body was matched with. Used by the agent
+    /// driver, which admits intents itself.
+    pub(super) fn declaration_of(&self, name: &str) -> Result<SpoolDeclaration, ControlError> {
+        self.body_named(name)
+            .map(|(_, declaration)| declaration)
+            .ok_or_else(|| ControlError::NotMounted(name.to_string()))
     }
 
     fn drop_body(&self, name: &str) {
@@ -415,7 +485,7 @@ impl AgentControl {
         bodies.retain(|mounted| mounted.name != name);
     }
 
-    fn note_spool(
+    pub(super) fn note_spool(
         &self,
         agent: &Agent,
         spool: &str,

@@ -6,7 +6,12 @@
 //!   requirements, recover each pinned body from the registry, construct
 //!   it (rhai from the shelf; `constructor: host` from the app's own
 //!   [`HostBodies`]), and mount it under its instance name with its mount
-//!   config. One body, many instances: personas are config, not code.
+//!   config. The descriptor's `sort` picks the mount entry: a beat mounts
+//!   as an event → reply function, a policy mounts as an agent body that
+//!   core drives step by step (it needs a model client —
+//!   [`AgentControl::set_model_client`]), a gate is refused (it belongs
+//!   to the hook wiring). One body, many instances: personas are config,
+//!   not code.
 //! - [`Host::pump`] / [`Host::pump_on`] — one beat, host side: dispatch
 //!   an event, execute each reply's intents (utterances go to the app's
 //!   sink; raises become new workspace events), then record [`applied`]
@@ -32,10 +37,12 @@ use thiserror::Error;
 use uuid::Uuid;
 
 use an_agent_core::control::{
-    AgentControl, ControlError, ReplyIntent, SpoolBeat, SpoolReply, SpoolRequirement,
+    AgentBody, AgentControl, ControlError, ReplyIntent, SpoolBeat, SpoolDeclaration, SpoolReply,
+    SpoolRequirement,
 };
 use an_agent_spool::beat::RhaiBeat;
-use an_agent_spool::spool::{Constructor, Registry, SpoolError};
+use an_agent_spool::policy::RhaiPolicy;
+use an_agent_spool::spool::{Constructor, Registry, Sort, SpoolError};
 
 #[derive(Debug, Error)]
 pub enum HostError {
@@ -52,6 +59,14 @@ pub enum HostError {
 }
 
 type HostCtor = Arc<dyn Fn(Map<String, Value>) -> Result<Arc<dyn SpoolBeat>, String> + Send + Sync>;
+
+/// A constructed body, before mounting. The sort decides which mount
+/// entry it takes: a beat mounts as a pure event → reply function, an
+/// agent body mounts to be driven step by step by core.
+enum Built {
+    Beat(String, Arc<dyn SpoolBeat>, SpoolDeclaration),
+    Agent(String, Arc<dyn AgentBody>, SpoolDeclaration),
+}
 
 /// Native bodies the embedding app ships itself, by the name a
 /// `constructor: host` spool body gives. The discord bridge, the editor
@@ -123,24 +138,21 @@ impl Host {
         };
         let mut mounted = Vec::new();
         for req in &config.spool {
-            let (instance, body, declaration) = self.construct(req)?;
-            self.control.mount_spool(&instance, body, &declaration)?;
-            mounted.push(instance);
+            match self.construct(req)? {
+                Built::Beat(instance, body, declaration) => {
+                    self.control.mount_spool(&instance, body, &declaration)?;
+                    mounted.push(instance);
+                }
+                Built::Agent(instance, body, declaration) => {
+                    self.control.mount_agent(&instance, body, &declaration)?;
+                    mounted.push(instance);
+                }
+            }
         }
         Ok(mounted)
     }
 
-    fn construct(
-        &self,
-        req: &SpoolRequirement,
-    ) -> Result<
-        (
-            String,
-            Arc<dyn SpoolBeat>,
-            an_agent_core::control::SpoolDeclaration,
-        ),
-        HostError,
-    > {
+    fn construct(&self, req: &SpoolRequirement) -> Result<Built, HostError> {
         let spec = self.registry.recover(&req.name, &req.version)?;
         let config = match serde_json::to_value(&req.config)? {
             Value::Object(map) => map,
@@ -151,13 +163,32 @@ impl Host {
             }
         };
         let instance = req.mount.clone().unwrap_or_else(|| req.name.clone());
-        let body: Arc<dyn SpoolBeat> = match &spec.constructor {
-            Constructor::Rhai { .. } => {
-                Arc::new(RhaiBeat::from_spool(&spec, config).map_err(HostError::Body)?)
+        match spec.sort {
+            // A gate runs on the hook chains; HostHooks builds it. It is
+            // never a mounted body.
+            Sort::Gate => Err(HostError::Body(format!(
+                "{} is a gate: gates are built by the hook wiring, not mounted",
+                spec.name
+            ))),
+            Sort::Policy => match &spec.constructor {
+                Constructor::Rhai { .. } => {
+                    let body = RhaiPolicy::from_spool(&spec, config).map_err(HostError::Body)?;
+                    Ok(Built::Agent(instance, Arc::new(body), spec.declaration()))
+                }
+                Constructor::Host { name } => Err(HostError::Body(format!(
+                    "constructor: host ({name}) cannot build a policy body yet"
+                ))),
+            },
+            Sort::Beat => {
+                let body: Arc<dyn SpoolBeat> = match &spec.constructor {
+                    Constructor::Rhai { .. } => {
+                        Arc::new(RhaiBeat::from_spool(&spec, config).map_err(HostError::Body)?)
+                    }
+                    Constructor::Host { name } => self.host_bodies.construct(name, config)?,
+                };
+                Ok(Built::Beat(instance, body, spec.declaration()))
             }
-            Constructor::Host { name } => self.host_bodies.construct(name, config)?,
-        };
-        Ok((instance, body, spec.declaration()))
+        }
     }
 
     /// One beat: dispatch the latest workspace event, execute the
