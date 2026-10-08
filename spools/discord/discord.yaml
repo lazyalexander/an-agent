@@ -10,6 +10,7 @@ effect:
   memory: { op: ignore }
   net: egress
   proc: none
+  model: { op: none }
   flow: both
 inverse: none
 requires: []

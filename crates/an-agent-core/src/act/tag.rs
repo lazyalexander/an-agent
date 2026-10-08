@@ -60,6 +60,28 @@ impl MemoryFacet {
     }
 }
 
+/// Model-call ceiling for a mounted body. Absent means none: a descriptor
+/// must say `complete` before the driver admits `invoke_model` — the same
+/// default-deny direction as file/net/proc. Quantified budgets (tokens,
+/// calls, cost) land when the tavern teaches the units; `Complete` is the
+/// unbounded grant until then.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "op", rename_all = "lowercase")]
+pub enum ModelFacet {
+    #[default]
+    None,
+    Complete,
+}
+
+impl ModelFacet {
+    pub fn op_name(&self) -> &'static str {
+        match self {
+            Self::None => "none",
+            Self::Complete => "complete",
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ToolTag {
     pub file: FileFacet,

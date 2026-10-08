@@ -152,9 +152,19 @@ fn listed(events: &[(&str, &[&str])], config: &[&str], env: &[&str]) -> Registra
 
 /// The mount-time claim: workspace events a body receives or may emit.
 fn declares(consumes: &[&str], produces: &[&str]) -> SpoolDeclaration {
+    declares_model(consumes, produces, crate::act::ModelFacet::None)
+}
+
+/// Same claim plus a model face, for bodies the beat may drive a model for.
+fn declares_model(
+    consumes: &[&str],
+    produces: &[&str],
+    model: crate::act::ModelFacet,
+) -> SpoolDeclaration {
     SpoolDeclaration {
         consumes: consumes.iter().map(|name| (*name).to_string()).collect(),
         produces: produces.iter().map(|name| (*name).to_string()).collect(),
+        model,
     }
 }
 

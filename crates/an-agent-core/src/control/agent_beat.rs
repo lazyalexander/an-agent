@@ -185,6 +185,7 @@ impl AgentControl {
         body: &Arc<dyn AgentBody>,
         event: &WorkspaceRecord,
     ) -> Result<Result<DeliveryOutcome, String>, ControlError> {
+        let declaration = self.declaration_of(name)?;
         for steps in 0..MAX_STEPS {
             let step = match body.evaluate(&projection(agent, event, steps)?) {
                 Ok(step) => step,
@@ -193,7 +194,6 @@ impl AgentControl {
             match step {
                 BeatStep::Utter { text } => {
                     let tape_id = self.note_spool(agent, name, &event.id, Ok(text.as_str()))?;
-                    let declaration = self.declaration_of(name)?;
                     let intents = self.admit_intents(
                         agent,
                         name,
@@ -218,6 +218,13 @@ impl AgentControl {
                     }));
                 }
                 BeatStep::InvokeModel { clips } => {
+                    // The mount's model face is the grant: undeclared
+                    // means refused, like file/net/proc.
+                    if declaration.model == crate::act::ModelFacet::None {
+                        return Ok(Err(format!(
+                            "invoke_model is not in {name}'s mounted model face"
+                        )));
+                    }
                     self.model_step(agent, name, event, &clips)?;
                 }
                 BeatStep::InvokeTool { name: tool, .. } => {

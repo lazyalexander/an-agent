@@ -158,6 +158,9 @@ pub(super) enum MountedBody {
 pub struct SpoolDeclaration {
     pub consumes: Vec<String>,
     pub produces: Vec<String>,
+    /// Model-call ceiling. `None` (the default) refuses `invoke_model` —
+    /// the face must be declared, like file/net/proc.
+    pub model: crate::act::ModelFacet,
 }
 
 impl AgentControl {

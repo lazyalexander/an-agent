@@ -47,7 +47,7 @@ impl RhaiBeat {
 /// the effector faces must be empty — anything effectful leaves as the
 /// returned value and the host disposes.
 pub(crate) fn require_effectless(spec: &SpoolSpec) -> Result<(), String> {
-    use an_agent_core::act::FileFacet;
+    use an_agent_core::act::{FileFacet, ModelFacet};
     if spec.effect.file != FileFacet::None {
         return Err(format!(
             "spool declares a file face it cannot use: {:?}",
@@ -59,6 +59,11 @@ pub(crate) fn require_effectless(spec: &SpoolSpec) -> Result<(), String> {
     }
     if spec.effect.proc_ != Proc::None {
         return Err("spool declares proc it cannot use".into());
+    }
+    // A script sort never drives a model; declaring the face is a lie the
+    // mount must refuse, same direction as the effector faces above.
+    if spec.effect.model != ModelFacet::None {
+        return Err("spool declares a model face it cannot use".into());
     }
     Ok(())
 }
@@ -92,7 +97,7 @@ mod tests {
 
     fn spec(script: &str) -> SpoolSpec {
         let yaml = format!(
-            "v: 1\nkind: spool\nname: b\nversion: 1.0.0\nsummary: b\nconstructor: rhai\nscript: |\n  {script}\neffect:\n  net: none\n  file: {{ op: none }}\n  proc: none\n  memory: {{ op: ignore }}\n  flow: none\ninverse: none\nrequires: []\nconsumes: []\nproduces: []\n"
+            "v: 1\nkind: spool\nname: b\nversion: 1.0.0\nsummary: b\nconstructor: rhai\nscript: |\n  {script}\neffect:\n  net: none\n  file: {{ op: none }}\n  proc: none\n  memory: {{ op: ignore }}\n  model: {{ op: none }}\n  flow: none\ninverse: none\nrequires: []\nconsumes: []\nproduces: []\n"
         );
         spool::parse(&yaml).unwrap()
     }
@@ -114,13 +119,17 @@ mod tests {
         assert!(RhaiBeat::from_spool(&spec("let x = ;"), Map::new()).is_err());
         // A non-rhai constructor is refused.
         let host = spool::parse(
-            "v: 1\nkind: spool\nname: h\nversion: 1.0.0\nsummary: h\nconstructor: host\nhost: echo\neffect:\n  net: none\n  file: { op: none }\n  proc: none\n  memory: { op: ignore }\n  flow: none\ninverse: none\nrequires: []\nconsumes: []\nproduces: []\n",
+            "v: 1\nkind: spool\nname: h\nversion: 1.0.0\nsummary: h\nconstructor: host\nhost: echo\neffect:\n  net: none\n  file: { op: none }\n  proc: none\n  memory: { op: ignore }\n  model: { op: none }\n  flow: none\ninverse: none\nrequires: []\nconsumes: []\nproduces: []\n",
         )
         .unwrap();
         assert!(RhaiBeat::from_spool(&host, Map::new()).is_err());
         // An effector face is refused.
         let mut yaml_spec = spec("42");
         yaml_spec.effect.file = an_agent_core::act::FileFacet::Unbounded;
+        assert!(RhaiBeat::from_spool(&yaml_spec, Map::new()).is_err());
+        // A beat never drives a model; declaring the face is refused too.
+        let mut yaml_spec = spec("42");
+        yaml_spec.effect.model = an_agent_core::act::ModelFacet::Complete;
         assert!(RhaiBeat::from_spool(&yaml_spec, Map::new()).is_err());
     }
 

@@ -11,6 +11,7 @@ effect:
   memory: { op: ignore }
   net: none
   proc: none
+  model: { op: complete }
   flow: none
 inverse: none
 requires:

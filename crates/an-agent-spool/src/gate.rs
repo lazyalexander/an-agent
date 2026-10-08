@@ -89,7 +89,7 @@ mod tests {
 
     fn spec(script: &str) -> SpoolSpec {
         let yaml = format!(
-            "v: 1\nkind: spool\nname: g\nversion: 1.0.0\nsummary: g\nconstructor: rhai\nscript: |\n  {script}\neffect:\n  net: none\n  file: {{ op: none }}\n  proc: none\n  memory: {{ op: ignore }}\n  flow: none\ninverse: none\nrequires: []\nconsumes: []\nproduces: []\n"
+            "v: 1\nkind: spool\nname: g\nversion: 1.0.0\nsummary: g\nconstructor: rhai\nscript: |\n  {script}\neffect:\n  net: none\n  file: {{ op: none }}\n  proc: none\n  memory: {{ op: ignore }}\n  model: {{ op: none }}\n  flow: none\ninverse: none\nrequires: []\nconsumes: []\nproduces: []\n"
         );
         spool::parse(&yaml).unwrap()
     }
@@ -98,7 +98,7 @@ mod tests {
     fn construction_is_the_fail_fast_gate() {
         assert!(RhaiGate::from_spool(&spec("let x = ;")).is_err());
         let host = spool::parse(
-            "v: 1\nkind: spool\nname: h\nversion: 1.0.0\nsummary: h\nconstructor: host\nhost: echo\neffect:\n  net: none\n  file: { op: none }\n  proc: none\n  memory: { op: ignore }\n  flow: none\ninverse: none\nrequires: []\nconsumes: []\nproduces: []\n",
+            "v: 1\nkind: spool\nname: h\nversion: 1.0.0\nsummary: h\nconstructor: host\nhost: echo\neffect:\n  net: none\n  file: { op: none }\n  proc: none\n  memory: { op: ignore }\n  model: { op: none }\n  flow: none\ninverse: none\nrequires: []\nconsumes: []\nproduces: []\n",
         )
         .unwrap();
         assert!(RhaiGate::from_spool(&host).is_err());

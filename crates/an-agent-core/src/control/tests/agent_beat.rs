@@ -141,7 +141,11 @@ rules = ["stay in character", "replies under 280 characters"]
         seen: Mutex::new(Vec::new()),
     });
     control
-        .mount_agent("npc", stage.clone(), &declares(&["scene"], &[]))
+        .mount_agent(
+            "npc",
+            stage.clone(),
+            &declares_model(&["scene"], &[], crate::act::ModelFacet::Complete),
+        )
         .unwrap();
 
     let reply = said(control.offer(id, "npc").unwrap());
@@ -270,7 +274,11 @@ fn a_runaway_body_is_stopped_and_unmounted() {
     let model = stub_model();
     control.set_model_client(model.clone());
     control
-        .mount_agent("npc", Arc::new(Loopy(scene)), &declares(&["scene"], &[]))
+        .mount_agent(
+            "npc",
+            Arc::new(Loopy(scene)),
+            &declares_model(&["scene"], &[], crate::act::ModelFacet::Complete),
+        )
         .unwrap();
 
     assert!(matches!(
@@ -309,7 +317,7 @@ fn body_errors_unmount_but_infra_errors_do_not() {
         .mount_agent(
             "npc",
             Arc::new(Loopy(scene.clone())),
-            &declares(&["scene"], &[]),
+            &declares_model(&["scene"], &[], crate::act::ModelFacet::Complete),
         )
         .unwrap();
     assert!(matches!(
@@ -325,7 +333,7 @@ fn body_errors_unmount_but_infra_errors_do_not() {
         .mount_agent(
             "npc",
             Arc::new(Loopy("no-such-clip".into())),
-            &declares(&["scene"], &[]),
+            &declares_model(&["scene"], &[], crate::act::ModelFacet::Complete),
         )
         .unwrap();
     assert!(matches!(
@@ -340,7 +348,11 @@ fn body_errors_unmount_but_infra_errors_do_not() {
         fail: true,
     }));
     control
-        .mount_agent("npc", Arc::new(Loopy(scene)), &declares(&["scene"], &[]))
+        .mount_agent(
+            "npc",
+            Arc::new(Loopy(scene)),
+            &declares_model(&["scene"], &[], crate::act::ModelFacet::Complete),
+        )
         .unwrap();
     assert!(matches!(
         control.offer(id, "npc"),
@@ -397,6 +409,43 @@ fn invoke_tool_is_refused_in_agent_beats() {
         control.offer(id, "npc"),
         Err(ControlError::SpoolFailed { reason, .. }) if reason.contains("not admitted")
     ));
+    assert!(matches!(
+        control.offer(id, "npc"),
+        Err(ControlError::NotMounted(_))
+    ));
+}
+
+/// The model face is default-deny: a body mounted without it that asks for
+/// a model call is refused and unmounted like any failed body. This is the
+/// mount-time claim enforced on the delivery path — the declaration is the
+/// ceiling, not a hint.
+#[test]
+fn invoke_model_requires_the_mounted_model_face() {
+    let tmp = TempDir::new("control-agent-model-face");
+    let control = AgentControl::open(tmp.path(), &bash_registry()).unwrap();
+    control
+        .register(&listed(&[("scene", &["npc"])], &[], &[]))
+        .unwrap();
+    let id = control.open_thread(&stroke_card()).unwrap();
+    control.push_event("scene", "enter").unwrap();
+    let scene = control.note(id, "scene", "enter").unwrap();
+    let model = stub_model();
+    control.set_model_client(model.clone());
+    control
+        .mount_agent("npc", Arc::new(Loopy(scene)), &declares(&["scene"], &[]))
+        .unwrap();
+    assert!(matches!(
+        control.offer(id, "npc"),
+        Err(ControlError::SpoolFailed { reason, .. }) if reason.contains("model face")
+    ));
+    // Refused before any call left the house.
+    assert!(
+        model
+            .calls
+            .lock()
+            .unwrap_or_else(|err| err.into_inner())
+            .is_empty()
+    );
     assert!(matches!(
         control.offer(id, "npc"),
         Err(ControlError::NotMounted(_))
