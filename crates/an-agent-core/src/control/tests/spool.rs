@@ -27,7 +27,7 @@ fn offer_hands_each_spool_the_recorded_event() {
         Err(ControlError::AlreadyMounted(_))
     ));
 
-    let clipped = control.offer(id, "clip").unwrap();
+    let clipped = said(control.offer(id, "clip").unwrap());
     assert_eq!(clipped.spool, "clip");
     assert_eq!(clipped.event_id, stroke.id);
     assert_eq!(clipped.reply, "stroke 20,20 511,40 480,511");
@@ -42,7 +42,7 @@ fn offer_hands_each_spool_the_recorded_event() {
             &declares(&["stroke"], &[]),
         )
         .unwrap();
-    let painted = control.offer(id, "ink").unwrap();
+    let painted = said(control.offer(id, "ink").unwrap());
     assert_eq!(painted.spool, "ink");
     assert_eq!(painted.event_id, corrected.id);
     assert_eq!(
@@ -111,7 +111,7 @@ fn a_failed_spool_is_unmounted_and_the_event_stays() {
         control.offer(id, "boom"),
         Err(ControlError::NotMounted(_))
     ));
-    let painted = control.offer(id, "ink").unwrap();
+    let painted = said(control.offer(id, "ink").unwrap());
     assert_eq!(painted.spool, "ink");
     assert_eq!(painted.event_id, stroke.id);
     assert_eq!(
@@ -167,7 +167,7 @@ fn dispatch_follows_the_route_and_continues_after_a_crash() {
         )
         .unwrap();
 
-    let replies = control.dispatch(id).unwrap();
+    let replies = said_all(control.dispatch(id).unwrap());
     assert_eq!(replies.len(), 2);
     assert_eq!(replies[0].spool, "clip");
     assert_eq!(replies[0].event_id, stroke.id);
@@ -312,7 +312,7 @@ fn the_host_lands_a_reply_and_the_world_moves() {
         control.dispatch_on(id, "missing-event"),
         Err(ControlError::UnknownEvent(_))
     ));
-    let replies = control.dispatch_on(id, &stroke.id).unwrap();
+    let replies = said_all(control.dispatch_on(id, &stroke.id).unwrap());
     assert_eq!(replies.len(), 1);
     assert_eq!(replies[0].reply, "stroke 20,20 511,40 480,511");
 

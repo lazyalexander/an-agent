@@ -37,8 +37,8 @@ use thiserror::Error;
 use uuid::Uuid;
 
 use an_agent_core::control::{
-    AgentBody, AgentControl, ControlError, ReplyIntent, SpoolBeat, SpoolDeclaration, SpoolReply,
-    SpoolRequirement,
+    AgentBody, AgentControl, ControlError, DeliveryOutcome, ReplyIntent, SpoolBeat,
+    SpoolDeclaration, SpoolRequirement,
 };
 use an_agent_spool::beat::RhaiBeat;
 use an_agent_spool::policy::RhaiPolicy;
@@ -192,10 +192,16 @@ impl Host {
     }
 
     /// One beat: dispatch the latest workspace event, execute the
-    /// replies' intents, record the landings. Returns the replies.
-    pub fn pump(&self, id: Uuid, sink: &mut dyn FnMut(&str)) -> Result<Vec<SpoolReply>, HostError> {
-        let replies = self.control.dispatch(id)?;
-        self.execute(id, replies, sink)
+    /// replies' intents, record the landings. Returns the outcomes —
+    /// replies the host landed, and halts it must not (a halt is already
+    /// settled on tape; applying it would tape a lie).
+    pub fn pump(
+        &self,
+        id: Uuid,
+        sink: &mut dyn FnMut(&str),
+    ) -> Result<Vec<DeliveryOutcome>, HostError> {
+        let outcomes = self.control.dispatch(id)?;
+        self.execute(id, outcomes, sink)
     }
 
     /// One beat on a named event — backlog processing, in the caller's
@@ -205,23 +211,27 @@ impl Host {
         id: Uuid,
         event_id: &str,
         sink: &mut dyn FnMut(&str),
-    ) -> Result<Vec<SpoolReply>, HostError> {
-        let replies = self.control.dispatch_on(id, event_id)?;
-        self.execute(id, replies, sink)
+    ) -> Result<Vec<DeliveryOutcome>, HostError> {
+        let outcomes = self.control.dispatch_on(id, event_id)?;
+        self.execute(id, outcomes, sink)
     }
 
     /// Execute each reply's intents, then tape the landing. Utterances go
     /// to the app's sink; raises become new workspace events — admission
     /// against `produces` already happened in core, so a raise here is
     /// always one the spool declared. Raised events are left pending:
-    /// whether to pump again, and how deep, is the app's call.
+    /// whether to pump again, and how deep, is the app's call. Halts are
+    /// already settled on tape: nothing executes, nothing is applied.
     fn execute(
         &self,
         id: Uuid,
-        replies: Vec<SpoolReply>,
+        outcomes: Vec<DeliveryOutcome>,
         sink: &mut dyn FnMut(&str),
-    ) -> Result<Vec<SpoolReply>, HostError> {
-        for reply in &replies {
+    ) -> Result<Vec<DeliveryOutcome>, HostError> {
+        for outcome in &outcomes {
+            let DeliveryOutcome::Reply(reply) = outcome else {
+                continue;
+            };
             for intent in &reply.intents {
                 match intent {
                     ReplyIntent::Utter { text } => sink(text),
@@ -232,6 +242,6 @@ impl Host {
             }
             self.control.applied(id, reply, "host pump")?;
         }
-        Ok(replies)
+        Ok(outcomes)
     }
 }

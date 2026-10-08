@@ -155,10 +155,10 @@ config = { persona = "Aria" }
         .unwrap();
 
     let mut utters: Vec<String> = Vec::new();
-    let replies = host
+    let outcomes = host
         .pump(id, &mut |text| utters.push(text.to_string()))
         .unwrap();
-    assert_eq!(replies.len(), 1);
+    assert_eq!(outcomes.len(), 1);
     assert_eq!(utters.len(), 1);
     assert!(utters[0].starts_with("Aria says: "));
     assert!(utters[0].contains("welcome, traveler"));
@@ -187,7 +187,10 @@ config = { persona = "Aria" }
         && event.content.contains("welcome, traveler")));
     assert!(tape.iter().any(|event| {
         event.tags.iter().any(|tag| tag == "applied")
-            && event.refs.iter().any(|r| r == &replies[0].tape_id)
+            && event
+                .refs
+                .iter()
+                .any(|r| Some(r) == outcomes[0].reply().map(|reply| &reply.tape_id))
     }));
 }
 
@@ -281,10 +284,10 @@ config = { persona = "Bob" }
         .unwrap();
 
     let mut utters: Vec<String> = Vec::new();
-    let replies = host
+    let outcomes = host
         .pump(id, &mut |text| utters.push(text.to_string()))
         .unwrap();
-    assert_eq!(replies.len(), 2);
+    assert_eq!(outcomes.len(), 2);
     assert!(utters.iter().any(|text| text.starts_with("Aria says: ")));
     assert!(utters.iter().any(|text| text.starts_with("Bob says: ")));
     // Each persona's model call is taped separately: cost is never hidden.

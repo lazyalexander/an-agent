@@ -19,7 +19,7 @@ use std::sync::Arc;
 
 use serde_json::{Value, json};
 
-use super::{AgentControl, ControlError, SpoolReply};
+use super::{AgentControl, ControlError, DeliveryOutcome, SpoolReply};
 use crate::agent::Agent;
 use crate::agent::context::{self, Clip, Envelope, SystemFacts};
 use crate::memstream::Kind;
@@ -126,20 +126,22 @@ impl AgentControl {
             .ok_or(ControlError::ModelClientMissing)
     }
 
-    /// Drive one agent body through its steps. `Ok(None)` is a halt —
-    /// taped, nothing for the host. Any body error fails like a spool
-    /// failure: the note is taped, the body unmounts.
+    /// Drive one agent body through its steps. A halt settles as
+    /// [`DeliveryOutcome::Halt`] carrying its silence note's tape id — a
+    /// taped, explicit silence, never a synthesized empty reply. Any body
+    /// error fails like a spool failure: the note is taped, the body
+    /// unmounts.
     pub(super) fn agent_invoke(
         &self,
         agent: &Agent,
         name: &str,
         body: &Arc<dyn AgentBody>,
         event: &WorkspaceRecord,
-    ) -> Result<Option<Result<SpoolReply, String>>, ControlError> {
+    ) -> Result<Result<DeliveryOutcome, String>, ControlError> {
         for steps in 0..MAX_STEPS {
             let step = match body.evaluate(&projection(agent, event, steps)?) {
                 Ok(step) => step,
-                Err(reason) => return Ok(Some(Err(reason))),
+                Err(reason) => return Ok(Err(reason)),
             };
             match step {
                 BeatStep::Utter { text } => {
@@ -152,7 +154,7 @@ impl AgentControl {
                         &declaration,
                         super::spool::parse_intents(&text),
                     )?;
-                    return Ok(Some(Ok(SpoolReply {
+                    return Ok(Ok(DeliveryOutcome::Reply(SpoolReply {
                         spool: name.to_string(),
                         event_id: event.id.clone(),
                         reply: text,
@@ -161,22 +163,26 @@ impl AgentControl {
                     })));
                 }
                 BeatStep::Halt => {
-                    self.note_spool(agent, name, &event.id, Ok(""))?;
-                    return Ok(None);
+                    let tape_id = self.note_spool(agent, name, &event.id, Ok(""))?;
+                    return Ok(Ok(DeliveryOutcome::Halt {
+                        spool: name.to_string(),
+                        event_id: event.id.clone(),
+                        tape_id,
+                    }));
                 }
                 BeatStep::InvokeModel { clips } => {
                     self.model_step(agent, name, event, &clips)?;
                 }
                 BeatStep::InvokeTool { name: tool, .. } => {
-                    return Ok(Some(Err(format!(
+                    return Ok(Err(format!(
                         "invoke_tool ({tool}) is not admitted in agent beats yet"
-                    ))));
+                    )));
                 }
             }
         }
-        Ok(Some(Err(format!(
+        Ok(Err(format!(
             "agent body did not conclude within {MAX_STEPS} steps"
-        ))))
+        )))
     }
 
     /// One admitted, taped model call. Control gathers the workspace

@@ -44,7 +44,7 @@ mod workspace;
 pub use agent_beat::{AgentBody, BeatStep, ModelClient, ModelMessage};
 pub use hooks::{HookRunner, HookVerdict};
 use spool::Mounted;
-pub use spool::{ReplyIntent, SpoolBeat, SpoolDeclaration, SpoolReply};
+pub use spool::{DeliveryOutcome, ReplyIntent, SpoolBeat, SpoolDeclaration, SpoolReply};
 pub use workspace::{
     EventRoute, Guidance, HookHandler, Hooks, Registration, SpoolRequirement, WorkspaceConfig,
 };

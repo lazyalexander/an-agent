@@ -134,7 +134,7 @@ rules = ["stay in character", "replies under 280 characters"]
         .mount_agent("npc", stage.clone(), &declares(&["scene"], &[]))
         .unwrap();
 
-    let reply = control.offer(id, "npc").unwrap();
+    let reply = said(control.offer(id, "npc").unwrap());
     assert_eq!(reply.spool, "npc");
     assert!(reply.reply.contains("canned reply"));
     assert_eq!(reply.intents.len(), 1);
@@ -192,10 +192,11 @@ rules = ["stay in character", "replies under 280 characters"]
     );
 }
 
-/// A halt is a silence: taped, no reply on dispatch, and `offer` hands
-/// back an empty, intent-free reply.
+/// A halt is a taped, explicit silence: it comes back as
+/// `DeliveryOutcome::Halt` carrying its own note id — never a
+/// synthesized empty reply, and it earns no `applied`.
 #[test]
-fn a_halt_is_taped_and_skipped_on_dispatch() {
+fn a_halt_is_taped_and_settled_as_silence() {
     let tmp = TempDir::new("control-agent-halt");
     let control = AgentControl::open(tmp.path(), &bash_registry()).unwrap();
     control
@@ -216,20 +217,23 @@ fn a_halt_is_taped_and_skipped_on_dispatch() {
         )
         .unwrap();
 
-    let replies = control.dispatch(id).unwrap();
-    assert_eq!(replies.len(), 1);
-    assert_eq!(replies[0].spool, "ink");
+    let outcomes = control.dispatch(id).unwrap();
+    assert_eq!(outcomes.len(), 2);
+    let DeliveryOutcome::Halt { spool, tape_id, .. } = &outcomes[0] else {
+        panic!("npc halted, got {:?}", outcomes[0])
+    };
+    assert_eq!(spool, "npc");
+    // The silence note id is real: it is on the tape.
     let tape = control.events(id).unwrap();
-    assert!(tape.iter().any(|event| {
-        event.tags.iter().any(|tag| tag == "spool")
-            && event.content.contains("\"spool\":\"npc\"")
-            && event.content.contains("\"reply\":\"\"")
-    }));
+    assert!(tape.iter().any(|event| &event.id == tape_id
+        && event.tags.iter().any(|tag| tag == "spool")
+        && event.content.contains("\"reply\":\"\"")));
+    let ink = said(outcomes[1].clone());
+    assert_eq!(ink.spool, "ink");
 
     control.push_event("scene", "still nothing").unwrap();
-    let reply = control.offer(id, "npc").unwrap();
-    assert!(reply.reply.is_empty());
-    assert!(reply.intents.is_empty());
+    let outcome = control.offer(id, "npc").unwrap();
+    assert!(matches!(outcome, DeliveryOutcome::Halt { .. }));
 }
 
 /// A body that never concludes burns at most MAX_STEPS model calls, then
@@ -391,7 +395,7 @@ fn agent_replies_pass_intent_admission() {
         .mount_agent("npc", Arc::new(Bard), &declares(&["scene"], &["mood"]))
         .unwrap();
 
-    let reply = control.offer(id, "npc").unwrap();
+    let reply = said(control.offer(id, "npc").unwrap());
     assert_eq!(reply.intents.len(), 2);
     assert!(matches!(
         &reply.intents[0],
