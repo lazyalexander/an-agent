@@ -41,6 +41,22 @@ pub struct WorkspaceConfig {
     /// the kernel validates shape only, never that a named hook exists.
     #[serde(default)]
     pub hooks: Hooks,
+    /// Guardrail rules the workspace declares. They are stated in the
+    /// model envelope (`agent::context`); mechanical enforcement stays
+    /// with the after-hook gates, not with this document.
+    #[serde(default)]
+    pub guard: Guard,
+}
+
+/// The workspace's declared rules for agent output: free-text statements
+/// the model is told ("stay in character", "replies under 280
+/// characters"). Saying them is the envelope's job; enforcing them is
+/// the after-gates' job.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Guard {
+    #[serde(default)]
+    pub rules: Vec<String>,
 }
 
 /// One pinned spool the workspace asks for.
@@ -119,6 +135,11 @@ impl WorkspaceConfig {
                     "spool {} version must be exact x.y.z: {}",
                     req.name, req.version
                 )));
+            }
+        }
+        for rule in &self.guard.rules {
+            if rule.trim().is_empty() {
+                return Err(ControlError::InvalidConfig("empty guard rule".into()));
             }
         }
         for hook in self.hooks.before.iter().chain(self.hooks.after.iter()) {

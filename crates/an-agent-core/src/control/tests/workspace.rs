@@ -170,4 +170,12 @@ after = [{ type = "mcp", server = "guard", tool = "screen_reply" }]
         ),
         Err(ControlError::InvalidConfig(_))
     ));
+    // Guard rules parse; an empty rule is refused.
+    control
+        .put_config("canvas", b"[guard]\nrules = [\"stay in character\"]\n")
+        .unwrap();
+    assert!(matches!(
+        control.put_config("canvas", b"[guard]\nrules = [\"  \"]\n"),
+        Err(ControlError::InvalidConfig(_))
+    ));
 }

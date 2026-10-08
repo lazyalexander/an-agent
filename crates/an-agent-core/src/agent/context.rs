@@ -1,0 +1,145 @@
+//! The thread's context composition: what the model sees. This is the
+//! system-level envelope in the codex sense — who the thread is (card
+//! prompt), what runs it (host facts, platform), where it lives
+//! (workspace env), and the rules the workspace declares (guardrails) —
+//! assembled here, on the thread side. Control admits the call and tapes
+//! it; it does not compose.
+
+/// One message handed to the model client. Roles follow the chat
+/// convention (system / user / assistant); assembly is the thread's job.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ModelMessage {
+    pub role: String,
+    pub content: String,
+}
+
+/// System-level facts around a call. `host` is the embedding software's
+/// own label; `os` / `arch` come from the platform, the same way codex
+/// states its environment context. Facts are stated, not enforced.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SystemFacts {
+    pub host: String,
+    pub os: String,
+    pub arch: String,
+}
+
+impl SystemFacts {
+    pub fn new(host: impl Into<String>) -> Self {
+        Self {
+            host: host.into(),
+            os: std::env::consts::OS.to_string(),
+            arch: std::env::consts::ARCH.to_string(),
+        }
+    }
+}
+
+/// One tape clip selected for the envelope.
+#[derive(Debug, Clone, Copy)]
+pub struct Clip<'a> {
+    pub tag: &'a str,
+    pub content: &'a str,
+}
+
+/// The parts one model call is composed from. Every ingredient has an
+/// owner outside the thread — card, workspace, host — the thread only
+/// assembles.
+pub struct Envelope<'a> {
+    /// Card prompt: the thread's kernel identity.
+    pub prompt: &'a str,
+    pub facts: &'a SystemFacts,
+    /// Workspace env markdown. Empty means the workspace declares none.
+    pub env: &'a str,
+    /// Workspace `[guard]` rules: stated to the model here, enforced
+    /// mechanically by the after-hook gates, not by this module.
+    pub guardrails: &'a [String],
+    pub clips: &'a [Clip<'a>],
+}
+
+/// Compose the two messages of one model call: the system envelope and
+/// the clip bundle. Empty sections are omitted, never stated as empty —
+/// an absent declaration reads as absence, not as a blank rule.
+pub fn compose(parts: &Envelope) -> Vec<ModelMessage> {
+    let mut system = parts.prompt.to_string();
+    system.push_str(&format!(
+        "\n\n# Host\n{} on {}/{}",
+        parts.facts.host, parts.facts.os, parts.facts.arch
+    ));
+    if !parts.env.trim().is_empty() {
+        system.push_str(&format!("\n\n# Environment\n{}", parts.env.trim_end()));
+    }
+    if !parts.guardrails.is_empty() {
+        system.push_str("\n\n# Guardrails");
+        for rule in parts.guardrails {
+            system.push_str(&format!("\n- {rule}"));
+        }
+    }
+    let mut user = String::new();
+    for clip in parts.clips {
+        user.push_str(&format!("[{}] {}\n", clip.tag, clip.content));
+    }
+    vec![
+        ModelMessage {
+            role: "system".into(),
+            content: system,
+        },
+        ModelMessage {
+            role: "user".into(),
+            content: user,
+        },
+    ]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn facts() -> SystemFacts {
+        SystemFacts::new("test-host")
+    }
+
+    #[test]
+    fn the_envelope_states_every_declared_ingredient() {
+        let clips = [Clip {
+            tag: "scene",
+            content: "a traveler enters",
+        }];
+        let rules = vec!["stay in character".to_string()];
+        let facts = facts();
+        let messages = compose(&Envelope {
+            prompt: "you keep the tavern",
+            facts: &facts,
+            env: "# The Tavern\nA quiet place.\n",
+            guardrails: &rules,
+            clips: &clips,
+        });
+        assert_eq!(messages.len(), 2);
+        let system = &messages[0];
+        assert_eq!(system.role, "system");
+        for needle in [
+            "you keep the tavern",
+            "test-host on ",
+            "# Environment\n# The Tavern\nA quiet place.",
+            "# Guardrails\n- stay in character",
+        ] {
+            assert!(system.content.contains(needle), "{needle}");
+        }
+        assert_eq!(messages[1].role, "user");
+        assert_eq!(messages[1].content, "[scene] a traveler enters\n");
+    }
+
+    #[test]
+    fn empty_sections_are_omitted_not_stated() {
+        let facts = facts();
+        let messages = compose(&Envelope {
+            prompt: "p",
+            facts: &facts,
+            env: "  \n",
+            guardrails: &[],
+            clips: &[],
+        });
+        assert!(!messages[0].content.contains("# Environment"));
+        assert!(!messages[0].content.contains("# Guardrails"));
+        assert!(messages[0].content.contains("# Host"));
+        assert_eq!(messages[1].content, "");
+    }
+}

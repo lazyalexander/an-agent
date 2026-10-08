@@ -163,11 +163,13 @@ config = { persona = "Aria" }
     assert!(utters[0].starts_with("Aria says: "));
     assert!(utters[0].contains("welcome, traveler"));
 
-    // The client saw the card's prompt and the cited scene clip.
+    // The client saw the card's prompt in the composed envelope, plus
+    // the cited scene clip.
     let calls = model.calls.lock().unwrap_or_else(|err| err.into_inner());
     assert_eq!(calls.len(), 1);
     assert_eq!(calls[0][0].role, "system");
-    assert_eq!(calls[0][0].content, "you keep the tavern");
+    assert!(calls[0][0].content.starts_with("you keep the tavern"));
+    assert!(calls[0][0].content.contains("# Host"));
     assert!(calls[0][1].content.contains("a traveler enters"));
     drop(calls);
 
