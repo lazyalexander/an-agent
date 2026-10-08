@@ -100,7 +100,7 @@ fn stub_model() -> Arc<StubModel> {
 /// call over it, and the answer comes back as the reply. Both halves of
 /// the model call are taped with their anchor refs. The envelope the
 /// client receives is the thread's composition: card prompt, host facts,
-/// workspace env, and declared guardrails.
+/// workspace env, and declared guidance.
 #[test]
 fn an_agent_body_thinks_and_every_step_is_taped() {
     let tmp = TempDir::new("control-agent-beat");
@@ -115,7 +115,7 @@ fn an_agent_body_thinks_and_every_step_is_taped() {
         .put_config(
             "main",
             br#"
-[guard]
+[guidance]
 rules = ["stay in character", "replies under 280 characters"]
 "#,
         )
@@ -140,7 +140,7 @@ rules = ["stay in character", "replies under 280 characters"]
     assert_eq!(reply.intents.len(), 1);
 
     // The client saw the card's model and the composed envelope: prompt,
-    // host facts, workspace env, declared guardrails, plus the cited clip.
+    // host facts, workspace env, declared guidance, plus the cited clip.
     let calls = model.calls.lock().unwrap_or_else(|err| err.into_inner());
     assert_eq!(calls.len(), 1);
     assert_eq!(calls[0].0, "m");
@@ -150,7 +150,7 @@ rules = ["stay in character", "replies under 280 characters"]
         "p\n\n# Host",
         "test-app on ",
         "# Environment\n# The Tavern\nA quiet place.",
-        "# Guardrails\n- stay in character\n- replies under 280 characters",
+        "# Guidance (advisory)\n- stay in character\n- replies under 280 characters",
     ] {
         assert!(system.content.contains(needle), "{needle}");
     }

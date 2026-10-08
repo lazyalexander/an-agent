@@ -46,7 +46,7 @@ pub use hooks::{HookRunner, HookVerdict};
 use spool::Mounted;
 pub use spool::{ReplyIntent, SpoolBeat, SpoolDeclaration, SpoolReply};
 pub use workspace::{
-    EventRoute, Guard, HookHandler, Hooks, Registration, SpoolRequirement, WorkspaceConfig,
+    EventRoute, Guidance, HookHandler, Hooks, Registration, SpoolRequirement, WorkspaceConfig,
 };
 
 #[derive(Debug, Error)]

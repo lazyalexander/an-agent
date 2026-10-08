@@ -209,15 +209,15 @@ impl AgentControl {
             .map(|(tag, content)| Clip { tag, content })
             .collect();
         let cite = self.workspace_cite()?;
-        let guardrails = self
+        let guidance = self
             .current_config()?
-            .map(|config| config.guard.rules)
+            .map(|config| config.guidance.rules)
             .unwrap_or_default();
         let messages = context::compose(&Envelope {
             prompt: agent.prompt(),
             facts: &self.system_facts(),
             env: &cite.env_markdown,
-            guardrails: &guardrails,
+            guidance: &guidance,
             clips: &views,
         });
         let action = self.append_event(
