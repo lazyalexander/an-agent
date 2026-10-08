@@ -41,7 +41,7 @@ mod session;
 mod spool;
 mod workspace;
 
-pub use agent_beat::{AgentBody, BeatStep, ModelClient, ModelMessage};
+pub use agent_beat::{AgentBody, BeatStep, Completion, ModelClient, ModelMessage, Usage};
 pub use hooks::{HookRunner, HookVerdict};
 use spool::Mounted;
 pub use spool::{DeliveryOutcome, ReplyIntent, SpoolBeat, SpoolDeclaration, SpoolReply};

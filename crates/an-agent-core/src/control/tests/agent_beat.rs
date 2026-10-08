@@ -76,7 +76,11 @@ struct StubModel {
 }
 
 impl ModelClient for StubModel {
-    fn complete(&self, spec: &ModelSpec, messages: Vec<ModelMessage>) -> Result<String, String> {
+    fn complete(
+        &self,
+        spec: &ModelSpec,
+        messages: Vec<ModelMessage>,
+    ) -> Result<Completion, String> {
         self.calls
             .lock()
             .unwrap_or_else(|err| err.into_inner())
@@ -84,7 +88,13 @@ impl ModelClient for StubModel {
         if self.fail {
             Err("model offline".into())
         } else {
-            Ok("canned reply".into())
+            Ok(Completion {
+                content: "canned reply".into(),
+                usage: Some(Usage {
+                    input_tokens: 42,
+                    output_tokens: 7,
+                }),
+            })
         }
     }
 }
@@ -158,7 +168,9 @@ rules = ["stay in character", "replies under 280 characters"]
     drop(calls);
 
     // The model call is two anchored events: the action cites the clip it
-    // read, the observation cites the action. The spool note carries the reply.
+    // read, the observation cites the action. The observation is thin —
+    // hash, size, usage — and the payload lives in the session's blob
+    // store. The spool note carries the reply.
     let tape = control.events(id).unwrap();
     let action = tape
         .iter()
@@ -173,14 +185,21 @@ rules = ["stay in character", "replies under 280 characters"]
         })
         .expect("invoke observation");
     assert!(observation.refs.iter().any(|r| r == &action.id));
-    assert!(observation.content.contains("canned reply"));
+    assert!(!observation.content.contains("canned reply"));
+    let note: Value = serde_json::from_str(&observation.content).unwrap();
+    assert_eq!(note["usage"]["input_tokens"], 42);
+    assert_eq!(note["usage"]["output_tokens"], 7);
+    let sha = note["response_sha256"].as_str().expect("response sha");
+    let blob = std::fs::read(control.directory(id).unwrap().join("blobs").join(sha)).unwrap();
+    assert_eq!(blob, b"canned reply");
     assert!(tape.iter().any(|event| {
         event.tags.iter().any(|tag| tag == "spool")
             && event.content.contains("\"spool\":\"npc\"")
             && event.content.contains("canned reply")
     }));
 
-    // The body saw the model's answer join the projection on step 1.
+    // The body saw the model's answer join the projection on step 1 —
+    // resolved back from the blob, so the tape stays thin.
     let seen = stage.seen.lock().unwrap_or_else(|err| err.into_inner());
     assert_eq!(seen.len(), 2);
     let step1_clips = seen[1]["clips"].as_array().expect("clips");
@@ -327,6 +346,20 @@ fn body_errors_unmount_but_infra_errors_do_not() {
         control.offer(id, "npc"),
         Err(ControlError::ModelFailed { spool, reason }) if spool == "npc" && reason == "model offline"
     ));
+    // The failed call is closed on tape: a terminal observation citing
+    // its action, so no invoke dangles unreadable as "still in flight".
+    let tape = control.events(id).unwrap();
+    let action = tape
+        .iter()
+        .find(|event| event.kind == Kind::Action && event.tags.iter().any(|tag| tag == "invoke"))
+        .expect("invoke action");
+    assert!(tape.iter().any(|event| {
+        event.kind == Kind::Observation
+            && event.tags.iter().any(|tag| tag == "invoke")
+            && event.refs.iter().any(|r| r == &action.id)
+            && event.content.contains("\"status\":\"failed\"")
+            && event.content.contains("model offline")
+    }));
     control.unmount_spool("npc").unwrap();
 
     // A body error unmounts, like any failed spool.

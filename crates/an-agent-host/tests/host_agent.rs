@@ -11,7 +11,9 @@ use std::sync::{Arc, Mutex};
 use uuid::Uuid;
 
 use an_agent_core::act::{Permit, ToolTag};
-use an_agent_core::control::{AgentControl, EventRoute, ModelClient, ModelMessage, Registration};
+use an_agent_core::control::{
+    AgentControl, Completion, EventRoute, ModelClient, ModelMessage, Registration,
+};
 use an_agent_core::memstream::Kind;
 use an_agent_core::principal::card::{AgentCard, ModelSpec, ToolGrant, Topology};
 use an_agent_core::testkit::{TempDir, bash_registry};
@@ -95,12 +97,19 @@ struct StubModel {
 }
 
 impl ModelClient for StubModel {
-    fn complete(&self, _spec: &ModelSpec, messages: Vec<ModelMessage>) -> Result<String, String> {
+    fn complete(
+        &self,
+        _spec: &ModelSpec,
+        messages: Vec<ModelMessage>,
+    ) -> Result<Completion, String> {
         self.calls
             .lock()
             .unwrap_or_else(|err| err.into_inner())
             .push(messages);
-        Ok("welcome, traveler".into())
+        Ok(Completion {
+            content: "welcome, traveler".into(),
+            usage: None,
+        })
     }
 }
 
@@ -181,10 +190,30 @@ config = { persona = "Aria" }
         .find(|event| event.kind == Kind::Action && event.tags.iter().any(|tag| tag == "invoke"))
         .expect("invoke action");
     assert!(action.refs.iter().any(|r| r == &scene));
-    assert!(tape.iter().any(|event| event.kind == Kind::Observation
-        && event.tags.iter().any(|tag| tag == "invoke")
-        && event.refs.iter().any(|r| r == &action.id)
-        && event.content.contains("welcome, traveler")));
+    // Thin trace: the observation cites a content address, not the text.
+    let observation = tape
+        .iter()
+        .find(|event| {
+            event.kind == Kind::Observation
+                && event.tags.iter().any(|tag| tag == "invoke")
+                && event.refs.iter().any(|r| r == &action.id)
+        })
+        .expect("invoke observation");
+    assert!(!observation.content.contains("welcome, traveler"));
+    let sha =
+        serde_json::from_str::<serde_json::Value>(&observation.content).unwrap()["response_sha256"]
+            .as_str()
+            .unwrap()
+            .to_string();
+    let blob = std::fs::read(
+        host.control()
+            .directory(id)
+            .unwrap()
+            .join("blobs")
+            .join(sha),
+    )
+    .unwrap();
+    assert_eq!(blob, b"welcome, traveler");
     assert!(tape.iter().any(|event| {
         event.tags.iter().any(|tag| tag == "applied")
             && event
