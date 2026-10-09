@@ -585,3 +585,41 @@ fn byte_fuses_cap_what_crosses_a_boundary() {
             && event.content.len() < 20_000
     }));
 }
+
+/// A declared guard with no hook runner fails closed at the reply: the
+/// envelope may call a rule "enforced" only while the enforcement exists.
+#[test]
+fn a_declared_guard_without_a_runner_fails_closed() {
+    let tmp = TempDir::new("control-agent-guard-no-runner");
+    let control = AgentControl::open(tmp.path(), &bash_registry()).unwrap();
+    control
+        .register(&listed(&[("scene", &["npc"])], &["main"], &[]))
+        .unwrap();
+    control
+        .put_config(
+            "main",
+            br#"[[guard]]
+rule = "replies under 280 characters"
+gate = { type = "spool", name = "length", version = "1.0.0" }
+"#,
+        )
+        .unwrap();
+    let id = control.open_thread(&stroke_card()).unwrap();
+    control.push_event("scene", "enter").unwrap();
+
+    struct Bard;
+    impl AgentBody for Bard {
+        fn evaluate(&self, _projection: &Value) -> Result<BeatStep, String> {
+            Ok(BeatStep::Utter {
+                text: "hello".into(),
+            })
+        }
+    }
+    control
+        .mount_agent("npc", Arc::new(Bard), &declares(&["scene"], &[]))
+        .unwrap();
+    assert!(matches!(
+        control.offer(id, "npc"),
+        Err(ControlError::HookRunnerMissing)
+    ));
+}

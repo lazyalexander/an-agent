@@ -3,6 +3,11 @@
 //! not open-ended names. v1 is the gate gear only — allow or deny; the
 //! transform gear (rewrite, both versions taped) is a later slice.
 //!
+//! Guards are the after chain's enforced segment: each `[guard]` entry
+//! binds a rule statement to a pinned gate, runs ahead of the free
+//! chain, and tapes its rule on a denial. The free chain is for the
+//! rest.
+//!
 //! Core does not know MCP or the spool shelf. It hands the declared
 //! handler and the subject to the host's [`HookRunner`] and takes a
 //! verdict. Chain order and parameters live in config (data); the
@@ -73,7 +78,7 @@ impl AgentControl {
                         reason: format!("hook failed: {err}"),
                     });
             if let HookVerdict::Deny { reason } = verdict {
-                self.note_hook(agent, "before", handler, &reason)?;
+                self.note_hook(agent, "before", handler, None, &reason)?;
                 return Err(ControlError::HookDenied {
                     chain: "before".into(),
                     reason,
@@ -83,8 +88,10 @@ impl AgentControl {
         Ok(())
     }
 
-    /// The after chain on one reply. A deny does not reach the host; the
-    /// spool note is already on tape, and the denial joins it.
+    /// The after chain on one reply. Guards run first — a reply that
+    /// breaks an enforced rule never reaches the free chain, and the
+    /// denial tapes the rule it enforced. A deny does not reach the
+    /// host; the spool note is already on tape, and the denial joins it.
     pub(super) fn hooks_after(
         &self,
         agent: &Agent,
@@ -93,10 +100,25 @@ impl AgentControl {
         let Some(config) = self.current_config()? else {
             return Ok(());
         };
-        if config.hooks.after.is_empty() {
+        if config.guard.is_empty() && config.hooks.after.is_empty() {
             return Ok(());
         }
         let runner = self.hook_runner()?;
+        for guard in &config.guard {
+            let verdict =
+                runner
+                    .run_after(&guard.gate, reply)
+                    .unwrap_or_else(|err| HookVerdict::Deny {
+                        reason: format!("hook failed: {err}"),
+                    });
+            if let HookVerdict::Deny { reason } = verdict {
+                self.note_hook(agent, "guard", &guard.gate, Some(&guard.rule), &reason)?;
+                return Err(ControlError::HookDenied {
+                    chain: "guard".into(),
+                    reason,
+                });
+            }
+        }
         for handler in &config.hooks.after {
             let verdict =
                 runner
@@ -105,7 +127,7 @@ impl AgentControl {
                         reason: format!("hook failed: {err}"),
                     });
             if let HookVerdict::Deny { reason } = verdict {
-                self.note_hook(agent, "after", handler, &reason)?;
+                self.note_hook(agent, "after", handler, None, &reason)?;
                 return Err(ControlError::HookDenied {
                     chain: "after".into(),
                     reason,
@@ -129,10 +151,12 @@ impl AgentControl {
         agent: &Agent,
         chain: &str,
         handler: &HookHandler,
+        rule: Option<&str>,
         reason: &str,
     ) -> Result<String, ControlError> {
         let content = json!({
             "chain": chain,
+            "rule": rule,
             "handler": serde_json::to_value(handler)
                 .unwrap_or_else(|_| json!("unrepresentable")),
             "verdict": "deny",
