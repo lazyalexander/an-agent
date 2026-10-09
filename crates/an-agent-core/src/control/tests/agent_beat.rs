@@ -76,7 +76,11 @@ struct StubModel {
 }
 
 impl ModelClient for StubModel {
-    fn complete(&self, spec: &ModelSpec, messages: Vec<ModelMessage>) -> Result<String, String> {
+    fn complete(
+        &self,
+        spec: &ModelSpec,
+        messages: Vec<ModelMessage>,
+    ) -> Result<Completion, String> {
         self.calls
             .lock()
             .unwrap_or_else(|err| err.into_inner())
@@ -84,7 +88,13 @@ impl ModelClient for StubModel {
         if self.fail {
             Err("model offline".into())
         } else {
-            Ok("canned reply".into())
+            Ok(Completion {
+                content: "canned reply".into(),
+                usage: Some(Usage {
+                    input_tokens: 42,
+                    output_tokens: 7,
+                }),
+            })
         }
     }
 }
@@ -100,7 +110,7 @@ fn stub_model() -> Arc<StubModel> {
 /// call over it, and the answer comes back as the reply. Both halves of
 /// the model call are taped with their anchor refs. The envelope the
 /// client receives is the thread's composition: card prompt, host facts,
-/// workspace env, and declared guardrails.
+/// workspace env, and declared guidance.
 #[test]
 fn an_agent_body_thinks_and_every_step_is_taped() {
     let tmp = TempDir::new("control-agent-beat");
@@ -115,7 +125,7 @@ fn an_agent_body_thinks_and_every_step_is_taped() {
         .put_config(
             "main",
             br#"
-[guard]
+[guidance]
 rules = ["stay in character", "replies under 280 characters"]
 "#,
         )
@@ -134,13 +144,13 @@ rules = ["stay in character", "replies under 280 characters"]
         .mount_agent("npc", stage.clone(), &declares(&["scene"], &[]))
         .unwrap();
 
-    let reply = control.offer(id, "npc").unwrap();
+    let reply = said(control.offer(id, "npc").unwrap());
     assert_eq!(reply.spool, "npc");
     assert!(reply.reply.contains("canned reply"));
     assert_eq!(reply.intents.len(), 1);
 
     // The client saw the card's model and the composed envelope: prompt,
-    // host facts, workspace env, declared guardrails, plus the cited clip.
+    // host facts, workspace env, declared guidance, plus the cited clip.
     let calls = model.calls.lock().unwrap_or_else(|err| err.into_inner());
     assert_eq!(calls.len(), 1);
     assert_eq!(calls[0].0, "m");
@@ -150,7 +160,7 @@ rules = ["stay in character", "replies under 280 characters"]
         "p\n\n# Host",
         "test-app on ",
         "# Environment\n# The Tavern\nA quiet place.",
-        "# Guardrails\n- stay in character\n- replies under 280 characters",
+        "# Guidance (advisory)\n- stay in character\n- replies under 280 characters",
     ] {
         assert!(system.content.contains(needle), "{needle}");
     }
@@ -158,7 +168,9 @@ rules = ["stay in character", "replies under 280 characters"]
     drop(calls);
 
     // The model call is two anchored events: the action cites the clip it
-    // read, the observation cites the action. The spool note carries the reply.
+    // read, the observation cites the action. The observation is thin —
+    // hash, size, usage — and the payload lives in the session's blob
+    // store. The spool note carries the reply.
     let tape = control.events(id).unwrap();
     let action = tape
         .iter()
@@ -173,14 +185,21 @@ rules = ["stay in character", "replies under 280 characters"]
         })
         .expect("invoke observation");
     assert!(observation.refs.iter().any(|r| r == &action.id));
-    assert!(observation.content.contains("canned reply"));
+    assert!(!observation.content.contains("canned reply"));
+    let note: Value = serde_json::from_str(&observation.content).unwrap();
+    assert_eq!(note["usage"]["input_tokens"], 42);
+    assert_eq!(note["usage"]["output_tokens"], 7);
+    let sha = note["response_sha256"].as_str().expect("response sha");
+    let blob = std::fs::read(control.directory(id).unwrap().join("blobs").join(sha)).unwrap();
+    assert_eq!(blob, b"canned reply");
     assert!(tape.iter().any(|event| {
         event.tags.iter().any(|tag| tag == "spool")
             && event.content.contains("\"spool\":\"npc\"")
             && event.content.contains("canned reply")
     }));
 
-    // The body saw the model's answer join the projection on step 1.
+    // The body saw the model's answer join the projection on step 1 —
+    // resolved back from the blob, so the tape stays thin.
     let seen = stage.seen.lock().unwrap_or_else(|err| err.into_inner());
     assert_eq!(seen.len(), 2);
     let step1_clips = seen[1]["clips"].as_array().expect("clips");
@@ -192,10 +211,11 @@ rules = ["stay in character", "replies under 280 characters"]
     );
 }
 
-/// A halt is a silence: taped, no reply on dispatch, and `offer` hands
-/// back an empty, intent-free reply.
+/// A halt is a taped, explicit silence: it comes back as
+/// `DeliveryOutcome::Halt` carrying its own note id — never a
+/// synthesized empty reply, and it earns no `applied`.
 #[test]
-fn a_halt_is_taped_and_skipped_on_dispatch() {
+fn a_halt_is_taped_and_settled_as_silence() {
     let tmp = TempDir::new("control-agent-halt");
     let control = AgentControl::open(tmp.path(), &bash_registry()).unwrap();
     control
@@ -216,20 +236,23 @@ fn a_halt_is_taped_and_skipped_on_dispatch() {
         )
         .unwrap();
 
-    let replies = control.dispatch(id).unwrap();
-    assert_eq!(replies.len(), 1);
-    assert_eq!(replies[0].spool, "ink");
+    let outcomes = control.dispatch(id).unwrap();
+    assert_eq!(outcomes.len(), 2);
+    let DeliveryOutcome::Halt { spool, tape_id, .. } = &outcomes[0] else {
+        panic!("npc halted, got {:?}", outcomes[0])
+    };
+    assert_eq!(spool, "npc");
+    // The silence note id is real: it is on the tape.
     let tape = control.events(id).unwrap();
-    assert!(tape.iter().any(|event| {
-        event.tags.iter().any(|tag| tag == "spool")
-            && event.content.contains("\"spool\":\"npc\"")
-            && event.content.contains("\"reply\":\"\"")
-    }));
+    assert!(tape.iter().any(|event| &event.id == tape_id
+        && event.tags.iter().any(|tag| tag == "spool")
+        && event.content.contains("\"reply\":\"\"")));
+    let ink = said(outcomes[1].clone());
+    assert_eq!(ink.spool, "ink");
 
     control.push_event("scene", "still nothing").unwrap();
-    let reply = control.offer(id, "npc").unwrap();
-    assert!(reply.reply.is_empty());
-    assert!(reply.intents.is_empty());
+    let outcome = control.offer(id, "npc").unwrap();
+    assert!(matches!(outcome, DeliveryOutcome::Halt { .. }));
 }
 
 /// A body that never concludes burns at most MAX_STEPS model calls, then
@@ -323,6 +346,20 @@ fn body_errors_unmount_but_infra_errors_do_not() {
         control.offer(id, "npc"),
         Err(ControlError::ModelFailed { spool, reason }) if spool == "npc" && reason == "model offline"
     ));
+    // The failed call is closed on tape: a terminal observation citing
+    // its action, so no invoke dangles unreadable as "still in flight".
+    let tape = control.events(id).unwrap();
+    let action = tape
+        .iter()
+        .find(|event| event.kind == Kind::Action && event.tags.iter().any(|tag| tag == "invoke"))
+        .expect("invoke action");
+    assert!(tape.iter().any(|event| {
+        event.kind == Kind::Observation
+            && event.tags.iter().any(|tag| tag == "invoke")
+            && event.refs.iter().any(|r| r == &action.id)
+            && event.content.contains("\"status\":\"failed\"")
+            && event.content.contains("model offline")
+    }));
     control.unmount_spool("npc").unwrap();
 
     // A body error unmounts, like any failed spool.
@@ -391,7 +428,7 @@ fn agent_replies_pass_intent_admission() {
         .mount_agent("npc", Arc::new(Bard), &declares(&["scene"], &["mood"]))
         .unwrap();
 
-    let reply = control.offer(id, "npc").unwrap();
+    let reply = said(control.offer(id, "npc").unwrap());
     assert_eq!(reply.intents.len(), 2);
     assert!(matches!(
         &reply.intents[0],

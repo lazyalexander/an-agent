@@ -1,7 +1,7 @@
 //! The thread's context composition: what the model sees. This is the
 //! system-level envelope in the codex sense — who the thread is (card
 //! prompt), what runs it (host facts, platform), where it lives
-//! (workspace env), and the rules the workspace declares (guardrails) —
+//! (workspace env), and the rules the workspace declares (guidance) —
 //! assembled here, on the thread side. Control admits the call and tapes
 //! it; it does not compose.
 
@@ -49,9 +49,10 @@ pub struct Envelope<'a> {
     pub facts: &'a SystemFacts,
     /// Workspace env markdown. Empty means the workspace declares none.
     pub env: &'a str,
-    /// Workspace `[guard]` rules: stated to the model here, enforced
-    /// mechanically by the after-hook gates, not by this module.
-    pub guardrails: &'a [String],
+    /// Workspace `[guidance]` rules: advisory statements the model is
+    /// told. Nothing mechanical enforces them — enforcement is the
+    /// after-hook gates' job, and this section never claims otherwise.
+    pub guidance: &'a [String],
     pub clips: &'a [Clip<'a>],
 }
 
@@ -67,9 +68,9 @@ pub fn compose(parts: &Envelope) -> Vec<ModelMessage> {
     if !parts.env.trim().is_empty() {
         system.push_str(&format!("\n\n# Environment\n{}", parts.env.trim_end()));
     }
-    if !parts.guardrails.is_empty() {
-        system.push_str("\n\n# Guardrails");
-        for rule in parts.guardrails {
+    if !parts.guidance.is_empty() {
+        system.push_str("\n\n# Guidance (advisory)");
+        for rule in parts.guidance {
             system.push_str(&format!("\n- {rule}"));
         }
     }
@@ -109,7 +110,7 @@ mod tests {
             prompt: "you keep the tavern",
             facts: &facts,
             env: "# The Tavern\nA quiet place.\n",
-            guardrails: &rules,
+            guidance: &rules,
             clips: &clips,
         });
         assert_eq!(messages.len(), 2);
@@ -119,7 +120,7 @@ mod tests {
             "you keep the tavern",
             "test-host on ",
             "# Environment\n# The Tavern\nA quiet place.",
-            "# Guardrails\n- stay in character",
+            "# Guidance (advisory)\n- stay in character",
         ] {
             assert!(system.content.contains(needle), "{needle}");
         }
@@ -134,11 +135,11 @@ mod tests {
             prompt: "p",
             facts: &facts,
             env: "  \n",
-            guardrails: &[],
+            guidance: &[],
             clips: &[],
         });
         assert!(!messages[0].content.contains("# Environment"));
-        assert!(!messages[0].content.contains("# Guardrails"));
+        assert!(!messages[0].content.contains("# Guidance"));
         assert!(messages[0].content.contains("# Host"));
         assert_eq!(messages[1].content, "");
     }

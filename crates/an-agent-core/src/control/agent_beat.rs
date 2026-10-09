@@ -11,15 +11,20 @@
 //! What the model sees is composed on the thread side
 //! (`crate::agent::context`) from card, workspace, and host ingredients —
 //! control gathers them and tapes the call; it does not compose.
-//! `InvokeTool` is refused in v1: tool acts are async and this driver is
-//! deliberately synchronous, like the policy sort — the async tool step
-//! lands with the thread-loop driver.
+//! The tape is a flight recorder, thin by contract: a model response is
+//! stored as a content-addressed blob in the session, and the observation
+//! records the hash, the size, and the provider's usage — never the full
+//! payload. A failed call tapes a terminal observation citing its action,
+//! so the tape never holds an invoke that cannot be told apart from one
+//! still in flight. `InvokeTool` is refused in v1: tool acts are async
+//! and this driver is deliberately synchronous, like the policy sort —
+//! the async tool step lands with the thread-loop driver.
 
 use std::sync::Arc;
 
 use serde_json::{Value, json};
 
-use super::{AgentControl, ControlError, SpoolReply};
+use super::{AgentControl, ControlError, DeliveryOutcome, SpoolReply};
 use crate::agent::Agent;
 use crate::agent::context::{self, Clip, Envelope, SystemFacts};
 use crate::memstream::Kind;
@@ -37,11 +42,28 @@ const MAX_STEPS: usize = 8;
 /// How many recent tape events the projection carries.
 const PROJECTION_CLIPS: usize = 20;
 
+/// Provider-reported token usage. `None` when the provider does not say
+/// — the tape records the absence, it does not invent numbers.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+pub struct Usage {
+    pub input_tokens: u64,
+    pub output_tokens: u64,
+}
+
+/// What the model returned. The content goes to the session's blob
+/// store; only its hash, size, and usage reach the tape.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Completion {
+    pub content: String,
+    pub usage: Option<Usage>,
+}
+
 /// The host's model client. The thread composes and core tapes; the
 /// client only carries bytes to the model and back. Sync like the policy
 /// sort — an async client wraps its own runtime.
 pub trait ModelClient: Send + Sync {
-    fn complete(&self, spec: &ModelSpec, messages: Vec<ModelMessage>) -> Result<String, String>;
+    fn complete(&self, spec: &ModelSpec, messages: Vec<ModelMessage>)
+    -> Result<Completion, String>;
 }
 
 /// One step an agent body yields. `Approve` from the thread-loop
@@ -69,7 +91,10 @@ pub trait AgentBody: Send + Sync {
 
 /// What the body sees. `clips` are the newest tape events, oldest first;
 /// model observations from this beat join the tail as they land, so the
-/// next step sees the model's answer.
+/// next step sees the model's answer. The tape is thin: an invoke
+/// observation stores a content address, and the projection resolves it
+/// back to text for the body — resolution is a read path, the WAL never
+/// holds the payload.
 fn projection(agent: &Agent, event: &WorkspaceRecord, steps: usize) -> Result<Value, ControlError> {
     let tape = agent.session().tape().read_all()?;
     let clips: Vec<Value> = tape
@@ -83,7 +108,7 @@ fn projection(agent: &Agent, event: &WorkspaceRecord, steps: usize) -> Result<Va
             json!({
                 "id": e.id,
                 "tag": e.tags.first().cloned().unwrap_or_default(),
-                "content": e.content,
+                "content": resolve_payload(agent, e),
             })
         })
         .collect();
@@ -92,6 +117,28 @@ fn projection(agent: &Agent, event: &WorkspaceRecord, steps: usize) -> Result<Va
         "clips": clips,
         "steps": steps,
     }))
+}
+
+/// Resolve a thin observation's content address back to its text. A
+/// missing or unreadable blob leaves the thin line as it is — the tape's
+/// hash and size stay truthful, and the gap is visible instead of
+/// invented content.
+fn resolve_payload(agent: &Agent, event: &crate::memstream::Memevent) -> String {
+    if event.kind != Kind::Observation {
+        return event.content.clone();
+    }
+    let Ok(content) = serde_json::from_str::<Value>(&event.content) else {
+        return event.content.clone();
+    };
+    let Some(sha) = content.get("response_sha256").and_then(|s| s.as_str()) else {
+        return event.content.clone();
+    };
+    agent
+        .session()
+        .read_blob(sha)
+        .ok()
+        .and_then(|bytes| String::from_utf8(bytes).ok())
+        .unwrap_or_else(|| event.content.clone())
 }
 
 impl AgentControl {
@@ -126,20 +173,22 @@ impl AgentControl {
             .ok_or(ControlError::ModelClientMissing)
     }
 
-    /// Drive one agent body through its steps. `Ok(None)` is a halt —
-    /// taped, nothing for the host. Any body error fails like a spool
-    /// failure: the note is taped, the body unmounts.
+    /// Drive one agent body through its steps. A halt settles as
+    /// [`DeliveryOutcome::Halt`] carrying its silence note's tape id — a
+    /// taped, explicit silence, never a synthesized empty reply. Any body
+    /// error fails like a spool failure: the note is taped, the body
+    /// unmounts.
     pub(super) fn agent_invoke(
         &self,
         agent: &Agent,
         name: &str,
         body: &Arc<dyn AgentBody>,
         event: &WorkspaceRecord,
-    ) -> Result<Option<Result<SpoolReply, String>>, ControlError> {
+    ) -> Result<Result<DeliveryOutcome, String>, ControlError> {
         for steps in 0..MAX_STEPS {
             let step = match body.evaluate(&projection(agent, event, steps)?) {
                 Ok(step) => step,
-                Err(reason) => return Ok(Some(Err(reason))),
+                Err(reason) => return Ok(Err(reason)),
             };
             match step {
                 BeatStep::Utter { text } => {
@@ -152,7 +201,7 @@ impl AgentControl {
                         &declaration,
                         super::spool::parse_intents(&text),
                     )?;
-                    return Ok(Some(Ok(SpoolReply {
+                    return Ok(Ok(DeliveryOutcome::Reply(SpoolReply {
                         spool: name.to_string(),
                         event_id: event.id.clone(),
                         reply: text,
@@ -161,22 +210,26 @@ impl AgentControl {
                     })));
                 }
                 BeatStep::Halt => {
-                    self.note_spool(agent, name, &event.id, Ok(""))?;
-                    return Ok(None);
+                    let tape_id = self.note_spool(agent, name, &event.id, Ok(""))?;
+                    return Ok(Ok(DeliveryOutcome::Halt {
+                        spool: name.to_string(),
+                        event_id: event.id.clone(),
+                        tape_id,
+                    }));
                 }
                 BeatStep::InvokeModel { clips } => {
                     self.model_step(agent, name, event, &clips)?;
                 }
                 BeatStep::InvokeTool { name: tool, .. } => {
-                    return Ok(Some(Err(format!(
+                    return Ok(Err(format!(
                         "invoke_tool ({tool}) is not admitted in agent beats yet"
-                    ))));
+                    )));
                 }
             }
         }
-        Ok(Some(Err(format!(
+        Ok(Err(format!(
             "agent body did not conclude within {MAX_STEPS} steps"
-        ))))
+        )))
     }
 
     /// One admitted, taped model call. Control gathers the workspace
@@ -209,15 +262,15 @@ impl AgentControl {
             .map(|(tag, content)| Clip { tag, content })
             .collect();
         let cite = self.workspace_cite()?;
-        let guardrails = self
+        let guidance = self
             .current_config()?
-            .map(|config| config.guard.rules)
+            .map(|config| config.guidance.rules)
             .unwrap_or_default();
         let messages = context::compose(&Envelope {
             prompt: agent.prompt(),
             facts: &self.system_facts(),
             env: &cite.env_markdown,
-            guardrails: &guardrails,
+            guidance: &guidance,
             clips: &views,
         });
         let action = self.append_event(
@@ -235,17 +288,36 @@ impl AgentControl {
             .to_string(),
             clips.to_vec(),
         )?;
-        let response = client.complete(agent.model(), messages).map_err(|reason| {
-            ControlError::ModelFailed {
-                spool: name.into(),
-                reason,
+        let completion = match client.complete(agent.model(), messages) {
+            Ok(completion) => completion,
+            Err(reason) => {
+                // A failed call is not a dangling action: the terminal
+                // observation closes it, citing the action it answers.
+                self.append_event(
+                    agent,
+                    Kind::Observation,
+                    "invoke",
+                    json!({ "spool": name, "status": "failed", "reason": reason }).to_string(),
+                    vec![action],
+                )?;
+                return Err(ControlError::ModelFailed {
+                    spool: name.into(),
+                    reason,
+                });
             }
-        })?;
+        };
+        let sha = agent.session().put_blob(completion.content.as_bytes())?;
         self.append_event(
             agent,
             Kind::Observation,
             "invoke",
-            json!({ "spool": name, "response": response }).to_string(),
+            json!({
+                "spool": name,
+                "response_sha256": sha,
+                "response_bytes": completion.content.len(),
+                "usage": completion.usage,
+            })
+            .to_string(),
             vec![action],
         )?;
         Ok(())

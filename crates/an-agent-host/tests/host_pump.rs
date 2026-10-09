@@ -167,7 +167,7 @@ version = "1.0.0"
 
     // Pump one: both personas utter and raise; the raises land as events.
     let mut utters: Vec<String> = Vec::new();
-    let replies = host
+    let outcomes = host
         .pump(id, &mut |text| utters.push(text.to_string()))
         .unwrap();
     assert_eq!(
@@ -188,7 +188,7 @@ version = "1.0.0"
     assert_eq!(dones.len(), 2);
     // Both landings taped, citing their spool notes.
     let tape = host.control().events(id).unwrap();
-    for reply in &replies {
+    for reply in outcomes.iter().filter_map(|o| o.reply()) {
         assert!(tape.iter().any(|event| {
             event.tags.iter().any(|tag| tag == "applied")
                 && event.refs.iter().any(|r| r == &reply.tape_id)

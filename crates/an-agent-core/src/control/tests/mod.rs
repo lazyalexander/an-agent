@@ -158,6 +158,15 @@ fn declares(consumes: &[&str], produces: &[&str]) -> SpoolDeclaration {
     }
 }
 
+/// Tests that expect speech unwrap the outcome; a halt fails loudly.
+fn said(outcome: DeliveryOutcome) -> SpoolReply {
+    outcome.reply().expect("a reply, not a halt").clone()
+}
+
+fn said_all(outcomes: Vec<DeliveryOutcome>) -> Vec<SpoolReply> {
+    outcomes.into_iter().map(said).collect()
+}
+
 mod agent_beat;
 mod hooks;
 mod intents;

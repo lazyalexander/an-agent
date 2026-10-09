@@ -174,17 +174,22 @@ config = { persona = "Bob the lighthouse keeper" }
         .unwrap();
     let replies = control.dispatch(id).unwrap();
     assert_eq!(
-        replies.iter().map(|r| r.reply.as_str()).collect::<Vec<_>>(),
+        replies
+            .iter()
+            .map(|r| r.reply().unwrap().reply.as_str())
+            .collect::<Vec<_>>(),
         vec![
             "Annie the cartographer @alice heard «land ho!»",
             "Bob the lighthouse keeper @alice heard «land ho!»",
         ]
     );
     for reply in &replies {
-        control.push_event("discord.post", &reply.reply).unwrap();
+        control
+            .push_event("discord.post", &reply.reply().unwrap().reply)
+            .unwrap();
         let sent = control.dispatch(id).unwrap();
         assert_eq!(sent.len(), 1);
-        assert_eq!(sent[0].reply, "sent");
+        assert_eq!(sent[0].reply().unwrap().reply, "sent");
     }
     assert_eq!(
         outbox
@@ -203,7 +208,11 @@ config = { persona = "Bob the lighthouse keeper" }
         .push_event("discord.message", "alice: thanks, both!")
         .unwrap();
     let replies = control.dispatch(id).unwrap();
-    assert!(replies.iter().all(|r| r.reply.contains("«thanks, both!»")));
+    assert!(
+        replies
+            .iter()
+            .all(|r| r.reply().unwrap().reply.contains("«thanks, both!»"))
+    );
 
     // Everything is on tape: each persona beat and each send, keyed to
     // the workspace event that caused it.

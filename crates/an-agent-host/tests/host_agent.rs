@@ -11,7 +11,9 @@ use std::sync::{Arc, Mutex};
 use uuid::Uuid;
 
 use an_agent_core::act::{Permit, ToolTag};
-use an_agent_core::control::{AgentControl, EventRoute, ModelClient, ModelMessage, Registration};
+use an_agent_core::control::{
+    AgentControl, Completion, EventRoute, ModelClient, ModelMessage, Registration,
+};
 use an_agent_core::memstream::Kind;
 use an_agent_core::principal::card::{AgentCard, ModelSpec, ToolGrant, Topology};
 use an_agent_core::testkit::{TempDir, bash_registry};
@@ -95,12 +97,19 @@ struct StubModel {
 }
 
 impl ModelClient for StubModel {
-    fn complete(&self, _spec: &ModelSpec, messages: Vec<ModelMessage>) -> Result<String, String> {
+    fn complete(
+        &self,
+        _spec: &ModelSpec,
+        messages: Vec<ModelMessage>,
+    ) -> Result<Completion, String> {
         self.calls
             .lock()
             .unwrap_or_else(|err| err.into_inner())
             .push(messages);
-        Ok("welcome, traveler".into())
+        Ok(Completion {
+            content: "welcome, traveler".into(),
+            usage: None,
+        })
     }
 }
 
@@ -155,10 +164,10 @@ config = { persona = "Aria" }
         .unwrap();
 
     let mut utters: Vec<String> = Vec::new();
-    let replies = host
+    let outcomes = host
         .pump(id, &mut |text| utters.push(text.to_string()))
         .unwrap();
-    assert_eq!(replies.len(), 1);
+    assert_eq!(outcomes.len(), 1);
     assert_eq!(utters.len(), 1);
     assert!(utters[0].starts_with("Aria says: "));
     assert!(utters[0].contains("welcome, traveler"));
@@ -181,13 +190,36 @@ config = { persona = "Aria" }
         .find(|event| event.kind == Kind::Action && event.tags.iter().any(|tag| tag == "invoke"))
         .expect("invoke action");
     assert!(action.refs.iter().any(|r| r == &scene));
-    assert!(tape.iter().any(|event| event.kind == Kind::Observation
-        && event.tags.iter().any(|tag| tag == "invoke")
-        && event.refs.iter().any(|r| r == &action.id)
-        && event.content.contains("welcome, traveler")));
+    // Thin trace: the observation cites a content address, not the text.
+    let observation = tape
+        .iter()
+        .find(|event| {
+            event.kind == Kind::Observation
+                && event.tags.iter().any(|tag| tag == "invoke")
+                && event.refs.iter().any(|r| r == &action.id)
+        })
+        .expect("invoke observation");
+    assert!(!observation.content.contains("welcome, traveler"));
+    let sha =
+        serde_json::from_str::<serde_json::Value>(&observation.content).unwrap()["response_sha256"]
+            .as_str()
+            .unwrap()
+            .to_string();
+    let blob = std::fs::read(
+        host.control()
+            .directory(id)
+            .unwrap()
+            .join("blobs")
+            .join(sha),
+    )
+    .unwrap();
+    assert_eq!(blob, b"welcome, traveler");
     assert!(tape.iter().any(|event| {
         event.tags.iter().any(|tag| tag == "applied")
-            && event.refs.iter().any(|r| r == &replies[0].tape_id)
+            && event
+                .refs
+                .iter()
+                .any(|r| Some(r) == outcomes[0].reply().map(|reply| &reply.tape_id))
     }));
 }
 
@@ -281,10 +313,10 @@ config = { persona = "Bob" }
         .unwrap();
 
     let mut utters: Vec<String> = Vec::new();
-    let replies = host
+    let outcomes = host
         .pump(id, &mut |text| utters.push(text.to_string()))
         .unwrap();
-    assert_eq!(replies.len(), 2);
+    assert_eq!(outcomes.len(), 2);
     assert!(utters.iter().any(|text| text.starts_with("Aria says: ")));
     assert!(utters.iter().any(|text| text.starts_with("Bob says: ")));
     // Each persona's model call is taped separately: cost is never hidden.

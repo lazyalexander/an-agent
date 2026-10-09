@@ -96,6 +96,31 @@ pub struct SpoolReply {
     pub intents: Vec<ReplyIntent>,
 }
 
+/// What one delivered event settled as for one body. A halt is a taped,
+/// explicit silence — it carries its own spool note id and nothing for
+/// the host to land, so it never earns an `applied`. A reply carries
+/// admitted intents for the host to land. The two are never collapsed
+/// into one shape: an empty utterance is a reply, a halt is not.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DeliveryOutcome {
+    Halt {
+        spool: String,
+        event_id: String,
+        tape_id: String,
+    },
+    Reply(SpoolReply),
+}
+
+impl DeliveryOutcome {
+    /// The reply, when the body spoke.
+    pub fn reply(&self) -> Option<&SpoolReply> {
+        match self {
+            Self::Reply(reply) => Some(reply),
+            Self::Halt { .. } => None,
+        }
+    }
+}
+
 /// A mounted body and the declaration it was matched with. The declaration
 /// stays: `produces` gates each reply's raise intents at delivery, not
 /// only at mount.
@@ -264,7 +289,7 @@ impl AgentControl {
     }
 
     /// One beat. The named body receives the latest workspace event.
-    pub fn offer(&self, id: Uuid, name: &str) -> Result<SpoolReply, ControlError> {
+    pub fn offer(&self, id: Uuid, name: &str) -> Result<DeliveryOutcome, ControlError> {
         let event = self.latest_event()?;
         self.offer_on(id, name, &event.id)
     }
@@ -272,32 +297,26 @@ impl AgentControl {
     /// One beat. The named body receives the workspace event `event_id`.
     /// Core writes the reply on the thread tape. The body does not.
     /// A failure unmounts that body only. The event stays on the log.
-    /// The event passes the before chain; the reply passes the after chain.
+    /// The event passes the before chain; a reply passes the after chain.
+    /// A halt passes neither — there is nothing to gate.
     pub fn offer_on(
         &self,
         id: Uuid,
         name: &str,
         event_id: &str,
-    ) -> Result<SpoolReply, ControlError> {
+    ) -> Result<DeliveryOutcome, ControlError> {
         self.enter_beat(id)?;
         let turn = self.inner.pool.begin_turn(id)?;
         let event = self.event_by_id(event_id)?;
         self.hooks_before(turn.agent(), &event)?;
         match self.invoke(turn.agent(), name, &event)? {
-            Some(Ok(reply)) => {
-                self.hooks_after(turn.agent(), &reply)?;
-                Ok(reply)
+            Ok(outcome) => {
+                if let DeliveryOutcome::Reply(reply) = &outcome {
+                    self.hooks_after(turn.agent(), reply)?;
+                }
+                Ok(outcome)
             }
-            // A halt is a silence: taped inside the driver, nothing for the
-            // host to land. The empty reply carries no intents.
-            None => Ok(SpoolReply {
-                spool: name.to_string(),
-                event_id: event.id.clone(),
-                reply: String::new(),
-                tape_id: String::new(),
-                intents: Vec::new(),
-            }),
-            Some(Err(reason)) => Err(ControlError::SpoolFailed {
+            Err(reason) => Err(ControlError::SpoolFailed {
                 name: name.to_string(),
                 reason,
             }),
@@ -305,35 +324,40 @@ impl AgentControl {
     }
 
     /// One beat. The latest event goes to each spool on its route, in order.
-    pub fn dispatch(&self, id: Uuid) -> Result<Vec<SpoolReply>, ControlError> {
+    pub fn dispatch(&self, id: Uuid) -> Result<Vec<DeliveryOutcome>, ControlError> {
         let event = self.latest_event()?;
         self.dispatch_on(id, &event.id)
     }
 
     /// One beat. The named event goes to each spool on its route, in order.
     /// A missing spool is noted and skipped. A failed spool is unmounted and
-    /// the rest still run. Replies are returned to the host. They are not
-    /// written as new workspace events. The event passes the before chain
-    /// once; each reply passes the after chain — a denied reply does not
-    /// reach the host, and the denial is taped.
-    pub fn dispatch_on(&self, id: Uuid, event_id: &str) -> Result<Vec<SpoolReply>, ControlError> {
+    /// the rest still run. Outcomes — replies and halts alike — are returned
+    /// to the host. They are not written as new workspace events. The event
+    /// passes the before chain once; each reply passes the after chain — a
+    /// denied reply does not reach the host, and the denial is taped.
+    pub fn dispatch_on(
+        &self,
+        id: Uuid,
+        event_id: &str,
+    ) -> Result<Vec<DeliveryOutcome>, ControlError> {
         self.enter_beat(id)?;
         let turn = self.inner.pool.begin_turn(id)?;
         let event = self.event_by_id(event_id)?;
         self.hooks_before(turn.agent(), &event)?;
         let event_name = event.name.clone().unwrap_or_default();
         let route = self.spools_for(&event_name)?;
-        let mut replies = Vec::new();
+        let mut outcomes = Vec::new();
         for spool in route {
             match self.invoke(turn.agent(), &spool, &event) {
-                Ok(Some(Ok(reply))) => match self.hooks_after(turn.agent(), &reply) {
-                    Ok(()) => replies.push(reply),
-                    Err(ControlError::HookDenied { .. }) => {}
-                    Err(err) => return Err(err),
+                Ok(Ok(outcome)) => match &outcome {
+                    DeliveryOutcome::Reply(reply) => match self.hooks_after(turn.agent(), reply) {
+                        Ok(()) => outcomes.push(outcome),
+                        Err(ControlError::HookDenied { .. }) => {}
+                        Err(err) => return Err(err),
+                    },
+                    DeliveryOutcome::Halt { .. } => outcomes.push(outcome),
                 },
-                // A halt is a silence: taped by the driver, skipped here.
-                Ok(None) => {}
-                Ok(Some(Err(_))) => {}
+                Ok(Err(_)) => {}
                 Err(ControlError::NotMounted(_)) => {
                     self.note_spool(turn.agent(), &spool, &event.id, Err("missing"))?;
                 }
@@ -341,7 +365,7 @@ impl AgentControl {
             }
         }
         drop(turn);
-        Ok(replies)
+        Ok(outcomes)
     }
 
     /// The host landed `reply` in software. Core writes that claim on the
@@ -375,27 +399,25 @@ impl AgentControl {
         )
     }
 
-    /// Deliver one event to one mounted body. `Ok(None)` is a halt — the
-    /// driver already taped the silence note. A body failure unmounts the
-    /// body and is returned as `Some(Err(reason))`, never as a
-    /// `ControlError`.
+    /// Deliver one event to one mounted body. A body failure unmounts the
+    /// body and is returned as `Err(reason)`, never as a `ControlError`.
     fn invoke(
         &self,
         agent: &Agent,
         name: &str,
         event: &WorkspaceRecord,
-    ) -> Result<Option<Result<SpoolReply, String>>, ControlError> {
+    ) -> Result<Result<DeliveryOutcome, String>, ControlError> {
         let Some((body, declaration)) = self.body_named(name) else {
             return Err(ControlError::NotMounted(name.to_string()));
         };
         match body {
             MountedBody::Agent(body) => match self.agent_invoke(agent, name, &body, event)? {
-                Some(Err(reason)) => {
+                Err(reason) => {
                     self.drop_body(name);
                     self.note_spool(agent, name, &event.id, Err(reason.as_str()))?;
-                    Ok(Some(Err(reason)))
+                    Ok(Err(reason))
                 }
-                outcome => Ok(outcome),
+                Ok(outcome) => Ok(Ok(outcome)),
             },
             MountedBody::Beat(body) => match body.receive(event) {
                 Ok(reply) => {
@@ -407,7 +429,7 @@ impl AgentControl {
                         &declaration,
                         parse_intents(&reply),
                     )?;
-                    Ok(Some(Ok(SpoolReply {
+                    Ok(Ok(DeliveryOutcome::Reply(SpoolReply {
                         spool: name.to_string(),
                         event_id: event.id.clone(),
                         reply,
@@ -418,7 +440,7 @@ impl AgentControl {
                 Err(reason) => {
                     self.drop_body(name);
                     self.note_spool(agent, name, &event.id, Err(reason.as_str()))?;
-                    Ok(Some(Err(reason)))
+                    Ok(Err(reason))
                 }
             },
         }

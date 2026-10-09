@@ -47,7 +47,7 @@ fn a_plain_reply_is_one_utter_intent() {
     mount_voice(&control, "moved the stroke", &[]);
     let id = control.open_thread(&stroke_card()).unwrap();
     push_stroke(&control);
-    let reply = control.offer(id, "voice").unwrap();
+    let reply = said(control.offer(id, "voice").unwrap());
 
     assert_eq!(
         reply.intents,
@@ -75,7 +75,7 @@ fn a_structured_reply_carries_utter_and_declared_raise() {
     );
     let id = control.open_thread(&stroke_card()).unwrap();
     push_stroke(&control);
-    let replies = control.dispatch(id).unwrap();
+    let replies = said_all(control.dispatch(id).unwrap());
 
     assert_eq!(
         replies[0].intents,
@@ -108,7 +108,7 @@ fn an_undeclared_raise_is_stripped_and_the_denial_taped() {
     );
     let id = control.open_thread(&stroke_card()).unwrap();
     push_stroke(&control);
-    let reply = control.offer(id, "voice").unwrap();
+    let reply = said(control.offer(id, "voice").unwrap());
 
     // The declared utter survives; the raise does not reach the host.
     assert_eq!(
@@ -131,7 +131,7 @@ fn json_outside_the_convention_is_a_plain_utter() {
     mount_voice(&control, r#"{"note":"hi"}"#, &[]);
     let id = control.open_thread(&stroke_card()).unwrap();
     push_stroke(&control);
-    let reply = control.offer(id, "voice").unwrap();
+    let reply = said(control.offer(id, "voice").unwrap());
 
     assert_eq!(
         reply.intents,
@@ -148,7 +148,7 @@ fn a_near_miss_with_a_mistyped_field_is_a_plain_utter() {
     mount_voice(&control, r#"{"utter":5}"#, &[]);
     let id = control.open_thread(&stroke_card()).unwrap();
     push_stroke(&control);
-    let reply = control.offer(id, "voice").unwrap();
+    let reply = said(control.offer(id, "voice").unwrap());
 
     // The boundary is a full clean parse: a malformed intents doc
     // degrades to visible text rather than vanishing.

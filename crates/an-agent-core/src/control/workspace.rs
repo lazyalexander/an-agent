@@ -41,20 +41,22 @@ pub struct WorkspaceConfig {
     /// the kernel validates shape only, never that a named hook exists.
     #[serde(default)]
     pub hooks: Hooks,
-    /// Guardrail rules the workspace declares. They are stated in the
-    /// model envelope (`agent::context`); mechanical enforcement stays
-    /// with the after-hook gates, not with this document.
+    /// Advisory guidance the workspace declares. Stated in the model
+    /// envelope (`agent::context`) as soft rules. This is deliberately
+    /// *not* named "guard": nothing mechanical enforces it — enforcement
+    /// is the after-hook gates' job, and a rule only earns the name
+    /// "guard" when it binds one (a later slice).
     #[serde(default)]
-    pub guard: Guard,
+    pub guidance: Guidance,
 }
 
-/// The workspace's declared rules for agent output: free-text statements
+/// The workspace's advisory rules for agent output: free-text statements
 /// the model is told ("stay in character", "replies under 280
-/// characters"). Saying them is the envelope's job; enforcing them is
+/// characters"). Saying them is the envelope's job; enforcing anything is
 /// the after-gates' job.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct Guard {
+pub struct Guidance {
     #[serde(default)]
     pub rules: Vec<String>,
 }
@@ -137,9 +139,9 @@ impl WorkspaceConfig {
                 )));
             }
         }
-        for rule in &self.guard.rules {
+        for rule in &self.guidance.rules {
             if rule.trim().is_empty() {
-                return Err(ControlError::InvalidConfig("empty guard rule".into()));
+                return Err(ControlError::InvalidConfig("empty guidance rule".into()));
             }
         }
         for hook in self.hooks.before.iter().chain(self.hooks.after.iter()) {
