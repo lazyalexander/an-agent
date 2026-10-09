@@ -141,7 +141,11 @@ rules = ["stay in character", "replies under 280 characters"]
         seen: Mutex::new(Vec::new()),
     });
     control
-        .mount_agent("npc", stage.clone(), &declares(&["scene"], &[]))
+        .mount_agent(
+            "npc",
+            stage.clone(),
+            &declares_model(&["scene"], &[], crate::act::ModelFacet::Complete),
+        )
         .unwrap();
 
     let reply = said(control.offer(id, "npc").unwrap());
@@ -270,7 +274,11 @@ fn a_runaway_body_is_stopped_and_unmounted() {
     let model = stub_model();
     control.set_model_client(model.clone());
     control
-        .mount_agent("npc", Arc::new(Loopy(scene)), &declares(&["scene"], &[]))
+        .mount_agent(
+            "npc",
+            Arc::new(Loopy(scene)),
+            &declares_model(&["scene"], &[], crate::act::ModelFacet::Complete),
+        )
         .unwrap();
 
     assert!(matches!(
@@ -309,7 +317,7 @@ fn body_errors_unmount_but_infra_errors_do_not() {
         .mount_agent(
             "npc",
             Arc::new(Loopy(scene.clone())),
-            &declares(&["scene"], &[]),
+            &declares_model(&["scene"], &[], crate::act::ModelFacet::Complete),
         )
         .unwrap();
     assert!(matches!(
@@ -325,7 +333,7 @@ fn body_errors_unmount_but_infra_errors_do_not() {
         .mount_agent(
             "npc",
             Arc::new(Loopy("no-such-clip".into())),
-            &declares(&["scene"], &[]),
+            &declares_model(&["scene"], &[], crate::act::ModelFacet::Complete),
         )
         .unwrap();
     assert!(matches!(
@@ -340,7 +348,11 @@ fn body_errors_unmount_but_infra_errors_do_not() {
         fail: true,
     }));
     control
-        .mount_agent("npc", Arc::new(Loopy(scene)), &declares(&["scene"], &[]))
+        .mount_agent(
+            "npc",
+            Arc::new(Loopy(scene)),
+            &declares_model(&["scene"], &[], crate::act::ModelFacet::Complete),
+        )
         .unwrap();
     assert!(matches!(
         control.offer(id, "npc"),
@@ -403,6 +415,43 @@ fn invoke_tool_is_refused_in_agent_beats() {
     ));
 }
 
+/// The model face is default-deny: a body mounted without it that asks for
+/// a model call is refused and unmounted like any failed body. This is the
+/// mount-time claim enforced on the delivery path — the declaration is the
+/// ceiling, not a hint.
+#[test]
+fn invoke_model_requires_the_mounted_model_face() {
+    let tmp = TempDir::new("control-agent-model-face");
+    let control = AgentControl::open(tmp.path(), &bash_registry()).unwrap();
+    control
+        .register(&listed(&[("scene", &["npc"])], &[], &[]))
+        .unwrap();
+    let id = control.open_thread(&stroke_card()).unwrap();
+    control.push_event("scene", "enter").unwrap();
+    let scene = control.note(id, "scene", "enter").unwrap();
+    let model = stub_model();
+    control.set_model_client(model.clone());
+    control
+        .mount_agent("npc", Arc::new(Loopy(scene)), &declares(&["scene"], &[]))
+        .unwrap();
+    assert!(matches!(
+        control.offer(id, "npc"),
+        Err(ControlError::SpoolFailed { reason, .. }) if reason.contains("model face")
+    ));
+    // Refused before any call left the house.
+    assert!(
+        model
+            .calls
+            .lock()
+            .unwrap_or_else(|err| err.into_inner())
+            .is_empty()
+    );
+    assert!(matches!(
+        control.offer(id, "npc"),
+        Err(ControlError::NotMounted(_))
+    ));
+}
+
 /// An agent reply goes through the same intent admission as a beat reply:
 /// a declared raise travels, an undeclared one is stripped and taped.
 #[test]
@@ -443,5 +492,96 @@ fn agent_replies_pass_intent_admission() {
         event.tags.iter().any(|tag| tag == "intent")
             && event.content.contains("weather")
             && event.content.contains("deny")
+    }));
+}
+
+/// Byte fuses cap what crosses a boundary in one step: a giant clip
+/// reaches the body and the model cut and marked, a giant env enters the
+/// envelope cut and marked with the full text's hash, and a giant
+/// utterance is cut once, before both the tape and the host see it.
+#[test]
+fn byte_fuses_cap_what_crosses_a_boundary() {
+    let tmp = TempDir::new("control-agent-fuses");
+    let control = AgentControl::open(tmp.path(), &bash_registry()).unwrap();
+    control
+        .register(&listed(&[("scene", &["npc"])], &[], &["main"]))
+        .unwrap();
+    let id = control.open_thread(&stroke_card()).unwrap();
+    let big_clip = "x".repeat(9_000);
+    control.push_event("scene", "loud scene").unwrap();
+    control.note(id, "scene", &big_clip).unwrap();
+    control.put_env("main", &"e".repeat(20_000)).unwrap();
+
+    struct Loud {
+        seen: Mutex<Vec<Value>>,
+    }
+    impl AgentBody for Loud {
+        fn evaluate(&self, projection: &Value) -> Result<BeatStep, String> {
+            self.seen
+                .lock()
+                .unwrap_or_else(|err| err.into_inner())
+                .push(projection.clone());
+            if projection["steps"].as_u64().unwrap_or(0) == 0 {
+                let clips = projection["clips"].as_array().cloned().unwrap_or_default();
+                let last = clips.last().cloned().unwrap_or_else(|| json!({}));
+                Ok(BeatStep::InvokeModel {
+                    clips: vec![last["id"].as_str().unwrap_or_default().to_string()],
+                })
+            } else {
+                Ok(BeatStep::Utter {
+                    text: "u".repeat(20_000),
+                })
+            }
+        }
+    }
+    let model = stub_model();
+    control.set_model_client(model.clone());
+    let loud = Arc::new(Loud {
+        seen: Mutex::new(Vec::new()),
+    });
+    control
+        .mount_agent(
+            "npc",
+            loud.clone(),
+            &declares_model(&["scene"], &[], crate::act::ModelFacet::Complete),
+        )
+        .unwrap();
+
+    let reply = said(control.offer(id, "npc").unwrap());
+
+    // The clip the body saw is cut and marked; the id still names the
+    // full original on tape.
+    let seen = loud.seen.lock().unwrap_or_else(|err| err.into_inner());
+    let clip = seen[0]["clips"]
+        .as_array()
+        .expect("clips")
+        .last()
+        .cloned()
+        .expect("a clip");
+    let content = clip["content"].as_str().expect("content");
+    assert!(content.contains("[clip truncated, 9000 bytes total]"));
+    assert!(content.len() < 9_000);
+
+    // The model envelope carries both cuts: the clip marked with its
+    // size, the env marked with the full text's hash.
+    let calls = model.calls.lock().unwrap_or_else(|err| err.into_inner());
+    let system = &calls[0].1[0].content;
+    assert!(system.contains("[env truncated, full text sha256:"));
+    let user = &calls[0].1[1].content;
+    assert!(user.contains("[clip truncated, 9000 bytes total]"));
+    drop(calls);
+
+    // The utterance is cut once: tape and host carry the same marked text.
+    assert!(
+        reply
+            .reply
+            .contains("[utterance truncated, 20000 bytes total]")
+    );
+    assert!(reply.reply.len() < 20_000);
+    let tape = control.events(id).unwrap();
+    assert!(tape.iter().any(|event| {
+        event.tags.iter().any(|tag| tag == "spool")
+            && event.content.contains("utterance truncated")
+            && event.content.len() < 20_000
     }));
 }

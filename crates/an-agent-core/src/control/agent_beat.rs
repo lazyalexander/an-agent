@@ -4,7 +4,9 @@
 //! model call and tool call the body asks for is admitted against the
 //! thread's card and taped by core, so a persona beat never hides cost
 //! inside a single clean-looking note: each step is its own anchored
-//! event.
+//! event. What crosses a boundary in one step is byte-capped: clips,
+//! env, and utterances are cut with a marker, and the original stays
+//! addressable (the clip id on tape, the env's content hash).
 //!
 //! The model client is the host's, injected like the hook runner. A body
 //! that yields `InvokeModel` with no client installed fails closed.
@@ -41,6 +43,59 @@ const MAX_STEPS: usize = 8;
 
 /// How many recent tape events the projection carries.
 const PROJECTION_CLIPS: usize = 20;
+
+/// Byte fuses: what may cross one boundary in one step. A clip entering a
+/// projection or a model envelope, the workspace env entering an envelope,
+/// an utterance leaving for the tape and the host. A fuse caps bytes and
+/// marks the cut; the original stays addressable — a clip by its tape id,
+/// the env by the content hash the action already cites.
+const MAX_CLIP_BYTES: usize = 4 * 1024;
+const MAX_ENV_BYTES: usize = 16 * 1024;
+const MAX_UTTER_BYTES: usize = 16 * 1024;
+
+/// Cut `text` at `max` (on a char boundary) and append `marker`. Under
+/// the cap the text passes through untouched.
+fn fuse(text: &str, max: usize, marker: &str) -> String {
+    if text.len() <= max {
+        return text.to_string();
+    }
+    let mut end = max;
+    while !text.is_char_boundary(end) {
+        end -= 1;
+    }
+    format!("{}{}", &text[..end], marker)
+}
+
+/// A clip over the cap is cut and marked with its full size; the clip id
+/// in the projection (or the action's cite list) still names the original.
+fn fuse_clip(text: &str) -> String {
+    fuse(
+        text,
+        MAX_CLIP_BYTES,
+        &format!("\n…[clip truncated, {} bytes total]", text.len()),
+    )
+}
+
+/// An env over the cap is cut and marked with the content hash of the
+/// full text — the same hash the invoke action cites. An env without a
+/// hash on record falls back to the plain size marker.
+fn fuse_env(text: &str, sha256: Option<&str>) -> String {
+    let marker = match sha256 {
+        Some(sha) => format!("\n…[env truncated, full text sha256:{sha}]"),
+        None => format!("\n…[env truncated, {} bytes total]", text.len()),
+    };
+    fuse(text, MAX_ENV_BYTES, &marker)
+}
+
+/// An utterance over the cap is cut and marked. Tape and host see the
+/// same cut text — the fuse sits before both.
+fn fuse_utter(text: &str) -> String {
+    fuse(
+        text,
+        MAX_UTTER_BYTES,
+        &format!("\n…[utterance truncated, {} bytes total]", text.len()),
+    )
+}
 
 /// Provider-reported token usage. `None` when the provider does not say
 /// — the tape records the absence, it does not invent numbers.
@@ -108,7 +163,7 @@ fn projection(agent: &Agent, event: &WorkspaceRecord, steps: usize) -> Result<Va
             json!({
                 "id": e.id,
                 "tag": e.tags.first().cloned().unwrap_or_default(),
-                "content": resolve_payload(agent, e),
+                "content": fuse_clip(&resolve_payload(agent, e)),
             })
         })
         .collect();
@@ -185,6 +240,7 @@ impl AgentControl {
         body: &Arc<dyn AgentBody>,
         event: &WorkspaceRecord,
     ) -> Result<Result<DeliveryOutcome, String>, ControlError> {
+        let declaration = self.declaration_of(name)?;
         for steps in 0..MAX_STEPS {
             let step = match body.evaluate(&projection(agent, event, steps)?) {
                 Ok(step) => step,
@@ -192,8 +248,8 @@ impl AgentControl {
             };
             match step {
                 BeatStep::Utter { text } => {
+                    let text = fuse_utter(&text);
                     let tape_id = self.note_spool(agent, name, &event.id, Ok(text.as_str()))?;
-                    let declaration = self.declaration_of(name)?;
                     let intents = self.admit_intents(
                         agent,
                         name,
@@ -218,6 +274,13 @@ impl AgentControl {
                     }));
                 }
                 BeatStep::InvokeModel { clips } => {
+                    // The mount's model face is the grant: undeclared
+                    // means refused, like file/net/proc.
+                    if declaration.model == crate::act::ModelFacet::None {
+                        return Ok(Err(format!(
+                            "invoke_model is not in {name}'s mounted model face"
+                        )));
+                    }
                     self.model_step(agent, name, event, &clips)?;
                 }
                 BeatStep::InvokeTool { name: tool, .. } => {
@@ -252,7 +315,7 @@ impl AgentControl {
             match tape.iter().find(|e| &e.id == clip) {
                 Some(e) => resolved.push((
                     e.tags.first().cloned().unwrap_or_else(|| "event".into()),
-                    e.content.clone(),
+                    fuse_clip(&e.content),
                 )),
                 None => return Err(ControlError::UnknownClip(clip.clone())),
             }
@@ -266,10 +329,11 @@ impl AgentControl {
             .current_config()?
             .map(|config| config.guidance.rules)
             .unwrap_or_default();
+        let env = fuse_env(&cite.env_markdown, cite.env_sha256.as_deref());
         let messages = context::compose(&Envelope {
             prompt: agent.prompt(),
             facts: &self.system_facts(),
-            env: &cite.env_markdown,
+            env: &env,
             guidance: &guidance,
             clips: &views,
         });

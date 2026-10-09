@@ -55,6 +55,7 @@ effect:
   file: { op: none }
   proc: none
   memory: { op: ignore }
+  model: { op: none }
   flow: none
 inverse: none
 requires: []
@@ -74,6 +75,7 @@ effect:
   file: { op: none }
   proc: none
   memory: { op: ignore }
+  model: { op: none }
   flow: none
 inverse: none
 requires: []

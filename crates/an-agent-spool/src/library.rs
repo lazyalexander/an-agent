@@ -107,6 +107,7 @@ effect:
   memory: { op: ignore }
   net: none
   proc: none
+  model: { op: none }
   flow: none
 inverse: none
 requires: []

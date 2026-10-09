@@ -15,7 +15,7 @@ use serde_json::{Map, Value};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
 
-use an_agent_core::act::{FileFacet, MemoryFacet};
+use an_agent_core::act::{FileFacet, MemoryFacet, ModelFacet};
 
 use crate::descriptor::{self, Net, Proc, SpecError};
 
@@ -63,6 +63,9 @@ pub struct Faces {
     pub memory: MemoryFacet,
     pub net: Net,
     pub proc_: Proc,
+    /// Model-call ceiling. Required and explicit, like the other faces:
+    /// `none` refuses `invoke_model` at admission.
+    pub model: ModelFacet,
     pub flow: Flow,
 }
 
@@ -154,6 +157,10 @@ struct RawEffect {
     net: Net,
     #[serde(rename = "proc")]
     proc_: Proc,
+    // Strict: explicitly required, like every other face. An old body
+    // without it fails to parse loudly rather than silently gaining
+    // (or keeping) a model capability.
+    model: Value,
     flow: Flow,
 }
 
@@ -225,6 +232,7 @@ pub fn parse(yaml: &str) -> Result<SpoolSpec, SpoolError> {
     }
     let file = descriptor::parse_file_facet_pub(raw.effect.file)?;
     let memory = descriptor::parse_memory_facet_pub(raw.effect.memory)?;
+    let model = descriptor::parse_model_facet_pub(raw.effect.model)?;
     if matches!(memory, MemoryFacet::Forget { .. }) {
         return Err(invalid("effect.memory must be ignore or remember"));
     }
@@ -253,6 +261,7 @@ pub fn parse(yaml: &str) -> Result<SpoolSpec, SpoolError> {
             memory,
             net: raw.effect.net,
             proc_: raw.effect.proc_,
+            model,
             flow: raw.effect.flow,
         },
         requires,
@@ -290,6 +299,7 @@ impl SpoolSpec {
         an_agent_core::control::SpoolDeclaration {
             consumes: self.consumes.clone(),
             produces: self.produces.clone(),
+            model: self.effect.model,
         }
     }
 }

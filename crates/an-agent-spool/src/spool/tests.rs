@@ -15,6 +15,7 @@ effect:
   memory: { op: ignore }
   net: none
   proc: none
+  model: { op: none }
   flow: in
 inverse: irreversible
 requires: []
@@ -39,6 +40,7 @@ effect:
   memory: { op: ignore }
   net: none
   proc: none
+  model: { op: none }
   flow: none
 inverse:
   name: fs_restore
