@@ -95,11 +95,12 @@ consumes: []
 produces: []
 "#;
 
-fn hooked_host(tmp: &TempDir, hooks_toml: &str) -> (Host, Registry) {
-    let shelf = tmp.path().join("shelf");
-    std::fs::create_dir_all(&shelf).unwrap();
-    std::fs::write(shelf.join("greeter.yaml"), GREETER).unwrap();
-    std::fs::write(shelf.join("screen.yaml"), SCREEN).unwrap();
+fn setup_host(tmp: &TempDir, shelf: &[(&str, &str)], config_tail: &str) -> (Host, Registry) {
+    let shelf_dir = tmp.path().join("shelf");
+    std::fs::create_dir_all(&shelf_dir).unwrap();
+    for (name, body) in shelf {
+        std::fs::write(shelf_dir.join(format!("{name}.yaml")), body).unwrap();
+    }
 
     let control = AgentControl::open(tmp.path(), &bash_registry()).unwrap();
     control
@@ -121,7 +122,7 @@ fn hooked_host(tmp: &TempDir, hooks_toml: &str) -> (Host, Registry) {
 name = "greeter"
 version = "1.0.0"
 
-{hooks_toml}
+{config_tail}
 "#
             )
             .as_bytes(),
@@ -129,10 +130,10 @@ version = "1.0.0"
         .unwrap();
 
     let registry = Registry::open(tmp.path().join("registry")).unwrap();
-    library::publish(&registry, &shelf.join("greeter.yaml")).unwrap();
-    library::publish(&registry, &shelf.join("screen.yaml")).unwrap();
+    for (name, _) in shelf {
+        library::publish(&registry, &shelf_dir.join(format!("{name}.yaml"))).unwrap();
+    }
     let host = Host::new(control, registry, HostBodies::default());
-    assert_eq!(host.mount_from_config().unwrap(), vec!["greeter"]);
     let runner_registry = Registry::open(tmp.path().join("registry")).unwrap();
     (host, runner_registry)
 }
@@ -146,7 +147,12 @@ after = [{ type = "spool", name = "screen", version = "1.0.0" }]
 #[test]
 fn spool_gates_run_on_both_chains() {
     let tmp = TempDir::new("host-hooks-spool");
-    let (host, runner_registry) = hooked_host(&tmp, SPOOL_HOOKS);
+    let (host, runner_registry) = setup_host(
+        &tmp,
+        &[("greeter", GREETER), ("screen", SCREEN)],
+        SPOOL_HOOKS,
+    );
+    assert_eq!(host.mount_from_config().unwrap(), vec!["greeter"]);
     host.control()
         .set_hook_runner(Arc::new(HostHooks::new(runner_registry)));
     let id = host.control().open_thread(&card()).unwrap();
@@ -194,13 +200,15 @@ fn spool_gates_run_on_both_chains() {
 #[test]
 fn an_mcp_hook_fails_closed_until_the_factory_grows_mcp() {
     let tmp = TempDir::new("host-hooks-mcp");
-    let (host, runner_registry) = hooked_host(
+    let (host, runner_registry) = setup_host(
         &tmp,
+        &[("greeter", GREETER), ("screen", SCREEN)],
         r#"
 [hooks]
 before = [{ type = "mcp", server = "guard", tool = "screen" }]
 "#,
     );
+    assert_eq!(host.mount_from_config().unwrap(), vec!["greeter"]);
     host.control()
         .set_hook_runner(Arc::new(HostHooks::new(runner_registry)));
     let id = host.control().open_thread(&card()).unwrap();
@@ -215,4 +223,115 @@ before = [{ type = "mcp", server = "guard", tool = "screen" }]
     assert!(tape.iter().any(|event| {
         event.tags.iter().any(|tag| tag == "hook") && event.content.contains("not implemented")
     }));
+}
+
+/// A length gate: the after subject's reply must stay within 20 chars.
+const LENGTH: &str = r#"v: 1
+kind: spool
+name: length
+version: 1.0.0
+summary: test length gate
+constructor: rhai
+script: |
+  if subject.reply.len() > 20 {
+    #{ allow: false, reason: "overlong" }
+  } else {
+    true
+  }
+effect:
+  net: none
+  file: { op: none }
+  proc: none
+  memory: { op: ignore }
+  model: { op: none }
+  flow: none
+inverse: none
+requires: []
+consumes: []
+produces: []
+"#;
+
+const GUARD: &str = r#"
+[[guard]]
+rule = "replies under 20 characters"
+gate = { type = "spool", name = "length", version = "1.0.0" }
+"#;
+
+/// The stage-1 criterion: a guard really stops an overlong utterance.
+/// A short reply passes, a long one is withheld from the host, and the
+/// denial tapes the rule, the gate's reason, and the guard chain name.
+#[test]
+fn a_guard_blocks_an_overlong_reply_and_tapes_the_rule() {
+    let tmp = TempDir::new("host-guard-length");
+    let (host, runner_registry) =
+        setup_host(&tmp, &[("greeter", GREETER), ("length", LENGTH)], GUARD);
+    assert_eq!(host.mount_from_config().unwrap(), vec!["greeter"]);
+    host.control()
+        .set_hook_runner(Arc::new(HostHooks::new(runner_registry)));
+    let id = host.control().open_thread(&card()).unwrap();
+
+    // "Sue heard hi" is 12 chars: under the bar, delivered.
+    let mut utters: Vec<String> = Vec::new();
+    host.control().push_event("user.word", "hi").unwrap();
+    let replies = host
+        .pump(id, &mut |text| utters.push(text.to_string()))
+        .unwrap();
+    assert_eq!(utters, vec!["Sue heard hi".to_string()]);
+    assert_eq!(replies.len(), 1);
+
+    // "Sue heard a somewhat longer message" is over the bar: withheld.
+    host.control()
+        .push_event("user.word", "a somewhat longer message")
+        .unwrap();
+    let replies = host.pump(id, &mut |_| {}).unwrap();
+    assert!(replies.is_empty());
+    let tape = host.control().events(id).unwrap();
+    assert!(tape.iter().any(|event| {
+        event.tags.iter().any(|tag| tag == "spool") && event.content.contains("somewhat longer")
+    }));
+    assert!(tape.iter().any(|event| {
+        event.tags.iter().any(|tag| tag == "hook")
+            && event.content.contains("\"chain\":\"guard\"")
+            && event.content.contains("replies under 20 characters")
+            && event.content.contains("overlong")
+    }));
+
+    // offer surfaces the denial under the guard chain name.
+    host.control()
+        .push_event("user.word", "another message that runs long")
+        .unwrap();
+    assert!(matches!(
+        host.control().offer(id, "greeter"),
+        Err(ControlError::HookDenied { ref chain, .. }) if chain == "guard"
+    ));
+}
+
+/// A guard whose gate is not on the shelf — or is an mcp gate before the
+/// factory grows MCP — fails the mount pass, before anything mounts.
+#[test]
+fn a_guard_that_cannot_bind_fails_the_mount() {
+    let tmp = TempDir::new("host-guard-missing");
+    let (host, _) = setup_host(
+        &tmp,
+        &[("greeter", GREETER)],
+        r#"
+[[guard]]
+rule = "replies under 20 characters"
+gate = { type = "spool", name = "missing", version = "9.9.9" }
+"#,
+    );
+    assert!(host.mount_from_config().is_err());
+
+    let tmp = TempDir::new("host-guard-mcp");
+    let (host, _) = setup_host(
+        &tmp,
+        &[("greeter", GREETER)],
+        r#"
+[[guard]]
+rule = "no secrets"
+gate = { type = "mcp", server = "guard", tool = "screen" }
+"#,
+    );
+    let err = host.mount_from_config().unwrap_err();
+    assert!(err.to_string().contains("mcp"), "{err}");
 }

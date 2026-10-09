@@ -260,3 +260,123 @@ before = [
     // `second` never ran: the calls list holds only the first handler.
     assert_eq!(runner.calls(), vec!["before:spool:first".to_string()]);
 }
+
+const GUARDED: &[u8] = br#"
+[[guard]]
+rule = "replies under 20 characters"
+gate = { type = "spool", name = "length", version = "1.0.0" }
+
+[hooks]
+after = [{ type = "spool", name = "screen", version = "1.0.0" }]
+"#;
+
+fn guarded_control(tmp: &TempDir, runner: Arc<ScriptedHooks>) -> AgentControl {
+    let control = AgentControl::open(tmp.path(), &bash_registry()).unwrap();
+    control
+        .register(&listed(&[("stroke", &["clip"])], &["canvas"], &[]))
+        .unwrap();
+    control.put_config("canvas", GUARDED).unwrap();
+    control.set_hook_runner(runner);
+    control
+}
+
+#[test]
+fn a_guard_deny_withholds_the_reply_and_tapes_the_rule() {
+    let tmp = TempDir::new("hook-guard-deny");
+    // The clip reply contains "511,40"; the guard gate denies on it.
+    let runner = scripted(Some("511,40"), false);
+    let control = guarded_control(&tmp, runner.clone());
+    let id = control.open_thread(&stroke_card()).unwrap();
+    control
+        .mount_spool("clip", Arc::new(Clip), &declares(&["stroke"], &[]))
+        .unwrap();
+    control
+        .push_event("stroke", "stroke 20,20 600,40 480,700")
+        .unwrap();
+
+    let replies = control.dispatch(id).unwrap();
+    assert!(replies.is_empty());
+    // The denial tapes its own chain name and the rule it enforced.
+    let tape = control.events(id).unwrap();
+    assert!(tape.iter().any(|event| {
+        event.tags.iter().any(|tag| tag == "hook")
+            && event.content.contains("\"chain\":\"guard\"")
+            && event.content.contains("replies under 20 characters")
+            && event.content.contains("poisoned")
+    }));
+    // Guards run first: the free after-chain handler never ran.
+    assert_eq!(runner.calls(), vec!["after:spool:length".to_string()]);
+
+    // offer reports the denial under its own chain name.
+    control
+        .push_event("stroke", "stroke 20,20 600,40 480,700")
+        .unwrap();
+    assert!(matches!(
+        control.offer(id, "clip"),
+        Err(ControlError::HookDenied { chain, .. }) if chain == "guard"
+    ));
+}
+
+#[test]
+fn guards_run_before_the_free_after_chain() {
+    let tmp = TempDir::new("hook-guard-order");
+    let runner = scripted(None, false);
+    let control = guarded_control(&tmp, runner.clone());
+    let id = control.open_thread(&stroke_card()).unwrap();
+    control
+        .mount_spool("clip", Arc::new(Clip), &declares(&["stroke"], &[]))
+        .unwrap();
+    control
+        .push_event("stroke", "stroke 20,20 600,40 480,700")
+        .unwrap();
+    let replies = control.dispatch(id).unwrap();
+    assert_eq!(replies.len(), 1);
+    assert_eq!(
+        runner.calls(),
+        vec![
+            "after:spool:length".to_string(),
+            "after:spool:screen".to_string(),
+        ]
+    );
+}
+
+#[test]
+fn a_guard_must_bind_a_gate_and_state_a_rule() {
+    let tmp = TempDir::new("hook-guard-shape");
+    let control = AgentControl::open(tmp.path(), &bash_registry()).unwrap();
+    control
+        .register(&listed(&[("stroke", &["clip"])], &["canvas"], &[]))
+        .unwrap();
+    // A guard without a gate is not a guard: refused at parse.
+    assert!(matches!(
+        control.put_config(
+            "canvas",
+            br#"[[guard]]
+rule = "replies under 20 characters"
+"#
+        ),
+        Err(ControlError::InvalidConfig(_))
+    ));
+    // An empty rule is refused at validation.
+    assert!(matches!(
+        control.put_config(
+            "canvas",
+            br#"[[guard]]
+rule = " "
+gate = { type = "spool", name = "length", version = "1.0.0" }
+"#
+        ),
+        Err(ControlError::InvalidConfig(_))
+    ));
+    // A loose version is refused like everywhere a spool is named.
+    assert!(matches!(
+        control.put_config(
+            "canvas",
+            br#"[[guard]]
+rule = "replies under 20 characters"
+gate = { type = "spool", name = "length", version = "1.0" }
+"#
+        ),
+        Err(ControlError::InvalidConfig(_))
+    ));
+}

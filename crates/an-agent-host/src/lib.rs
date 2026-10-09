@@ -42,10 +42,11 @@ use thiserror::Error;
 use uuid::Uuid;
 
 use an_agent_core::control::{
-    AgentBody, AgentControl, ControlError, DeliveryOutcome, ReplyIntent, SpoolBeat,
-    SpoolDeclaration, SpoolRequirement,
+    AgentBody, AgentControl, ControlError, DeliveryOutcome, HookHandler, ReplyIntent, SpoolBeat,
+    SpoolDeclaration, SpoolRequirement, WorkspaceConfig,
 };
 use an_agent_spool::beat::RhaiBeat;
+use an_agent_spool::gate::RhaiGate;
 use an_agent_spool::policy::RhaiPolicy;
 use an_agent_spool::spool::{Constructor, Registry, Sort, SpoolError};
 
@@ -136,11 +137,15 @@ impl Host {
     /// Mount every `[[spool]]` in the current workspace config. Returns
     /// the instance names mounted, in config order. A requirement whose
     /// pinned body is missing from the registry fails the whole pass —
-    /// a half-mounted workspace is worse than a refused one.
+    /// a half-mounted workspace is worse than a refused one. Guards are
+    /// bound first: every declared guard's gate must recover and compile
+    /// before anything mounts — a guard that cannot bind is not a guard,
+    /// and a half-guarded workspace is worse than a refused one.
     pub fn mount_from_config(&self) -> Result<Vec<String>, HostError> {
         let Some(config) = self.control.workspace_config()? else {
             return Ok(Vec::new());
         };
+        self.bind_guards(&config)?;
         let mut mounted = Vec::new();
         for req in &config.spool {
             match self.construct(req)? {
@@ -155,6 +160,28 @@ impl Host {
             }
         }
         Ok(mounted)
+    }
+
+    /// Bind every declared guard's gate: recover the pinned body and
+    /// compile it, now. The runtime runner keeps its own cache
+    /// (`HostHooks`); this pass only proves the binding resolves, so a
+    /// config that names a missing or broken gate is refused whole.
+    fn bind_guards(&self, config: &WorkspaceConfig) -> Result<(), HostError> {
+        for guard in &config.guard {
+            match &guard.gate {
+                HookHandler::Spool { name, version } => {
+                    let spec = self.registry.recover(name, version)?;
+                    RhaiGate::from_spool(&spec).map_err(HostError::Body)?;
+                }
+                HookHandler::Mcp { .. } => {
+                    return Err(HostError::Body(format!(
+                        "guard {:?} binds an mcp gate; mcp hooks are not implemented yet",
+                        guard.rule
+                    )));
+                }
+            }
+        }
+        Ok(())
     }
 
     fn construct(&self, req: &SpoolRequirement) -> Result<Built, HostError> {

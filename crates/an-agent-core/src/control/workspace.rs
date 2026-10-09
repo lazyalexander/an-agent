@@ -43,22 +43,39 @@ pub struct WorkspaceConfig {
     pub hooks: Hooks,
     /// Advisory guidance the workspace declares. Stated in the model
     /// envelope (`agent::context`) as soft rules. This is deliberately
-    /// *not* named "guard": nothing mechanical enforces it — enforcement
-    /// is the after-hook gates' job, and a rule only earns the name
-    /// "guard" when it binds one (a later slice).
+    /// *not* named "guard": nothing mechanical enforces it. A rule earns
+    /// the name "guard" only by binding a pinned gate — see `guard`.
     #[serde(default)]
     pub guidance: Guidance,
+    /// Enforced rules: each binds a pinned gate that runs on the after
+    /// chain, fail-closed. Stated in the envelope as *enforced* — the
+    /// model is told exactly which statements it cannot talk its way
+    /// past. A guard whose gate cannot bind fails the mount (host side),
+    /// loudly: a half-guarded workspace is worse than a refused one.
+    #[serde(default)]
+    pub guard: Vec<Guard>,
 }
 
 /// The workspace's advisory rules for agent output: free-text statements
-/// the model is told ("stay in character", "replies under 280
-/// characters"). Saying them is the envelope's job; enforcing anything is
-/// the after-gates' job.
+/// the model is told ("stay in character", "speak like a sailor"). Soft
+/// by construction: saying them is the envelope's job; nothing here
+/// enforces them.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Guidance {
     #[serde(default)]
     pub rules: Vec<String>,
+}
+
+/// One enforced rule: the statement plus the pinned gate that enforces
+/// it. `rule` is what the model reads (marked enforced); `gate` is what
+/// actually runs on the after chain, fail-closed. A rule without a
+/// binding gate is guidance, and must live there instead.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Guard {
+    pub rule: String,
+    pub gate: HookHandler,
 }
 
 /// One pinned spool the workspace asks for.
@@ -144,29 +161,43 @@ impl WorkspaceConfig {
                 return Err(ControlError::InvalidConfig("empty guidance rule".into()));
             }
         }
-        for hook in self.hooks.before.iter().chain(self.hooks.after.iter()) {
-            match hook {
-                HookHandler::Spool { name, version } => {
-                    if name.is_empty() {
-                        return Err(ControlError::InvalidConfig("empty hook spool name".into()));
-                    }
-                    if !exact_version(version) {
-                        return Err(ControlError::InvalidConfig(format!(
-                            "hook spool {name} version must be exact x.y.z: {version}"
-                        )));
-                    }
-                }
-                HookHandler::Mcp { server, tool, .. } => {
-                    if server.is_empty() || tool.is_empty() {
-                        return Err(ControlError::InvalidConfig(
-                            "hook mcp server and tool must be non-empty".into(),
-                        ));
-                    }
-                }
+        for guard in &self.guard {
+            if guard.rule.trim().is_empty() {
+                return Err(ControlError::InvalidConfig("empty guard rule".into()));
             }
+            check_handler(&guard.gate)?;
+        }
+        for hook in self.hooks.before.iter().chain(self.hooks.after.iter()) {
+            check_handler(hook)?;
         }
         Ok(())
     }
+}
+
+/// Shape-check one handler reference: non-empty names, exact versions.
+/// Whether the named thing exists is the mount's fail-closed check, not
+/// this document's.
+fn check_handler(hook: &HookHandler) -> Result<(), ControlError> {
+    match hook {
+        HookHandler::Spool { name, version } => {
+            if name.is_empty() {
+                return Err(ControlError::InvalidConfig("empty hook spool name".into()));
+            }
+            if !exact_version(version) {
+                return Err(ControlError::InvalidConfig(format!(
+                    "hook spool {name} version must be exact x.y.z: {version}"
+                )));
+            }
+        }
+        HookHandler::Mcp { server, tool, .. } => {
+            if server.is_empty() || tool.is_empty() {
+                return Err(ControlError::InvalidConfig(
+                    "hook mcp server and tool must be non-empty".into(),
+                ));
+            }
+        }
+    }
+    Ok(())
 }
 
 /// Exact `x.y.z` — the shelf pins versions, so anything naming a spool
