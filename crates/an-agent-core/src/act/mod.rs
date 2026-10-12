@@ -9,7 +9,7 @@ pub use charter::{Audience, Charter, Signal};
 pub use registry::{Registration, RegistryError, Tier, ToolRegistry};
 pub use resource::{Resource, ResourceKind};
 pub use sense::{Effect, effect_from_tag};
-pub use tag::{FileFacet, MemoryFacet, Permit, ToolTag};
+pub use tag::{FileFacet, MemoryFacet, ModelFacet, Permit, ToolTag};
 pub use tool::{
     ActCtx, Tool, ToolActResult, ToolCall, ToolCtx, ToolError, ToolMessage, run_tool_act, tag_of,
 };

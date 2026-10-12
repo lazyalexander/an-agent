@@ -10,3 +10,6 @@ docs/
 .lake/
 
 
+
+# lab/ — experiments and observation tooling; never merges to main (dev-lines skill)
+lab/

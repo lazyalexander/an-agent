@@ -15,9 +15,12 @@ effect:
   memory: { op: ignore }
   net: none
   proc: none
+  model: { op: none }
   flow: in
 inverse: irreversible
 requires: []
+consumes: []
+produces: []
 "#
     .to_string()
 }
@@ -37,6 +40,7 @@ effect:
   memory: { op: ignore }
   net: none
   proc: none
+  model: { op: none }
   flow: none
 inverse:
   name: fs_restore
@@ -45,6 +49,8 @@ config:
   timeout_ms: 1000
 requires:
   - { name: fs_read, version: 1.0.0 }
+consumes: []
+produces: []
 "#
     .to_string()
 }
@@ -57,6 +63,26 @@ fn parses_a_hosted_spool() {
     assert_eq!(spec.inverse, Inverse::Irreversible);
     assert!(spec.requires.is_empty());
     assert_eq!(spec.sha256.len(), 64);
+}
+
+/// `sort` defaults to beat, so descriptors published before sorts parse
+/// unchanged; the three sorts round-trip.
+#[test]
+fn sort_defaults_to_beat_and_parses_each_sort() {
+    assert_eq!(parse(&read_yaml()).unwrap().sort, Sort::Beat);
+    for (word, sort) in [
+        ("beat", Sort::Beat),
+        ("gate", Sort::Gate),
+        ("policy", Sort::Policy),
+    ] {
+        let yaml = read_yaml().replace(
+            "summary: Read a workspace file",
+            &format!("summary: s\nsort: {word}"),
+        );
+        assert_eq!(parse(&yaml).unwrap().sort, sort, "{word}");
+    }
+    let yaml = read_yaml().replace("summary: Read a workspace file", "summary: s\nsort: mayor");
+    assert!(parse(&yaml).is_err());
 }
 
 #[test]
@@ -197,4 +223,34 @@ fn inverse_none_parses_and_keeps_the_closure_reversible() {
             .to_string()
             .contains("inverse must be")
     );
+}
+
+/// The workspace-event claim is explicit and validated: both lists are
+/// required, names are non-empty and whitespace-free, duplicates refused.
+#[test]
+fn consumes_and_produces_are_the_mount_time_claim() {
+    let talkative = read_yaml()
+        .replace("consumes: []", "consumes: [discord.message, stroke]")
+        .replace("produces: []", "produces: [discord.post]");
+    let spec = parse(&talkative).unwrap();
+    assert_eq!(spec.consumes, vec!["discord.message", "stroke"]);
+    assert_eq!(spec.produces, vec!["discord.post"]);
+    let declaration = spec.declaration();
+    assert_eq!(declaration.consumes, spec.consumes);
+    assert_eq!(declaration.produces, spec.produces);
+
+    for (from, to) in [
+        ("consumes: []", "consumes: [stroke, stroke]"),
+        ("produces: []", "produces: [stroke, stroke]"),
+        ("consumes: []", "consumes: [\"\"]"),
+        ("consumes: []", "consumes: [\"bad name\"]"),
+    ] {
+        assert!(
+            parse(&read_yaml().replace(from, to)).is_err(),
+            "{from} -> {to}"
+        );
+    }
+    // Both lists are required fields — the claim is never assumed.
+    let missing = read_yaml().replace("consumes: []\n", "");
+    assert!(parse(&missing).is_err());
 }

@@ -1,5 +1,5 @@
 //! Names the plugin registered, and the config and env it injects.
-//! Config is a JSON document. Env is markdown text.
+//! Config is a TOML document (`WorkspaceConfig`). Env is markdown text.
 
 use std::collections::HashSet;
 
@@ -23,6 +23,193 @@ pub struct Registration {
     pub env: Vec<String>,
 }
 
+/// The workspace's hard requirements, one TOML document per registered
+/// config name: which spools (pinned), their mount parameters, and the
+/// hook chains. Strict: unknown fields are refused — loosening is a
+/// deliberate schema change, not a parse accident. IO contracts are not
+/// here: they belong to the spool declaration, and matching is mutual
+/// (2026-10-05 ruling — a workspace-side filter was tried and withdrawn).
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct WorkspaceConfig {
+    /// Spool packages the workspace asks for, pinned by version. Mounting
+    /// (with the requires-closure check) is the host's follow-up, not this
+    /// document's act.
+    #[serde(default)]
+    pub spool: Vec<SpoolRequirement>,
+    /// Hook chain order and parameters. Implementations live in the host;
+    /// the kernel validates shape only, never that a named hook exists.
+    #[serde(default)]
+    pub hooks: Hooks,
+    /// Advisory guidance the workspace declares. Stated in the model
+    /// envelope (`agent::context`) as soft rules. This is deliberately
+    /// *not* named "guard": nothing mechanical enforces it. A rule earns
+    /// the name "guard" only by binding a pinned gate — see `guard`.
+    #[serde(default)]
+    pub guidance: Guidance,
+    /// Enforced rules: each binds a pinned gate that runs on the after
+    /// chain, fail-closed. Stated in the envelope as *enforced* — the
+    /// model is told exactly which statements it cannot talk its way
+    /// past. A guard whose gate cannot bind fails the mount (host side),
+    /// loudly: a half-guarded workspace is worse than a refused one.
+    #[serde(default)]
+    pub guard: Vec<Guard>,
+}
+
+/// The workspace's advisory rules for agent output: free-text statements
+/// the model is told ("stay in character", "speak like a sailor"). Soft
+/// by construction: saying them is the envelope's job; nothing here
+/// enforces them.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Guidance {
+    #[serde(default)]
+    pub rules: Vec<String>,
+}
+
+/// One enforced rule: the statement plus the pinned gate that enforces
+/// it. `rule` is what the model reads (marked enforced); `gate` is what
+/// actually runs on the after chain, fail-closed. A rule without a
+/// binding gate is guidance, and must live there instead.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Guard {
+    pub rule: String,
+    pub gate: HookHandler,
+}
+
+/// One pinned spool the workspace asks for.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SpoolRequirement {
+    pub name: String,
+    /// Exact `x.y.z`, same discipline as the spool shelf.
+    pub version: String,
+    /// Instance name to mount under; defaults to `name`. One body mounts
+    /// as many instances — personas are mount config, not code.
+    #[serde(default)]
+    pub mount: Option<String>,
+    /// Mount config handed to the spool body.
+    #[serde(default)]
+    pub config: toml::Table,
+}
+
+/// One hook handler: a tagged mechanism, never a bare name. Data declares
+/// *how* to invoke, the same shape as codex's `HookHandlerConfig`
+/// (command/mcp/prompt/agent) — minus `command`: arbitrary host commands
+/// would bypass admission, and if one is ever wanted it is admitted like
+/// bash, not smuggled in as a hook.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
+pub enum HookHandler {
+    /// A spool from the shelf, pinned. A rhai policy is the natural
+    /// gate/transform: pure computation over the event, verdict out.
+    Spool { name: String, version: String },
+    /// An MCP tool call — the only kind of tool we have. External-world
+    /// checks (and their cost) stay visible as tool calls.
+    Mcp {
+        server: String,
+        tool: String,
+        #[serde(default)]
+        input: toml::Table,
+    },
+}
+
+/// Before/after hook chains around spool delivery: two fixed points on
+/// the delivery path, not open-ended names.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Hooks {
+    #[serde(default)]
+    pub before: Vec<HookHandler>,
+    #[serde(default)]
+    pub after: Vec<HookHandler>,
+}
+
+impl WorkspaceConfig {
+    /// Shape checks beyond parsing. Refuses what TOML cannot: empty or
+    /// duplicated instance names, loose versions. Uniqueness is by
+    /// instance (`mount` or `name`), not package: one body may mount as
+    /// many instances with different config.
+    fn validate(&self) -> Result<(), ControlError> {
+        let mut spools = HashSet::new();
+        for req in &self.spool {
+            if req.name.is_empty() {
+                return Err(ControlError::InvalidConfig("empty spool name".into()));
+            }
+            let instance = req.mount.as_deref().unwrap_or(req.name.as_str());
+            if instance.is_empty() {
+                return Err(ControlError::InvalidConfig(format!(
+                    "empty mount name on spool {}",
+                    req.name
+                )));
+            }
+            if !spools.insert(instance) {
+                return Err(ControlError::InvalidConfig(format!(
+                    "duplicate spool instance: {instance}"
+                )));
+            }
+            if !exact_version(&req.version) {
+                return Err(ControlError::InvalidConfig(format!(
+                    "spool {} version must be exact x.y.z: {}",
+                    req.name, req.version
+                )));
+            }
+        }
+        for rule in &self.guidance.rules {
+            if rule.trim().is_empty() {
+                return Err(ControlError::InvalidConfig("empty guidance rule".into()));
+            }
+        }
+        for guard in &self.guard {
+            if guard.rule.trim().is_empty() {
+                return Err(ControlError::InvalidConfig("empty guard rule".into()));
+            }
+            check_handler(&guard.gate)?;
+        }
+        for hook in self.hooks.before.iter().chain(self.hooks.after.iter()) {
+            check_handler(hook)?;
+        }
+        Ok(())
+    }
+}
+
+/// Shape-check one handler reference: non-empty names, exact versions.
+/// Whether the named thing exists is the mount's fail-closed check, not
+/// this document's.
+fn check_handler(hook: &HookHandler) -> Result<(), ControlError> {
+    match hook {
+        HookHandler::Spool { name, version } => {
+            if name.is_empty() {
+                return Err(ControlError::InvalidConfig("empty hook spool name".into()));
+            }
+            if !exact_version(version) {
+                return Err(ControlError::InvalidConfig(format!(
+                    "hook spool {name} version must be exact x.y.z: {version}"
+                )));
+            }
+        }
+        HookHandler::Mcp { server, tool, .. } => {
+            if server.is_empty() || tool.is_empty() {
+                return Err(ControlError::InvalidConfig(
+                    "hook mcp server and tool must be non-empty".into(),
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Exact `x.y.z` — the shelf pins versions, so anything naming a spool
+/// does too.
+fn exact_version(version: &str) -> bool {
+    let parts: Vec<&str> = version.split('.').collect();
+    parts.len() == 3
+        && parts
+            .iter()
+            .all(|p| !p.is_empty() && p.bytes().all(|b| b.is_ascii_digit()))
+}
+
 impl AgentControl {
     /// Record the plugin's watch list. Identical bytes keep the previous id.
     /// A different list is a new snapshot. Older bytes stay readable.
@@ -39,18 +226,23 @@ impl AgentControl {
     }
 
     /// Append one registered software event. Repeated text is a new event.
+    /// The kernel admits by name only: what a spool accepts is the spool's
+    /// declaration, and matching happens at bind time, not here.
     pub fn push_event(&self, name: &str, body: &str) -> Result<WorkspaceRecord, ControlError> {
         self.admit("event", name)?;
         Ok(self.inner.workspace.push_event(name, body)?)
     }
 
-    /// Store one JSON document under a registered name. The host injects
-    /// the bytes. The kernel checks that they parse and does not read the
-    /// fields. Identical bytes for that name keep the previous id.
+    /// Store one TOML document under a registered name. The host injects
+    /// the bytes. The kernel parses them as a `WorkspaceConfig` and checks
+    /// the shape. Identical bytes for that name keep the previous id.
     pub fn put_config(&self, name: &str, bytes: &[u8]) -> Result<WorkspaceRecord, ControlError> {
         self.admit("config", name)?;
-        serde_json::from_slice::<serde_json::Value>(bytes)
+        let text = std::str::from_utf8(bytes)
             .map_err(|err| ControlError::InvalidConfig(err.to_string()))?;
+        let parsed: WorkspaceConfig =
+            toml::from_str(text).map_err(|err| ControlError::InvalidConfig(err.to_string()))?;
+        parsed.validate()?;
         Ok(self.inner.workspace.put_config(name, bytes)?)
     }
 
@@ -79,7 +271,7 @@ impl AgentControl {
     pub fn workspace_log(&self) -> Result<Vec<WorkspaceRecord>, ControlError> {
         Ok(self.inner.workspace.log()?)
     }
-    fn current_registration(&self) -> Result<Registration, ControlError> {
+    pub(super) fn current_registration(&self) -> Result<Registration, ControlError> {
         let cite = self.inner.workspace.cite()?;
         let Some(sha) = cite.register_sha256 else {
             return Err(ControlError::NotRegistered);
@@ -87,6 +279,28 @@ impl AgentControl {
         let bytes = self.inner.workspace.register_bytes(&sha)?;
         serde_json::from_slice(&bytes)
             .map_err(|err| ControlError::InvalidRegistration(err.to_string()))
+    }
+
+    /// The current config document — the latest config record, the same
+    /// "current" cite and seal see. `None` until the first put_config.
+    pub(super) fn current_config(&self) -> Result<Option<WorkspaceConfig>, ControlError> {
+        let cite = self.inner.workspace.cite()?;
+        let Some(sha) = cite.config_sha256 else {
+            return Ok(None);
+        };
+        let bytes = self.inner.workspace.config_bytes(&sha)?;
+        let text = std::str::from_utf8(&bytes)
+            .map_err(|err| ControlError::InvalidConfig(err.to_string()))?;
+        let config: WorkspaceConfig =
+            toml::from_str(text).map_err(|err| ControlError::InvalidConfig(err.to_string()))?;
+        Ok(Some(config))
+    }
+
+    /// The current config document, public face: hosts read mount
+    /// requirements and parameters from it. The same bytes cite and seal
+    /// see — `None` until the first put_config.
+    pub fn workspace_config(&self) -> Result<Option<WorkspaceConfig>, ControlError> {
+        self.current_config()
     }
 
     pub(super) fn spools_for(&self, name: &str) -> Result<Vec<String>, ControlError> {

@@ -11,7 +11,9 @@ fn seal_records_the_workspace_generation_and_resume_reopens_the_tape() {
     let registered = control
         .register(&listed(&[], &["canvas"], &["stage"]))
         .unwrap();
-    let config = control.put_config("canvas", b"{\"a\":1}").unwrap();
+    let config = control
+        .put_config("canvas", b"[[spool]]\nname = \"a\"\nversion = \"1.0.0\"\n")
+        .unwrap();
     let env = control.put_env("stage", "# alpha\n").unwrap();
     let id = control.open_thread(&spec).unwrap();
     control.advance(id, "remember this").unwrap();

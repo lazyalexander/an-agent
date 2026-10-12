@@ -3,18 +3,19 @@
 //! The tape is born here.
 //!
 //! Config and env belong to the workspace. The host injects them. Config is
-//! a JSON document. Env is markdown. A spool does not store either one.
+//! a TOML document. Env is markdown. A spool does not store either one.
 //!
 //! A plugin registers the names this process watches. Writes outside that
 //! list are refused. The list is a snapshot: a new list is a new id, and
 //! the old bytes stay.
 //!
-//! `offer` hands one already recorded workspace event to one mounted body.
-//! `dispatch` walks that event's registered spool list, in order. The body
-//! does not read the log and does not write the tape. A missing body is
-//! noted and skipped. A failed body is unmounted. On `offer` the beat ends.
-//! On `dispatch` the rest of the list still runs. The workspace event stays.
-//! `spawn_with` stays a card-and-tape constructor. It is not this entry.
+//! `offer` / `dispatch` wake mounted bodies from a workspace event (latest,
+//! or a named id via `offer_on` / `dispatch_on`). The body does not read the
+//! log, write the tape, or mutate the host. A missing body is noted and
+//! skipped. A failed body is unmounted. Replies go to the tape and back to
+//! the caller. The host lands them in software, then `applied` records that
+//! landing. The workspace event stays. `spawn_with` stays a card-and-tape
+//! constructor. It is not this entry.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -34,12 +35,20 @@ use crate::principal::factory::ToolCtor;
 use crate::seat::{Pool, PoolError, Seat, TreeError};
 use crate::workspace::Workspace;
 
+mod agent_beat;
+mod hooks;
 mod session;
 mod spool;
 mod workspace;
 
-pub use spool::{SpoolBeat, SpoolReply};
-pub use workspace::{EventRoute, Registration};
+pub use agent_beat::{AgentBody, BeatStep, Completion, ModelClient, ModelMessage, Usage};
+pub use hooks::{HookRunner, HookVerdict};
+use spool::Mounted;
+pub use spool::{DeliveryOutcome, ReplyIntent, SpoolBeat, SpoolDeclaration, SpoolReply};
+pub use workspace::{
+    EventRoute, Guard, Guidance, HookHandler, Hooks, Registration, SpoolRequirement,
+    WorkspaceConfig,
+};
 
 #[derive(Debug, Error)]
 pub enum ControlError {
@@ -61,8 +70,22 @@ pub enum ControlError {
     NotMounted(String),
     #[error("spool is already mounted: {0}")]
     AlreadyMounted(String),
+    #[error("spool {name} does not match the register: {}", .reasons.join("; "))]
+    MountMismatch { name: String, reasons: Vec<String> },
     #[error("workspace has no event")]
     NoEvent,
+    #[error("workspace has no such event: {0}")]
+    UnknownEvent(String),
+    #[error("hook denied on the {chain} chain: {reason}")]
+    HookDenied { chain: String, reason: String },
+    #[error("config declares hooks but no hook runner is installed")]
+    HookRunnerMissing,
+    #[error("agent body asked for a model call but no model client is installed")]
+    ModelClientMissing,
+    #[error("model call for spool {spool} failed: {reason}")]
+    ModelFailed { spool: String, reason: String },
+    #[error("tape has no such clip: {0}")]
+    UnknownClip(String),
     #[error("spool {name} failed: {reason}")]
     SpoolFailed { name: String, reason: String },
     #[error("workspace has no registration")]
@@ -71,7 +94,7 @@ pub enum ControlError {
     Unregistered(String),
     #[error("registration is invalid: {0}")]
     InvalidRegistration(String),
-    #[error("config is not json: {0}")]
+    #[error("config is not valid toml: {0}")]
     InvalidConfig(String),
     #[error(transparent)]
     Spawn(#[from] SpawnError),
@@ -104,7 +127,11 @@ struct Inner {
     seats: Mutex<Vec<Seat>>,
     threads: Mutex<HashMap<Uuid, ThreadInner>>,
     workspace: Workspace,
-    bodies: Mutex<Vec<(String, Arc<dyn SpoolBeat>)>>,
+    bodies: Mutex<Vec<Mounted>>,
+    hook_runner: Mutex<Option<Arc<dyn HookRunner>>>,
+    model_client: Mutex<Option<Arc<dyn ModelClient>>>,
+    /// The embedding software's label, stated in the model envelope.
+    host_label: Mutex<String>,
 }
 
 /// The handle a host software uses to drive agents in this process.
@@ -132,6 +159,9 @@ impl AgentControl {
                 threads: Mutex::new(HashMap::new()),
                 workspace: Workspace::open(sessions_root.as_ref().join("workspace"))?,
                 bodies: Mutex::new(Vec::new()),
+                hook_runner: Mutex::new(None),
+                model_client: Mutex::new(None),
+                host_label: Mutex::new("an-agent".to_string()),
             }),
         })
     }

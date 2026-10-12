@@ -21,3 +21,5 @@ thiserror.workspace = true
 an-agent-core = { path = "../an-agent-core", features = ["testkit"] }
 async-trait.workspace = true
 tokio = { workspace = true, features = ["macros", "rt"] }
+toml.workspace = true
+uuid.workspace = true

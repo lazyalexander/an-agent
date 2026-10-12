@@ -15,7 +15,7 @@ use serde_json::{Map, Value};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
 
-use an_agent_core::act::{FileFacet, MemoryFacet};
+use an_agent_core::act::{FileFacet, MemoryFacet, ModelFacet};
 
 use crate::descriptor::{self, Net, Proc, SpecError};
 
@@ -44,12 +44,28 @@ pub enum Flow {
     Both,
 }
 
+/// What kind of mounted body this spool forms. `Beat` is a pure function
+/// event → reply. `Policy` is an agent body: it yields steps and core
+/// drives them (model calls admitted and taped per step). `Gate` is a
+/// hook-chain body — built by the host's hook wiring, never mounted.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Sort {
+    #[default]
+    Beat,
+    Gate,
+    Policy,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Faces {
     pub file: FileFacet,
     pub memory: MemoryFacet,
     pub net: Net,
     pub proc_: Proc,
+    /// Model-call ceiling. Required and explicit, like the other faces:
+    /// `none` refuses `invoke_model` at admission.
+    pub model: ModelFacet,
     pub flow: Flow,
 }
 
@@ -83,11 +99,21 @@ pub struct SpoolSpec {
     pub name: String,
     pub version: String,
     pub summary: String,
+    /// Body sort: beat (default), gate, or policy. Absent means beat, so
+    /// descriptors published before sorts parse unchanged.
+    pub sort: Sort,
     pub constructor: Constructor,
     pub effect: Faces,
     pub requires: Vec<Require>,
     pub inverse: Inverse,
     pub config: Map<String, Value>,
+    /// Workspace events this spool receives. Matched against the
+    /// workspace register at mount (`AgentControl::mount_spool`) — the
+    /// bind point — not on the delivery path.
+    pub consumes: Vec<String>,
+    /// Workspace events this spool may emit. Register membership is
+    /// checked at mount; the emit channel itself is a later slice.
+    pub produces: Vec<String>,
     pub sha256: String,
     pub body: String,
 }
@@ -100,6 +126,8 @@ struct Raw {
     name: String,
     version: String,
     summary: String,
+    #[serde(default)]
+    sort: Sort,
     constructor: String,
     script: Option<String>,
     host: Option<String>,
@@ -108,6 +136,10 @@ struct Raw {
     #[serde(default)]
     config: Value,
     requires: Vec<RawRequire>,
+    // Strict: both lists must be present (may be []) — the workspace-event
+    // claim is explicit, never assumed.
+    consumes: Vec<String>,
+    produces: Vec<String>,
 }
 
 #[derive(Deserialize)]
@@ -125,6 +157,10 @@ struct RawEffect {
     net: Net,
     #[serde(rename = "proc")]
     proc_: Proc,
+    // Strict: explicitly required, like every other face. An old body
+    // without it fails to parse loudly rather than silently gaining
+    // (or keeping) a model capability.
+    model: Value,
     flow: Flow,
 }
 
@@ -196,6 +232,7 @@ pub fn parse(yaml: &str) -> Result<SpoolSpec, SpoolError> {
     }
     let file = descriptor::parse_file_facet_pub(raw.effect.file)?;
     let memory = descriptor::parse_memory_facet_pub(raw.effect.memory)?;
+    let model = descriptor::parse_model_facet_pub(raw.effect.model)?;
     if matches!(memory, MemoryFacet::Forget { .. }) {
         return Err(invalid("effect.memory must be ignore or remember"));
     }
@@ -210,25 +247,61 @@ pub fn parse(yaml: &str) -> Result<SpoolSpec, SpoolError> {
         Value::Object(map) => map,
         _ => return Err(invalid("config must be a mapping")),
     };
+    let consumes = check_event_names(&raw.consumes, "consumes")?;
+    let produces = check_event_names(&raw.produces, "produces")?;
     let inverse = parse_inverse(raw.inverse)?;
     Ok(SpoolSpec {
         name: raw.name,
         version: raw.version,
         summary: raw.summary,
+        sort: raw.sort,
         constructor,
         effect: Faces {
             file,
             memory,
             net: raw.effect.net,
             proc_: raw.effect.proc_,
+            model,
             flow: raw.effect.flow,
         },
         requires,
         inverse,
         config,
+        consumes,
+        produces,
         sha256: sha256(yaml),
         body: yaml.to_string(),
     })
+}
+
+fn check_event_names(names: &[String], face: &str) -> Result<Vec<String>, SpoolError> {
+    let mut seen = std::collections::HashSet::new();
+    let mut out = Vec::with_capacity(names.len());
+    for name in names {
+        // Event names follow the register's discipline (non-empty), not
+        // the spool-name one: dotted names like `discord.message` are
+        // legitimate events. Whitespace is refused as a typo magnet.
+        if name.is_empty() || name.chars().any(char::is_whitespace) {
+            return Err(invalid(format!("invalid {face} event name: {name:?}")));
+        }
+        if !seen.insert(name.clone()) {
+            return Err(invalid(format!("duplicate {face} event: {name}")));
+        }
+        out.push(name.clone());
+    }
+    Ok(out)
+}
+
+impl SpoolSpec {
+    /// The mount-time claim, handed to `AgentControl::mount_spool` for the
+    /// bind-time match against the workspace register.
+    pub fn declaration(&self) -> an_agent_core::control::SpoolDeclaration {
+        an_agent_core::control::SpoolDeclaration {
+            consumes: self.consumes.clone(),
+            produces: self.produces.clone(),
+            model: self.effect.model,
+        }
+    }
 }
 
 fn parse_inverse(value: Value) -> Result<Inverse, SpoolError> {

@@ -320,7 +320,7 @@ fn thread_cut_is_written_by_the_host_and_a_hit_does_not_rewrite() {
         })
         .unwrap();
     let config = control
-        .put_config("theme", b"{\"theme\":\"quiet\"}")
+        .put_config("theme", b"[hooks]\nbefore = []\n")
         .unwrap();
     let env = control
         .put_env("pref", "# now\n\nprefers short diffs\n")

@@ -1,6 +1,6 @@
 //! Requires closure: the joined ceiling, and whether the mount can unwind.
 
-use an_agent_core::act::{FileFacet, MemoryFacet};
+use an_agent_core::act::{FileFacet, MemoryFacet, ModelFacet};
 
 use crate::descriptor::{Net, Proc};
 
@@ -33,6 +33,7 @@ fn bottom_faces() -> Faces {
         net: Net::None,
         proc_: Proc::None,
         flow: Flow::None,
+        model: ModelFacet::None,
     }
 }
 
@@ -43,6 +44,16 @@ fn join_faces(a: &Faces, b: &Faces) -> Faces {
         net: net_join(a.net, b.net),
         proc_: proc_join(a.proc_, b.proc_),
         flow: flow_join(a.flow, b.flow),
+        model: model_join(a.model, b.model),
+    }
+}
+
+/// One member with model reach puts the model in the system's ceiling.
+fn model_join(a: ModelFacet, b: ModelFacet) -> ModelFacet {
+    if a == ModelFacet::Complete || b == ModelFacet::Complete {
+        ModelFacet::Complete
+    } else {
+        ModelFacet::None
     }
 }
 

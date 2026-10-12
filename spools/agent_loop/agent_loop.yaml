@@ -3,6 +3,7 @@ kind: spool
 name: agent_loop
 version: 1.0.0
 summary: the thin ReAct loop as a policy — model proposes, policy approves
+sort: policy
 constructor: rhai
 script: "@agent_loop.rhai"
 effect:
@@ -10,7 +11,10 @@ effect:
   memory: { op: ignore }
   net: none
   proc: none
+  model: { op: complete }
   flow: none
 inverse: none
 requires:
   - { name: echo, version: 1.0.0 }
+consumes: []
+produces: []

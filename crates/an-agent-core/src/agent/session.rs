@@ -91,6 +91,23 @@ impl Session {
         &self.tape
     }
 
+    /// Content-addressed blob store for payload bodies that stay off the
+    /// tape (model responses, large artifacts). The tape cites the hash;
+    /// replay resolves it here.
+    pub fn put_blob(&self, bytes: &[u8]) -> Result<String, SessionError> {
+        use sha2::{Digest, Sha256};
+        let sha = format!("{:x}", Sha256::digest(bytes));
+        let dir = self.root.join("blobs");
+        std::fs::create_dir_all(&dir)?;
+        std::fs::write(dir.join(&sha), bytes)?;
+        Ok(sha)
+    }
+
+    /// Read back a blob by its content address.
+    pub fn read_blob(&self, sha256: &str) -> Result<Vec<u8>, SessionError> {
+        Ok(std::fs::read(self.root.join("blobs").join(sha256))?)
+    }
+
     pub fn tape_path(&self) -> PathBuf {
         self.root.join("memory.jsonl")
     }

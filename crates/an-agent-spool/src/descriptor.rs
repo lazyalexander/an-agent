@@ -349,6 +349,27 @@ pub(crate) fn parse_memory_facet_pub(value: serde_json::Value) -> Result<MemoryF
     parse_memory_facet(value)
 }
 
+/// Model face: `{ op: none }` or `{ op: complete }`. Same hand-checked
+/// mapping style as the other facets — no scalar shorthand.
+pub(crate) fn parse_model_facet_pub(
+    value: serde_json::Value,
+) -> Result<an_agent_core::act::ModelFacet, SpecError> {
+    use an_agent_core::act::ModelFacet;
+    let (op, map) = facet_op(value, "model")?;
+    let facet = match op.as_str() {
+        "none" => {
+            reject_extra_keys("model", &op, &map, &[])?;
+            ModelFacet::None
+        }
+        "complete" => {
+            reject_extra_keys("model", &op, &map, &[])?;
+            ModelFacet::Complete
+        }
+        other => return Err(invalid(format!("unknown effect.model op: {other}"))),
+    };
+    Ok(facet)
+}
+
 fn parse_memory_facet(value: serde_json::Value) -> Result<MemoryFacet, SpecError> {
     let (op, map) = facet_op(value, "memory")?;
     let facet = match op.as_str() {
