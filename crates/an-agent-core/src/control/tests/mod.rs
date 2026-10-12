@@ -182,5 +182,6 @@ mod hooks;
 mod intents;
 mod session;
 mod spool;
+mod supervision;
 mod thread;
 mod workspace;

@@ -1,6 +1,7 @@
 //! The tape adapter for the independent semantic plane. Domain boundaries
 //! construct attempts and claims; this adapter records every decision before
-//! execution and returns a locally issued, exactly bound grant.
+//! execution. The control boundary, not this adapter, owns stopping an
+//! operation and asking its supervisor for a disposition.
 
 use an_agent_semantic::{Attempt, Claim, Disposition, FactRef, Grant, decide};
 use serde::Serialize;
@@ -13,6 +14,15 @@ use crate::memstream::Kind;
 pub(super) struct AuthorizedAttempt {
     pub grant: Grant,
     pub tape_id: String,
+}
+
+pub(super) enum Admission {
+    Allowed(AuthorizedAttempt),
+    Denied {
+        attempt: Attempt,
+        tape_id: String,
+        reason: String,
+    },
 }
 
 impl AgentControl {
@@ -34,9 +44,9 @@ impl AgentControl {
         agent: &Agent,
         attempt: &Attempt,
         claims: &[Claim],
-    ) -> Result<AuthorizedAttempt, ControlError> {
+    ) -> Result<Admission, ControlError> {
         let decision = decide(attempt, claims);
-        let tape_id = self.append_event(
+        let tape_id = self.append_audit_event(
             agent,
             Kind::Action,
             "semantic",
@@ -46,11 +56,11 @@ impl AgentControl {
         if decision.disposition == Disposition::Allow
             && let Some(grant) = decision.grant.filter(|grant| grant.matches(attempt))
         {
-            return Ok(AuthorizedAttempt { grant, tape_id });
+            return Ok(Admission::Allowed(AuthorizedAttempt { grant, tape_id }));
         }
-        Err(ControlError::SemanticDenied {
-            operation: attempt.capability.operation.clone(),
-            subject: attempt.subject.clone(),
+        Ok(Admission::Denied {
+            attempt: attempt.clone(),
+            tape_id,
             reason: decision
                 .reason
                 .map(|reason| reason.as_str())

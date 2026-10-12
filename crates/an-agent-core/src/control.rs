@@ -27,7 +27,7 @@ use thiserror::Error;
 use tokio::sync::watch;
 use uuid::Uuid;
 
-use crate::act::{ToolCall, ToolCtx, ToolError, run_tool_act};
+use crate::act::{ToolCall, ToolCtx, ToolError};
 use crate::agent::{Agent, SessionError, SpawnError, spawn_with};
 use crate::memstream::{AppendEvent, FromKind, Kind, Memevent, StoreError};
 use crate::principal::card::AgentCard;
@@ -40,7 +40,10 @@ mod hooks;
 mod semantic;
 mod session;
 mod spool;
+mod supervision;
 mod workspace;
+
+pub use supervision::{ReviewCause, ReviewRequest, ReviewResolution};
 
 pub use agent_beat::{AgentBody, BeatStep, Completion, ModelClient, ModelMessage, Usage};
 pub use hooks::{HookRunner, HookVerdict};
@@ -53,6 +56,18 @@ pub use workspace::{
 
 #[derive(Debug, Error)]
 pub enum ControlError {
+    #[error("operation is awaiting supervisor review: {}", .0.id)]
+    ReviewRequired(Box<ReviewRequest>),
+    #[error("invalid supervisor binding: {0}")]
+    SupervisorBinding(String),
+    #[error("review request is not pending: {0}")]
+    ReviewMissing(String),
+    #[error("review request cannot be resolved by this agent: {0}")]
+    ReviewAuthority(String),
+    #[error("review cannot override an execution ceiling: {0}")]
+    ReviewCeiling(String),
+    #[error("reviewed inputs changed before execution: {0}")]
+    ReviewStale(String),
     #[error("thread is not open: {0}")]
     NotOpen(Uuid),
     #[error("thread is finished: {0}")]
@@ -141,6 +156,7 @@ struct Inner {
     model_client: Mutex<Option<Arc<dyn ModelClient>>>,
     /// The embedding software's label, stated in the model envelope.
     host_label: Mutex<String>,
+    supervision: Mutex<supervision::Supervision>,
 }
 
 /// The handle a host software uses to drive agents in this process.
@@ -171,6 +187,7 @@ impl AgentControl {
                 hook_runner: Mutex::new(None),
                 model_client: Mutex::new(None),
                 host_label: Mutex::new("an-agent".to_string()),
+                supervision: Mutex::new(supervision::Supervision::default()),
             }),
         })
     }
@@ -233,6 +250,7 @@ impl AgentControl {
     pub fn cancel(&self, id: Uuid) -> Result<String, ControlError> {
         let agent = self.live(id)?;
         self.raise_cancel(id)?;
+        self.clear_reviews(id, "cancel")?;
         self.append(
             &agent,
             "cancel",
@@ -247,6 +265,7 @@ impl AgentControl {
             return Err(ControlError::Busy(id));
         }
         let agent = self.live(id)?;
+        self.clear_reviews(id, "finish")?;
         let event = self.append(&agent, "finish", json!({ "text": text }).to_string())?;
         let mut threads = self.inner.threads.lock().unwrap_or_else(|e| e.into_inner());
         let thread = threads.get_mut(&id).ok_or(ControlError::NotOpen(id))?;
@@ -293,13 +312,15 @@ impl AgentControl {
             .ok_or(ControlError::NotOpen(id))?;
         let turn = self.inner.pool.begin_turn(id)?;
         let signal = self.cancel_receiver(id)?;
-        let result = run_tool_act(
+        let approval = self.review_tool(&agent, call)?;
+        let result = crate::act::tool::run_tool_act_reviewed(
             &agent.act_ctx(),
             agent.tools(),
             call,
             &ToolCtx {
                 signal: Some(signal),
             },
+            approval,
         )
         .await?;
         drop(turn);
@@ -360,7 +381,7 @@ impl AgentControl {
             return Err(ControlError::Finished(id));
         }
         thread.cancelled.store(true, Ordering::Relaxed);
-        let _ = thread.cancel.send(true);
+        thread.cancel.send_replace(true);
         Ok(())
     }
 
@@ -440,13 +461,43 @@ impl AgentControl {
         content: String,
         refs: Vec<String>,
     ) -> Result<String, ControlError> {
+        self.append_tagged(agent, kind, vec![tag.to_string()], content, refs)
+    }
+
+    /// Control evidence stays addressable without becoming an implicit
+    /// model input or the source observation of a remembered fact.
+    fn append_audit_event(
+        &self,
+        agent: &Agent,
+        kind: Kind,
+        tag: &str,
+        content: String,
+        refs: Vec<String>,
+    ) -> Result<String, ControlError> {
+        self.append_tagged(
+            agent,
+            kind,
+            vec![tag.to_string(), "audit".into()],
+            content,
+            refs,
+        )
+    }
+
+    fn append_tagged(
+        &self,
+        agent: &Agent,
+        kind: Kind,
+        tags: Vec<String>,
+        content: String,
+        refs: Vec<String>,
+    ) -> Result<String, ControlError> {
         let event = agent.session().tape().append(AppendEvent {
             from: agent.id_str().to_string(),
             from_kind: FromKind::Agent,
             kind,
             session: agent.session().id_str().to_string(),
             content,
-            tags: vec![tag.to_string()],
+            tags,
             refs,
             act: None,
             card: Some(agent.card_hash().to_string()),

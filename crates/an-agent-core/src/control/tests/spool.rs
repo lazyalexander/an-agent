@@ -315,13 +315,15 @@ fn delivery_rechecks_the_current_registration_against_the_mounted_claim() {
         .register(&listed(&[("stroke", &[]), ("other", &["clip"])], &[], &[]))
         .unwrap();
     let other = control.push_event("other", "not for clip").unwrap();
-    assert!(matches!(
-        control.dispatch_on(id, &other.id),
-        Err(ControlError::SemanticDenied { operation, subject, reason })
-            if operation == "flow.consume"
-                && subject == "clip"
-                && reason == "capability_not_claimed"
-    ));
+    let outcomes = control.dispatch_on(id, &other.id).unwrap();
+    let DeliveryOutcome::NeedsReview(request) = &outcomes[0] else {
+        panic!("review required")
+    };
+    assert_eq!(request.attempt.capability.operation, "flow.consume");
+    assert_eq!(request.subject, "clip");
+    assert!(
+        matches!(&request.cause, ReviewCause::PermissionDenied { reason } if reason == "capability_not_claimed")
+    );
     assert!(
         clip.seen
             .lock()

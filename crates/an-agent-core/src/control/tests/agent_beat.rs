@@ -283,11 +283,13 @@ rules = ["stay in character", "replies under 280 characters"]
     assert_eq!(seen.len(), 2);
     let step1_clips = seen[1]["clips"].as_array().expect("clips");
     assert!(seen.iter().all(|step| {
-        step["clips"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .all(|clip| clip["tag"] != "semantic")
+        step["clips"].as_array().unwrap().iter().all(|clip| {
+            clip["tag"] != "semantic"
+                && !clip["tag"]
+                    .as_str()
+                    .unwrap_or_default()
+                    .starts_with("review_")
+        })
     }));
     assert!(
         step1_clips
@@ -527,7 +529,7 @@ fn invoke_tool_is_refused_in_agent_beats() {
 }
 
 /// The model face is default-deny: a body mounted without it that asks for
-/// a model call is refused and unmounted like any failed body. This is the
+/// a model call pauses for review without unmounting. This is the
 /// mount-time claim enforced on the delivery path — the declaration is the
 /// ceiling, not a hint.
 #[test]
@@ -545,9 +547,13 @@ fn invoke_model_requires_the_mounted_model_face() {
     control
         .mount_agent("npc", Arc::new(Loopy(scene)), &declares(&["scene"], &[]))
         .unwrap();
+    let DeliveryOutcome::NeedsReview(request) = control.offer(id, "npc").unwrap() else {
+        panic!("review required")
+    };
+    assert_eq!(request.attempt.capability.operation, "model.complete");
     assert!(matches!(
-        control.offer(id, "npc"),
-        Err(ControlError::SpoolFailed { reason, .. }) if reason.contains("model face")
+        request.cause,
+        ReviewCause::PermissionDenied { .. }
     ));
     // Refused before any call left the house.
     assert!(
@@ -573,8 +579,78 @@ fn invoke_model_requires_the_mounted_model_face() {
     );
     assert!(matches!(
         control.offer(id, "npc"),
-        Err(ControlError::NotMounted(_))
+        Ok(DeliveryOutcome::NeedsReview(_))
     ));
+}
+
+#[test]
+fn model_review_does_not_grant_permission_but_host_can_authorize_fresh_work() {
+    let tmp = TempDir::new("model-review-replan");
+    let control = AgentControl::open(tmp.path(), &bash_registry()).unwrap();
+    control
+        .register(&listed(&[("scene", &["npc"])], &[], &[]))
+        .unwrap();
+    let child = control.open_thread(&stroke_card()).unwrap();
+    let main = control
+        .open_thread(&card(
+            "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+            "bash",
+            Permit::Go,
+        ))
+        .unwrap();
+    control.set_supervisor(child, main).unwrap();
+    let event = control.push_event("scene", "enter").unwrap();
+    control.note(child, "scene", "enter").unwrap();
+    let stage = Arc::new(Stage {
+        seen: Mutex::new(Vec::new()),
+    });
+    let model = stub_model();
+    control.set_model_client(model.clone());
+    control
+        .mount_agent("npc", stage.clone(), &declares(&["scene"], &[]))
+        .unwrap();
+    let DeliveryOutcome::NeedsReview(request) = control.offer_on(child, "npc", &event.id).unwrap()
+    else {
+        panic!("review expected")
+    };
+    assert!(model.calls.lock().unwrap().is_empty());
+    assert!(matches!(
+        control.resolve_review(
+            main,
+            &request.id,
+            ReviewResolution::ApproveOnce {
+                note: "override".into()
+            }
+        ),
+        Err(ControlError::ReviewCeiling(_))
+    ));
+    control
+        .resolve_review(
+            main,
+            &request.id,
+            ReviewResolution::Retry {
+                note: "host must change the declared model authority".into(),
+            },
+        )
+        .unwrap();
+    // This is an explicit trusted host change, not a supervisor response
+    // editing the declaration or replaying the refused model operation.
+    control.unmount_spool("npc").unwrap();
+    control
+        .mount_agent(
+            "npc",
+            stage,
+            &declares_model(&["scene"], &[], crate::act::ModelFacet::Complete),
+        )
+        .unwrap();
+    assert!(
+        control
+            .offer_on(child, "npc", &event.id)
+            .unwrap()
+            .reply()
+            .is_some()
+    );
+    assert_eq!(model.calls.lock().unwrap().len(), 1);
 }
 
 /// A follow-up invocation consumes the response payload, not the thin audit

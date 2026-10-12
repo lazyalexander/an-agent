@@ -13,6 +13,8 @@ use crate::memstream::{ActOnEvent, AppendEvent, FromKind, JsonlStore, Kind, Meme
 pub enum ToolError {
     #[error("store: {0}")]
     Store(#[from] StoreError),
+    #[error("tool requires supervisor approval before execution: {0}")]
+    ApprovalRequired(String),
 }
 
 pub struct ToolCtx {
@@ -40,7 +42,7 @@ pub trait Tool: Send + Sync {
     async fn execute(&self, args: Value, ctx: &ToolCtx) -> Result<String, String>;
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct ToolCall {
     pub id: String,
     pub name: String,
@@ -89,7 +91,11 @@ fn remember_clip(
         .read_all()?
         .iter()
         .rev()
-        .find(|e| e.kind == Kind::Observation && e.session.as_deref() == Some(actx.session))
+        .find(|e| {
+            e.kind == Kind::Observation
+                && e.session.as_deref() == Some(actx.session)
+                && !e.tags.iter().any(|tag| tag == "audit")
+        })
         .map(|e| vec![e.id.clone()])
         .unwrap_or_default();
     let clip_env = ActEnvelope {
@@ -116,8 +122,22 @@ pub async fn run_tool_act(
     call: &ToolCall,
     ctx: &ToolCtx,
 ) -> Result<ToolActResult, ToolError> {
+    run_tool_act_reviewed(actx, tools, call, ctx, false).await
+}
+
+/// Only the trusted control boundary may supply a consumed one-shot review.
+pub(crate) async fn run_tool_act_reviewed(
+    actx: &ActCtx<'_>,
+    tools: &[Arc<dyn Tool>],
+    call: &ToolCall,
+    ctx: &ToolCtx,
+    approved: bool,
+) -> Result<ToolActResult, ToolError> {
     let tool = tools.iter().find(|t| t.name() == call.name);
     let tag = tag_of(tool.map(|t| t.as_ref()));
+    if tag.permit == Permit::Ask && !approved {
+        return Err(ToolError::ApprovalRequired(call.name.clone()));
+    }
     let env = ActEnvelope {
         kind: ActKind::Invoke,
         permit: tag.permit,

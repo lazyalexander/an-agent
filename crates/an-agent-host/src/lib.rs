@@ -254,6 +254,8 @@ impl Host {
     /// always one the spool declared. Raised events are left pending:
     /// whether to pump again, and how deep, is the app's call. Halts are
     /// already settled on tape: nothing executes, nothing is applied.
+    /// Pending reviews likewise remain unapplied; the host handles their
+    /// supervisor inbox and explicitly schedules any later work.
     fn execute(
         &self,
         id: Uuid,
