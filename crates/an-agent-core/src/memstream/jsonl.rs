@@ -23,6 +23,8 @@ pub enum StoreError {
 }
 
 struct State {
+    #[cfg(test)]
+    fail_next_append: bool,
     file: Option<File>,
     next_seq: Option<u64>,
     /// The tape's last line is valid but lacks a trailing newline; the next
@@ -58,6 +60,8 @@ impl JsonlStore {
         Ok(Self {
             path,
             state: Mutex::new(State {
+                #[cfg(test)]
+                fail_next_append: false,
                 file: None,
                 next_seq: None,
                 needs_newline: false,
@@ -80,6 +84,12 @@ impl JsonlStore {
     /// a seq, and seq advances only after the durable write succeeds.
     pub fn append(&self, input: AppendEvent) -> Result<Memevent, StoreError> {
         let mut st = self.state.lock().map_err(|_| StoreError::Poisoned)?;
+        #[cfg(test)]
+        if std::mem::take(&mut st.fail_next_append) {
+            return Err(StoreError::Io(std::io::Error::other(
+                "injected append failure",
+            )));
+        }
         let seq = match st.next_seq {
             Some(n) => n,
             None => {
@@ -134,6 +144,11 @@ impl JsonlStore {
         st.needs_newline = false;
         st.next_seq = Some(seq + 1);
         Ok(event)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn fail_next_append(&self) {
+        self.state.lock().expect("test store lock").fail_next_append = true;
     }
 
     fn scan_and_heal(&self, st: &mut State) -> Result<Vec<Memevent>, StoreError> {

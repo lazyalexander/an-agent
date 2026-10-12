@@ -22,11 +22,11 @@ impl Tool for Count {
     }
 }
 
-fn count_ctor() -> Arc<dyn Tool> {
+pub(super) fn count_ctor() -> Arc<dyn Tool> {
     Arc::new(Count)
 }
 
-fn setup(permit: Permit) -> (TempDir, AgentControl, Uuid, Uuid) {
+pub(super) fn setup(permit: Permit) -> (TempDir, AgentControl, Uuid, Uuid) {
     let tmp = TempDir::new("supervision");
     let control = AgentControl::open(tmp.path(), &[("count", count_ctor)]).unwrap();
     let child = control
@@ -47,7 +47,7 @@ fn setup(permit: Permit) -> (TempDir, AgentControl, Uuid, Uuid) {
     (tmp, control, child, main)
 }
 
-fn call(value: i32) -> ToolCall {
+pub(super) fn call(value: i32) -> ToolCall {
     ToolCall {
         id: "call-1".into(),
         name: "count".into(),
@@ -55,7 +55,7 @@ fn call(value: i32) -> ToolCall {
     }
 }
 
-fn requested(error: ControlError) -> ReviewRequest {
+pub(super) fn requested(error: ControlError) -> ReviewRequest {
     let ControlError::ReviewRequired(request) = error else {
         panic!("review expected: {error}")
     };
@@ -232,13 +232,24 @@ async fn approval_binds_arguments_and_workspace_revision() {
         control.run(child, &call(2)).await,
         Err(ControlError::ReviewStale(_))
     ));
+    assert!(control.pending_reviews(main).unwrap().is_empty());
+    let fresh = requested(control.run(child, &call(1)).await.err().unwrap());
+    assert_ne!(fresh.id, request.id);
+    control
+        .resolve_review(
+            main,
+            &fresh.id,
+            ReviewResolution::ApproveOnce {
+                note: "fresh inputs".into(),
+            },
+        )
+        .unwrap();
     control
         .put_config("main", b"[guidance]\nrules = [\"second\"]\n")
         .unwrap();
-    assert!(matches!(
-        control.run(child, &call(1)).await,
-        Err(ControlError::ReviewStale(_))
-    ));
+    assert!(control.pending_reviews(main).unwrap().is_empty());
+    let changed = requested(control.run(child, &call(1)).await.err().unwrap());
+    assert_ne!(changed.id, fresh.id);
     assert!(
         !control
             .events(child)
@@ -292,7 +303,7 @@ async fn public_tool_wrapper_cannot_treat_ask_as_go() {
     assert!(store.read_all().unwrap().is_empty());
 }
 
-struct Cautious;
+pub(super) struct Cautious;
 impl AgentBody for Cautious {
     fn evaluate(&self, _projection: &Value) -> Result<BeatStep, String> {
         Ok(BeatStep::RequestReview {

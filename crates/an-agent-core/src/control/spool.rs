@@ -133,8 +133,10 @@ impl DeliveryOutcome {
 /// A mounted body and the declaration it was matched with. The declaration
 /// stays: `produces` gates each reply's raise intents at delivery, not
 /// only at mount.
+#[derive(Clone)]
 pub(super) struct Mounted {
     pub name: String,
+    pub instance: Uuid,
     pub body: MountedBody,
     pub declaration: SpoolDeclaration,
 }
@@ -183,6 +185,11 @@ impl AgentControl {
         body: Arc<dyn SpoolBeat>,
         declaration: &SpoolDeclaration,
     ) -> Result<(), ControlError> {
+        let mut state = self
+            .inner
+            .supervision
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         self.match_declaration(name, declaration)?;
         let mut bodies = self
             .inner
@@ -192,11 +199,14 @@ impl AgentControl {
         if bodies.iter().any(|mounted| mounted.name == name) {
             return Err(ControlError::AlreadyMounted(name.to_string()));
         }
+        let instance = crate::det_seam::Entropy::os().uuid_v4();
         bodies.push(Mounted {
             name: name.to_string(),
+            instance,
             body: MountedBody::Beat(body),
             declaration: declaration.clone(),
         });
+        state.mount(instance);
         Ok(())
     }
 
@@ -210,6 +220,11 @@ impl AgentControl {
         body: Arc<dyn AgentBody>,
         declaration: &SpoolDeclaration,
     ) -> Result<(), ControlError> {
+        let mut state = self
+            .inner
+            .supervision
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         self.match_declaration(name, declaration)?;
         let mut bodies = self
             .inner
@@ -219,11 +234,14 @@ impl AgentControl {
         if bodies.iter().any(|mounted| mounted.name == name) {
             return Err(ControlError::AlreadyMounted(name.to_string()));
         }
+        let instance = crate::det_seam::Entropy::os().uuid_v4();
         bodies.push(Mounted {
             name: name.to_string(),
+            instance,
             body: MountedBody::Agent(body),
             declaration: declaration.clone(),
         });
+        state.mount(instance);
         Ok(())
     }
 
@@ -288,6 +306,11 @@ impl AgentControl {
 
     /// Remove a mounted body. The workspace log is left as it is.
     pub fn unmount_spool(&self, name: &str) -> Result<(), ControlError> {
+        let mut state = self
+            .inner
+            .supervision
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let mut bodies = self
             .inner
             .bodies
@@ -296,8 +319,10 @@ impl AgentControl {
         let Some(pos) = bodies.iter().position(|mounted| mounted.name == name) else {
             return Err(ControlError::NotMounted(name.to_string()));
         };
-        bodies.remove(pos);
-        Ok(())
+        let removed = bodies.remove(pos);
+        drop(bodies);
+        let requests = state.unmount(removed.instance);
+        self.record_review_closures(requests, "unmount")
     }
 
     /// One beat. The named body receives the latest workspace event.
@@ -317,8 +342,7 @@ impl AgentControl {
         name: &str,
         event_id: &str,
     ) -> Result<DeliveryOutcome, ControlError> {
-        self.enter_beat(id)?;
-        let turn = self.inner.pool.begin_turn(id)?;
+        let turn = self.begin_beat(id)?;
         let event = self.event_by_id(event_id)?;
         self.hooks_before(turn.agent(), &event)?;
         let registration = self.current_registration_snapshot()?;
@@ -353,8 +377,7 @@ impl AgentControl {
         id: Uuid,
         event_id: &str,
     ) -> Result<Vec<DeliveryOutcome>, ControlError> {
-        self.enter_beat(id)?;
-        let turn = self.inner.pool.begin_turn(id)?;
+        let turn = self.begin_beat(id)?;
         let event = self.event_by_id(event_id)?;
         self.hooks_before(turn.agent(), &event)?;
         let event_name = event.name.clone().unwrap_or_default();
@@ -423,37 +446,50 @@ impl AgentControl {
         event: &WorkspaceRecord,
         registration: &RegistrationSnapshot,
     ) -> Result<Result<DeliveryOutcome, String>, ControlError> {
-        let Some((body, declaration)) = self.body_named(name) else {
+        let Some(Mounted {
+            body,
+            declaration,
+            instance,
+            ..
+        }) = self.body_named(name)
+        else {
             return Err(ControlError::NotMounted(name.to_string()));
         };
-        if let Some(request) = self.waiting_review(agent.id(), name) {
+        if let Some(request) = self.waiting_review(agent.id(), name, instance)? {
             return Ok(Ok(DeliveryOutcome::NeedsReview(Box::new(request))));
         }
-        let delivery =
-            match self.authorize_delivery(agent, name, event, &declaration, registration)? {
-                Admission::Allowed(delivery) => delivery,
-                Admission::Denied {
-                    mut attempt,
-                    tape_id,
-                    reason,
-                } => {
-                    attempt.refs.push(tape_id);
-                    let request = self.request_review(
-                        agent,
-                        name,
-                        Some(&event.id),
-                        attempt,
-                        super::ReviewCause::PermissionDenied { reason },
-                        None,
-                    )?;
-                    return Ok(Ok(DeliveryOutcome::NeedsReview(Box::new(request))));
-                }
-            };
+        let delivery = match self.authorize_delivery(
+            agent,
+            name,
+            event,
+            &declaration,
+            registration,
+            instance,
+        )? {
+            Admission::Allowed(delivery) => delivery,
+            Admission::Denied {
+                mut attempt,
+                tape_id,
+                reason,
+            } => {
+                attempt.refs.push(tape_id);
+                let request = self.request_review(
+                    agent,
+                    name,
+                    Some(&event.id),
+                    attempt,
+                    super::ReviewCause::PermissionDenied { reason },
+                    None,
+                )?;
+                return Ok(Ok(DeliveryOutcome::NeedsReview(Box::new(request))));
+            }
+        };
+        self.ensure_delivery_current(agent, &delivery.grant.facts)?;
         match body {
             MountedBody::Agent(body) => {
                 match self.agent_invoke(agent, name, &body, event, &declaration, &delivery)? {
                     Err(reason) => {
-                        self.drop_body(name);
+                        self.drop_body(instance)?;
                         self.note_spool(agent, name, &event.id, Err(reason.as_str()))?;
                         Ok(Err(reason))
                     }
@@ -462,6 +498,7 @@ impl AgentControl {
             }
             MountedBody::Beat(body) => match body.receive(event) {
                 Ok(reply) => {
+                    self.ensure_delivery_current(agent, &delivery.grant.facts)?;
                     let tape_id = self.note_spool(agent, name, &event.id, Ok(reply.as_str()))?;
                     let intents = self.admit_intents(
                         agent,
@@ -479,7 +516,7 @@ impl AgentControl {
                     })))
                 }
                 Err(reason) => {
-                    self.drop_body(name);
+                    self.drop_body(instance)?;
                     self.note_spool(agent, name, &event.id, Err(reason.as_str()))?;
                     Ok(Err(reason))
                 }
@@ -497,6 +534,7 @@ impl AgentControl {
         event: &WorkspaceRecord,
         declaration: &SpoolDeclaration,
         registration: &RegistrationSnapshot,
+        instance: Uuid,
     ) -> Result<Admission, ControlError> {
         let event_name = event.name.clone().unwrap_or_default();
         let capability = |event: &str| {
@@ -534,6 +572,21 @@ impl AgentControl {
             capability(&event_name),
             vec![
                 FactRef::new("workspace.registration", registration.revision.clone()),
+                FactRef::new(
+                    "workspace.registration.generation",
+                    registration.generation.clone(),
+                ),
+                FactRef::new("spool.instance", instance.to_string()),
+                FactRef::new(
+                    "agent.instance",
+                    self.inner
+                        .supervision
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner())
+                        .instance(agent.id())?
+                        .incarnation
+                        .to_string(),
+                ),
                 self.semantic_snapshot(agent, "spool.declaration", declaration)?,
             ],
         );
@@ -573,25 +626,30 @@ impl AgentControl {
         Ok(admitted)
     }
 
-    fn body_named(&self, name: &str) -> Option<(MountedBody, SpoolDeclaration)> {
+    fn body_named(&self, name: &str) -> Option<Mounted> {
         let bodies = self
             .inner
             .bodies
             .lock()
             .unwrap_or_else(|err| err.into_inner());
-        bodies
-            .iter()
-            .find(|mounted| mounted.name == name)
-            .map(|mounted| (mounted.body.clone(), mounted.declaration.clone()))
+        bodies.iter().find(|mounted| mounted.name == name).cloned()
     }
 
-    fn drop_body(&self, name: &str) {
+    fn drop_body(&self, instance: Uuid) -> Result<(), ControlError> {
+        let mut state = self
+            .inner
+            .supervision
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let mut bodies = self
             .inner
             .bodies
             .lock()
             .unwrap_or_else(|err| err.into_inner());
-        bodies.retain(|mounted| mounted.name != name);
+        bodies.retain(|mounted| mounted.instance != instance);
+        drop(bodies);
+        let requests = state.unmount(instance);
+        self.record_review_closures(requests, "body_failed")
     }
 
     pub(super) fn note_spool(

@@ -29,6 +29,7 @@ pub struct Registration {
 #[derive(Debug, Clone)]
 pub(super) struct RegistrationSnapshot {
     pub revision: String,
+    pub generation: String,
     pub registration: Registration,
 }
 
@@ -226,7 +227,15 @@ impl AgentControl {
         validate_registration(registration)?;
         let bytes = serde_json::to_vec(registration)
             .map_err(|err| ControlError::InvalidRegistration(err.to_string()))?;
-        Ok(self.inner.workspace.put_register(&bytes)?)
+        let mut state = self
+            .inner
+            .supervision
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let record = self.inner.workspace.put_register(&bytes)?;
+        let requests = state.invalidate_fact("workspace.registration.generation", &record.id);
+        self.record_review_closures(requests, "registration_changed")?;
+        Ok(record)
     }
 
     /// Bytes of one stored registration snapshot.
@@ -252,7 +261,18 @@ impl AgentControl {
         let parsed: WorkspaceConfig =
             toml::from_str(text).map_err(|err| ControlError::InvalidConfig(err.to_string()))?;
         parsed.validate()?;
-        Ok(self.inner.workspace.put_config(name, bytes)?)
+        let mut state = self
+            .inner
+            .supervision
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let record = self.inner.workspace.put_config(name, bytes)?;
+        let requests = state.invalidate_fact(
+            "workspace.config.generation",
+            &self.workspace_cite()?.config_id.unwrap_or_default(),
+        );
+        self.record_review_closures(requests, "config_changed")?;
+        Ok(record)
     }
 
     /// Replace the workspace markdown under a registered name. The kernel
@@ -260,7 +280,18 @@ impl AgentControl {
     /// keeps the previous id.
     pub fn put_env(&self, name: &str, markdown: &str) -> Result<WorkspaceRecord, ControlError> {
         self.admit("env", name)?;
-        Ok(self.inner.workspace.put_env(name, markdown)?)
+        let mut state = self
+            .inner
+            .supervision
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let record = self.inner.workspace.put_env(name, markdown)?;
+        let requests = state.invalidate_fact(
+            "workspace.env.generation",
+            &self.workspace_cite()?.env_id.unwrap_or_default(),
+        );
+        self.record_review_closures(requests, "env_changed")?;
+        Ok(record)
     }
 
     pub fn config_bytes(&self, sha256_hex: &str) -> Result<Vec<u8>, ControlError> {
@@ -292,6 +323,7 @@ impl AgentControl {
             .map_err(|err| ControlError::InvalidRegistration(err.to_string()))?;
         Ok(RegistrationSnapshot {
             revision: sha,
+            generation: cite.register_id.ok_or(ControlError::NotRegistered)?,
             registration,
         })
     }

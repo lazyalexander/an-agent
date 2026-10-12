@@ -180,6 +180,7 @@ fn said_all(outcomes: Vec<DeliveryOutcome>) -> Vec<SpoolReply> {
 mod agent_beat;
 mod hooks;
 mod intents;
+mod lifecycle;
 mod session;
 mod spool;
 mod supervision;

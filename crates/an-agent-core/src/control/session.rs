@@ -40,6 +40,11 @@ impl AgentControl {
 
     /// Drop a finished thread's seat. The directory stays on disk.
     pub fn release(&self, id: Uuid) -> Result<(), ControlError> {
+        let mut state = self
+            .inner
+            .supervision
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         if self.inner.pool.is_running(id) {
             return Err(ControlError::Busy(id));
         }
@@ -62,6 +67,8 @@ impl AgentControl {
         let Some(pos) = seats.iter().position(|seat| seat.id() == id) else {
             return Err(ControlError::NotOpen(id));
         };
+        let requests = state.retire(id);
+        self.record_review_closures(requests, "release")?;
         let seat = seats.remove(pos);
         drop(seats);
         seat.unmount();
@@ -76,6 +83,11 @@ impl AgentControl {
     /// Mount a sealed session. The card must be the one named by the manifest.
     /// Does not change the live workspace.
     pub fn resume_session(&self, card: &AgentCard, session_id: Uuid) -> Result<Uuid, ControlError> {
+        let mut state = self
+            .inner
+            .supervision
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         if self
             .inner
             .threads
@@ -95,6 +107,10 @@ impl AgentControl {
             return Err(ControlError::ManifestMismatch);
         }
         let id = agent.id();
+        let instance = super::InstanceRef {
+            principal: id,
+            incarnation: crate::det_seam::Entropy::os().uuid_v4(),
+        };
         let seat = self.inner.pool.tree().mount(Arc::clone(&agent), None)?;
         self.inner
             .seats
@@ -117,8 +133,10 @@ impl AgentControl {
         self.append(
             &agent,
             "resume",
-            serde_json::json!({ "session": session_id.to_string() }).to_string(),
+            serde_json::json!({ "session": session_id.to_string(), "instance": instance })
+                .to_string(),
         )?;
+        state.open(instance)?;
         Ok(id)
     }
 }
