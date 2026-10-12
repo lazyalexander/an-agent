@@ -2,6 +2,7 @@
 //! every model call is admitted against the card and taped as its own
 //! anchored action + observation pair — never hidden inside one note.
 
+use an_agent_semantic::{Attempt, Decision, Outcome, Receipt};
 use std::sync::Mutex;
 
 use super::*;
@@ -169,6 +170,7 @@ rules = ["stay in character", "replies under 280 characters"]
         assert!(system.content.contains(needle), "{needle}");
     }
     assert!(calls[0].1[1].content.contains("a traveler enters"));
+    let sent_messages = serde_json::to_value(&calls[0].1).unwrap();
     drop(calls);
 
     // The model call is two anchored events: the action cites the clip it
@@ -182,6 +184,67 @@ rules = ["stay in character", "replies under 280 characters"]
         .expect("invoke action");
     assert!(action.refs.iter().any(|r| r == &scene));
     assert!(action.content.contains("\"spool\":\"npc\""));
+    let invoke: Value = serde_json::from_str(&action.content).unwrap();
+    let authorization = tape
+        .iter()
+        .find(|e| e.id == invoke["semantic"].as_str().unwrap())
+        .unwrap();
+    assert!(authorization.seq < action.seq);
+    let audit: Value = serde_json::from_str(&authorization.content).unwrap();
+    let attempt: Attempt = serde_json::from_value(audit["attempt"].clone()).unwrap();
+    let decision: Decision = serde_json::from_value(audit["decision"].clone()).unwrap();
+    assert_eq!(attempt.capability.operation, "model.complete");
+    assert_eq!(
+        attempt.capability.resource.segments,
+        ["https://example.com", "m"]
+    );
+    assert!(decision.grant.as_ref().unwrap().matches(&attempt));
+    assert_eq!(audit["claims"].as_array().unwrap().len(), 2);
+    assert!(attempt.refs.contains(&scene));
+    let delivery = tape
+        .iter()
+        .find(|e| attempt.refs.contains(&e.id) && e.id != scene)
+        .unwrap();
+    assert!(delivery.seq < authorization.seq);
+    let delivery_audit: Value = serde_json::from_str(&delivery.content).unwrap();
+    assert_eq!(
+        delivery_audit["attempt"]["capability"]["operation"],
+        "flow.consume"
+    );
+    for kind in [
+        "agent.card",
+        "spool.declaration",
+        "workspace.registration",
+        "workspace.config",
+        "workspace.env",
+        "model.request",
+    ] {
+        assert!(
+            attempt.facts.iter().any(|fact| fact.kind == kind),
+            "missing {kind}"
+        );
+    }
+    let request_sha = invoke["request_sha256"].as_str().unwrap();
+    let request_bytes = std::fs::read(
+        control
+            .directory(id)
+            .unwrap()
+            .join("blobs")
+            .join(request_sha),
+    )
+    .unwrap();
+    let request: Value = serde_json::from_slice(&request_bytes).unwrap();
+    assert_eq!(request["messages"], sent_messages);
+    assert_eq!(
+        request["model"],
+        serde_json::to_value(&stroke_card().model).unwrap()
+    );
+    assert!(
+        attempt
+            .facts
+            .iter()
+            .any(|fact| fact.kind == "model.request" && fact.revision == request_sha)
+    );
     let observation = tape
         .iter()
         .find(|event| {
@@ -191,6 +254,18 @@ rules = ["stay in character", "replies under 280 characters"]
     assert!(observation.refs.iter().any(|r| r == &action.id));
     assert!(!observation.content.contains("canned reply"));
     let note: Value = serde_json::from_str(&observation.content).unwrap();
+    let receipt: Receipt = serde_json::from_value(note["receipt"].clone()).unwrap();
+    assert_eq!(receipt.outcome, Outcome::Succeeded);
+    assert!(receipt.grant.matches(&attempt));
+    assert!(receipt.refs.contains(&action.id));
+    assert!(receipt.refs.contains(&authorization.id));
+    assert!(
+        receipt
+            .evidence
+            .iter()
+            .any(|fact| fact.kind == "model.response"
+                && fact.revision == note["response_sha256"].as_str().unwrap())
+    );
     assert_eq!(note["usage"]["input_tokens"], 42);
     assert_eq!(note["usage"]["output_tokens"], 7);
     let sha = note["response_sha256"].as_str().expect("response sha");
@@ -207,6 +282,13 @@ rules = ["stay in character", "replies under 280 characters"]
     let seen = stage.seen.lock().unwrap_or_else(|err| err.into_inner());
     assert_eq!(seen.len(), 2);
     let step1_clips = seen[1]["clips"].as_array().expect("clips");
+    assert!(seen.iter().all(|step| {
+        step["clips"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|clip| clip["tag"] != "semantic")
+    }));
     assert!(
         step1_clips
             .last()
@@ -293,6 +375,25 @@ fn a_runaway_body_is_stopped_and_unmounted() {
             .len(),
         8
     );
+    let tape = control.events(id).unwrap();
+    let attempts: Vec<String> = tape
+        .iter()
+        .filter(|event| event.tags.iter().any(|tag| tag == "semantic"))
+        .map(|event| {
+            serde_json::from_str::<Value>(&event.content).unwrap()["attempt"]["id"]
+                .as_str()
+                .unwrap()
+                .to_string()
+        })
+        .collect();
+    assert_eq!(attempts.len(), 9); // one delivery and eight separate model executions
+    assert_eq!(
+        attempts
+            .iter()
+            .collect::<std::collections::HashSet<_>>()
+            .len(),
+        9
+    );
     assert!(matches!(
         control.offer(id, "npc"),
         Err(ControlError::NotMounted(_))
@@ -372,6 +473,16 @@ fn body_errors_unmount_but_infra_errors_do_not() {
             && event.content.contains("\"status\":\"failed\"")
             && event.content.contains("model offline")
     }));
+    let failed = tape
+        .iter()
+        .find(|event| {
+            event.kind == Kind::Observation && event.tags.iter().any(|tag| tag == "invoke")
+        })
+        .unwrap();
+    let failed: Value = serde_json::from_str(&failed.content).unwrap();
+    let receipt: Receipt = serde_json::from_value(failed["receipt"].clone()).unwrap();
+    assert_eq!(receipt.outcome, Outcome::Unknown);
+    assert!(receipt.evidence.is_empty());
     control.unmount_spool("npc").unwrap();
 
     // A body error unmounts, like any failed spool.
@@ -446,10 +557,113 @@ fn invoke_model_requires_the_mounted_model_face() {
             .unwrap_or_else(|err| err.into_inner())
             .is_empty()
     );
+    let tape = control.events(id).unwrap();
+    let denial: Value = tape
+        .iter()
+        .filter(|event| event.tags.iter().any(|tag| tag == "semantic"))
+        .map(|event| serde_json::from_str::<Value>(&event.content).unwrap())
+        .find(|record| record["attempt"]["capability"]["operation"] == "model.complete")
+        .unwrap();
+    assert_eq!(denial["decision"]["disposition"], "deny");
+    assert!(denial["decision"].get("grant").is_none());
+    assert!(
+        !tape
+            .iter()
+            .any(|event| event.tags.iter().any(|tag| tag == "invoke"))
+    );
     assert!(matches!(
         control.offer(id, "npc"),
         Err(ControlError::NotMounted(_))
     ));
+}
+
+/// A follow-up invocation consumes the response payload, not the thin audit
+/// envelope, and retains the original request even after workspace updates.
+#[test]
+fn successive_model_calls_bind_the_exact_inputs_and_workspace_generations() {
+    let tmp = TempDir::new("control-model-generations");
+    let control = AgentControl::open(tmp.path(), &bash_registry()).unwrap();
+    control
+        .register(&listed(&[("scene", &["npc"])], &["main"], &["main"]))
+        .unwrap();
+    let first_config = control
+        .put_config("main", b"[guidance]\nrules = [\"first rule\"]\n")
+        .unwrap();
+    let first_env = control.put_env("main", "first room").unwrap();
+    let id = control.open_thread(&stroke_card()).unwrap();
+    control.push_event("scene", "enter").unwrap();
+    let scene = control.note(id, "scene", "enter").unwrap();
+    let model = stub_model();
+    control.set_model_client(model.clone());
+
+    struct Twice {
+        source: String,
+        control: AgentControl,
+    }
+    impl AgentBody for Twice {
+        fn evaluate(&self, projection: &Value) -> Result<BeatStep, String> {
+            match projection["steps"].as_u64().unwrap() {
+                0 => Ok(BeatStep::InvokeModel {
+                    clips: vec![self.source.clone()],
+                }),
+                1 => {
+                    self.control
+                        .put_config("main", b"[guidance]\nrules = [\"second rule\"]\n")
+                        .map_err(|err| err.to_string())?;
+                    self.control
+                        .put_env("main", "second room")
+                        .map_err(|err| err.to_string())?;
+                    let last = projection["clips"].as_array().unwrap().last().unwrap();
+                    Ok(BeatStep::InvokeModel {
+                        clips: vec![last["id"].as_str().unwrap().into()],
+                    })
+                }
+                _ => Ok(BeatStep::Halt),
+            }
+        }
+    }
+    control
+        .mount_agent(
+            "npc",
+            Arc::new(Twice {
+                source: scene,
+                control: control.clone(),
+            }),
+            &declares_model(&["scene"], &[], crate::act::ModelFacet::Complete),
+        )
+        .unwrap();
+    assert!(matches!(
+        control.offer(id, "npc").unwrap(),
+        DeliveryOutcome::Halt { .. }
+    ));
+    let tape = control.events(id).unwrap();
+    let invokes: Vec<_> = tape
+        .iter()
+        .filter(|e| e.kind == Kind::Action && e.tags.iter().any(|tag| tag == "invoke"))
+        .map(|e| serde_json::from_str::<Value>(&e.content).unwrap())
+        .collect();
+    assert_eq!(invokes.len(), 2);
+    assert_eq!(invokes[0]["config"], first_config.sha256.unwrap());
+    assert_eq!(invokes[0]["env"], first_env.sha256.unwrap());
+    assert_ne!(invokes[0]["config"], invokes[1]["config"]);
+    assert_ne!(invokes[0]["request_sha256"], invokes[1]["request_sha256"]);
+    let calls = model.calls.lock().unwrap_or_else(|err| err.into_inner());
+    assert_eq!(calls.len(), 2);
+    assert!(calls[0].1[0].content.contains("first rule"));
+    assert!(calls[1].1[0].content.contains("second rule"));
+    assert_eq!(calls[1].1[1].content, "[invoke] canned reply\n");
+    for (invoke, call) in invokes.iter().zip(calls.iter()) {
+        let bytes = std::fs::read(
+            control
+                .directory(id)
+                .unwrap()
+                .join("blobs")
+                .join(invoke["request_sha256"].as_str().unwrap()),
+        )
+        .unwrap();
+        let request: Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(request["messages"], serde_json::to_value(&call.1).unwrap());
+    }
 }
 
 /// An agent reply goes through the same intent admission as a beat reply:

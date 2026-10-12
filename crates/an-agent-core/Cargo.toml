@@ -12,6 +12,7 @@ workspace = true
 testkit = []
 
 [dependencies]
+an-agent-semantic = { path = "../an-agent-semantic" }
 async-trait.workspace = true
 chrono.workspace = true
 rand.workspace = true

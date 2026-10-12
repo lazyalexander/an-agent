@@ -23,6 +23,15 @@ pub struct Registration {
     pub env: Vec<String>,
 }
 
+/// One immutable registration generation used for a policy decision. The
+/// bytes are content-addressed, so a later `register` does not change what
+/// this snapshot meant.
+#[derive(Debug, Clone)]
+pub(super) struct RegistrationSnapshot {
+    pub revision: String,
+    pub registration: Registration,
+}
+
 /// The workspace's hard requirements, one TOML document per registered
 /// config name: which spools (pinned), their mount parameters, and the
 /// hook chains. Strict: unknown fields are refused — loosening is a
@@ -271,24 +280,43 @@ impl AgentControl {
     pub fn workspace_log(&self) -> Result<Vec<WorkspaceRecord>, ControlError> {
         Ok(self.inner.workspace.log()?)
     }
-    pub(super) fn current_registration(&self) -> Result<Registration, ControlError> {
+    pub(super) fn current_registration_snapshot(
+        &self,
+    ) -> Result<RegistrationSnapshot, ControlError> {
         let cite = self.inner.workspace.cite()?;
         let Some(sha) = cite.register_sha256 else {
             return Err(ControlError::NotRegistered);
         };
         let bytes = self.inner.workspace.register_bytes(&sha)?;
-        serde_json::from_slice(&bytes)
-            .map_err(|err| ControlError::InvalidRegistration(err.to_string()))
+        let registration = serde_json::from_slice(&bytes)
+            .map_err(|err| ControlError::InvalidRegistration(err.to_string()))?;
+        Ok(RegistrationSnapshot {
+            revision: sha,
+            registration,
+        })
+    }
+
+    pub(super) fn current_registration(&self) -> Result<Registration, ControlError> {
+        Ok(self.current_registration_snapshot()?.registration)
     }
 
     /// The current config document — the latest config record, the same
     /// "current" cite and seal see. `None` until the first put_config.
     pub(super) fn current_config(&self) -> Result<Option<WorkspaceConfig>, ControlError> {
         let cite = self.inner.workspace.cite()?;
-        let Some(sha) = cite.config_sha256 else {
+        self.config_at_revision(cite.config_sha256.as_deref())
+    }
+
+    /// Resolve the exact revision already cited by a boundary. A later
+    /// put_config must not change the rules assembled for that attempt.
+    pub(super) fn config_at_revision(
+        &self,
+        revision: Option<&str>,
+    ) -> Result<Option<WorkspaceConfig>, ControlError> {
+        let Some(sha) = revision else {
             return Ok(None);
         };
-        let bytes = self.inner.workspace.config_bytes(&sha)?;
+        let bytes = self.inner.workspace.config_bytes(sha)?;
         let text = std::str::from_utf8(&bytes)
             .map_err(|err| ControlError::InvalidConfig(err.to_string()))?;
         let config: WorkspaceConfig =
@@ -303,14 +331,19 @@ impl AgentControl {
         self.current_config()
     }
 
-    pub(super) fn spools_for(&self, name: &str) -> Result<Vec<String>, ControlError> {
-        let registration = self.current_registration()?;
-        registration
+    pub(super) fn route_for(
+        &self,
+        name: &str,
+    ) -> Result<(RegistrationSnapshot, Vec<String>), ControlError> {
+        let snapshot = self.current_registration_snapshot()?;
+        let route = snapshot
+            .registration
             .events
-            .into_iter()
+            .iter()
             .find(|route| route.name == name)
-            .map(|route| route.spools)
-            .ok_or_else(|| ControlError::Unregistered(name.to_string()))
+            .map(|route| route.spools.clone())
+            .ok_or_else(|| ControlError::Unregistered(name.to_string()))?;
+        Ok((snapshot, route))
     }
 
     fn admit(&self, list: &str, name: &str) -> Result<(), ControlError> {

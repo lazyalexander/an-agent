@@ -9,7 +9,13 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use uuid::Uuid;
 
+use an_agent_semantic::{
+    Attempt, Capability, Claim, FactRef, Polarity, Resource as SemanticResource,
+};
+
 use super::agent_beat::AgentBody;
+use super::semantic::AuthorizedAttempt;
+use super::workspace::RegistrationSnapshot;
 use super::{AgentControl, ControlError};
 use crate::agent::Agent;
 use crate::workspace::WorkspaceRecord;
@@ -154,7 +160,7 @@ pub(super) enum MountedBody {
 ///
 /// Shape schemas are not matched yet: the workspace declares names only,
 /// so there is nothing to compare a payload shape against.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 pub struct SpoolDeclaration {
     pub consumes: Vec<String>,
     pub produces: Vec<String>,
@@ -312,7 +318,8 @@ impl AgentControl {
         let turn = self.inner.pool.begin_turn(id)?;
         let event = self.event_by_id(event_id)?;
         self.hooks_before(turn.agent(), &event)?;
-        match self.invoke(turn.agent(), name, &event)? {
+        let registration = self.current_registration_snapshot()?;
+        match self.invoke(turn.agent(), name, &event, &registration)? {
             Ok(outcome) => {
                 if let DeliveryOutcome::Reply(reply) = &outcome {
                     self.hooks_after(turn.agent(), reply)?;
@@ -348,10 +355,10 @@ impl AgentControl {
         let event = self.event_by_id(event_id)?;
         self.hooks_before(turn.agent(), &event)?;
         let event_name = event.name.clone().unwrap_or_default();
-        let route = self.spools_for(&event_name)?;
+        let (registration, route) = self.route_for(&event_name)?;
         let mut outcomes = Vec::new();
         for spool in route {
-            match self.invoke(turn.agent(), &spool, &event) {
+            match self.invoke(turn.agent(), &spool, &event, &registration) {
                 Ok(Ok(outcome)) => match &outcome {
                     DeliveryOutcome::Reply(reply) => match self.hooks_after(turn.agent(), reply) {
                         Ok(()) => outcomes.push(outcome),
@@ -409,19 +416,23 @@ impl AgentControl {
         agent: &Agent,
         name: &str,
         event: &WorkspaceRecord,
+        registration: &RegistrationSnapshot,
     ) -> Result<Result<DeliveryOutcome, String>, ControlError> {
         let Some((body, declaration)) = self.body_named(name) else {
             return Err(ControlError::NotMounted(name.to_string()));
         };
+        let delivery = self.authorize_delivery(agent, name, event, &declaration, registration)?;
         match body {
-            MountedBody::Agent(body) => match self.agent_invoke(agent, name, &body, event)? {
-                Err(reason) => {
-                    self.drop_body(name);
-                    self.note_spool(agent, name, &event.id, Err(reason.as_str()))?;
-                    Ok(Err(reason))
+            MountedBody::Agent(body) => {
+                match self.agent_invoke(agent, name, &body, event, &declaration, &delivery)? {
+                    Err(reason) => {
+                        self.drop_body(name);
+                        self.note_spool(agent, name, &event.id, Err(reason.as_str()))?;
+                        Ok(Err(reason))
+                    }
+                    Ok(outcome) => Ok(Ok(outcome)),
                 }
-                Ok(outcome) => Ok(Ok(outcome)),
-            },
+            }
             MountedBody::Beat(body) => match body.receive(event) {
                 Ok(reply) => {
                     let tape_id = self.note_spool(agent, name, &event.id, Ok(reply.as_str()))?;
@@ -447,6 +458,60 @@ impl AgentControl {
                 }
             },
         }
+    }
+
+    /// Translate delivery into the semantic plane immediately before the
+    /// body boundary. The mounted declaration and the registration snapshot
+    /// are independent claims; both must cover the same concrete attempt.
+    fn authorize_delivery(
+        &self,
+        agent: &Agent,
+        name: &str,
+        event: &WorkspaceRecord,
+        declaration: &SpoolDeclaration,
+        registration: &RegistrationSnapshot,
+    ) -> Result<AuthorizedAttempt, ControlError> {
+        let event_name = event.name.clone().unwrap_or_default();
+        let capability = |event: &str| {
+            Capability::exact(
+                Polarity::Coeffect,
+                "flow.consume",
+                SemanticResource::new("workspace.event", [event]),
+            )
+        };
+        let mounted = Claim {
+            subject: name.to_string(),
+            capabilities: declaration
+                .consumes
+                .iter()
+                .map(|event| capability(event))
+                .collect(),
+        };
+        let routed = registration
+            .registration
+            .events
+            .iter()
+            .find(|route| route.name == event_name)
+            .is_some_and(|route| route.spools.iter().any(|spool| spool == name));
+        let register = Claim {
+            subject: name.to_string(),
+            capabilities: if routed {
+                vec![capability(&event_name)]
+            } else {
+                Vec::new()
+            },
+        };
+        let mut attempt = Attempt::new(
+            format!("delivery:{}", crate::det_seam::Entropy::os().uuid_v4()),
+            name,
+            capability(&event_name),
+            vec![
+                FactRef::new("workspace.registration", registration.revision.clone()),
+                self.semantic_snapshot(agent, "spool.declaration", declaration)?,
+            ],
+        );
+        attempt.refs.push(event.id.clone());
+        self.authorize_attempt(agent, &attempt, &[mounted, register])
     }
 
     /// The produces whitelist, applied per intent at delivery: an
@@ -491,14 +556,6 @@ impl AgentControl {
             .iter()
             .find(|mounted| mounted.name == name)
             .map(|mounted| (mounted.body.clone(), mounted.declaration.clone()))
-    }
-
-    /// The declaration a mounted body was matched with. Used by the agent
-    /// driver, which admits intents itself.
-    pub(super) fn declaration_of(&self, name: &str) -> Result<SpoolDeclaration, ControlError> {
-        self.body_named(name)
-            .map(|(_, declaration)| declaration)
-            .ok_or_else(|| ControlError::NotMounted(name.to_string()))
     }
 
     fn drop_body(&self, name: &str) {

@@ -24,9 +24,14 @@
 
 use std::sync::Arc;
 
+use an_agent_semantic::{
+    Attempt, Capability, Claim, Disposition, FactRef, Outcome, Polarity, Receipt,
+    Resource as SemanticResource, decide,
+};
 use serde_json::{Value, json};
 
-use super::{AgentControl, ControlError, DeliveryOutcome, SpoolReply};
+use super::semantic::AuthorizedAttempt;
+use super::{AgentControl, ControlError, DeliveryOutcome, SpoolDeclaration, SpoolReply};
 use crate::agent::Agent;
 use crate::agent::context::{self, Clip, Envelope, SystemFacts};
 use crate::memstream::Kind;
@@ -155,6 +160,9 @@ fn projection(agent: &Agent, event: &WorkspaceRecord, steps: usize) -> Result<Va
     let clips: Vec<Value> = tape
         .iter()
         .rev()
+        // Audit records stay on the tape but do not consume the body's
+        // context window or become an implicit model input.
+        .filter(|event| !event.tags.iter().any(|tag| tag == "semantic"))
         .take(PROJECTION_CLIPS)
         .collect::<Vec<_>>()
         .into_iter()
@@ -239,8 +247,9 @@ impl AgentControl {
         name: &str,
         body: &Arc<dyn AgentBody>,
         event: &WorkspaceRecord,
+        declaration: &SpoolDeclaration,
+        delivery: &AuthorizedAttempt,
     ) -> Result<Result<DeliveryOutcome, String>, ControlError> {
-        let declaration = self.declaration_of(name)?;
         for steps in 0..MAX_STEPS {
             let step = match body.evaluate(&projection(agent, event, steps)?) {
                 Ok(step) => step,
@@ -254,7 +263,7 @@ impl AgentControl {
                         agent,
                         name,
                         &event.id,
-                        &declaration,
+                        declaration,
                         super::spool::parse_intents(&text),
                     )?;
                     return Ok(Ok(DeliveryOutcome::Reply(SpoolReply {
@@ -274,14 +283,14 @@ impl AgentControl {
                     }));
                 }
                 BeatStep::InvokeModel { clips } => {
-                    // The mount's model face is the grant: undeclared
-                    // means refused, like file/net/proc.
-                    if declaration.model == crate::act::ModelFacet::None {
-                        return Ok(Err(format!(
-                            "invoke_model is not in {name}'s mounted model face"
-                        )));
+                    match self.model_step(agent, name, event, &clips, declaration, delivery) {
+                        Err(ControlError::SemanticDenied { reason, .. }) => {
+                            return Ok(Err(format!(
+                                "invoke_model is not in {name}'s mounted model face: {reason}"
+                            )));
+                        }
+                        result => result?,
                     }
-                    self.model_step(agent, name, event, &clips)?;
                 }
                 BeatStep::InvokeTool { name: tool, .. } => {
                     return Ok(Err(format!(
@@ -307,7 +316,45 @@ impl AgentControl {
         name: &str,
         event: &WorkspaceRecord,
         clips: &[String],
+        declaration: &SpoolDeclaration,
+        delivery: &AuthorizedAttempt,
     ) -> Result<(), ControlError> {
+        let capability = Capability::exact(
+            Polarity::Effect,
+            "model.complete",
+            SemanticResource::new(
+                "model.endpoint",
+                [agent.model().base_url.clone(), agent.model().model.clone()],
+            ),
+        );
+        let claims = [
+            Claim {
+                subject: name.into(),
+                capabilities: match declaration.model {
+                    crate::act::ModelFacet::None => Vec::new(),
+                    crate::act::ModelFacet::Complete => vec![capability.clone()],
+                },
+            },
+            Claim {
+                subject: name.into(),
+                capabilities: vec![capability.clone()],
+            },
+        ];
+        let mut facts = delivery.grant.facts.clone();
+        facts.push(FactRef::new("agent.card", agent.card_hash()));
+        let mut attempt = Attempt::new(
+            format!("model:{}", crate::det_seam::Entropy::os().uuid_v4()),
+            name,
+            capability,
+            facts,
+        );
+        attempt.refs = clips.to_vec();
+        attempt.refs.push(delivery.tape_id.clone());
+        // Preflight catches a missing model face before reading clips or
+        // requiring a client. The execution gate below binds the request.
+        if decide(&attempt, &claims).disposition == Disposition::Deny {
+            self.authorize_attempt(agent, &attempt, &claims)?;
+        }
         let client = self.model_client()?;
         let tape = agent.session().tape().read_all()?;
         let mut resolved = Vec::with_capacity(clips.len());
@@ -315,7 +362,7 @@ impl AgentControl {
             match tape.iter().find(|e| &e.id == clip) {
                 Some(e) => resolved.push((
                     e.tags.first().cloned().unwrap_or_else(|| "event".into()),
-                    fuse_clip(&e.content),
+                    fuse_clip(&resolve_payload(agent, e)),
                 )),
                 None => return Err(ControlError::UnknownClip(clip.clone())),
             }
@@ -325,7 +372,7 @@ impl AgentControl {
             .map(|(tag, content)| Clip { tag, content })
             .collect();
         let cite = self.workspace_cite()?;
-        let (guidance, enforced) = match self.current_config()? {
+        let (guidance, enforced) = match self.config_at_revision(cite.config_sha256.as_deref())? {
             Some(config) => (
                 config.guidance.rules,
                 config
@@ -345,6 +392,26 @@ impl AgentControl {
             guidance: &guidance,
             clips: &views,
         });
+        // Exact application request, including the composed messages and
+        // model knobs. Credentials remain solely inside the host client.
+        let request = self.semantic_snapshot(
+            agent,
+            "model.request",
+            &json!({
+                "model": agent.model(),
+                "messages": messages,
+            }),
+        )?;
+        if let Some(sha) = &cite.config_sha256 {
+            attempt.facts.push(FactRef::new("workspace.config", sha));
+        }
+        if let Some(sha) = &cite.env_sha256 {
+            attempt.facts.push(FactRef::new("workspace.env", sha));
+        }
+        attempt.facts.push(request.clone());
+        let authorization = self.authorize_attempt(agent, &attempt, &claims)?;
+        let mut refs = clips.to_vec();
+        refs.push(authorization.tape_id.clone());
         let action = self.append_event(
             agent,
             Kind::Action,
@@ -356,20 +423,28 @@ impl AgentControl {
                 "clips": clips,
                 "env": cite.env_sha256,
                 "config": cite.config_sha256,
+                "request_sha256": request.revision,
+                "semantic": authorization.tape_id,
             })
             .to_string(),
-            clips.to_vec(),
+            refs,
         )?;
         let completion = match client.complete(agent.model(), messages) {
             Ok(completion) => completion,
             Err(reason) => {
+                let receipt = Receipt::new(
+                    authorization.grant,
+                    Outcome::Unknown,
+                    Vec::new(),
+                    vec![authorization.tape_id, action.clone()],
+                );
                 // A failed call is not a dangling action: the terminal
                 // observation closes it, citing the action it answers.
                 self.append_event(
                     agent,
                     Kind::Observation,
                     "invoke",
-                    json!({ "spool": name, "status": "failed", "reason": reason }).to_string(),
+                    json!({ "spool": name, "status": "failed", "reason": reason, "receipt": receipt }).to_string(),
                     vec![action],
                 )?;
                 return Err(ControlError::ModelFailed {
@@ -379,6 +454,12 @@ impl AgentControl {
             }
         };
         let sha = agent.session().put_blob(completion.content.as_bytes())?;
+        let receipt = Receipt::new(
+            authorization.grant,
+            Outcome::Succeeded,
+            vec![FactRef::new("model.response", &sha)],
+            vec![authorization.tape_id, action.clone()],
+        );
         self.append_event(
             agent,
             Kind::Observation,
@@ -388,6 +469,7 @@ impl AgentControl {
                 "response_sha256": sha,
                 "response_bytes": completion.content.len(),
                 "usage": completion.usage,
+                "receipt": receipt,
             })
             .to_string(),
             vec![action],
