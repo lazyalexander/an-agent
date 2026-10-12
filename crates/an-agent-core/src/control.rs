@@ -37,6 +37,7 @@ use crate::workspace::Workspace;
 
 mod agent_beat;
 mod hooks;
+mod semantic;
 mod session;
 mod spool;
 mod workspace;
@@ -78,6 +79,8 @@ pub enum ControlError {
         subject: String,
         reason: String,
     },
+    #[error("semantic record could not be encoded: {0}")]
+    SemanticRecord(String),
     #[error("workspace has no event")]
     NoEvent,
     #[error("workspace has no such event: {0}")]

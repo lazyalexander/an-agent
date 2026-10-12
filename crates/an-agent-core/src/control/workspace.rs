@@ -304,10 +304,19 @@ impl AgentControl {
     /// "current" cite and seal see. `None` until the first put_config.
     pub(super) fn current_config(&self) -> Result<Option<WorkspaceConfig>, ControlError> {
         let cite = self.inner.workspace.cite()?;
-        let Some(sha) = cite.config_sha256 else {
+        self.config_at_revision(cite.config_sha256.as_deref())
+    }
+
+    /// Resolve the exact revision already cited by a boundary. A later
+    /// put_config must not change the rules assembled for that attempt.
+    pub(super) fn config_at_revision(
+        &self,
+        revision: Option<&str>,
+    ) -> Result<Option<WorkspaceConfig>, ControlError> {
+        let Some(sha) = revision else {
             return Ok(None);
         };
-        let bytes = self.inner.workspace.config_bytes(&sha)?;
+        let bytes = self.inner.workspace.config_bytes(sha)?;
         let text = std::str::from_utf8(&bytes)
             .map_err(|err| ControlError::InvalidConfig(err.to_string()))?;
         let config: WorkspaceConfig =

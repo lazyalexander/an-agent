@@ -338,6 +338,56 @@ fn delivery_rechecks_the_current_registration_against_the_mounted_claim() {
     assert!(denied.refs.iter().any(|reference| reference == &other.id));
 }
 
+#[test]
+fn successful_deliveries_are_audited_with_distinct_execution_ids() {
+    let tmp = TempDir::new("control-delivery-audit");
+    let control = AgentControl::open(tmp.path(), &bash_registry()).unwrap();
+    control
+        .register(&listed(&[("stroke", &["ink"])], &[], &[]))
+        .unwrap();
+    let id = control.open_thread(&stroke_card()).unwrap();
+    let event = control.push_event("stroke", "same fact").unwrap();
+    control
+        .mount_spool(
+            "ink",
+            Arc::new(Ink {
+                seen: Mutex::new(None),
+            }),
+            &declares(&["stroke"], &[]),
+        )
+        .unwrap();
+    control.offer_on(id, "ink", &event.id).unwrap();
+    control.offer_on(id, "ink", &event.id).unwrap();
+    let tape = control.events(id).unwrap();
+    let audits: Vec<Value> = tape
+        .iter()
+        .filter(|e| e.tags.iter().any(|tag| tag == "semantic"))
+        .map(|e| serde_json::from_str(&e.content).unwrap())
+        .collect();
+    assert_eq!(audits.len(), 2);
+    assert_ne!(audits[0]["attempt"]["id"], audits[1]["attempt"]["id"]);
+    for audit in &audits {
+        assert_eq!(audit["decision"]["disposition"], "allow");
+        assert_eq!(audit["attempt"]["refs"][0], event.id);
+        let declaration = audit["attempt"]["facts"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|fact| fact["kind"] == "spool.declaration")
+            .unwrap();
+        let bytes = std::fs::read(
+            control
+                .directory(id)
+                .unwrap()
+                .join("blobs")
+                .join(declaration["revision"].as_str().unwrap()),
+        )
+        .unwrap();
+        let snapshot: Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(snapshot["consumes"], json!(["stroke"]));
+    }
+}
+
 /// The reply loop closes: a named event is delivered, the host lands the
 /// reply in software, and `applied` tapes that landing with a citation
 /// back to the spool note.

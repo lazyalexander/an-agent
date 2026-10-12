@@ -10,11 +10,11 @@ use serde_json::json;
 use uuid::Uuid;
 
 use an_agent_semantic::{
-    Attempt, Capability, Claim, Disposition, FactRef, Polarity, Resource as SemanticResource,
-    decide,
+    Attempt, Capability, Claim, FactRef, Polarity, Resource as SemanticResource,
 };
 
 use super::agent_beat::AgentBody;
+use super::semantic::AuthorizedAttempt;
 use super::workspace::RegistrationSnapshot;
 use super::{AgentControl, ControlError};
 use crate::agent::Agent;
@@ -160,7 +160,7 @@ pub(super) enum MountedBody {
 ///
 /// Shape schemas are not matched yet: the workspace declares names only,
 /// so there is nothing to compare a payload shape against.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 pub struct SpoolDeclaration {
     pub consumes: Vec<String>,
     pub produces: Vec<String>,
@@ -421,16 +421,18 @@ impl AgentControl {
         let Some((body, declaration)) = self.body_named(name) else {
             return Err(ControlError::NotMounted(name.to_string()));
         };
-        self.authorize_delivery(agent, name, event, &declaration, registration)?;
+        let delivery = self.authorize_delivery(agent, name, event, &declaration, registration)?;
         match body {
-            MountedBody::Agent(body) => match self.agent_invoke(agent, name, &body, event)? {
-                Err(reason) => {
-                    self.drop_body(name);
-                    self.note_spool(agent, name, &event.id, Err(reason.as_str()))?;
-                    Ok(Err(reason))
+            MountedBody::Agent(body) => {
+                match self.agent_invoke(agent, name, &body, event, &declaration, &delivery)? {
+                    Err(reason) => {
+                        self.drop_body(name);
+                        self.note_spool(agent, name, &event.id, Err(reason.as_str()))?;
+                        Ok(Err(reason))
+                    }
+                    Ok(outcome) => Ok(Ok(outcome)),
                 }
-                Ok(outcome) => Ok(Ok(outcome)),
-            },
+            }
             MountedBody::Beat(body) => match body.receive(event) {
                 Ok(reply) => {
                     let tape_id = self.note_spool(agent, name, &event.id, Ok(reply.as_str()))?;
@@ -468,7 +470,7 @@ impl AgentControl {
         event: &WorkspaceRecord,
         declaration: &SpoolDeclaration,
         registration: &RegistrationSnapshot,
-    ) -> Result<(), ControlError> {
+    ) -> Result<AuthorizedAttempt, ControlError> {
         let event_name = event.name.clone().unwrap_or_default();
         let capability = |event: &str| {
             Capability::exact(
@@ -500,41 +502,16 @@ impl AgentControl {
             },
         };
         let mut attempt = Attempt::new(
-            format!("delivery:{}:{name}", event.id),
+            format!("delivery:{}", crate::det_seam::Entropy::os().uuid_v4()),
             name,
             capability(&event_name),
-            vec![FactRef::new(
-                "workspace.registration",
-                registration.revision.clone(),
-            )],
+            vec![
+                FactRef::new("workspace.registration", registration.revision.clone()),
+                self.semantic_snapshot(agent, "spool.declaration", declaration)?,
+            ],
         );
         attempt.refs.push(event.id.clone());
-        let decision = decide(&attempt, &[mounted, register]);
-        if decision.disposition == Disposition::Allow {
-            return Ok(());
-        }
-
-        let reason = decision
-            .reason
-            .map(|reason| reason.as_str())
-            .unwrap_or("denied")
-            .to_string();
-        let content = json!({
-            "attempt": attempt,
-            "decision": decision,
-        });
-        self.append_event(
-            agent,
-            crate::memstream::Kind::Action,
-            "semantic",
-            content.to_string(),
-            vec![event.id.clone()],
-        )?;
-        Err(ControlError::SemanticDenied {
-            operation: "flow.consume".into(),
-            subject: name.to_string(),
-            reason,
-        })
+        self.authorize_attempt(agent, &attempt, &[mounted, register])
     }
 
     /// The produces whitelist, applied per intent at delivery: an
@@ -579,14 +556,6 @@ impl AgentControl {
             .iter()
             .find(|mounted| mounted.name == name)
             .map(|mounted| (mounted.body.clone(), mounted.declaration.clone()))
-    }
-
-    /// The declaration a mounted body was matched with. Used by the agent
-    /// driver, which admits intents itself.
-    pub(super) fn declaration_of(&self, name: &str) -> Result<SpoolDeclaration, ControlError> {
-        self.body_named(name)
-            .map(|(_, declaration)| declaration)
-            .ok_or_else(|| ControlError::NotMounted(name.to_string()))
     }
 
     fn drop_body(&self, name: &str) {

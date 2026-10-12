@@ -4,6 +4,32 @@ use super::listed;
 use super::*;
 
 #[test]
+fn config_resolution_uses_the_cited_generation_after_replacement() {
+    let tmp = TempDir::new("control-config-revision");
+    let control = AgentControl::open(tmp.path(), &[]).unwrap();
+    control.register(&listed(&[], &["main"], &[])).unwrap();
+    let old = control
+        .put_config("main", b"[guidance]\nrules = [\"old rule\"]\n")
+        .unwrap();
+    control
+        .put_config("main", b"[guidance]\nrules = [\"new rule\"]\n")
+        .unwrap();
+    assert_eq!(
+        control
+            .config_at_revision(old.sha256.as_deref())
+            .unwrap()
+            .unwrap()
+            .guidance
+            .rules,
+        ["old rule"]
+    );
+    assert_eq!(
+        control.workspace_config().unwrap().unwrap().guidance.rules,
+        ["new rule"]
+    );
+}
+
+#[test]
 fn registration_is_a_snapshot_and_unknown_writes_are_refused() {
     let tmp = TempDir::new("control-register");
     let control = AgentControl::open(tmp.path(), &bash_registry()).unwrap();
