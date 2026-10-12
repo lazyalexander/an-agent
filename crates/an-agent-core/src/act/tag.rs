@@ -1,8 +1,7 @@
 use serde::{Deserialize, Serialize};
 
-/// Ask is not a gate today: admission tapes the intent and runs it as Go;
-/// only Deny blocks. Enforcement arrives with the delegation-chain
-/// + Ask-grant slice.
+/// Ask pauses before execution until the trusted host consumes one exact
+/// supervisor approval. Deny remains a ceiling that approval cannot override.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Permit {

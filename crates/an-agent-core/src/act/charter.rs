@@ -77,8 +77,8 @@ impl Charter {
     }
 }
 
-/// Spawn fit only. Execution does not rank permits: `Ask` runs, and only
-/// `Deny` blocks a tool.
+/// Spawn fit only. Execution uses a separate Ask review gate; this rank
+/// never grants a pending operation permission to run.
 fn permit_fits(grant: Permit, ceiling: Permit) -> bool {
     permit_rank(grant) <= permit_rank(ceiling)
 }

@@ -14,7 +14,7 @@ use an_agent_semantic::{
 };
 
 use super::agent_beat::AgentBody;
-use super::semantic::AuthorizedAttempt;
+use super::semantic::Admission;
 use super::workspace::RegistrationSnapshot;
 use super::{AgentControl, ControlError};
 use crate::agent::Agent;
@@ -105,8 +105,8 @@ pub struct SpoolReply {
 /// What one delivered event settled as for one body. A halt is a taped,
 /// explicit silence — it carries its own spool note id and nothing for
 /// the host to land, so it never earns an `applied`. A reply carries
-/// admitted intents for the host to land. The two are never collapsed
-/// into one shape: an empty utterance is a reply, a halt is not.
+/// admitted intents for the host to land. Review is a stopped operation,
+/// not a halt, reply, or body failure; it has no applied landing.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DeliveryOutcome {
     Halt {
@@ -115,6 +115,9 @@ pub enum DeliveryOutcome {
         tape_id: String,
     },
     Reply(SpoolReply),
+    /// No effect or applied landing. The host routes the request and
+    /// decides when to schedule fresh work after supervisor disposition.
+    NeedsReview(Box<super::ReviewRequest>),
 }
 
 impl DeliveryOutcome {
@@ -122,7 +125,7 @@ impl DeliveryOutcome {
     pub fn reply(&self) -> Option<&SpoolReply> {
         match self {
             Self::Reply(reply) => Some(reply),
-            Self::Halt { .. } => None,
+            Self::Halt { .. } | Self::NeedsReview(_) => None,
         }
     }
 }
@@ -365,7 +368,9 @@ impl AgentControl {
                         Err(ControlError::HookDenied { .. }) => {}
                         Err(err) => return Err(err),
                     },
-                    DeliveryOutcome::Halt { .. } => outcomes.push(outcome),
+                    DeliveryOutcome::Halt { .. } | DeliveryOutcome::NeedsReview(_) => {
+                        outcomes.push(outcome)
+                    }
                 },
                 Ok(Err(_)) => {}
                 Err(ControlError::NotMounted(_)) => {
@@ -421,7 +426,29 @@ impl AgentControl {
         let Some((body, declaration)) = self.body_named(name) else {
             return Err(ControlError::NotMounted(name.to_string()));
         };
-        let delivery = self.authorize_delivery(agent, name, event, &declaration, registration)?;
+        if let Some(request) = self.waiting_review(agent.id(), name) {
+            return Ok(Ok(DeliveryOutcome::NeedsReview(Box::new(request))));
+        }
+        let delivery =
+            match self.authorize_delivery(agent, name, event, &declaration, registration)? {
+                Admission::Allowed(delivery) => delivery,
+                Admission::Denied {
+                    mut attempt,
+                    tape_id,
+                    reason,
+                } => {
+                    attempt.refs.push(tape_id);
+                    let request = self.request_review(
+                        agent,
+                        name,
+                        Some(&event.id),
+                        attempt,
+                        super::ReviewCause::PermissionDenied { reason },
+                        None,
+                    )?;
+                    return Ok(Ok(DeliveryOutcome::NeedsReview(Box::new(request))));
+                }
+            };
         match body {
             MountedBody::Agent(body) => {
                 match self.agent_invoke(agent, name, &body, event, &declaration, &delivery)? {
@@ -470,7 +497,7 @@ impl AgentControl {
         event: &WorkspaceRecord,
         declaration: &SpoolDeclaration,
         registration: &RegistrationSnapshot,
-    ) -> Result<AuthorizedAttempt, ControlError> {
+    ) -> Result<Admission, ControlError> {
         let event_name = event.name.clone().unwrap_or_default();
         let capability = |event: &str| {
             Capability::exact(

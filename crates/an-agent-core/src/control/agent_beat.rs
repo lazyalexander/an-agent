@@ -30,7 +30,7 @@ use an_agent_semantic::{
 };
 use serde_json::{Value, json};
 
-use super::semantic::AuthorizedAttempt;
+use super::semantic::{Admission, AuthorizedAttempt};
 use super::{AgentControl, ControlError, DeliveryOutcome, SpoolDeclaration, SpoolReply};
 use crate::agent::Agent;
 use crate::agent::context::{self, Clip, Envelope, SystemFacts};
@@ -139,6 +139,9 @@ pub enum BeatStep {
     InvokeModel { clips: Vec<String> },
     /// Refused in v1 — tool acts are async, this driver is sync.
     InvokeTool { name: String, args: Value },
+    /// A cooperative high-risk checkpoint. This is a request, not an
+    /// authorization or a cancellation command to the semantic plane.
+    RequestReview { reason: String },
 }
 
 /// A mounted body made of steps. Core hands it a projection (the
@@ -162,7 +165,12 @@ fn projection(agent: &Agent, event: &WorkspaceRecord, steps: usize) -> Result<Va
         .rev()
         // Audit records stay on the tape but do not consume the body's
         // context window or become an implicit model input.
-        .filter(|event| !event.tags.iter().any(|tag| tag == "semantic"))
+        .filter(|event| {
+            !event
+                .tags
+                .iter()
+                .any(|tag| tag == "semantic" || tag == "audit")
+        })
         .take(PROJECTION_CLIPS)
         .collect::<Vec<_>>()
         .into_iter()
@@ -283,14 +291,35 @@ impl AgentControl {
                     }));
                 }
                 BeatStep::InvokeModel { clips } => {
-                    match self.model_step(agent, name, event, &clips, declaration, delivery) {
-                        Err(ControlError::SemanticDenied { reason, .. }) => {
-                            return Ok(Err(format!(
-                                "invoke_model is not in {name}'s mounted model face: {reason}"
-                            )));
-                        }
-                        result => result?,
+                    if let Some(request) =
+                        self.model_step(agent, name, event, &clips, declaration, delivery)?
+                    {
+                        return Ok(Ok(DeliveryOutcome::NeedsReview(Box::new(request))));
                     }
+                }
+                BeatStep::RequestReview { reason } => {
+                    let mut attempt = Attempt::new(
+                        format!("review:{}", crate::det_seam::Entropy::os().uuid_v4()),
+                        name,
+                        Capability::exact(
+                            Polarity::Effect,
+                            "body.continue",
+                            SemanticResource::new("spool", [name]),
+                        ),
+                        delivery.grant.facts.clone(),
+                    );
+                    attempt.refs = vec![delivery.tape_id.clone()];
+                    let request = self.request_review(
+                        agent,
+                        name,
+                        Some(&event.id),
+                        attempt,
+                        super::ReviewCause::HighRisk {
+                            reason: fuse_utter(&reason),
+                        },
+                        None,
+                    )?;
+                    return Ok(Ok(DeliveryOutcome::NeedsReview(Box::new(request))));
                 }
                 BeatStep::InvokeTool { name: tool, .. } => {
                     return Ok(Err(format!(
@@ -318,7 +347,7 @@ impl AgentControl {
         clips: &[String],
         declaration: &SpoolDeclaration,
         delivery: &AuthorizedAttempt,
-    ) -> Result<(), ControlError> {
+    ) -> Result<Option<super::ReviewRequest>, ControlError> {
         let capability = Capability::exact(
             Polarity::Effect,
             "model.complete",
@@ -352,8 +381,24 @@ impl AgentControl {
         attempt.refs.push(delivery.tape_id.clone());
         // Preflight catches a missing model face before reading clips or
         // requiring a client. The execution gate below binds the request.
-        if decide(&attempt, &claims).disposition == Disposition::Deny {
-            self.authorize_attempt(agent, &attempt, &claims)?;
+        if decide(&attempt, &claims).disposition == Disposition::Deny
+            && let Admission::Denied {
+                mut attempt,
+                tape_id,
+                reason,
+            } = self.authorize_attempt(agent, &attempt, &claims)?
+        {
+            attempt.refs.push(tape_id);
+            return self
+                .request_review(
+                    agent,
+                    name,
+                    Some(&event.id),
+                    attempt,
+                    super::ReviewCause::PermissionDenied { reason },
+                    None,
+                )
+                .map(Some);
         }
         let client = self.model_client()?;
         let tape = agent.session().tape().read_all()?;
@@ -409,7 +454,26 @@ impl AgentControl {
             attempt.facts.push(FactRef::new("workspace.env", sha));
         }
         attempt.facts.push(request.clone());
-        let authorization = self.authorize_attempt(agent, &attempt, &claims)?;
+        let authorization = match self.authorize_attempt(agent, &attempt, &claims)? {
+            Admission::Allowed(authorization) => authorization,
+            Admission::Denied {
+                mut attempt,
+                tape_id,
+                reason,
+            } => {
+                attempt.refs.push(tape_id);
+                return self
+                    .request_review(
+                        agent,
+                        name,
+                        Some(&event.id),
+                        attempt,
+                        super::ReviewCause::PermissionDenied { reason },
+                        None,
+                    )
+                    .map(Some);
+            }
+        };
         let mut refs = clips.to_vec();
         refs.push(authorization.tape_id.clone());
         let action = self.append_event(
@@ -474,7 +538,7 @@ impl AgentControl {
             .to_string(),
             vec![action],
         )?;
-        Ok(())
+        Ok(None)
     }
 
     /// The host label plus platform facts, composed fresh each call.
