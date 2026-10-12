@@ -49,9 +49,14 @@ pub struct Envelope<'a> {
     pub facts: &'a SystemFacts,
     /// Workspace env markdown. Empty means the workspace declares none.
     pub env: &'a str,
+    /// Workspace `[guard]` rules: statements the model is told as
+    /// *enforced* — each binds a pinned gate on the after chain, so the
+    /// model may rely on being stopped. Never list a rule here that has
+    /// no gate behind it; that is what `guidance` is for.
+    pub enforced: &'a [String],
     /// Workspace `[guidance]` rules: advisory statements the model is
-    /// told. Nothing mechanical enforces them — enforcement is the
-    /// after-hook gates' job, and this section never claims otherwise.
+    /// told. Nothing mechanical enforces them, and this section never
+    /// claims otherwise.
     pub guidance: &'a [String],
     pub clips: &'a [Clip<'a>],
 }
@@ -67,6 +72,12 @@ pub fn compose(parts: &Envelope) -> Vec<ModelMessage> {
     ));
     if !parts.env.trim().is_empty() {
         system.push_str(&format!("\n\n# Environment\n{}", parts.env.trim_end()));
+    }
+    if !parts.enforced.is_empty() {
+        system.push_str("\n\n# Guard (enforced)");
+        for rule in parts.enforced {
+            system.push_str(&format!("\n- {rule}"));
+        }
     }
     if !parts.guidance.is_empty() {
         system.push_str("\n\n# Guidance (advisory)");
@@ -104,12 +115,14 @@ mod tests {
             tag: "scene",
             content: "a traveler enters",
         }];
+        let enforced = vec!["replies under 280 characters".to_string()];
         let rules = vec!["stay in character".to_string()];
         let facts = facts();
         let messages = compose(&Envelope {
             prompt: "you keep the tavern",
             facts: &facts,
             env: "# The Tavern\nA quiet place.\n",
+            enforced: &enforced,
             guidance: &rules,
             clips: &clips,
         });
@@ -120,10 +133,15 @@ mod tests {
             "you keep the tavern",
             "test-host on ",
             "# Environment\n# The Tavern\nA quiet place.",
+            "# Guard (enforced)\n- replies under 280 characters",
             "# Guidance (advisory)\n- stay in character",
         ] {
             assert!(system.content.contains(needle), "{needle}");
         }
+        // Enforced is stated before advisory: hard rules first.
+        assert!(
+            system.content.find("# Guard").unwrap() < system.content.find("# Guidance").unwrap()
+        );
         assert_eq!(messages[1].role, "user");
         assert_eq!(messages[1].content, "[scene] a traveler enters\n");
     }
@@ -135,10 +153,12 @@ mod tests {
             prompt: "p",
             facts: &facts,
             env: "  \n",
+            enforced: &[],
             guidance: &[],
             clips: &[],
         });
         assert!(!messages[0].content.contains("# Environment"));
+        assert!(!messages[0].content.contains("# Guard"));
         assert!(!messages[0].content.contains("# Guidance"));
         assert!(messages[0].content.contains("# Host"));
         assert_eq!(messages[1].content, "");

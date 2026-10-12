@@ -325,15 +325,23 @@ impl AgentControl {
             .map(|(tag, content)| Clip { tag, content })
             .collect();
         let cite = self.workspace_cite()?;
-        let guidance = self
-            .current_config()?
-            .map(|config| config.guidance.rules)
-            .unwrap_or_default();
+        let (guidance, enforced) = match self.current_config()? {
+            Some(config) => (
+                config.guidance.rules,
+                config
+                    .guard
+                    .iter()
+                    .map(|guard| guard.rule.clone())
+                    .collect(),
+            ),
+            None => (Vec::new(), Vec::new()),
+        };
         let env = fuse_env(&cite.env_markdown, cite.env_sha256.as_deref());
         let messages = context::compose(&Envelope {
             prompt: agent.prompt(),
             facts: &self.system_facts(),
             env: &env,
+            enforced: &enforced,
             guidance: &guidance,
             clips: &views,
         });
