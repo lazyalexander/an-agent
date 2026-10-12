@@ -289,6 +289,55 @@ fn mount_matches_declaration_against_the_register() {
     ));
 }
 
+/// Mount matching is an early diagnostic, not a lasting authorization. A
+/// later registration generation must still pass the body boundary.
+#[test]
+fn delivery_rechecks_the_current_registration_against_the_mounted_claim() {
+    let tmp = TempDir::new("control-delivery-semantic");
+    let control = AgentControl::open(tmp.path(), &bash_registry()).unwrap();
+    control
+        .register(&listed(&[("stroke", &["clip"]), ("other", &[])], &[], &[]))
+        .unwrap();
+    let id = control.open_thread(&stroke_card()).unwrap();
+    let clip = Arc::new(Ink {
+        seen: Mutex::new(None),
+    });
+    control
+        .mount_spool(
+            "clip",
+            Arc::clone(&clip) as Arc<dyn SpoolBeat>,
+            &declares(&["stroke"], &[]),
+        )
+        .unwrap();
+
+    // The new snapshot routes an event the mounted body never claimed.
+    control
+        .register(&listed(&[("stroke", &[]), ("other", &["clip"])], &[], &[]))
+        .unwrap();
+    let other = control.push_event("other", "not for clip").unwrap();
+    assert!(matches!(
+        control.dispatch_on(id, &other.id),
+        Err(ControlError::SemanticDenied { operation, subject, reason })
+            if operation == "flow.consume"
+                && subject == "clip"
+                && reason == "capability_not_claimed"
+    ));
+    assert!(
+        clip.seen
+            .lock()
+            .unwrap_or_else(|err| err.into_inner())
+            .is_none()
+    );
+    let tape = control.events(id).unwrap();
+    let denied = tape
+        .iter()
+        .find(|event| event.tags.iter().any(|tag| tag == "semantic"))
+        .expect("semantic denial");
+    assert!(denied.content.contains("capability_not_claimed"));
+    assert!(denied.content.contains("workspace.registration"));
+    assert!(denied.refs.iter().any(|reference| reference == &other.id));
+}
+
 /// The reply loop closes: a named event is delivered, the host lands the
 /// reply in software, and `applied` tapes that landing with a citation
 /// back to the spool note.

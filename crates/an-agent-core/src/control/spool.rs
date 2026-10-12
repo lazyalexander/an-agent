@@ -9,7 +9,13 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use uuid::Uuid;
 
+use an_agent_semantic::{
+    Attempt, Capability, Claim, Disposition, FactRef, Polarity, Resource as SemanticResource,
+    decide,
+};
+
 use super::agent_beat::AgentBody;
+use super::workspace::RegistrationSnapshot;
 use super::{AgentControl, ControlError};
 use crate::agent::Agent;
 use crate::workspace::WorkspaceRecord;
@@ -312,7 +318,8 @@ impl AgentControl {
         let turn = self.inner.pool.begin_turn(id)?;
         let event = self.event_by_id(event_id)?;
         self.hooks_before(turn.agent(), &event)?;
-        match self.invoke(turn.agent(), name, &event)? {
+        let registration = self.current_registration_snapshot()?;
+        match self.invoke(turn.agent(), name, &event, &registration)? {
             Ok(outcome) => {
                 if let DeliveryOutcome::Reply(reply) = &outcome {
                     self.hooks_after(turn.agent(), reply)?;
@@ -348,10 +355,10 @@ impl AgentControl {
         let event = self.event_by_id(event_id)?;
         self.hooks_before(turn.agent(), &event)?;
         let event_name = event.name.clone().unwrap_or_default();
-        let route = self.spools_for(&event_name)?;
+        let (registration, route) = self.route_for(&event_name)?;
         let mut outcomes = Vec::new();
         for spool in route {
-            match self.invoke(turn.agent(), &spool, &event) {
+            match self.invoke(turn.agent(), &spool, &event, &registration) {
                 Ok(Ok(outcome)) => match &outcome {
                     DeliveryOutcome::Reply(reply) => match self.hooks_after(turn.agent(), reply) {
                         Ok(()) => outcomes.push(outcome),
@@ -409,10 +416,12 @@ impl AgentControl {
         agent: &Agent,
         name: &str,
         event: &WorkspaceRecord,
+        registration: &RegistrationSnapshot,
     ) -> Result<Result<DeliveryOutcome, String>, ControlError> {
         let Some((body, declaration)) = self.body_named(name) else {
             return Err(ControlError::NotMounted(name.to_string()));
         };
+        self.authorize_delivery(agent, name, event, &declaration, registration)?;
         match body {
             MountedBody::Agent(body) => match self.agent_invoke(agent, name, &body, event)? {
                 Err(reason) => {
@@ -447,6 +456,85 @@ impl AgentControl {
                 }
             },
         }
+    }
+
+    /// Translate delivery into the semantic plane immediately before the
+    /// body boundary. The mounted declaration and the registration snapshot
+    /// are independent claims; both must cover the same concrete attempt.
+    fn authorize_delivery(
+        &self,
+        agent: &Agent,
+        name: &str,
+        event: &WorkspaceRecord,
+        declaration: &SpoolDeclaration,
+        registration: &RegistrationSnapshot,
+    ) -> Result<(), ControlError> {
+        let event_name = event.name.clone().unwrap_or_default();
+        let capability = |event: &str| {
+            Capability::exact(
+                Polarity::Coeffect,
+                "flow.consume",
+                SemanticResource::new("workspace.event", [event]),
+            )
+        };
+        let mounted = Claim {
+            subject: name.to_string(),
+            capabilities: declaration
+                .consumes
+                .iter()
+                .map(|event| capability(event))
+                .collect(),
+        };
+        let routed = registration
+            .registration
+            .events
+            .iter()
+            .find(|route| route.name == event_name)
+            .is_some_and(|route| route.spools.iter().any(|spool| spool == name));
+        let register = Claim {
+            subject: name.to_string(),
+            capabilities: if routed {
+                vec![capability(&event_name)]
+            } else {
+                Vec::new()
+            },
+        };
+        let mut attempt = Attempt::new(
+            format!("delivery:{}:{name}", event.id),
+            name,
+            capability(&event_name),
+            vec![FactRef::new(
+                "workspace.registration",
+                registration.revision.clone(),
+            )],
+        );
+        attempt.refs.push(event.id.clone());
+        let decision = decide(&attempt, &[mounted, register]);
+        if decision.disposition == Disposition::Allow {
+            return Ok(());
+        }
+
+        let reason = decision
+            .reason
+            .map(|reason| reason.as_str())
+            .unwrap_or("denied")
+            .to_string();
+        let content = json!({
+            "attempt": attempt,
+            "decision": decision,
+        });
+        self.append_event(
+            agent,
+            crate::memstream::Kind::Action,
+            "semantic",
+            content.to_string(),
+            vec![event.id.clone()],
+        )?;
+        Err(ControlError::SemanticDenied {
+            operation: "flow.consume".into(),
+            subject: name.to_string(),
+            reason,
+        })
     }
 
     /// The produces whitelist, applied per intent at delivery: an

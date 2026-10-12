@@ -72,6 +72,12 @@ pub enum ControlError {
     AlreadyMounted(String),
     #[error("spool {name} does not match the register: {}", .reasons.join("; "))]
     MountMismatch { name: String, reasons: Vec<String> },
+    #[error("semantic policy denied {operation} for {subject}: {reason}")]
+    SemanticDenied {
+        operation: String,
+        subject: String,
+        reason: String,
+    },
     #[error("workspace has no event")]
     NoEvent,
     #[error("workspace has no such event: {0}")]
