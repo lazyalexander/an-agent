@@ -19,11 +19,25 @@ command. Trusted execution boundaries own the handles and enforce hard ceilings;
 the control layer stops blocked operations and sends review requests to a
 host-bound supervisor. Observation alone is not enforcement.
 
+**Declaration checker:** `assess_contract` accepts an attempt, a boundary profile,
+and role-labelled claims tied to exact input facts. It returns allow, deny, or
+unknown with findings and explicit coverage limits, never a grant. Missing roles,
+duplicate roles, absent/unbound evidence, and uncovered operations cannot produce
+allow. Known violations remain deny even when other evidence is incomplete.
+Profiles and claim roles come from trusted adapters, not self-asserted YAML.
+The same pure function supports offline preflight and runtime comparison without
+a tape or host. It checks declarations, not arbitrary program behavior.
+
 **Current adapters:** core records allow and deny delivery decisions and model
 completion decisions. Model attempts bind the card, mounted declaration,
 delivery registration, workspace ingredients, and retained application
 request. A denied delivery or model call returns a review request without
-unmounting the body. Terminal model observations carry receipts. Static analysis,
+unmounting the body. Terminal model observations carry receipts. The new
+contract assessment is recorded alongside the existing decision in shadow mode;
+agreement, difference, and incomplete inputs are explicit. Existing admission
+still decides execution. Card-configured endpoints are not independent egress
+grants, and a delivery profile does not cover a native body's hidden IO.
+Language-level static analysis,
 external provenance, idempotency, replay execution, and OS sandbox enforcement
 remain later slices.
 

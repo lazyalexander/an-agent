@@ -25,8 +25,8 @@
 use std::sync::Arc;
 
 use an_agent_semantic::{
-    Attempt, Capability, Claim, Disposition, FactRef, Outcome, Polarity, Receipt,
-    Resource as SemanticResource, decide,
+    Attempt, BoundaryProfile, Capability, Claim, ContractClaim, Disposition, FactRef, Outcome,
+    Polarity, Receipt, Resource as SemanticResource, decide,
 };
 use serde_json::{Value, json};
 
@@ -381,6 +381,42 @@ impl AgentControl {
         );
         attempt.refs = clips.to_vec();
         attempt.refs.push(delivery.tape_id.clone());
+        let profile = BoundaryProfile {
+            id: "core.model.v1".into(),
+            required_roles: vec!["mounted_model_face".into(), "configured_endpoint".into()],
+            checked: vec![Capability {
+                polarity: Polarity::Effect,
+                operation: "model.complete".into(),
+                resource: SemanticResource::new("model.endpoint", std::iter::empty::<&str>()),
+                recursive: true,
+            }],
+            limitations: vec![
+                "Checks the declared model face and card-configured endpoint, not provider behavior.".into(),
+                "The configured endpoint is not an independent host egress grant; the native client remains trusted.".into(),
+            ],
+        };
+        let contracts = [
+            ContractClaim {
+                role: "mounted_model_face".into(),
+                claim: claims[0].clone(),
+                evidence: attempt
+                    .facts
+                    .iter()
+                    .filter(|f| f.kind == "spool.declaration")
+                    .cloned()
+                    .collect(),
+            },
+            ContractClaim {
+                role: "configured_endpoint".into(),
+                claim: claims[1].clone(),
+                evidence: attempt
+                    .facts
+                    .iter()
+                    .filter(|f| f.kind == "agent.card")
+                    .cloned()
+                    .collect(),
+            },
+        ];
         // Preflight catches a missing model face before reading clips or
         // requiring a client. The execution gate below binds the request.
         if decide(&attempt, &claims).disposition == Disposition::Deny
@@ -388,7 +424,7 @@ impl AgentControl {
                 mut attempt,
                 tape_id,
                 reason,
-            } = self.authorize_attempt(agent, &attempt, &claims)?
+            } = self.authorize_attempt(agent, &attempt, &claims, &profile, &contracts)?
         {
             attempt.refs.push(tape_id);
             return self
@@ -456,26 +492,27 @@ impl AgentControl {
             attempt.facts.push(FactRef::new("workspace.env", sha));
         }
         attempt.facts.push(request.clone());
-        let authorization = match self.authorize_attempt(agent, &attempt, &claims)? {
-            Admission::Allowed(authorization) => authorization,
-            Admission::Denied {
-                mut attempt,
-                tape_id,
-                reason,
-            } => {
-                attempt.refs.push(tape_id);
-                return self
-                    .request_review(
-                        agent,
-                        name,
-                        Some(&event.id),
-                        attempt,
-                        super::ReviewCause::PermissionDenied { reason },
-                        None,
-                    )
-                    .map(Some);
-            }
-        };
+        let authorization =
+            match self.authorize_attempt(agent, &attempt, &claims, &profile, &contracts)? {
+                Admission::Allowed(authorization) => authorization,
+                Admission::Denied {
+                    mut attempt,
+                    tape_id,
+                    reason,
+                } => {
+                    attempt.refs.push(tape_id);
+                    return self
+                        .request_review(
+                            agent,
+                            name,
+                            Some(&event.id),
+                            attempt,
+                            super::ReviewCause::PermissionDenied { reason },
+                            None,
+                        )
+                        .map(Some);
+                }
+            };
         let mut refs = clips.to_vec();
         refs.push(authorization.tape_id.clone());
         let action = self.append_event(

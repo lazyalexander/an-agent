@@ -26,6 +26,12 @@ The kernel. Spool constructors live in `an-agent-spool`. Bash registration and s
 
 ## Conventions
 
+Delivery and model admission retain role-labelled contract projections, explicit
+boundary coverage, and shadow comparison diagnostics in their existing semantic
+audit records. The independent checker does not control execution; hard gates,
+review routing, and lifecycle enforcement remain unchanged. Missing or uncovered
+inputs are visible as unknown, not represented as proof of safety.
+
 Described mounts carry a `SpoolDescriptor`: one stable package symbol and the
 exact YAML snapshot supplied by the trusted loader. A package is not a mount
 alias or instance ID. Core owns a copy for the mount lifetime; descriptor changes

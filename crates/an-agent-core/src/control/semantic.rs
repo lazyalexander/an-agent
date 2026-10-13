@@ -3,7 +3,10 @@
 //! execution. The control boundary, not this adapter, owns stopping an
 //! operation and asking its supervisor for a disposition.
 
-use an_agent_semantic::{Attempt, Claim, Disposition, FactRef, Grant, decide};
+use an_agent_semantic::{
+    AssessmentDisposition, Attempt, BoundaryProfile, Claim, ContractClaim, Disposition, FactRef,
+    Grant, assess_contract, decide,
+};
 use serde::Serialize;
 use serde_json::json;
 
@@ -44,13 +47,30 @@ impl AgentControl {
         agent: &Agent,
         attempt: &Attempt,
         claims: &[Claim],
+        profile: &BoundaryProfile,
+        contracts: &[ContractClaim],
     ) -> Result<Admission, ControlError> {
         let decision = decide(attempt, claims);
+        // Shadow diagnostics cannot authorize, schedule, or replace this gate.
+        let assessment = assess_contract(attempt, profile, contracts);
+        let comparison = match (decision.disposition, assessment.disposition) {
+            (_, AssessmentDisposition::Unknown) => "incomplete",
+            (Disposition::Allow, AssessmentDisposition::Allow)
+            | (Disposition::Deny, AssessmentDisposition::Deny) => "agree",
+            _ => "different",
+        };
         let tape_id = self.append_audit_event(
             agent,
             Kind::Action,
             "semantic",
-            json!({ "attempt": attempt, "claims": claims, "decision": decision }).to_string(),
+            json!({
+                "attempt": attempt, "claims": claims, "decision": decision,
+                "contract": {
+                    "mode": "shadow", "profile": profile, "claims": contracts,
+                    "assessment": assessment, "comparison": comparison,
+                },
+            })
+            .to_string(),
             attempt.refs.clone(),
         )?;
         if decision.disposition == Disposition::Allow

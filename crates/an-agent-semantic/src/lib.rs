@@ -7,6 +7,12 @@
 
 use serde::{Deserialize, Serialize};
 
+mod contract;
+pub use contract::{
+    Assessment, AssessmentDisposition, BoundaryProfile, ContractClaim, Finding, FindingCode,
+    assess_contract,
+};
+
 pub const SCHEMA_VERSION: u16 = 1;
 
 /// Whether an operation consumes context or changes/discloses the world.
