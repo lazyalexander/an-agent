@@ -32,6 +32,13 @@ audit records. The independent checker does not control execution; hard gates,
 review routing, and lifecycle enforcement remain unchanged. Missing or uncovered
 inputs are visible as unknown, not represented as proof of safety.
 
+`AgentControl::run` also retains `tool_contract` audit observations for bound
+tool grants and the exact-review gate. Approval eligibility records the child
+Ask grant, supervisor Go grant, and existing charter/file-face ceiling. These
+projections are diagnostic, not filesystem enforcement or new approval tokens.
+Required audit failure prevents execution; an already consumed approval stays
+consumed. The independent checker never retries or schedules the operation.
+
 Described mounts carry a `SpoolDescriptor`: one stable package symbol and the
 exact YAML snapshot supplied by the trusted loader. A package is not a mount
 alias or instance ID. Core owns a copy for the mount lifetime; descriptor changes

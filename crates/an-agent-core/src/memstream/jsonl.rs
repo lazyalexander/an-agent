@@ -24,7 +24,7 @@ pub enum StoreError {
 
 struct State {
     #[cfg(test)]
-    fail_next_append: bool,
+    fail_append_after: Option<usize>,
     file: Option<File>,
     next_seq: Option<u64>,
     /// The tape's last line is valid but lacks a trailing newline; the next
@@ -61,7 +61,7 @@ impl JsonlStore {
             path,
             state: Mutex::new(State {
                 #[cfg(test)]
-                fail_next_append: false,
+                fail_append_after: None,
                 file: None,
                 next_seq: None,
                 needs_newline: false,
@@ -85,10 +85,13 @@ impl JsonlStore {
     pub fn append(&self, input: AppendEvent) -> Result<Memevent, StoreError> {
         let mut st = self.state.lock().map_err(|_| StoreError::Poisoned)?;
         #[cfg(test)]
-        if std::mem::take(&mut st.fail_next_append) {
-            return Err(StoreError::Io(std::io::Error::other(
-                "injected append failure",
-            )));
+        if let Some(remaining) = st.fail_append_after {
+            st.fail_append_after = remaining.checked_sub(1);
+            if remaining == 0 {
+                return Err(StoreError::Io(std::io::Error::other(
+                    "injected append failure",
+                )));
+            }
         }
         let seq = match st.next_seq {
             Some(n) => n,
@@ -148,7 +151,16 @@ impl JsonlStore {
 
     #[cfg(test)]
     pub(crate) fn fail_next_append(&self) {
-        self.state.lock().expect("test store lock").fail_next_append = true;
+        self.fail_append_after(0);
+    }
+
+    /// Test-only fault injection after skipping this many append attempts.
+    #[cfg(test)]
+    pub(crate) fn fail_append_after(&self, skipped: usize) {
+        self.state
+            .lock()
+            .expect("test store lock")
+            .fail_append_after = Some(skipped);
     }
 
     fn scan_and_heal(&self, st: &mut State) -> Result<Vec<Memevent>, StoreError> {

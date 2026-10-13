@@ -99,7 +99,15 @@ impl AgentControl {
                 .call
                 .as_ref()
                 .ok_or_else(|| ControlError::ReviewCeiling(request_id.into()))?;
-            self.check_review_ceiling(&child, &approver, &call.operation, request_id)?;
+            let ceiling = self.check_review_ceiling(&child, &approver, &call.operation, request_id);
+            self.record_review_ceiling(
+                &child,
+                &approver,
+                &call.operation,
+                &pending.request,
+                ceiling.is_ok(),
+            )?;
+            ceiling?;
         } else {
             state.resolve(supervisor, request_id, &resolution, approver.card_hash())?;
         }
@@ -331,6 +339,7 @@ impl AgentControl {
         let tool = agent.tools().iter().find(|tool| tool.name() == call.name);
         let tag = tag_of(tool.map(|tool| tool.as_ref()));
         if tool.is_some() && tag.permit == Permit::Go {
+            self.record_tool_gate(agent, call, &scope, None, None, true)?;
             return Ok(false);
         }
         let subject = format!("tool:{}", call.name);
@@ -365,19 +374,23 @@ impl AgentControl {
                     return Err(ControlError::ReviewStale(id.clone()));
                 }
                 Err(error) => return Err(error.into()),
-                Ok(false) => return Err(ControlError::ReviewRequired(Box::new(pending.request))),
+                Ok(false) => {
+                    self.record_tool_gate(agent, call, &scope, Some(id), None, false)?;
+                    return Err(ControlError::ReviewRequired(Box::new(pending.request)));
+                }
                 Ok(true) => {}
             }
             self.check_review_ceiling(agent, &approver, &call.name, id)?;
             // Consumption is irreversible even if its audit write fails.
             state.close(id);
-            self.append_audit_event(
+            let consumed = self.append_audit_event(
                 agent,
                 Kind::Observation,
                 "review_consumed",
                 json!({"review": id, "scope": pending.request.scope}).to_string(),
                 vec![pending.request.tape_id],
             )?;
+            self.record_tool_gate(agent, call, &scope, Some(id), Some(&consumed), true)?;
             return Ok(true);
         }
         let attempt = Attempt::new(
@@ -413,6 +426,7 @@ impl AgentControl {
             cause,
             Some(binding),
         )?;
+        self.record_tool_gate(agent, call, &scope, Some(&request.id), None, false)?;
         Err(ControlError::ReviewRequired(Box::new(request)))
     }
 
