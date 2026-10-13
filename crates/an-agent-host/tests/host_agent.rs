@@ -187,6 +187,33 @@ config = { persona = "Aria" }
     // The model call is taped as its own anchored pair, the spool note
     // carries the reply, and the pump's landing cites the note.
     let tape = host.control().events(id).unwrap();
+    let assessment: serde_json::Value = tape
+        .iter()
+        .filter(|event| event.tags.iter().any(|tag| tag == "semantic"))
+        .map(|event| serde_json::from_str::<serde_json::Value>(&event.content).unwrap())
+        .find(|value| value["attempt"]["capability"]["operation"] == "model.complete")
+        .unwrap();
+    let facts = assessment["attempt"]["facts"].as_array().unwrap();
+    assert!(
+        facts
+            .iter()
+            .any(|fact| fact["kind"] == "spool.package" && fact["revision"] == "persona")
+    );
+    let descriptor = facts
+        .iter()
+        .find(|fact| fact["kind"] == "spool.descriptor")
+        .unwrap();
+    assert_eq!(
+        std::fs::read(
+            host.control()
+                .directory(id)
+                .unwrap()
+                .join("blobs")
+                .join(descriptor["revision"].as_str().unwrap())
+        )
+        .unwrap(),
+        PERSONA.as_bytes()
+    );
     let action = tape
         .iter()
         .find(|event| event.kind == Kind::Action && event.tags.iter().any(|tag| tag == "invoke"))

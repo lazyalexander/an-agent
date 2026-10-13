@@ -16,4 +16,10 @@ Internal capabilities, wound onto spools. The kernel does not depend on this cra
 
 **Registry:** append-only, content-addressed. A published body (`blobs/<sha256>` + `index.jsonl`) is never rewritten; a later version is a new body, so an old workspace write can recover the descriptor that made it.
 
+**Mount identity:** the host forwards the existing YAML `name` as the stable
+package symbol and retains the exact YAML bytes with each mount. Instance aliases
+and lifetime IDs remain separate. Other contract fields stay in YAML. This adds
+no version ranges, dependency resolver, binary attestation, or hot-update system;
+the existing registry version fields remain unchanged for compatibility.
+
 **Dependencies:** `an-agent-core` (`Tool`, facet vocabulary). Never: `memstream` directly, `principal`.

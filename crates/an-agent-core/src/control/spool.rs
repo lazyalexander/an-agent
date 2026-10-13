@@ -139,6 +139,17 @@ pub(super) struct Mounted {
     pub instance: Uuid,
     pub body: MountedBody,
     pub declaration: SpoolDeclaration,
+    pub descriptor: Option<SpoolDescriptor>,
+}
+
+/// A stable package symbol and its mount-time YAML bytes. The trusted loader
+/// validates the YAML and derives the body and declaration from it. Core
+/// retains a copy, not a live file reference. This is not a code attestation,
+/// version constraint, or session-owned implementation.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SpoolDescriptor {
+    pub package: String,
+    pub yaml: String,
 }
 
 /// The two sorts of mounted body. A `Beat` is a pure function event →
@@ -185,29 +196,19 @@ impl AgentControl {
         body: Arc<dyn SpoolBeat>,
         declaration: &SpoolDeclaration,
     ) -> Result<(), ControlError> {
-        let mut state = self
-            .inner
-            .supervision
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-        self.match_declaration(name, declaration)?;
-        let mut bodies = self
-            .inner
-            .bodies
-            .lock()
-            .unwrap_or_else(|err| err.into_inner());
-        if bodies.iter().any(|mounted| mounted.name == name) {
-            return Err(ControlError::AlreadyMounted(name.to_string()));
-        }
-        let instance = crate::det_seam::Entropy::os().uuid_v4();
-        bodies.push(Mounted {
-            name: name.to_string(),
-            instance,
-            body: MountedBody::Beat(body),
-            declaration: declaration.clone(),
-        });
-        state.mount(instance);
-        Ok(())
+        self.mount_body(name, MountedBody::Beat(body), declaration, None)
+    }
+
+    /// Mount from a validated descriptor. Changing the descriptor requires
+    /// an explicit unmount and a new mount; existing reviews never transfer.
+    pub fn mount_spool_described(
+        &self,
+        name: &str,
+        body: Arc<dyn SpoolBeat>,
+        declaration: &SpoolDeclaration,
+        descriptor: &SpoolDescriptor,
+    ) -> Result<(), ControlError> {
+        self.mount_body(name, MountedBody::Beat(body), declaration, Some(descriptor))
     }
 
     /// Mount an agent body under `name`. Same rules as [`Self::mount_spool`]:
@@ -220,6 +221,38 @@ impl AgentControl {
         body: Arc<dyn AgentBody>,
         declaration: &SpoolDeclaration,
     ) -> Result<(), ControlError> {
+        self.mount_body(name, MountedBody::Agent(body), declaration, None)
+    }
+
+    /// The policy-body counterpart of [`Self::mount_spool_described`].
+    pub fn mount_agent_described(
+        &self,
+        name: &str,
+        body: Arc<dyn AgentBody>,
+        declaration: &SpoolDeclaration,
+        descriptor: &SpoolDescriptor,
+    ) -> Result<(), ControlError> {
+        self.mount_body(
+            name,
+            MountedBody::Agent(body),
+            declaration,
+            Some(descriptor),
+        )
+    }
+
+    fn mount_body(
+        &self,
+        name: &str,
+        body: MountedBody,
+        declaration: &SpoolDeclaration,
+        descriptor: Option<&SpoolDescriptor>,
+    ) -> Result<(), ControlError> {
+        if descriptor.is_some_and(|d| d.package.trim().is_empty() || d.yaml.trim().is_empty()) {
+            return Err(ControlError::MountMismatch {
+                name: name.into(),
+                reasons: vec!["descriptor requires a package symbol and YAML bytes".into()],
+            });
+        }
         let mut state = self
             .inner
             .supervision
@@ -238,8 +271,9 @@ impl AgentControl {
         bodies.push(Mounted {
             name: name.to_string(),
             instance,
-            body: MountedBody::Agent(body),
+            body,
             declaration: declaration.clone(),
+            descriptor: descriptor.cloned(),
         });
         state.mount(instance);
         Ok(())
@@ -446,26 +480,13 @@ impl AgentControl {
         event: &WorkspaceRecord,
         registration: &RegistrationSnapshot,
     ) -> Result<Result<DeliveryOutcome, String>, ControlError> {
-        let Some(Mounted {
-            body,
-            declaration,
-            instance,
-            ..
-        }) = self.body_named(name)
-        else {
+        let Some(mounted) = self.body_named(name) else {
             return Err(ControlError::NotMounted(name.to_string()));
         };
-        if let Some(request) = self.waiting_review(agent.id(), name, instance)? {
+        if let Some(request) = self.waiting_review(agent.id(), name, mounted.instance)? {
             return Ok(Ok(DeliveryOutcome::NeedsReview(Box::new(request))));
         }
-        let delivery = match self.authorize_delivery(
-            agent,
-            name,
-            event,
-            &declaration,
-            registration,
-            instance,
-        )? {
+        let delivery = match self.authorize_delivery(agent, name, event, registration, &mounted)? {
             Admission::Allowed(delivery) => delivery,
             Admission::Denied {
                 mut attempt,
@@ -485,6 +506,12 @@ impl AgentControl {
             }
         };
         self.ensure_delivery_current(agent, &delivery.grant.facts)?;
+        let Mounted {
+            body,
+            declaration,
+            instance,
+            ..
+        } = mounted;
         match body {
             MountedBody::Agent(body) => {
                 match self.agent_invoke(agent, name, &body, event, &declaration, &delivery)? {
@@ -532,10 +559,10 @@ impl AgentControl {
         agent: &Agent,
         name: &str,
         event: &WorkspaceRecord,
-        declaration: &SpoolDeclaration,
         registration: &RegistrationSnapshot,
-        instance: Uuid,
+        body: &Mounted,
     ) -> Result<Admission, ControlError> {
+        let declaration = &body.declaration;
         let event_name = event.name.clone().unwrap_or_default();
         let capability = |event: &str| {
             Capability::exact(
@@ -576,7 +603,7 @@ impl AgentControl {
                     "workspace.registration.generation",
                     registration.generation.clone(),
                 ),
-                FactRef::new("spool.instance", instance.to_string()),
+                FactRef::new("spool.instance", body.instance.to_string()),
                 FactRef::new(
                     "agent.instance",
                     self.inner
@@ -590,6 +617,13 @@ impl AgentControl {
                 self.semantic_snapshot(agent, "spool.declaration", declaration)?,
             ],
         );
+        if let Some(descriptor) = &body.descriptor {
+            attempt
+                .facts
+                .push(FactRef::new("spool.package", &descriptor.package));
+            let digest = agent.session().put_blob(descriptor.yaml.as_bytes())?;
+            attempt.facts.push(FactRef::new("spool.descriptor", digest));
+        }
         attempt.refs.push(event.id.clone());
         self.authorize_attempt(agent, &attempt, &[mounted, register])
     }
