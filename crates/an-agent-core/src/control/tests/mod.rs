@@ -178,6 +178,7 @@ fn said_all(outcomes: Vec<DeliveryOutcome>) -> Vec<SpoolReply> {
 }
 
 mod agent_beat;
+mod descriptor;
 mod hooks;
 mod intents;
 mod lifecycle;

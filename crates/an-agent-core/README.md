@@ -26,6 +26,14 @@ The kernel. Spool constructors live in `an-agent-spool`. Bash registration and s
 
 ## Conventions
 
+Described mounts carry a `SpoolDescriptor`: one stable package symbol and the
+exact YAML snapshot supplied by the trusted loader. A package is not a mount
+alias or instance ID. Core owns a copy for the mount lifetime; descriptor changes
+require a new mount and never inherit its predecessor's reviews. Delivery and
+model evidence cite the package and retained descriptor bytes. These are claims
+from the loader, not proof of native code identity. Direct legacy mount methods
+remain available without inventing descriptor evidence.
+
 One folder = one proto-package: every module directory carries a thin README (purpose, admission rule, dependency direction). Rule-level text only — implementation details drift.
 
 Follow the repo-level discipline: `cargo check → clippy → test`, batch edits before compiling, no `cargo clean`. Dependencies are centralized in the workspace root; add nothing without a reason.

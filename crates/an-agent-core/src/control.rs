@@ -48,7 +48,9 @@ pub use supervision::{InstanceRef, ReviewCause, ReviewRequest, ReviewResolution,
 pub use agent_beat::{AgentBody, BeatStep, Completion, ModelClient, ModelMessage, Usage};
 pub use hooks::{HookRunner, HookVerdict};
 use spool::Mounted;
-pub use spool::{DeliveryOutcome, ReplyIntent, SpoolBeat, SpoolDeclaration, SpoolReply};
+pub use spool::{
+    DeliveryOutcome, ReplyIntent, SpoolBeat, SpoolDeclaration, SpoolDescriptor, SpoolReply,
+};
 pub use workspace::{
     EventRoute, Guard, Guidance, HookHandler, Hooks, Registration, SpoolRequirement,
     WorkspaceConfig,
