@@ -1,0 +1,15 @@
+[package]
+name = "an-agent-supervision"
+description = "Transport-neutral live review and one-shot approval state"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+an-agent-semantic = { path = "../an-agent-semantic" }
+serde.workspace = true
+thiserror.workspace = true
+uuid.workspace = true

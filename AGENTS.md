@@ -5,6 +5,12 @@ is shorter than the design docs on purpose: it covers how code moves,
 not what the code means. For the design contracts see the docs repo
 (`~/docs/an-agent/`), especially `workspace.md` and `constraints.md`.
 
+## Project language
+
+Code comments, README files, and any future documentation inside this
+repository must be written entirely in English. Conversation with the
+user follows the user's language.
+
 ## Branch lines
 
 - `main` — stable. Receives only batch merges from `dev-advance`, opened

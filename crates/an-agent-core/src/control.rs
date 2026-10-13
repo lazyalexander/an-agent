@@ -43,7 +43,7 @@ mod spool;
 mod supervision;
 mod workspace;
 
-pub use supervision::{ReviewCause, ReviewRequest, ReviewResolution};
+pub use supervision::{InstanceRef, ReviewCause, ReviewRequest, ReviewResolution, ReviewScope};
 
 pub use agent_beat::{AgentBody, BeatStep, Completion, ModelClient, ModelMessage, Usage};
 pub use hooks::{HookRunner, HookVerdict};
@@ -156,7 +156,7 @@ struct Inner {
     model_client: Mutex<Option<Arc<dyn ModelClient>>>,
     /// The embedding software's label, stated in the model envelope.
     host_label: Mutex<String>,
-    supervision: Mutex<supervision::Supervision>,
+    supervision: Mutex<an_agent_supervision::Supervision>,
 }
 
 /// The handle a host software uses to drive agents in this process.
@@ -187,7 +187,7 @@ impl AgentControl {
                 hook_runner: Mutex::new(None),
                 model_client: Mutex::new(None),
                 host_label: Mutex::new("an-agent".to_string()),
-                supervision: Mutex::new(supervision::Supervision::default()),
+                supervision: Mutex::new(an_agent_supervision::Supervision::default()),
             }),
         })
     }
@@ -195,6 +195,11 @@ impl AgentControl {
     /// Birth one thread and its tape. The id is the card id. Opening the
     /// same card twice is refused.
     pub fn open_thread(&self, card: &AgentCard) -> Result<Uuid, ControlError> {
+        let mut state = self
+            .inner
+            .supervision
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         if self
             .inner
             .threads
@@ -207,6 +212,10 @@ impl AgentControl {
         let listed = self.listed_registry();
         let agent = Arc::new(spawn_with(card, &self.inner.root, &listed)?);
         let id = agent.id();
+        let instance = InstanceRef {
+            principal: id,
+            incarnation: crate::det_seam::Entropy::os().uuid_v4(),
+        };
         let seat = self.inner.pool.tree().mount(Arc::clone(&agent), None)?;
         self.inner
             .seats
@@ -229,8 +238,9 @@ impl AgentControl {
         self.append(
             &agent,
             "thread",
-            json!({ "thread": id.to_string() }).to_string(),
+            json!({ "thread": id.to_string(), "instance": instance }).to_string(),
         )?;
+        state.open(instance)?;
         Ok(id)
     }
 
@@ -238,8 +248,7 @@ impl AgentControl {
     /// flag consumes the beat and does no work. The host calls again for the
     /// next beat.
     pub fn advance(&self, id: Uuid, text: &str) -> Result<String, ControlError> {
-        self.enter_beat(id)?;
-        let turn = self.inner.pool.begin_turn(id)?;
+        let turn = self.begin_beat(id)?;
         let event = self.append(turn.agent(), "advance", json!({ "text": text }).to_string())?;
         drop(turn);
         Ok(event)
@@ -248,9 +257,15 @@ impl AgentControl {
     /// Record cancel and raise the flag. An in-flight [`Self::run`] sees the
     /// flag on its tool context. The next beat is consumed as cancelled.
     pub fn cancel(&self, id: Uuid) -> Result<String, ControlError> {
+        let mut state = self
+            .inner
+            .supervision
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let agent = self.live(id)?;
         self.raise_cancel(id)?;
-        self.clear_reviews(id, "cancel")?;
+        let requests = state.revoke(id)?;
+        self.record_review_closures(requests, "cancel")?;
         self.append(
             &agent,
             "cancel",
@@ -261,18 +276,24 @@ impl AgentControl {
     /// End the thread. Further beats and mail are refused. Refused while a
     /// beat holds the only slot.
     pub fn finish(&self, id: Uuid, text: &str) -> Result<String, ControlError> {
+        let mut state = self
+            .inner
+            .supervision
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         if self.inner.pool.is_running(id) {
             return Err(ControlError::Busy(id));
         }
         let agent = self.live(id)?;
-        self.clear_reviews(id, "finish")?;
-        let event = self.append(&agent, "finish", json!({ "text": text }).to_string())?;
+        let requests = state.retire(id);
         let mut threads = self.inner.threads.lock().unwrap_or_else(|e| e.into_inner());
         let thread = threads.get_mut(&id).ok_or(ControlError::NotOpen(id))?;
         thread.finished = true;
         thread.cancelled.store(false, Ordering::Relaxed);
         let _ = thread.cancel.send(false);
-        Ok(event)
+        drop(threads);
+        self.record_review_closures(requests, "finish")?;
+        self.append(&agent, "finish", json!({ "text": text }).to_string())
     }
 
     /// Mail between two open threads. Each tape gets one event. Does not take
@@ -303,16 +324,10 @@ impl AgentControl {
         id: Uuid,
         call: &ToolCall,
     ) -> Result<crate::act::ToolActResult, ControlError> {
-        self.enter_beat(id)?;
-        let agent = self
-            .inner
-            .pool
-            .tree()
-            .get(id)
-            .ok_or(ControlError::NotOpen(id))?;
-        let turn = self.inner.pool.begin_turn(id)?;
+        let turn = self.begin_beat(id)?;
+        let agent = turn.agent();
         let signal = self.cancel_receiver(id)?;
-        let approval = self.review_tool(&agent, call)?;
+        let approval = self.review_tool(agent, call)?;
         let result = crate::act::tool::run_tool_act_reviewed(
             &agent.act_ctx(),
             agent.tools(),
@@ -358,6 +373,19 @@ impl AgentControl {
             .tree()
             .get(id)
             .ok_or(ControlError::NotOpen(id))
+    }
+
+    /// Serialize admission with finish/release; the guard never crosses a
+    /// body callback, tool await, or model request.
+    fn begin_beat(&self, id: Uuid) -> Result<crate::seat::Turn<'_>, ControlError> {
+        let state = self
+            .inner
+            .supervision
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        self.enter_beat(id)?;
+        state.instance(id)?;
+        Ok(self.inner.pool.begin_turn(id)?)
     }
 
     /// A beat that finds the cancel flag raised does nothing and lowers it.

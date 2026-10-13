@@ -14,6 +14,7 @@ The core bet: an append-only event tape (memstream) is the single source of trut
 - `crates/an-agent-factory` — bash registration and `BuiltAgent` construction. `spawn` returns an `Agent` and is not the host face.
 - `crates/an-agent-context` — per-session context assembly. The shared pool is not in this crate.
 - `crates/an-agent-semantic` — transport-neutral claims, concrete attempts, version-bound assessments, grants, and execution receipts. It owns no scheduling or interruption. Core execution boundaries retain evidence and return supervisor requests for blocked operations.
+- `crates/an-agent-supervision` — transport-neutral live review state and exact one-shot approvals. It owns no tape, execution, or scheduling; core adapts trusted execution boundaries to it.
 - `crates/an-agent-spool` — capability spools: YAML descriptor admission and the append-only spool registry.
 - `crates/an-agent-workspace` — content-addressed store. It is not the recorder workspace.
 - `packages/causal-web` — zero-dependency tape viewer: drop in a `.jsonl` tape, see the causal threads, get the tape validated in-page.
@@ -31,6 +32,16 @@ body. `Ask` tools require one exact approval; `Deny` and absent capabilities are
 not overridden. Responses do not retry work or contact third parties. Approved
 calls are revalidated and consumed before execution; pending approvals are not
 restored from serialized tape records.
+
+Reviews bind live agent and mount instances, authority epochs, and workspace
+generations. Replacement or retirement closes affected reviews; restoring old
+content does not restore old approval. Revocation survives audit-write failure,
+while approval activation requires successful evidence delivery.
+
+This is a process-local supervision slice, not a complete sandbox or replay
+engine. OS enforcement, durable review recovery, host-document version fences,
+and external-effect idempotency remain separate work. Already admitted effects
+are not rolled back by later revocation.
 
 ## Develop
 

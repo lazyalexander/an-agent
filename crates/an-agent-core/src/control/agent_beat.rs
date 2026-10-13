@@ -259,10 +259,12 @@ impl AgentControl {
         delivery: &AuthorizedAttempt,
     ) -> Result<Result<DeliveryOutcome, String>, ControlError> {
         for steps in 0..MAX_STEPS {
+            self.ensure_delivery_current(agent, &delivery.grant.facts)?;
             let step = match body.evaluate(&projection(agent, event, steps)?) {
                 Ok(step) => step,
                 Err(reason) => return Ok(Err(reason)),
             };
+            self.ensure_delivery_current(agent, &delivery.grant.facts)?;
             match step {
                 BeatStep::Utter { text } => {
                     let text = fuse_utter(&text);
@@ -493,6 +495,7 @@ impl AgentControl {
             .to_string(),
             refs,
         )?;
+        self.ensure_delivery_current(agent, &delivery.grant.facts)?;
         let completion = match client.complete(agent.model(), messages) {
             Ok(completion) => completion,
             Err(reason) => {
