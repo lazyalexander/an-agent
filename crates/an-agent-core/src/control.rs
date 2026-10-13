@@ -37,7 +37,6 @@ use crate::workspace::Workspace;
 
 mod agent_beat;
 mod hooks;
-mod review_state;
 mod semantic;
 mod session;
 mod spool;
@@ -157,7 +156,7 @@ struct Inner {
     model_client: Mutex<Option<Arc<dyn ModelClient>>>,
     /// The embedding software's label, stated in the model envelope.
     host_label: Mutex<String>,
-    supervision: Mutex<review_state::Supervision>,
+    supervision: Mutex<an_agent_supervision::Supervision>,
 }
 
 /// The handle a host software uses to drive agents in this process.
@@ -188,7 +187,7 @@ impl AgentControl {
                 hook_runner: Mutex::new(None),
                 model_client: Mutex::new(None),
                 host_label: Mutex::new("an-agent".to_string()),
-                supervision: Mutex::new(review_state::Supervision::default()),
+                supervision: Mutex::new(an_agent_supervision::Supervision::default()),
             }),
         })
     }

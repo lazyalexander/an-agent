@@ -34,6 +34,7 @@ name = "an-agent-core"
 version = "0.1.0"
 dependencies = [
  "an-agent-semantic",
+ "an-agent-supervision",
  "async-trait",
  "chrono",
  "rand 0.8.8",
@@ -93,6 +94,16 @@ dependencies = [
  "thiserror",
  "tokio",
  "toml",
+ "uuid",
+]
+
+[[package]]
+name = "an-agent-supervision"
+version = "0.1.0"
+dependencies = [
+ "an-agent-semantic",
+ "serde",
+ "thiserror",
  "uuid",
 ]
 

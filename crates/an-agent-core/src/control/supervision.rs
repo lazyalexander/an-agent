@@ -5,14 +5,14 @@ use an_agent_semantic::{Attempt, Capability, FactRef, Polarity, Resource};
 use serde_json::json;
 use uuid::Uuid;
 
-use super::review_state::{CallBinding, ReviewError, Supervision};
-pub use super::review_state::{
-    InstanceRef, ReviewCause, ReviewRequest, ReviewResolution, ReviewScope,
-};
 use super::{AgentControl, ControlError};
 use crate::act::{Charter, FileFacet, Permit, ToolCall, tag_of};
 use crate::agent::Agent;
 use crate::memstream::Kind;
+use an_agent_supervision::{CallBinding, ReviewError, Supervision};
+pub use an_agent_supervision::{
+    InstanceRef, ReviewCause, ReviewRequest, ReviewResolution, ReviewScope,
+};
 
 impl From<ReviewError> for ControlError {
     fn from(error: ReviewError) -> Self {
