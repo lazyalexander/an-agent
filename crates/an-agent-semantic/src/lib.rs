@@ -8,9 +8,14 @@
 use serde::{Deserialize, Serialize};
 
 mod contract;
+mod dependency;
 pub use contract::{
     Assessment, AssessmentDisposition, BoundaryProfile, ContractClaim, Finding, FindingCode,
     assess_contract,
+};
+pub use dependency::{
+    Dependency, DependencyAssessment, DependencyFinding, DependencyIssue, DependencyObservation,
+    DependencyState, DependencyUse, Freshness, Validity, assess_dependencies,
 };
 
 pub const SCHEMA_VERSION: u16 = 1;

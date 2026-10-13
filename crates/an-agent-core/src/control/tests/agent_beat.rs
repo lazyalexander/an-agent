@@ -722,6 +722,20 @@ fn successive_model_calls_bind_the_exact_inputs_and_workspace_generations() {
     assert_eq!(invokes[0]["config"], first_config.sha256.unwrap());
     assert_eq!(invokes[0]["env"], first_env.sha256.unwrap());
     assert_ne!(invokes[0]["config"], invokes[1]["config"]);
+    for invoke in &invokes {
+        assert_eq!(invoke["dependency_assessment"]["validity"], "valid");
+        let dependencies = invoke["dependencies"].as_array().unwrap();
+        assert!(dependencies.iter().any(|d| d["fact"]["kind"] == "tape.clip"
+            && d["usage"] == "context_evidence"
+            && d["freshness"] == "pinned"));
+        assert!(
+            dependencies
+                .iter()
+                .any(|d| d["fact"]["kind"] == "workspace.env.generation"
+                    && d["usage"] == "execution_precondition"
+                    && d["freshness"] == "current")
+        );
+    }
     assert_ne!(invokes[0]["request_sha256"], invokes[1]["request_sha256"]);
     let calls = model.calls.lock().unwrap_or_else(|err| err.into_inner());
     assert_eq!(calls.len(), 2);

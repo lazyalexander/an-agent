@@ -80,6 +80,95 @@ fn session(tmp: &TempDir) -> PathBuf {
 }
 
 #[test]
+fn audit_and_quarantined_evidence_do_not_enter_assembly_or_compressed_memory() {
+    let tmp = TempDir::new("ctx-quarantine");
+    let dir = session(&tmp);
+    let tape = JsonlStore::open(dir.join("memory.jsonl")).unwrap();
+    let anchor = tape.read_all().unwrap().pop().unwrap();
+    let mut audit_ids = Vec::new();
+    for tag in ["model_quarantined", "semantic", "review_request"] {
+        let event = tape
+            .append(AppendEvent {
+                from: anchor.from.clone(),
+                from_kind: FromKind::Agent,
+                kind: Kind::Observation,
+                session: anchor.session.clone().unwrap_or_default(),
+                content: format!("excluded-{tag}"),
+                tags: vec![tag.into(), "audit".into()],
+                refs: vec![],
+                act: None,
+                card: anchor.card.clone(),
+            })
+            .unwrap();
+        audit_ids.push(event.id);
+    }
+    let events = tape.read_all().unwrap();
+    assert!(
+        super::assemble::uncompressed(&events)
+            .iter()
+            .all(|e| !audit_ids.contains(&e.id))
+    );
+    let legacy_event = events.iter().find(|e| e.id == audit_ids[0]).unwrap();
+    let legacy_cut = super::assemble::write_cut(&dir, &[legacy_event]).unwrap();
+    let retained = fs::read(&legacy_cut.path).unwrap();
+    let assembly = assemble(&dir, &events, AssembleMode::Continue, 100_000).unwrap();
+    assert!(
+        assembly
+            .context
+            .iter()
+            .all(|piece| !piece.text.contains("excluded-"))
+    );
+    assert_eq!(fs::read(&legacy_cut.path).unwrap(), retained);
+    let path = seal(&tape, &dir, "ordinary summary");
+    assert!(!fs::read_to_string(&path).unwrap().contains("excluded-"));
+    assert!(
+        segment_sources(&dir, &path)
+            .unwrap()
+            .iter()
+            .all(|(id, _)| !audit_ids.contains(id))
+    );
+}
+
+#[test]
+fn old_context_cache_cannot_restore_audit_events_or_segments() {
+    for segment in [false, true] {
+        let tmp = TempDir::new("ctx-old-audit-cache");
+        let control = AgentControl::open(tmp.path(), &bash_registry()).unwrap();
+        let id = control.open_thread(&card()).unwrap();
+        let evidence = control
+            .note(id, "audit", "excluded-control-evidence")
+            .unwrap();
+        let events = control.events(id).unwrap();
+        let dir = control.directory(id).unwrap();
+        let event = events.iter().find(|e| e.id == evidence).unwrap();
+        let piece = if segment {
+            let cut = super::assemble::write_cut(&dir, &[event]).unwrap();
+            json!({ "kind": "hot", "segment": format!("{}.md#s0", cut.sha256) })
+        } else {
+            json!({ "kind": "recent", "event_id": evidence })
+        };
+        control
+            .commit_context(
+                id,
+                &json!({
+                    "mode": "continue", "budget_chars": 100_000,
+                    "config_id": null, "env_id": null, "pieces": [piece],
+                })
+                .to_string(),
+                &[evidence],
+            )
+            .unwrap();
+        let assembly = assemble_thread(&control, id, AssembleMode::Continue, 100_000).unwrap();
+        assert!(
+            assembly
+                .context
+                .iter()
+                .all(|piece| !piece.text.contains("excluded-control-evidence"))
+        );
+    }
+}
+
+#[test]
 fn summary_cites_events_and_second_cut_keeps_the_first_file() {
     let tmp = TempDir::new("ctx-cut");
     let dir = session(&tmp);

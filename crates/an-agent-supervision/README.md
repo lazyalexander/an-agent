@@ -7,6 +7,10 @@ Tracks live instances, supervisor relationships, mount identities, authority
 epochs, pending reviews, and exact one-shot approval bindings. It performs no
 IO, starts no work, and does not expand a resource ceiling.
 
+Dependency-change requests cite quarantined boundary evidence. They can be
+consulted, rejected, or resolved with a request for fresh work, but never with
+ApproveOnce. Resolution does not promote an old result or automatically retry.
+
 The trusted caller authenticates principals, supplies fresh instance IDs,
 serializes transitions, verifies hard permissions, and persists evidence.
 Approval evidence must succeed before activation; revocation and consumption

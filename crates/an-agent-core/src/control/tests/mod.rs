@@ -183,6 +183,7 @@ mod descriptor;
 mod hooks;
 mod intents;
 mod lifecycle;
+mod model_dependencies;
 mod session;
 mod spool;
 mod supervision;

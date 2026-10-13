@@ -28,6 +28,16 @@ Profiles and claim roles come from trusted adapters, not self-asserted YAML.
 The same pure function supports offline preflight and runtime comparison without
 a tape or host. It checks declarations, not arbitrary program behavior.
 
+**Dependency checker:** `assess_dependencies` distinguishes authorization,
+execution preconditions, historical context, and derived artifacts. Current
+generation requirements differ from pinned evidence: a newer revision does not
+erase history, while withdrawal invalidates even pinned evidence. Missing or
+ambiguous observations return unknown, not valid. This pure assessment contains
+no grant or scheduling instruction; adapters supply authoritative observations.
+Core checks model inputs before admission and before publishing the response,
+quarantining stale/unknown results and requesting supervisor review where the
+original scope remains live. It does not cancel an external call or undo it.
+
 **Current adapters:** core records allow and deny delivery decisions and model
 completion decisions. Model attempts bind the card, mounted declaration,
 delivery registration, workspace ingredients, and retained application
