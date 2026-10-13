@@ -39,6 +39,13 @@ projections are diagnostic, not filesystem enforcement or new approval tokens.
 Required audit failure prevents execution; an already consumed approval stays
 consumed. The independent checker never retries or schedules the operation.
 
+The model boundary also checks dependency validity at call admission and
+terminal publication. Registration, configuration/environment generations and
+live review scope must remain current; explicit clips are pinned history.
+Stale or unknown results stay audit-only and trigger a scheduling review, or a
+host error if the original scope retired. Receipts still state the actual call
+outcome. This is not host-document transaction fencing or automatic rollback.
+
 Described mounts carry a `SpoolDescriptor`: one stable package symbol and the
 exact YAML snapshot supplied by the trusted loader. A package is not a mount
 alias or instance ID. Core owns a copy for the mount lifetime; descriptor changes

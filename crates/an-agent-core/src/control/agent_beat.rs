@@ -25,11 +25,13 @@
 use std::sync::Arc;
 
 use an_agent_semantic::{
-    Attempt, BoundaryProfile, Capability, Claim, ContractClaim, Disposition, FactRef, Outcome,
-    Polarity, Receipt, Resource as SemanticResource, decide,
+    Attempt, BoundaryProfile, Capability, Claim, ContractClaim, Dependency, DependencyUse,
+    Disposition, FactRef, Freshness, Outcome, Polarity, Receipt, Resource as SemanticResource,
+    decide,
 };
 use serde_json::{Value, json};
 
+use super::model_boundary::{ModelPublication, ModelRecord};
 use super::semantic::{Admission, AuthorizedAttempt};
 use super::{AgentControl, ControlError, DeliveryOutcome, SpoolDeclaration, SpoolReply};
 use crate::agent::Agent;
@@ -443,6 +445,9 @@ impl AgentControl {
         let mut resolved = Vec::with_capacity(clips.len());
         for clip in clips {
             match tape.iter().find(|e| &e.id == clip) {
+                Some(e) if e.tags.iter().any(|tag| tag == "audit" || tag == "semantic") => {
+                    return Err(ControlError::IneligibleClip(clip.clone()));
+                }
                 Some(e) => resolved.push((
                     e.tags.first().cloned().unwrap_or_else(|| "event".into()),
                     fuse_clip(&resolve_payload(agent, e)),
@@ -454,7 +459,7 @@ impl AgentControl {
             .iter()
             .map(|(tag, content)| Clip { tag, content })
             .collect();
-        let cite = self.workspace_cite()?;
+        let (cite, mut dependencies) = self.model_dependencies(agent, &delivery.grant.facts)?;
         let (guidance, enforced) = match self.config_at_revision(cite.config_sha256.as_deref())? {
             Some(config) => (
                 config.guidance.rules,
@@ -492,6 +497,29 @@ impl AgentControl {
             attempt.facts.push(FactRef::new("workspace.env", sha));
         }
         attempt.facts.push(request.clone());
+        for dependency in &dependencies.dependencies {
+            if !attempt.facts.contains(&dependency.fact) {
+                attempt.facts.push(dependency.fact.clone());
+            }
+        }
+        // Explicit clips are pinned history, not a demand that the workspace
+        // still match the inputs that originally produced each clip.
+        for clip in clips {
+            let fact = FactRef::new("tape.clip", clip);
+            if !dependencies.dependencies.iter().any(|d| d.fact == fact) {
+                attempt.facts.push(fact.clone());
+                dependencies.dependencies.push(Dependency {
+                    fact,
+                    usage: DependencyUse::ContextEvidence,
+                    freshness: Freshness::Pinned,
+                });
+            }
+        }
+        dependencies.dependencies.push(Dependency {
+            fact: request.clone(),
+            usage: DependencyUse::DerivedArtifact,
+            freshness: Freshness::Pinned,
+        });
         let authorization =
             match self.authorize_attempt(agent, &attempt, &claims, &profile, &contracts)? {
                 Admission::Allowed(authorization) => authorization,
@@ -515,24 +543,28 @@ impl AgentControl {
             };
         let mut refs = clips.to_vec();
         refs.push(authorization.tape_id.clone());
-        let action = self.append_event(
+        let action = match self.publish_model_record(
             agent,
-            Kind::Action,
-            "invoke",
-            json!({
-                "spool": name,
-                "event": event.id,
-                "model": agent.model().model,
-                "clips": clips,
-                "env": cite.env_sha256,
-                "config": cite.config_sha256,
-                "request_sha256": request.revision,
-                "semantic": authorization.tape_id,
-            })
-            .to_string(),
-            refs,
-        )?;
-        self.ensure_delivery_current(agent, &delivery.grant.facts)?;
+            &attempt,
+            &dependencies,
+            ModelRecord {
+                kind: Kind::Action,
+                content: json!({
+                    "spool": name,
+                    "event": event.id,
+                    "model": agent.model().model,
+                    "clips": clips,
+                    "env": cite.env_sha256,
+                    "config": cite.config_sha256,
+                    "request_sha256": request.revision,
+                    "semantic": authorization.tape_id,
+                }),
+                refs,
+            },
+        )? {
+            ModelPublication::Published(action) => action,
+            ModelPublication::Quarantined(request) => return Ok(Some(*request)),
+        };
         let completion = match client.complete(agent.model(), messages) {
             Ok(completion) => completion,
             Err(reason) => {
@@ -544,13 +576,17 @@ impl AgentControl {
                 );
                 // A failed call is not a dangling action: the terminal
                 // observation closes it, citing the action it answers.
-                self.append_event(
+                let publication = self.publish_model_record(
                     agent,
-                    Kind::Observation,
-                    "invoke",
-                    json!({ "spool": name, "status": "failed", "reason": reason, "receipt": receipt }).to_string(),
-                    vec![action],
+                    &attempt,
+                    &dependencies,
+                    ModelRecord { kind: Kind::Observation,
+                        content: json!({ "spool": name, "event": event.id, "status": "failed", "reason": reason, "receipt": receipt }),
+                        refs: vec![action] },
                 )?;
+                if let ModelPublication::Quarantined(request) = publication {
+                    return Ok(Some(*request));
+                }
                 return Err(ControlError::ModelFailed {
                     spool: name.into(),
                     reason,
@@ -564,21 +600,27 @@ impl AgentControl {
             vec![FactRef::new("model.response", &sha)],
             vec![authorization.tape_id, action.clone()],
         );
-        self.append_event(
+        let publication = self.publish_model_record(
             agent,
-            Kind::Observation,
-            "invoke",
-            json!({
-                "spool": name,
-                "response_sha256": sha,
-                "response_bytes": completion.content.len(),
-                "usage": completion.usage,
-                "receipt": receipt,
-            })
-            .to_string(),
-            vec![action],
+            &attempt,
+            &dependencies,
+            ModelRecord {
+                kind: Kind::Observation,
+                content: json!({
+                    "spool": name,
+                    "event": event.id,
+                    "response_sha256": sha,
+                    "response_bytes": completion.content.len(),
+                    "usage": completion.usage,
+                    "receipt": receipt,
+                }),
+                refs: vec![action],
+            },
         )?;
-        Ok(None)
+        Ok(match publication {
+            ModelPublication::Published(_) => None,
+            ModelPublication::Quarantined(request) => Some(*request),
+        })
     }
 
     /// The host label plus platform facts, composed fresh each call.

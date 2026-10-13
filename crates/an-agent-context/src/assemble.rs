@@ -49,7 +49,10 @@ pub fn assemble(
         rebuild_index(session_dir, events)?;
     }
     let mut rows = sync_rows(events, load_rows(session_dir)?);
-    let segments = load_segments(session_dir)?;
+    let segments: Vec<_> = load_segments(session_dir)?
+        .into_iter()
+        .filter(|segment| segment_is_context(segment, events))
+        .collect();
     let recent: Vec<&Memevent> = uncompressed(events);
     let mut pieces = Vec::new();
     let mut used = 0usize;
@@ -185,11 +188,35 @@ pub(super) fn uncompressed(events: &[Memevent]) -> Vec<&Memevent> {
             !event.tags.iter().any(|tag| {
                 matches!(
                     tag.as_str(),
-                    "compress" | "context" | "thread" | "cancel" | "finish" | "send"
+                    "compress"
+                        | "context"
+                        | "thread"
+                        | "cancel"
+                        | "finish"
+                        | "send"
+                        | "audit"
+                        | "semantic"
                 )
             })
         })
         .collect()
+}
+
+pub(super) fn is_audit(event: &Memevent) -> bool {
+    event
+        .tags
+        .iter()
+        .any(|tag| tag == "audit" || tag == "semantic")
+}
+
+/// Older cached cuts can still cite control evidence. Preserve their bytes,
+/// but do not reintroduce a mixed segment through the hot/summary path.
+pub(super) fn segment_is_context(segment: &Segment, events: &[Memevent]) -> bool {
+    !segment.sources.iter().any(|(id, _)| {
+        events
+            .iter()
+            .any(|event| event.id == *id && is_audit(event))
+    })
 }
 
 fn push_piece(pieces: &mut Vec<Piece>, used: &mut usize, budget: usize, piece: Piece) -> bool {

@@ -207,7 +207,7 @@ impl AgentControl {
     }
 
     #[allow(clippy::too_many_arguments)]
-    fn retain_review(
+    pub(super) fn retain_review(
         &self,
         state: &mut Supervision,
         agent: &Agent,
@@ -308,7 +308,7 @@ impl AgentControl {
         self.record_review_closures(state.close(id).into_iter().collect(), reason)
     }
 
-    fn review_generations(&self) -> Result<Vec<FactRef>, ControlError> {
+    pub(super) fn review_generations(&self) -> Result<Vec<FactRef>, ControlError> {
         let cite = self.workspace_cite()?;
         Ok([
             ("workspace.registration.generation", cite.register_id),

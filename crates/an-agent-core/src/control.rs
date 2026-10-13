@@ -37,6 +37,7 @@ use crate::workspace::Workspace;
 
 mod agent_beat;
 mod hooks;
+mod model_boundary;
 mod semantic;
 mod session;
 mod spool;
@@ -71,6 +72,8 @@ pub enum ControlError {
     ReviewCeiling(String),
     #[error("reviewed inputs changed before execution: {0}")]
     ReviewStale(String),
+    #[error("dependency evidence is no longer current; quarantined record: {0}")]
+    DependencyStale(String),
     #[error("thread is not open: {0}")]
     NotOpen(Uuid),
     #[error("thread is finished: {0}")]
@@ -113,6 +116,8 @@ pub enum ControlError {
     ModelFailed { spool: String, reason: String },
     #[error("tape has no such clip: {0}")]
     UnknownClip(String),
+    #[error("audit or quarantined evidence is not a model clip: {0}")]
+    IneligibleClip(String),
     #[error("spool {name} failed: {reason}")]
     SpoolFailed { name: String, reason: String },
     #[error("workspace has no registration")]

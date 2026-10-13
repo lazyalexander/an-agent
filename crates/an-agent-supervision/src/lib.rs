@@ -32,8 +32,17 @@ pub struct ReviewScope {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ReviewCause {
-    HighRisk { reason: String },
-    PermissionDenied { reason: String },
+    HighRisk {
+        reason: String,
+    },
+    PermissionDenied {
+        reason: String,
+    },
+    /// The boundary retained a result or refused admission after its inputs
+    /// changed. Resolution can request fresh work, never bless the old result.
+    DependencyChanged {
+        evidence: String,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
