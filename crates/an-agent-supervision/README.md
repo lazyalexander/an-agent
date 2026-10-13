@@ -13,5 +13,10 @@ Approval evidence must succeed before activation; revocation and consumption
 remove authority before fallible evidence delivery. A serialized request is
 historical evidence, not an authority token.
 
+Standalone tests exercise the state machine without a tape or core runtime.
 Core integration tests exercise the real boundary adapter. Existing public
 review types remain available through `an_agent_core::control` re-exports.
+
+This ledger is trusted in-memory state, not a durable authorization service.
+Closed request IDs are retained for its lifetime. Restart requires fresh
+bindings and reviews; there is no automatic authority recovery from history.

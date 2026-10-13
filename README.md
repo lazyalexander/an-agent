@@ -33,6 +33,16 @@ not overridden. Responses do not retry work or contact third parties. Approved
 calls are revalidated and consumed before execution; pending approvals are not
 restored from serialized tape records.
 
+Reviews bind live agent and mount instances, authority epochs, and workspace
+generations. Replacement or retirement closes affected reviews; restoring old
+content does not restore old approval. Revocation survives audit-write failure,
+while approval activation requires successful evidence delivery.
+
+This is a process-local supervision slice, not a complete sandbox or replay
+engine. OS enforcement, durable review recovery, host-document version fences,
+and external-effect idempotency remain separate work. Already admitted effects
+are not rolled back by later revocation.
+
 ## Develop
 
 ```sh

@@ -274,8 +274,18 @@ async fn failed_consumption_evidence_burns_the_approval_without_execution() {
 #[tokio::test]
 async fn retirement_revokes_every_request_even_when_one_tape_fails() {
     let (_tmp, control, child, main) = setup(Permit::Ask);
+    let other = control
+        .open_thread(&card(
+            "cccccccc-cccc-cccc-cccc-cccccccccccc",
+            "count",
+            Permit::Ask,
+        ))
+        .unwrap();
+    control.set_supervisor(other, main).unwrap();
     let request = requested(control.run(child, &call(1)).await.err().unwrap());
+    let other_request = requested(control.run(other, &call(1)).await.err().unwrap());
     approve(&control, main, &request);
+    approve(&control, main, &other_request);
     control
         .live(child)
         .unwrap()
@@ -283,6 +293,10 @@ async fn retirement_revokes_every_request_even_when_one_tape_fails() {
         .tape()
         .fail_next_append();
     assert!(control.finish(main, "retire").is_err());
+    assert!(control.events(other).unwrap().iter().any(|event| {
+        event.tags.iter().any(|tag| tag == "review_closed")
+            && event.content.contains(&other_request.id)
+    }));
     control.release(main).unwrap();
     control
         .open_thread(&card(
@@ -297,6 +311,41 @@ async fn retirement_revokes_every_request_even_when_one_tape_fails() {
         None
     );
     no_execution(&control, child);
+    assert_eq!(
+        requested(control.run(other, &call(1)).await.err().unwrap()).supervisor,
+        None
+    );
+    no_execution(&control, other);
+}
+
+#[tokio::test]
+async fn failed_approval_evidence_or_mail_never_activates_authority() {
+    for fail_supervisor in [false, true] {
+        let (_tmp, control, child, main) = setup(Permit::Ask);
+        let request = requested(control.run(child, &call(1)).await.err().unwrap());
+        control
+            .live(if fail_supervisor { main } else { child })
+            .unwrap()
+            .session()
+            .tape()
+            .fail_next_append();
+        assert!(
+            control
+                .resolve_review(
+                    main,
+                    &request.id,
+                    ReviewResolution::ApproveOnce {
+                        note: "approval delivery fails".into(),
+                    }
+                )
+                .is_err()
+        );
+        let waiting = requested(control.run(child, &call(1)).await.err().unwrap());
+        assert_eq!(waiting.id, request.id);
+        no_execution(&control, child);
+        approve(&control, main, &request);
+        assert!(control.run(child, &call(1)).await.is_ok());
+    }
 }
 
 struct ReplaceWhileRunning {
@@ -353,13 +402,19 @@ fn an_old_callback_cannot_remove_its_replacement_or_publish_a_stale_reply() {
     }
 }
 
-#[test]
-fn a_new_control_process_does_not_restore_approval_from_the_same_session_tape() {
+#[tokio::test]
+async fn a_new_control_process_does_not_restore_approval_from_the_same_session_tape() {
     let tmp = TempDir::new("review-restart");
     let child_card = card("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", "count", Permit::Ask);
+    let main_card = card("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb", "count", Permit::Go);
     let control = AgentControl::open(tmp.path(), &[("count", count_ctor)]).unwrap();
     let child = control.open_thread(&child_card).unwrap();
+    let main = control.open_thread(&main_card).unwrap();
+    control.set_supervisor(child, main).unwrap();
+    let old_request = requested(control.run(child, &call(1)).await.err().unwrap());
+    approve(&control, main, &old_request);
     let manifest = control.seal_session(child).unwrap();
+    let main_manifest = control.seal_session(main).unwrap();
     let old_instance = control
         .inner
         .supervision
@@ -370,6 +425,7 @@ fn a_new_control_process_does_not_restore_approval_from_the_same_session_tape() 
     drop(control);
     let next = AgentControl::open(tmp.path(), &[("count", count_ctor)]).unwrap();
     next.resume_session(&child_card, manifest.id).unwrap();
+    next.resume_session(&main_card, main_manifest.id).unwrap();
     let new_instance = next
         .inner
         .supervision
@@ -378,4 +434,26 @@ fn a_new_control_process_does_not_restore_approval_from_the_same_session_tape() 
         .instance(child)
         .unwrap();
     assert_ne!(old_instance, new_instance);
+    assert!(next.events(child).unwrap().iter().any(|event| {
+        event.tags.iter().any(|tag| tag == "review_resolution")
+            && event.content.contains(&old_request.id)
+    }));
+    assert!(next.pending_reviews(main).unwrap().is_empty());
+    assert!(matches!(
+        next.resolve_review(
+            main,
+            &old_request.id,
+            ReviewResolution::ApproveOnce {
+                note: "replay".into()
+            }
+        ),
+        Err(ControlError::ReviewMissing(_))
+    ));
+    let unassigned = requested(next.run(child, &call(1)).await.err().unwrap());
+    assert_eq!(unassigned.supervisor, None);
+    next.set_supervisor(child, main).unwrap();
+    let fresh = requested(next.run(child, &call(1)).await.err().unwrap());
+    assert_ne!(fresh.id, old_request.id);
+    assert_eq!(fresh.supervisor, Some(main));
+    no_execution(&next, child);
 }

@@ -16,6 +16,9 @@ pub struct InstanceRef {
     pub incarnation: Uuid,
 }
 
+#[cfg(test)]
+mod tests;
+
 /// Immutable authority and mount inputs of one retained request.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ReviewScope {
