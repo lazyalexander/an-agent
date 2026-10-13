@@ -10,7 +10,8 @@ use serde_json::json;
 use uuid::Uuid;
 
 use an_agent_semantic::{
-    Attempt, Capability, Claim, FactRef, Polarity, Resource as SemanticResource,
+    Attempt, BoundaryProfile, Capability, Claim, ContractClaim, FactRef, Polarity,
+    Resource as SemanticResource,
 };
 
 use super::agent_beat::AgentBody;
@@ -625,7 +626,48 @@ impl AgentControl {
             attempt.facts.push(FactRef::new("spool.descriptor", digest));
         }
         attempt.refs.push(event.id.clone());
-        self.authorize_attempt(agent, &attempt, &[mounted, register])
+        let profile = BoundaryProfile {
+            id: "core.delivery.v1".into(),
+            required_roles: vec!["mounted_declaration".into(), "workspace_route".into()],
+            checked: vec![Capability {
+                polarity: Polarity::Coeffect,
+                operation: "flow.consume".into(),
+                resource: SemanticResource::new("workspace.event", std::iter::empty::<&str>()),
+                recursive: true,
+            }],
+            limitations: vec![
+                "Checks event-name routing and consumes only; payload schemas are not checked."
+                    .into(),
+                "Does not establish the body implementation's file, network, or process effects."
+                    .into(),
+            ],
+        };
+        let contracts = [
+            ContractClaim {
+                role: "mounted_declaration".into(),
+                claim: mounted.clone(),
+                evidence: attempt
+                    .facts
+                    .iter()
+                    .filter(|f| f.kind == "spool.declaration")
+                    .cloned()
+                    .collect(),
+            },
+            ContractClaim {
+                role: "workspace_route".into(),
+                claim: register.clone(),
+                evidence: attempt
+                    .facts
+                    .iter()
+                    .filter(|f| {
+                        f.kind == "workspace.registration"
+                            || f.kind == "workspace.registration.generation"
+                    })
+                    .cloned()
+                    .collect(),
+            },
+        ];
+        self.authorize_attempt(agent, &attempt, &[mounted, register], &profile, &contracts)
     }
 
     /// The produces whitelist, applied per intent at delivery: an
