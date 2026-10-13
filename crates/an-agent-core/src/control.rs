@@ -41,6 +41,7 @@ mod semantic;
 mod session;
 mod spool;
 mod supervision;
+mod tool_contract;
 mod workspace;
 
 pub use supervision::{InstanceRef, ReviewCause, ReviewRequest, ReviewResolution, ReviewScope};

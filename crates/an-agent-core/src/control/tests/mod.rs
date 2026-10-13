@@ -187,4 +187,5 @@ mod session;
 mod spool;
 mod supervision;
 mod thread;
+mod tool_contract;
 mod workspace;
