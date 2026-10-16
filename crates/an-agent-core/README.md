@@ -10,7 +10,7 @@ The kernel. Spool constructors live in `an-agent-spool`. Bash registration and s
 | `act` | Admission. Intent is taped before execution, effect after. An act carries `permit` and an effect projected from the tool tag. A spawn `Charter` (tool tag plus signal) is a ceiling, not an act field. Resource mnemonics live here. `ActKind` is intent-domain vocabulary only; the channel (tool vs model) rides on `ActEnvelope.tool`. |
 | `principal` | Agent identity. An `AgentCard` = model spec + prompt + tool grants + kernel ref — immutable, content-addressed, versioned by supersession, never mutated. Cards hold no memory and no keys. `factory::build_with` takes the caller's tool constructors; this crate registers none. |
 | `agent` | A live card plus its private directory and tape. `spawn_with` binds them. The factory product is a `BuiltAgent`. |
-| `control` | Host face. Opens a thread, advances, cancels, finishes, sends, and runs a granted tool. Writes that thread's tape. |
+| `control` | Host face. Opens a thread, advances, cancels, finishes, sends, and runs a granted tool. Adapts the independent `an-agent-supervision` state machine to trusted principals, permission ceilings, and tape evidence. Responses never schedule work automatically. |
 | `seat` | Who is mounted, and the one beat that may run. Shared by the host face and the recorder. |
 | `recorder` | File-workspace steward: `Wp`, sub-workspace log, and projection recovery. Not the host face. |
 | `workspace` | The host software's events, precise config snapshots, and replaceable env markdown. Not `Wp` and not the CAS crate. |
@@ -25,6 +25,34 @@ The kernel. Spool constructors live in `an-agent-spool`. Bash registration and s
 5. No OS time/entropy outside `det_seam`; no `unwrap`/`expect` outside tests.
 
 ## Conventions
+
+Delivery and model admission retain role-labelled contract projections, explicit
+boundary coverage, and shadow comparison diagnostics in their existing semantic
+audit records. The independent checker does not control execution; hard gates,
+review routing, and lifecycle enforcement remain unchanged. Missing or uncovered
+inputs are visible as unknown, not represented as proof of safety.
+
+`AgentControl::run` also retains `tool_contract` audit observations for bound
+tool grants and the exact-review gate. Approval eligibility records the child
+Ask grant, supervisor Go grant, and existing charter/file-face ceiling. These
+projections are diagnostic, not filesystem enforcement or new approval tokens.
+Required audit failure prevents execution; an already consumed approval stays
+consumed. The independent checker never retries or schedules the operation.
+
+The model boundary also checks dependency validity at call admission and
+terminal publication. Registration, configuration/environment generations and
+live review scope must remain current; explicit clips are pinned history.
+Stale or unknown results stay audit-only and trigger a scheduling review, or a
+host error if the original scope retired. Receipts still state the actual call
+outcome. This is not host-document transaction fencing or automatic rollback.
+
+Described mounts carry a `SpoolDescriptor`: one stable package symbol and the
+exact YAML snapshot supplied by the trusted loader. A package is not a mount
+alias or instance ID. Core owns a copy for the mount lifetime; descriptor changes
+require a new mount and never inherit its predecessor's reviews. Delivery and
+model evidence cite the package and retained descriptor bytes. These are claims
+from the loader, not proof of native code identity. Direct legacy mount methods
+remain available without inventing descriptor evidence.
 
 One folder = one proto-package: every module directory carries a thin README (purpose, admission rule, dependency direction). Rule-level text only — implementation details drift.
 

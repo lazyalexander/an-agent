@@ -218,4 +218,40 @@ version = "1.0.0"
             .as_slice(),
         &["said-by-Bob".to_string(), "said-by-Annie".to_string()]
     );
+    for (alias, package, yaml) in [
+        ("annie", "greeter", GREETER),
+        ("bob", "greeter", GREETER),
+        ("outbox", "outbox", OUTBOX),
+    ] {
+        let assessment = host
+            .control()
+            .events(id)
+            .unwrap()
+            .iter()
+            .filter(|event| event.tags.iter().any(|tag| tag == "semantic"))
+            .map(|event| serde_json::from_str::<serde_json::Value>(&event.content).unwrap())
+            .find(|value| value["attempt"]["subject"] == alias)
+            .unwrap();
+        let facts = assessment["attempt"]["facts"].as_array().unwrap();
+        assert!(
+            facts
+                .iter()
+                .any(|fact| fact["kind"] == "spool.package" && fact["revision"] == package)
+        );
+        let descriptor = facts
+            .iter()
+            .find(|fact| fact["kind"] == "spool.descriptor")
+            .unwrap();
+        assert_eq!(
+            std::fs::read(
+                host.control()
+                    .directory(id)
+                    .unwrap()
+                    .join("blobs")
+                    .join(descriptor["revision"].as_str().unwrap())
+            )
+            .unwrap(),
+            yaml.as_bytes()
+        );
+    }
 }

@@ -31,6 +31,9 @@ pub enum Continuation {
         name: String,
         args: Value,
     },
+    RequestReview {
+        reason: String,
+    },
     /// Approve proposed call `index` from the invoke effect event `clip`:
     /// the model proposes (taped with full args), the policy disposes by
     /// reference — args never enter the script.
@@ -47,6 +50,14 @@ impl Continuation {
             .and_then(|k| k.as_str())
             .ok_or("continuation requires a string kind")?;
         match kind {
+            "request_review" => Ok(Self::RequestReview {
+                reason: v
+                    .get("reason")
+                    .and_then(Value::as_str)
+                    .filter(|reason| !reason.trim().is_empty())
+                    .ok_or("request_review requires a nonempty reason")?
+                    .to_string(),
+            }),
             "halt" => Ok(Self::Halt),
             "utter" => Ok(Self::Utter {
                 text: v
@@ -104,6 +115,9 @@ impl Continuation {
     /// Canonical JSON form — what lands on tape as the decision's effect.
     pub fn to_value(&self) -> Value {
         match self {
+            Self::RequestReview { reason } => {
+                serde_json::json!({"kind": "request_review", "reason": reason})
+            }
             Self::Halt => serde_json::json!({ "kind": "halt" }),
             Self::Utter { text } => serde_json::json!({ "kind": "utter", "text": text }),
             Self::InvokeModel { clips } => {
@@ -214,6 +228,7 @@ impl AgentBody for RhaiPolicy {
             Continuation::Utter { text } => Ok(BeatStep::Utter { text }),
             Continuation::InvokeModel { clips } => Ok(BeatStep::InvokeModel { clips }),
             Continuation::InvokeTool { name, args } => Ok(BeatStep::InvokeTool { name, args }),
+            Continuation::RequestReview { reason } => Ok(BeatStep::RequestReview { reason }),
             Continuation::Approve { .. } => {
                 Err("approve belongs to the thread loop, not a spool beat".into())
             }

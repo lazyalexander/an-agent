@@ -8,7 +8,9 @@ use uuid::Uuid;
 use an_agent_core::control::AgentControl;
 use an_agent_core::memstream::Memevent;
 
-use super::assemble::{assemble, cut_if_long, uncompressed, write_cut};
+use super::assemble::{
+    assemble, cut_if_long, is_audit, segment_is_context, uncompressed, write_cut,
+};
 use super::index::{load_segments, rebuild_index};
 use super::{AssembleMode, Assembly, ContextError, Cut, Piece, read_proj};
 
@@ -189,11 +191,17 @@ fn cache_hit(
             let Some(event) = events.iter().find(|event| event.id == *id) else {
                 return Ok(None);
             };
+            if is_audit(event) {
+                return Ok(None);
+            }
             event.content.clone()
         } else if let Some(id) = &segment {
             let Some(seg) = load_segments(dir)?.into_iter().find(|seg| seg.id == *id) else {
                 return Ok(None);
             };
+            if !segment_is_context(&seg, events) {
+                return Ok(None);
+            }
             seg.text
         } else if outside.is_some() {
             String::new()

@@ -43,7 +43,7 @@ use uuid::Uuid;
 
 use an_agent_core::control::{
     AgentBody, AgentControl, ControlError, DeliveryOutcome, HookHandler, ReplyIntent, SpoolBeat,
-    SpoolDeclaration, SpoolRequirement, WorkspaceConfig,
+    SpoolDeclaration, SpoolDescriptor, SpoolRequirement, WorkspaceConfig,
 };
 use an_agent_spool::beat::RhaiBeat;
 use an_agent_spool::gate::RhaiGate;
@@ -70,8 +70,18 @@ type HostCtor = Arc<dyn Fn(Map<String, Value>) -> Result<Arc<dyn SpoolBeat>, Str
 /// entry it takes: a beat mounts as a pure event → reply function, an
 /// agent body mounts to be driven step by step by core.
 enum Built {
-    Beat(String, Arc<dyn SpoolBeat>, SpoolDeclaration),
-    Agent(String, Arc<dyn AgentBody>, SpoolDeclaration),
+    Beat(
+        String,
+        Arc<dyn SpoolBeat>,
+        SpoolDeclaration,
+        SpoolDescriptor,
+    ),
+    Agent(
+        String,
+        Arc<dyn AgentBody>,
+        SpoolDeclaration,
+        SpoolDescriptor,
+    ),
 }
 
 /// Native bodies the embedding app ships itself, by the name a
@@ -149,12 +159,22 @@ impl Host {
         let mut mounted = Vec::new();
         for req in &config.spool {
             match self.construct(req)? {
-                Built::Beat(instance, body, declaration) => {
-                    self.control.mount_spool(&instance, body, &declaration)?;
+                Built::Beat(instance, body, declaration, descriptor) => {
+                    self.control.mount_spool_described(
+                        &instance,
+                        body,
+                        &declaration,
+                        &descriptor,
+                    )?;
                     mounted.push(instance);
                 }
-                Built::Agent(instance, body, declaration) => {
-                    self.control.mount_agent(&instance, body, &declaration)?;
+                Built::Agent(instance, body, declaration, descriptor) => {
+                    self.control.mount_agent_described(
+                        &instance,
+                        body,
+                        &declaration,
+                        &descriptor,
+                    )?;
                     mounted.push(instance);
                 }
             }
@@ -186,6 +206,10 @@ impl Host {
 
     fn construct(&self, req: &SpoolRequirement) -> Result<Built, HostError> {
         let spec = self.registry.recover(&req.name, &req.version)?;
+        let descriptor = SpoolDescriptor {
+            package: spec.name.clone(),
+            yaml: spec.body.clone(),
+        };
         let config = match serde_json::to_value(&req.config)? {
             Value::Object(map) => map,
             other => {
@@ -205,7 +229,12 @@ impl Host {
             Sort::Policy => match &spec.constructor {
                 Constructor::Rhai { .. } => {
                     let body = RhaiPolicy::from_spool(&spec, config).map_err(HostError::Body)?;
-                    Ok(Built::Agent(instance, Arc::new(body), spec.declaration()))
+                    Ok(Built::Agent(
+                        instance,
+                        Arc::new(body),
+                        spec.declaration(),
+                        descriptor,
+                    ))
                 }
                 Constructor::Host { name } => Err(HostError::Body(format!(
                     "constructor: host ({name}) cannot build a policy body yet"
@@ -218,7 +247,7 @@ impl Host {
                     }
                     Constructor::Host { name } => self.host_bodies.construct(name, config)?,
                 };
-                Ok(Built::Beat(instance, body, spec.declaration()))
+                Ok(Built::Beat(instance, body, spec.declaration(), descriptor))
             }
         }
     }
@@ -254,6 +283,8 @@ impl Host {
     /// always one the spool declared. Raised events are left pending:
     /// whether to pump again, and how deep, is the app's call. Halts are
     /// already settled on tape: nothing executes, nothing is applied.
+    /// Pending reviews likewise remain unapplied; the host handles their
+    /// supervisor inbox and explicitly schedules any later work.
     fn execute(
         &self,
         id: Uuid,

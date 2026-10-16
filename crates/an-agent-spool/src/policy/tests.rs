@@ -123,6 +123,14 @@ fn as_agent_body_approve_is_refused() {
             .unwrap()
     };
     let projection = serde_json::json!({});
+    let policy =
+        with_script("#{ kind: \"request_review\", reason: \"potential destructive change\" }");
+    assert_eq!(
+        AgentBody::evaluate(&policy, &projection).unwrap(),
+        BeatStep::RequestReview {
+            reason: "potential destructive change".into()
+        }
+    );
     let policy = with_script("#{ kind: \"utter\", text: \"hi\" }");
     assert_eq!(
         AgentBody::evaluate(&policy, &projection).unwrap(),
@@ -141,5 +149,22 @@ fn as_agent_body_approve_is_refused() {
             .err()
             .unwrap()
             .contains("thread loop")
+    );
+}
+
+#[test]
+fn review_continuation_requires_a_reason_and_round_trips() {
+    for value in [
+        serde_json::json!({"kind": "request_review"}),
+        serde_json::json!({"kind": "request_review", "reason": "  "}),
+    ] {
+        assert!(Continuation::from_value(&value).is_err());
+    }
+    let review = Continuation::RequestReview {
+        reason: "risk needs disposition".into(),
+    };
+    assert_eq!(
+        Continuation::from_value(&review.to_value()).unwrap(),
+        review
     );
 }

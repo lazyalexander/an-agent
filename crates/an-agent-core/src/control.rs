@@ -27,7 +27,7 @@ use thiserror::Error;
 use tokio::sync::watch;
 use uuid::Uuid;
 
-use crate::act::{ToolCall, ToolCtx, ToolError, run_tool_act};
+use crate::act::{ToolCall, ToolCtx, ToolError};
 use crate::agent::{Agent, SessionError, SpawnError, spawn_with};
 use crate::memstream::{AppendEvent, FromKind, Kind, Memevent, StoreError};
 use crate::principal::card::AgentCard;
@@ -37,14 +37,22 @@ use crate::workspace::Workspace;
 
 mod agent_beat;
 mod hooks;
+mod model_boundary;
+mod semantic;
 mod session;
 mod spool;
+mod supervision;
+mod tool_contract;
 mod workspace;
+
+pub use supervision::{InstanceRef, ReviewCause, ReviewRequest, ReviewResolution, ReviewScope};
 
 pub use agent_beat::{AgentBody, BeatStep, Completion, ModelClient, ModelMessage, Usage};
 pub use hooks::{HookRunner, HookVerdict};
 use spool::Mounted;
-pub use spool::{DeliveryOutcome, ReplyIntent, SpoolBeat, SpoolDeclaration, SpoolReply};
+pub use spool::{
+    DeliveryOutcome, ReplyIntent, SpoolBeat, SpoolDeclaration, SpoolDescriptor, SpoolReply,
+};
 pub use workspace::{
     EventRoute, Guard, Guidance, HookHandler, Hooks, Registration, SpoolRequirement,
     WorkspaceConfig,
@@ -52,6 +60,20 @@ pub use workspace::{
 
 #[derive(Debug, Error)]
 pub enum ControlError {
+    #[error("operation is awaiting supervisor review: {}", .0.id)]
+    ReviewRequired(Box<ReviewRequest>),
+    #[error("invalid supervisor binding: {0}")]
+    SupervisorBinding(String),
+    #[error("review request is not pending: {0}")]
+    ReviewMissing(String),
+    #[error("review request cannot be resolved by this agent: {0}")]
+    ReviewAuthority(String),
+    #[error("review cannot override an execution ceiling: {0}")]
+    ReviewCeiling(String),
+    #[error("reviewed inputs changed before execution: {0}")]
+    ReviewStale(String),
+    #[error("dependency evidence is no longer current; quarantined record: {0}")]
+    DependencyStale(String),
     #[error("thread is not open: {0}")]
     NotOpen(Uuid),
     #[error("thread is finished: {0}")]
@@ -72,6 +94,14 @@ pub enum ControlError {
     AlreadyMounted(String),
     #[error("spool {name} does not match the register: {}", .reasons.join("; "))]
     MountMismatch { name: String, reasons: Vec<String> },
+    #[error("semantic policy denied {operation} for {subject}: {reason}")]
+    SemanticDenied {
+        operation: String,
+        subject: String,
+        reason: String,
+    },
+    #[error("semantic record could not be encoded: {0}")]
+    SemanticRecord(String),
     #[error("workspace has no event")]
     NoEvent,
     #[error("workspace has no such event: {0}")]
@@ -86,6 +116,8 @@ pub enum ControlError {
     ModelFailed { spool: String, reason: String },
     #[error("tape has no such clip: {0}")]
     UnknownClip(String),
+    #[error("audit or quarantined evidence is not a model clip: {0}")]
+    IneligibleClip(String),
     #[error("spool {name} failed: {reason}")]
     SpoolFailed { name: String, reason: String },
     #[error("workspace has no registration")]
@@ -132,6 +164,7 @@ struct Inner {
     model_client: Mutex<Option<Arc<dyn ModelClient>>>,
     /// The embedding software's label, stated in the model envelope.
     host_label: Mutex<String>,
+    supervision: Mutex<an_agent_supervision::Supervision>,
 }
 
 /// The handle a host software uses to drive agents in this process.
@@ -162,6 +195,7 @@ impl AgentControl {
                 hook_runner: Mutex::new(None),
                 model_client: Mutex::new(None),
                 host_label: Mutex::new("an-agent".to_string()),
+                supervision: Mutex::new(an_agent_supervision::Supervision::default()),
             }),
         })
     }
@@ -169,6 +203,11 @@ impl AgentControl {
     /// Birth one thread and its tape. The id is the card id. Opening the
     /// same card twice is refused.
     pub fn open_thread(&self, card: &AgentCard) -> Result<Uuid, ControlError> {
+        let mut state = self
+            .inner
+            .supervision
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         if self
             .inner
             .threads
@@ -181,6 +220,10 @@ impl AgentControl {
         let listed = self.listed_registry();
         let agent = Arc::new(spawn_with(card, &self.inner.root, &listed)?);
         let id = agent.id();
+        let instance = InstanceRef {
+            principal: id,
+            incarnation: crate::det_seam::Entropy::os().uuid_v4(),
+        };
         let seat = self.inner.pool.tree().mount(Arc::clone(&agent), None)?;
         self.inner
             .seats
@@ -203,8 +246,9 @@ impl AgentControl {
         self.append(
             &agent,
             "thread",
-            json!({ "thread": id.to_string() }).to_string(),
+            json!({ "thread": id.to_string(), "instance": instance }).to_string(),
         )?;
+        state.open(instance)?;
         Ok(id)
     }
 
@@ -212,8 +256,7 @@ impl AgentControl {
     /// flag consumes the beat and does no work. The host calls again for the
     /// next beat.
     pub fn advance(&self, id: Uuid, text: &str) -> Result<String, ControlError> {
-        self.enter_beat(id)?;
-        let turn = self.inner.pool.begin_turn(id)?;
+        let turn = self.begin_beat(id)?;
         let event = self.append(turn.agent(), "advance", json!({ "text": text }).to_string())?;
         drop(turn);
         Ok(event)
@@ -222,8 +265,15 @@ impl AgentControl {
     /// Record cancel and raise the flag. An in-flight [`Self::run`] sees the
     /// flag on its tool context. The next beat is consumed as cancelled.
     pub fn cancel(&self, id: Uuid) -> Result<String, ControlError> {
+        let mut state = self
+            .inner
+            .supervision
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let agent = self.live(id)?;
         self.raise_cancel(id)?;
+        let requests = state.revoke(id)?;
+        self.record_review_closures(requests, "cancel")?;
         self.append(
             &agent,
             "cancel",
@@ -234,17 +284,24 @@ impl AgentControl {
     /// End the thread. Further beats and mail are refused. Refused while a
     /// beat holds the only slot.
     pub fn finish(&self, id: Uuid, text: &str) -> Result<String, ControlError> {
+        let mut state = self
+            .inner
+            .supervision
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         if self.inner.pool.is_running(id) {
             return Err(ControlError::Busy(id));
         }
         let agent = self.live(id)?;
-        let event = self.append(&agent, "finish", json!({ "text": text }).to_string())?;
+        let requests = state.retire(id);
         let mut threads = self.inner.threads.lock().unwrap_or_else(|e| e.into_inner());
         let thread = threads.get_mut(&id).ok_or(ControlError::NotOpen(id))?;
         thread.finished = true;
         thread.cancelled.store(false, Ordering::Relaxed);
         let _ = thread.cancel.send(false);
-        Ok(event)
+        drop(threads);
+        self.record_review_closures(requests, "finish")?;
+        self.append(&agent, "finish", json!({ "text": text }).to_string())
     }
 
     /// Mail between two open threads. Each tape gets one event. Does not take
@@ -275,22 +332,18 @@ impl AgentControl {
         id: Uuid,
         call: &ToolCall,
     ) -> Result<crate::act::ToolActResult, ControlError> {
-        self.enter_beat(id)?;
-        let agent = self
-            .inner
-            .pool
-            .tree()
-            .get(id)
-            .ok_or(ControlError::NotOpen(id))?;
-        let turn = self.inner.pool.begin_turn(id)?;
+        let turn = self.begin_beat(id)?;
+        let agent = turn.agent();
         let signal = self.cancel_receiver(id)?;
-        let result = run_tool_act(
+        let approval = self.review_tool(agent, call)?;
+        let result = crate::act::tool::run_tool_act_reviewed(
             &agent.act_ctx(),
             agent.tools(),
             call,
             &ToolCtx {
                 signal: Some(signal),
             },
+            approval,
         )
         .await?;
         drop(turn);
@@ -330,6 +383,19 @@ impl AgentControl {
             .ok_or(ControlError::NotOpen(id))
     }
 
+    /// Serialize admission with finish/release; the guard never crosses a
+    /// body callback, tool await, or model request.
+    fn begin_beat(&self, id: Uuid) -> Result<crate::seat::Turn<'_>, ControlError> {
+        let state = self
+            .inner
+            .supervision
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        self.enter_beat(id)?;
+        state.instance(id)?;
+        Ok(self.inner.pool.begin_turn(id)?)
+    }
+
     /// A beat that finds the cancel flag raised does nothing and lowers it.
     fn enter_beat(&self, id: Uuid) -> Result<(), ControlError> {
         let threads = self.inner.threads.lock().unwrap_or_else(|e| e.into_inner());
@@ -351,7 +417,7 @@ impl AgentControl {
             return Err(ControlError::Finished(id));
         }
         thread.cancelled.store(true, Ordering::Relaxed);
-        let _ = thread.cancel.send(true);
+        thread.cancel.send_replace(true);
         Ok(())
     }
 
@@ -431,13 +497,43 @@ impl AgentControl {
         content: String,
         refs: Vec<String>,
     ) -> Result<String, ControlError> {
+        self.append_tagged(agent, kind, vec![tag.to_string()], content, refs)
+    }
+
+    /// Control evidence stays addressable without becoming an implicit
+    /// model input or the source observation of a remembered fact.
+    fn append_audit_event(
+        &self,
+        agent: &Agent,
+        kind: Kind,
+        tag: &str,
+        content: String,
+        refs: Vec<String>,
+    ) -> Result<String, ControlError> {
+        self.append_tagged(
+            agent,
+            kind,
+            vec![tag.to_string(), "audit".into()],
+            content,
+            refs,
+        )
+    }
+
+    fn append_tagged(
+        &self,
+        agent: &Agent,
+        kind: Kind,
+        tags: Vec<String>,
+        content: String,
+        refs: Vec<String>,
+    ) -> Result<String, ControlError> {
         let event = agent.session().tape().append(AppendEvent {
             from: agent.id_str().to_string(),
             from_kind: FromKind::Agent,
             kind,
             session: agent.session().id_str().to_string(),
             content,
-            tags: vec![tag.to_string()],
+            tags,
             refs,
             act: None,
             card: Some(agent.card_hash().to_string()),

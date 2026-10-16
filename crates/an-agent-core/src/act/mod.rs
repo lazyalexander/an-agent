@@ -3,7 +3,7 @@ mod registry;
 mod resource;
 mod sense;
 mod tag;
-mod tool;
+pub(crate) mod tool;
 
 pub use charter::{Audience, Charter, Signal};
 pub use registry::{Registration, RegistryError, Tier, ToolRegistry};

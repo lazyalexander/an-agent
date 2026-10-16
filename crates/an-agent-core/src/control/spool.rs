@@ -9,7 +9,14 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use uuid::Uuid;
 
+use an_agent_semantic::{
+    Attempt, BoundaryProfile, Capability, Claim, ContractClaim, FactRef, Polarity,
+    Resource as SemanticResource,
+};
+
 use super::agent_beat::AgentBody;
+use super::semantic::Admission;
+use super::workspace::RegistrationSnapshot;
 use super::{AgentControl, ControlError};
 use crate::agent::Agent;
 use crate::workspace::WorkspaceRecord;
@@ -99,8 +106,8 @@ pub struct SpoolReply {
 /// What one delivered event settled as for one body. A halt is a taped,
 /// explicit silence — it carries its own spool note id and nothing for
 /// the host to land, so it never earns an `applied`. A reply carries
-/// admitted intents for the host to land. The two are never collapsed
-/// into one shape: an empty utterance is a reply, a halt is not.
+/// admitted intents for the host to land. Review is a stopped operation,
+/// not a halt, reply, or body failure; it has no applied landing.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DeliveryOutcome {
     Halt {
@@ -109,6 +116,9 @@ pub enum DeliveryOutcome {
         tape_id: String,
     },
     Reply(SpoolReply),
+    /// No effect or applied landing. The host routes the request and
+    /// decides when to schedule fresh work after supervisor disposition.
+    NeedsReview(Box<super::ReviewRequest>),
 }
 
 impl DeliveryOutcome {
@@ -116,7 +126,7 @@ impl DeliveryOutcome {
     pub fn reply(&self) -> Option<&SpoolReply> {
         match self {
             Self::Reply(reply) => Some(reply),
-            Self::Halt { .. } => None,
+            Self::Halt { .. } | Self::NeedsReview(_) => None,
         }
     }
 }
@@ -124,10 +134,23 @@ impl DeliveryOutcome {
 /// A mounted body and the declaration it was matched with. The declaration
 /// stays: `produces` gates each reply's raise intents at delivery, not
 /// only at mount.
+#[derive(Clone)]
 pub(super) struct Mounted {
     pub name: String,
+    pub instance: Uuid,
     pub body: MountedBody,
     pub declaration: SpoolDeclaration,
+    pub descriptor: Option<SpoolDescriptor>,
+}
+
+/// A stable package symbol and its mount-time YAML bytes. The trusted loader
+/// validates the YAML and derives the body and declaration from it. Core
+/// retains a copy, not a live file reference. This is not a code attestation,
+/// version constraint, or session-owned implementation.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SpoolDescriptor {
+    pub package: String,
+    pub yaml: String,
 }
 
 /// The two sorts of mounted body. A `Beat` is a pure function event →
@@ -154,7 +177,7 @@ pub(super) enum MountedBody {
 ///
 /// Shape schemas are not matched yet: the workspace declares names only,
 /// so there is nothing to compare a payload shape against.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 pub struct SpoolDeclaration {
     pub consumes: Vec<String>,
     pub produces: Vec<String>,
@@ -174,21 +197,19 @@ impl AgentControl {
         body: Arc<dyn SpoolBeat>,
         declaration: &SpoolDeclaration,
     ) -> Result<(), ControlError> {
-        self.match_declaration(name, declaration)?;
-        let mut bodies = self
-            .inner
-            .bodies
-            .lock()
-            .unwrap_or_else(|err| err.into_inner());
-        if bodies.iter().any(|mounted| mounted.name == name) {
-            return Err(ControlError::AlreadyMounted(name.to_string()));
-        }
-        bodies.push(Mounted {
-            name: name.to_string(),
-            body: MountedBody::Beat(body),
-            declaration: declaration.clone(),
-        });
-        Ok(())
+        self.mount_body(name, MountedBody::Beat(body), declaration, None)
+    }
+
+    /// Mount from a validated descriptor. Changing the descriptor requires
+    /// an explicit unmount and a new mount; existing reviews never transfer.
+    pub fn mount_spool_described(
+        &self,
+        name: &str,
+        body: Arc<dyn SpoolBeat>,
+        declaration: &SpoolDeclaration,
+        descriptor: &SpoolDescriptor,
+    ) -> Result<(), ControlError> {
+        self.mount_body(name, MountedBody::Beat(body), declaration, Some(descriptor))
     }
 
     /// Mount an agent body under `name`. Same rules as [`Self::mount_spool`]:
@@ -201,6 +222,43 @@ impl AgentControl {
         body: Arc<dyn AgentBody>,
         declaration: &SpoolDeclaration,
     ) -> Result<(), ControlError> {
+        self.mount_body(name, MountedBody::Agent(body), declaration, None)
+    }
+
+    /// The policy-body counterpart of [`Self::mount_spool_described`].
+    pub fn mount_agent_described(
+        &self,
+        name: &str,
+        body: Arc<dyn AgentBody>,
+        declaration: &SpoolDeclaration,
+        descriptor: &SpoolDescriptor,
+    ) -> Result<(), ControlError> {
+        self.mount_body(
+            name,
+            MountedBody::Agent(body),
+            declaration,
+            Some(descriptor),
+        )
+    }
+
+    fn mount_body(
+        &self,
+        name: &str,
+        body: MountedBody,
+        declaration: &SpoolDeclaration,
+        descriptor: Option<&SpoolDescriptor>,
+    ) -> Result<(), ControlError> {
+        if descriptor.is_some_and(|d| d.package.trim().is_empty() || d.yaml.trim().is_empty()) {
+            return Err(ControlError::MountMismatch {
+                name: name.into(),
+                reasons: vec!["descriptor requires a package symbol and YAML bytes".into()],
+            });
+        }
+        let mut state = self
+            .inner
+            .supervision
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         self.match_declaration(name, declaration)?;
         let mut bodies = self
             .inner
@@ -210,11 +268,15 @@ impl AgentControl {
         if bodies.iter().any(|mounted| mounted.name == name) {
             return Err(ControlError::AlreadyMounted(name.to_string()));
         }
+        let instance = crate::det_seam::Entropy::os().uuid_v4();
         bodies.push(Mounted {
             name: name.to_string(),
-            body: MountedBody::Agent(body),
+            instance,
+            body,
             declaration: declaration.clone(),
+            descriptor: descriptor.cloned(),
         });
+        state.mount(instance);
         Ok(())
     }
 
@@ -279,6 +341,11 @@ impl AgentControl {
 
     /// Remove a mounted body. The workspace log is left as it is.
     pub fn unmount_spool(&self, name: &str) -> Result<(), ControlError> {
+        let mut state = self
+            .inner
+            .supervision
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let mut bodies = self
             .inner
             .bodies
@@ -287,8 +354,10 @@ impl AgentControl {
         let Some(pos) = bodies.iter().position(|mounted| mounted.name == name) else {
             return Err(ControlError::NotMounted(name.to_string()));
         };
-        bodies.remove(pos);
-        Ok(())
+        let removed = bodies.remove(pos);
+        drop(bodies);
+        let requests = state.unmount(removed.instance);
+        self.record_review_closures(requests, "unmount")
     }
 
     /// One beat. The named body receives the latest workspace event.
@@ -308,11 +377,11 @@ impl AgentControl {
         name: &str,
         event_id: &str,
     ) -> Result<DeliveryOutcome, ControlError> {
-        self.enter_beat(id)?;
-        let turn = self.inner.pool.begin_turn(id)?;
+        let turn = self.begin_beat(id)?;
         let event = self.event_by_id(event_id)?;
         self.hooks_before(turn.agent(), &event)?;
-        match self.invoke(turn.agent(), name, &event)? {
+        let registration = self.current_registration_snapshot()?;
+        match self.invoke(turn.agent(), name, &event, &registration)? {
             Ok(outcome) => {
                 if let DeliveryOutcome::Reply(reply) = &outcome {
                     self.hooks_after(turn.agent(), reply)?;
@@ -343,22 +412,23 @@ impl AgentControl {
         id: Uuid,
         event_id: &str,
     ) -> Result<Vec<DeliveryOutcome>, ControlError> {
-        self.enter_beat(id)?;
-        let turn = self.inner.pool.begin_turn(id)?;
+        let turn = self.begin_beat(id)?;
         let event = self.event_by_id(event_id)?;
         self.hooks_before(turn.agent(), &event)?;
         let event_name = event.name.clone().unwrap_or_default();
-        let route = self.spools_for(&event_name)?;
+        let (registration, route) = self.route_for(&event_name)?;
         let mut outcomes = Vec::new();
         for spool in route {
-            match self.invoke(turn.agent(), &spool, &event) {
+            match self.invoke(turn.agent(), &spool, &event, &registration) {
                 Ok(Ok(outcome)) => match &outcome {
                     DeliveryOutcome::Reply(reply) => match self.hooks_after(turn.agent(), reply) {
                         Ok(()) => outcomes.push(outcome),
                         Err(ControlError::HookDenied { .. }) => {}
                         Err(err) => return Err(err),
                     },
-                    DeliveryOutcome::Halt { .. } => outcomes.push(outcome),
+                    DeliveryOutcome::Halt { .. } | DeliveryOutcome::NeedsReview(_) => {
+                        outcomes.push(outcome)
+                    }
                 },
                 Ok(Err(_)) => {}
                 Err(ControlError::NotMounted(_)) => {
@@ -409,21 +479,54 @@ impl AgentControl {
         agent: &Agent,
         name: &str,
         event: &WorkspaceRecord,
+        registration: &RegistrationSnapshot,
     ) -> Result<Result<DeliveryOutcome, String>, ControlError> {
-        let Some((body, declaration)) = self.body_named(name) else {
+        let Some(mounted) = self.body_named(name) else {
             return Err(ControlError::NotMounted(name.to_string()));
         };
+        if let Some(request) = self.waiting_review(agent.id(), name, mounted.instance)? {
+            return Ok(Ok(DeliveryOutcome::NeedsReview(Box::new(request))));
+        }
+        let delivery = match self.authorize_delivery(agent, name, event, registration, &mounted)? {
+            Admission::Allowed(delivery) => delivery,
+            Admission::Denied {
+                mut attempt,
+                tape_id,
+                reason,
+            } => {
+                attempt.refs.push(tape_id);
+                let request = self.request_review(
+                    agent,
+                    name,
+                    Some(&event.id),
+                    attempt,
+                    super::ReviewCause::PermissionDenied { reason },
+                    None,
+                )?;
+                return Ok(Ok(DeliveryOutcome::NeedsReview(Box::new(request))));
+            }
+        };
+        self.ensure_delivery_current(agent, &delivery.grant.facts)?;
+        let Mounted {
+            body,
+            declaration,
+            instance,
+            ..
+        } = mounted;
         match body {
-            MountedBody::Agent(body) => match self.agent_invoke(agent, name, &body, event)? {
-                Err(reason) => {
-                    self.drop_body(name);
-                    self.note_spool(agent, name, &event.id, Err(reason.as_str()))?;
-                    Ok(Err(reason))
+            MountedBody::Agent(body) => {
+                match self.agent_invoke(agent, name, &body, event, &declaration, &delivery)? {
+                    Err(reason) => {
+                        self.drop_body(instance)?;
+                        self.note_spool(agent, name, &event.id, Err(reason.as_str()))?;
+                        Ok(Err(reason))
+                    }
+                    Ok(outcome) => Ok(Ok(outcome)),
                 }
-                Ok(outcome) => Ok(Ok(outcome)),
-            },
+            }
             MountedBody::Beat(body) => match body.receive(event) {
                 Ok(reply) => {
+                    self.ensure_delivery_current(agent, &delivery.grant.facts)?;
                     let tape_id = self.note_spool(agent, name, &event.id, Ok(reply.as_str()))?;
                     let intents = self.admit_intents(
                         agent,
@@ -441,12 +544,130 @@ impl AgentControl {
                     })))
                 }
                 Err(reason) => {
-                    self.drop_body(name);
+                    self.drop_body(instance)?;
                     self.note_spool(agent, name, &event.id, Err(reason.as_str()))?;
                     Ok(Err(reason))
                 }
             },
         }
+    }
+
+    /// Translate delivery into the semantic plane immediately before the
+    /// body boundary. The mounted declaration and the registration snapshot
+    /// are independent claims; both must cover the same concrete attempt.
+    fn authorize_delivery(
+        &self,
+        agent: &Agent,
+        name: &str,
+        event: &WorkspaceRecord,
+        registration: &RegistrationSnapshot,
+        body: &Mounted,
+    ) -> Result<Admission, ControlError> {
+        let declaration = &body.declaration;
+        let event_name = event.name.clone().unwrap_or_default();
+        let capability = |event: &str| {
+            Capability::exact(
+                Polarity::Coeffect,
+                "flow.consume",
+                SemanticResource::new("workspace.event", [event]),
+            )
+        };
+        let mounted = Claim {
+            subject: name.to_string(),
+            capabilities: declaration
+                .consumes
+                .iter()
+                .map(|event| capability(event))
+                .collect(),
+        };
+        let routed = registration
+            .registration
+            .events
+            .iter()
+            .find(|route| route.name == event_name)
+            .is_some_and(|route| route.spools.iter().any(|spool| spool == name));
+        let register = Claim {
+            subject: name.to_string(),
+            capabilities: if routed {
+                vec![capability(&event_name)]
+            } else {
+                Vec::new()
+            },
+        };
+        let mut attempt = Attempt::new(
+            format!("delivery:{}", crate::det_seam::Entropy::os().uuid_v4()),
+            name,
+            capability(&event_name),
+            vec![
+                FactRef::new("workspace.registration", registration.revision.clone()),
+                FactRef::new(
+                    "workspace.registration.generation",
+                    registration.generation.clone(),
+                ),
+                FactRef::new("spool.instance", body.instance.to_string()),
+                FactRef::new(
+                    "agent.instance",
+                    self.inner
+                        .supervision
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner())
+                        .instance(agent.id())?
+                        .incarnation
+                        .to_string(),
+                ),
+                self.semantic_snapshot(agent, "spool.declaration", declaration)?,
+            ],
+        );
+        if let Some(descriptor) = &body.descriptor {
+            attempt
+                .facts
+                .push(FactRef::new("spool.package", &descriptor.package));
+            let digest = agent.session().put_blob(descriptor.yaml.as_bytes())?;
+            attempt.facts.push(FactRef::new("spool.descriptor", digest));
+        }
+        attempt.refs.push(event.id.clone());
+        let profile = BoundaryProfile {
+            id: "core.delivery.v1".into(),
+            required_roles: vec!["mounted_declaration".into(), "workspace_route".into()],
+            checked: vec![Capability {
+                polarity: Polarity::Coeffect,
+                operation: "flow.consume".into(),
+                resource: SemanticResource::new("workspace.event", std::iter::empty::<&str>()),
+                recursive: true,
+            }],
+            limitations: vec![
+                "Checks event-name routing and consumes only; payload schemas are not checked."
+                    .into(),
+                "Does not establish the body implementation's file, network, or process effects."
+                    .into(),
+            ],
+        };
+        let contracts = [
+            ContractClaim {
+                role: "mounted_declaration".into(),
+                claim: mounted.clone(),
+                evidence: attempt
+                    .facts
+                    .iter()
+                    .filter(|f| f.kind == "spool.declaration")
+                    .cloned()
+                    .collect(),
+            },
+            ContractClaim {
+                role: "workspace_route".into(),
+                claim: register.clone(),
+                evidence: attempt
+                    .facts
+                    .iter()
+                    .filter(|f| {
+                        f.kind == "workspace.registration"
+                            || f.kind == "workspace.registration.generation"
+                    })
+                    .cloned()
+                    .collect(),
+            },
+        ];
+        self.authorize_attempt(agent, &attempt, &[mounted, register], &profile, &contracts)
     }
 
     /// The produces whitelist, applied per intent at delivery: an
@@ -481,33 +702,30 @@ impl AgentControl {
         Ok(admitted)
     }
 
-    fn body_named(&self, name: &str) -> Option<(MountedBody, SpoolDeclaration)> {
+    fn body_named(&self, name: &str) -> Option<Mounted> {
         let bodies = self
             .inner
             .bodies
             .lock()
             .unwrap_or_else(|err| err.into_inner());
-        bodies
-            .iter()
-            .find(|mounted| mounted.name == name)
-            .map(|mounted| (mounted.body.clone(), mounted.declaration.clone()))
+        bodies.iter().find(|mounted| mounted.name == name).cloned()
     }
 
-    /// The declaration a mounted body was matched with. Used by the agent
-    /// driver, which admits intents itself.
-    pub(super) fn declaration_of(&self, name: &str) -> Result<SpoolDeclaration, ControlError> {
-        self.body_named(name)
-            .map(|(_, declaration)| declaration)
-            .ok_or_else(|| ControlError::NotMounted(name.to_string()))
-    }
-
-    fn drop_body(&self, name: &str) {
+    fn drop_body(&self, instance: Uuid) -> Result<(), ControlError> {
+        let mut state = self
+            .inner
+            .supervision
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let mut bodies = self
             .inner
             .bodies
             .lock()
             .unwrap_or_else(|err| err.into_inner());
-        bodies.retain(|mounted| mounted.name != name);
+        bodies.retain(|mounted| mounted.instance != instance);
+        drop(bodies);
+        let requests = state.unmount(instance);
+        self.record_review_closures(requests, "body_failed")
     }
 
     pub(super) fn note_spool(

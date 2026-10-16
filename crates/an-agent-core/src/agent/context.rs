@@ -7,7 +7,7 @@
 
 /// One message handed to the model client. Roles follow the chat
 /// convention (system / user / assistant); assembly is the thread's job.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct ModelMessage {
     pub role: String,
     pub content: String,

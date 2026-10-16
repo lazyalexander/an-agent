@@ -31,10 +31,9 @@ pub struct BuiltAgent {
 pub type ToolCtor = fn() -> Arc<dyn Tool>;
 
 /// Wraps a constructed tool so the grant's tag wins over the constructor's
-/// default tag_seed: permissions come from the card. The tag is an audit
-/// label, not a gate: only `Permit::Deny` blocks execution; `Ask` is
-/// taped but runs as `Go` until the delegation-chain + Ask-grant slice
-/// wires enforcement.
+/// default tag_seed: permissions come from the card. The act boundary
+/// blocks Deny and requires an exact consumed review for Ask. File facets
+/// remain recorded scope, not an operating-system sandbox.
 struct Granted {
     inner: Arc<dyn Tool>,
     tag: ToolTag,
@@ -141,9 +140,11 @@ mod tests {
 
     #[tokio::test]
     async fn path_scoped_grant_runs_and_records_the_path() {
-        let c = card(ToolTag::write("/src/a.txt"));
+        let mut tag = ToolTag::write("/src/a.txt");
+        tag.permit = Permit::Go;
+        let c = card(tag.clone());
         let rt = build(&c, "hash-w").unwrap();
-        assert_eq!(rt.tools[0].tag_seed(), Some(ToolTag::write("/src/a.txt")));
+        assert_eq!(rt.tools[0].tag_seed(), Some(tag));
         let tmp = TempDir::new("factory-path");
         let store = JsonlStore::open(tmp.path().join("memory.jsonl")).unwrap();
         let actx = ActCtx {
@@ -163,7 +164,7 @@ mod tests {
         let obs = events.iter().find(|e| e.kind == Kind::Observation).unwrap();
         let effect = obs.act.as_ref().unwrap().effect.as_ref().unwrap();
         assert_eq!(effect.writes, vec!["/src/a.txt".to_string()]);
-        assert_eq!(obs.act.as_ref().unwrap().permit, Permit::Ask);
+        assert_eq!(obs.act.as_ref().unwrap().permit, Permit::Go);
     }
 
     #[tokio::test]
