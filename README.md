@@ -16,9 +16,7 @@ This is an early-stage library and integration effort, not a finished creative a
 
 ## Current demonstration
 
-[![Mechanical ink animation](assets/demos/mechanical-ink.gif)](assets/demos/mechanical-ink.mp4)
-
-[Watch the ink study](assets/demos/mechanical-ink.mp4) · 12 seconds · 1080 × 810 · silent
+![Mechanical ink animation](assets/demos/mechanical-ink.gif)
 
 ![Mechanical reference clip](assets/demos/mechanical-three-reference.gif)
 
