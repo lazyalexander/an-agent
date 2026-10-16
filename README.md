@@ -18,11 +18,15 @@ This is an early-stage library and integration effort, not a finished creative a
 
 [![Mechanical ink animation](assets/demos/mechanical-ink.gif)](assets/demos/mechanical-ink.mp4)
 
-[Watch or download the video](assets/demos/mechanical-ink.mp4) · 12 seconds · 1080 × 810 · silent
+[Watch the ink study](assets/demos/mechanical-ink.mp4) · 12 seconds · 1080 × 810 · silent
+
+[![Mechanical reference clip](assets/demos/mechanical-three-reference.png)](assets/demos/mechanical-three-reference.mp4)
+
+[Watch the short clip](assets/demos/mechanical-three-reference.mp4) · 6 seconds · 752 × 416
 
 A mechanical drawing experiment separates prescribed mechanism motion from its drawing treatment. The geometry supplies the poses and visibility; an ink treatment follows those poses. The working artifacts include editable SVG and layered OpenRaster drawings. AI-generated bitmap references contribute surface appearance, not the mechanism's motion.
 
-This is an independent workflow prototype informing the framework's direction, not an end-to-end feature of the Rust kernel. The video shows four repetitions of one operating cycle, not an assembly sequence or a force simulation. It does not demonstrate automatic propagation of arbitrary painting edits, live CAD synchronization, or full recovery from the event log.
+This is an independent workflow prototype informing the framework's direction, not an end-to-end feature of the Rust kernel. The ink study shows four repetitions of one operating cycle, not an assembly sequence or a force simulation. The short clip after it is a painted reference view of the same study. Neither demonstrates automatic propagation of arbitrary painting edits, live CAD synchronization, or full recovery from the event log.
 
 ## Architecture and current capabilities
 
