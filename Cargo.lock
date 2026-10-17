@@ -68,6 +68,7 @@ dependencies = [
  "an-agent-spool",
  "reqwest",
  "serde_json",
+ "sha2",
  "thiserror",
  "uuid",
 ]
