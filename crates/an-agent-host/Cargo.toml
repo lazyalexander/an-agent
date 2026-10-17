@@ -12,6 +12,7 @@ workspace = true
 an-agent-core = { path = "../an-agent-core" }
 an-agent-spool = { path = "../an-agent-spool" }
 reqwest.workspace = true
+sha2.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
 uuid.workspace = true

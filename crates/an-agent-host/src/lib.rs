@@ -28,6 +28,7 @@
 //!
 //! [`applied`]: an_agent_core::control::AgentControl::applied
 
+pub mod execution;
 mod hooks;
 mod model;
 
