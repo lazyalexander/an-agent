@@ -157,10 +157,15 @@ config = { persona = "Aria" }
     host.control().set_model_client(model.clone());
 
     let id = host.control().open_thread(&card()).unwrap();
-    let scene = host
-        .control()
-        .note(id, "scene", "a traveler enters")
-        .unwrap();
+    use sha2::{Digest, Sha256};
+    let packet = serde_json::to_vec(&serde_json::json!({
+        "schema": "an-context-v1", "audience": id,
+        "source": "kit:test-receipt", "text": "a traveler enters",
+        "sha256": format!("{:x}", Sha256::digest(b"a traveler enters"))
+    }))
+    .unwrap();
+    assert!(an_agent_host::context_exchange::import(host.control(), Uuid::nil(), &packet).is_err());
+    let scene = an_agent_host::context_exchange::import(host.control(), id, &packet).unwrap();
     host.control()
         .push_event("scene", "a traveler enters")
         .unwrap();
@@ -182,6 +187,8 @@ config = { persona = "Aria" }
     assert!(calls[0][0].content.starts_with("you keep the tavern"));
     assert!(calls[0][0].content.contains("# Host"));
     assert!(calls[0][1].content.contains("a traveler enters"));
+    assert!(!calls[0][0].content.contains("a traveler enters"));
+    assert!(calls[0][1].content.contains("kit:test-receipt"));
     drop(calls);
 
     // The model call is taped as its own anchored pair, the spool note

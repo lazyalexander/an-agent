@@ -12,6 +12,7 @@
 //!   provider knobs (temperature, penalties), but `model` and `messages`
 //!   are written after it and cannot be shadowed by config.
 
+use std::io::Read;
 use std::time::Duration;
 
 use serde_json::{Map, Value, json};
@@ -24,8 +25,7 @@ use an_agent_core::principal::card::ModelSpec;
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 const CALL_TIMEOUT: Duration = Duration::from_secs(300);
 
-/// How much of an error response body reaches the error string.
-const ERROR_SNIPPET: usize = 512;
+const RESPONSE_LIMIT: u64 = 1024 * 1024;
 
 /// A blocking HTTP [`ModelClient`] for OpenAI-compatible endpoints
 /// (`POST {base_url}/chat/completions`). Bearer auth is the host's to
@@ -51,6 +51,8 @@ impl HttpModelClient {
         let client = reqwest::blocking::Client::builder()
             .connect_timeout(CONNECT_TIMEOUT)
             .timeout(CALL_TIMEOUT)
+            .redirect(reqwest::redirect::Policy::none())
+            .no_proxy()
             .build()
             .map_err(|e| format!("model client build: {e}"))?;
         Ok(Self { client, auth })
@@ -84,17 +86,24 @@ impl ModelClient for HttpModelClient {
         if let Some(key) = &self.auth {
             request = request.bearer_auth(key);
         }
-        let response = request.send().map_err(|e| format!("model call: {e}"))?;
+        let response = request
+            .send()
+            .map_err(|_| "model transport failed".to_string())?;
         let status = response.status();
-        let text = response
-            .text()
-            .map_err(|e| format!("model response unreadable: {e}"))?;
         if !status.is_success() {
-            let snippet: String = text.chars().take(ERROR_SNIPPET).collect();
-            return Err(format!("model http {status}: {snippet}"));
+            // Provider error bodies may echo credentials or private input.
+            return Err(format!("model http {status}"));
+        }
+        let mut text = Vec::new();
+        response
+            .take(RESPONSE_LIMIT + 1)
+            .read_to_end(&mut text)
+            .map_err(|_| "model response unreadable".to_string())?;
+        if text.len() as u64 > RESPONSE_LIMIT {
+            return Err("model response exceeds limit".into());
         }
         let value: Value =
-            serde_json::from_str(&text).map_err(|e| format!("model response not json: {e}"))?;
+            serde_json::from_slice(&text).map_err(|_| "model response not json".to_string())?;
         let content = value["choices"][0]["message"]["content"]
             .as_str()
             .ok_or_else(|| "model response carries no content".to_string())?;
