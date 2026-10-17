@@ -1,7 +1,10 @@
 //! A deliberately narrow native backend. No unsupported-platform fallback.
 use std::io::{Read, Write};
 use std::path::Path;
-use std::process::{Command, Stdio};
+use std::process::Stdio;
+
+mod macos;
+pub use macos::profile;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
@@ -17,34 +20,6 @@ pub struct Execution {
     pub code: Option<i32>,
     pub stdout: Vec<u8>,
     pub stderr: Vec<u8>,
-}
-
-fn quoted(path: &Path) -> Result<String> {
-    let text = path.to_str().ok_or("sandbox path must be UTF-8")?;
-    // SBPL string syntax must not be injectable through user directory names.
-    if text.chars().any(|c| c.is_control()) {
-        return Err("control characters in sandbox path".into());
-    }
-    Ok(format!(
-        "\"{}\"",
-        text.replace('\\', "\\\\").replace('"', "\\\"")
-    ))
-}
-
-pub fn profile(executable: &Path) -> Result<String> {
-    Ok(format!(
-        r#"(version 1)
-(deny default)
-(allow process-exec (literal {executable}))
-; dyld opens the root vnode. This is not recursive root read access.
-(allow file-read* (literal "/"))
-(allow file-read* (literal {executable}))
-(allow file-read* (subpath "/System/Library") (subpath "/usr/lib")
-    (literal "/dev/urandom") (literal "/dev/random"))
-(allow sysctl-read)
-"#,
-        executable = quoted(executable)?
-    ))
 }
 
 fn reader(mut pipe: impl Read, exceeded: Arc<AtomicBool>) -> std::io::Result<Vec<u8>> {
@@ -77,10 +52,7 @@ pub fn execute(
         return Err("input exceeds 8192 bytes".into());
     }
     let executable = executable.canonicalize()?;
-    let policy = profile(&executable)?;
-    let mut child = Command::new("/usr/bin/sandbox-exec")
-        .args(["-p", &policy])
-        .arg(&executable)
+    let mut child = macos::command(&executable)?
         .current_dir(cwd)
         .env_clear()
         .stdin(Stdio::piped())
@@ -142,6 +114,8 @@ pub fn execute(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(target_os = "macos")]
+    use std::process::Command;
 
     #[test]
     fn profile_is_deny_by_default_and_quotes_paths() -> Result<()> {
