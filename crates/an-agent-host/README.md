@@ -130,6 +130,10 @@ permits Seatbelt activation. Linux tests require native enforcement, never mock 
 
 ## Model and context boundary
 
+The [artifact-context exporter](CONTEXT-OUTPUT.md) turns one receipt-checked kit
+or model output into a bounded, provenance-linked context packet without changing
+the original artifact or calling a model. It reuses the existing context ABI.
+
 Use the host-owned `ModelConnection` and explicit `an-context-v1` packets for
 bounded text exchange. See [the contract](MODEL-CONTEXT.md) and
 [security layers and platform boundaries](SECURITY-LAYERS.md). These additions
