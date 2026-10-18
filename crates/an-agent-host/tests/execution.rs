@@ -1,4 +1,7 @@
 //! The host accepts a deployment made without Waver or a source analyzer.
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+#[path = "execution/lifecycle.rs"]
+mod lifecycle;
 use an_agent_host::execution::{self, Result};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -26,7 +29,7 @@ impl Fixture {
         let source = root.join("main.rs");
         fs::write(
             &source,
-            "use std::io::{self, Read}; fn main() { let mut s=String::new(); io::stdin().read_to_string(&mut s).unwrap(); if s.trim()==\"attempt-write\" { std::fs::write(\"forbidden.txt\", \"bad\").unwrap(); } print!(\"{}\", s.trim()); }",
+            "use std::io::{self, Read}; fn main() { let mut s=String::new(); io::stdin().read_to_string(&mut s).unwrap(); if s.trim()==\"hang\" { loop { std::thread::sleep(std::time::Duration::from_millis(10)); } } if s.trim()==\"attempt-write\" { std::fs::write(\"forbidden.txt\", \"bad\").unwrap(); } print!(\"{}\", s.trim()); }",
         )?;
         assert!(
             Command::new("rustc")
