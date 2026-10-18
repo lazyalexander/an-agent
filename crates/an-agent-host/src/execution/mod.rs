@@ -78,6 +78,23 @@ fn route(name: &str, spools: Vec<String>) -> EventRoute {
 /// `execute=true`; it does not grant arbitrary shell or filesystem authority.
 /// Stores must be private to the trusted host, not writable by callers or kits.
 pub fn run(root: &Path, release: &str, input_path: &Path, execute: bool) -> Result<Value> {
+    run_cancellable(
+        root,
+        release,
+        input_path,
+        execute,
+        &std::sync::atomic::AtomicBool::new(false),
+    )
+}
+
+/// Cancellation is host authority; it grants no additional capability to a kit.
+pub fn run_cancellable(
+    root: &Path,
+    release: &str,
+    input_path: &Path,
+    execute: bool,
+    cancelled: &std::sync::atomic::AtomicBool,
+) -> Result<Value> {
     if !valid_digest(release) {
         return Err("release must be a full SHA-256 digest".into());
     }
@@ -102,7 +119,13 @@ pub fn run(root: &Path, release: &str, input_path: &Path, execute: bool) -> Resu
     let run_id = Entropy::os().uuid_v4();
     let run_dir = root.join("runs").join(run_id.to_string());
     let executable = run_dir.join("program");
-    let plan = json!({"release":release,"command":["/usr/bin/sandbox-exec","-p",sandbox::profile(&executable)?,executable],"cwd":run_dir,"environment":{},"context":{"kind":"explicit-stdin","sha256":digest(&input),"bytes":input.len(),"trust":"caller-supplied-data"},"limits":{"input_bytes":8192,"output_bytes_per_stream":65536,"wall_seconds":5},"artifact_boundary":run_dir,"execute":execute,"supported":cfg!(target_os="macos")});
+    let mut plan = json!({"release":release,"cwd":run_dir,"environment":{},"context":{"kind":"explicit-stdin","sha256":digest(&input),"bytes":input.len(),"trust":"caller-supplied-data"},"limits":{"input_bytes":8192,"output_bytes_per_stream":65536,"wall_seconds":5},"artifact_boundary":run_dir,"execute":execute});
+    for (key, value) in sandbox::plan(&executable)?
+        .as_object()
+        .ok_or("invalid backend plan")?
+    {
+        plan[key] = value.clone();
+    }
     if !execute {
         return Ok(plan);
     }
@@ -177,14 +200,19 @@ pub fn run(root: &Path, release: &str, input_path: &Path, execute: bool) -> Resu
         use std::os::unix::fs::PermissionsExt;
         fs::set_permissions(&executable, fs::Permissions::from_mode(0o500))?;
     }
-    let (status, code, stdout, stderr) =
-        match sandbox::execute(&executable, &run_dir, &input, Duration::from_secs(5)) {
-            Ok(result) => (result.status, result.code, result.stdout, result.stderr),
-            Err(error) => ("refused", None, vec![], error.to_string().into_bytes()),
-        };
+    let (status, code, stdout, stderr) = match sandbox::execute(
+        &executable,
+        &run_dir,
+        &input,
+        Duration::from_secs(5),
+        cancelled,
+    ) {
+        Ok(result) => (result.status, result.code, result.stdout, result.stderr),
+        Err(error) => ("refused", None, vec![], error.to_string().into_bytes()),
+    };
     write_new(&run_dir.join("stdout.txt"), &stdout)?;
     write_new(&run_dir.join("stderr.txt"), &stderr)?;
-    let receipt = json!({"schema_version":1,"run_id":run_id,"release":release,"request_event":event.id,"execution_event":intent.id,"reply_tape_id":reply.tape_id,"status":status,"exit_code":code,"context":{"path":"input.txt","sha256":digest(&input),"trust":"caller-supplied-data"},"stdout":{"path":"stdout.txt","sha256":digest(&stdout)},"stderr":{"path":"stderr.txt","sha256":digest(&stderr)},"plan_sha256":digest(&serde_json::to_vec_pretty(&plan)?),"retention":"manual; no automatic cleanup","backend":"macos-seatbelt-stdio-v1","container":false});
+    let receipt = json!({"schema_version":1,"run_id":run_id,"release":release,"request_event":event.id,"execution_event":intent.id,"reply_tape_id":reply.tape_id,"status":status,"exit_code":code,"context":{"path":"input.txt","sha256":digest(&input),"trust":"caller-supplied-data"},"stdout":{"path":"stdout.txt","sha256":digest(&stdout)},"stderr":{"path":"stderr.txt","sha256":digest(&stderr)},"plan_sha256":digest(&serde_json::to_vec_pretty(&plan)?),"retention":"manual; no automatic cleanup","backend":plan["backend"],"container":false});
     write_new(
         &run_dir.join("receipt.json"),
         &serde_json::to_vec_pretty(&receipt)?,

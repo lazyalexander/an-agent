@@ -1,6 +1,8 @@
 //! macOS-specific Seatbelt policy and launch command; no Linux translation.
 use super::Result;
-use std::{path::Path, process::Command};
+use std::path::Path;
+#[cfg(target_os = "macos")]
+use std::process::Command;
 
 fn quoted(path: &Path) -> Result<String> {
     let text = path.to_str().ok_or("sandbox path must be UTF-8")?;
@@ -30,6 +32,7 @@ pub fn profile(executable: &Path) -> Result<String> {
     ))
 }
 
+#[cfg(target_os = "macos")]
 pub fn command(executable: &Path) -> Result<Command> {
     let policy = profile(executable)?;
     let mut command = Command::new("/usr/bin/sandbox-exec");

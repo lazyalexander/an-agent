@@ -145,7 +145,7 @@ fn actual_execution_retains_context_receipt_and_kernel_audit() -> Result<()> {
     );
     assert_eq!(receipt["release"], release);
     let audit = fs::read_to_string(folder.join("audit.json"))?;
-    if cfg!(target_os = "macos") {
+    if cfg!(any(target_os = "macos", target_os = "linux")) {
         assert_eq!(
             result["status"],
             "succeeded",
@@ -166,7 +166,7 @@ fn actual_execution_retains_context_receipt_and_kernel_audit() -> Result<()> {
 }
 
 #[test]
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 fn undeclared_effect_is_denied_and_failure_never_becomes_applied() -> Result<()> {
     let fixture = Fixture::new()?;
     let release = fixture.release()?;
