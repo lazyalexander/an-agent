@@ -32,6 +32,7 @@ pub mod artifact_context;
 mod connection;
 pub mod context_exchange;
 pub mod execution;
+pub mod file_job;
 mod hooks;
 mod model;
 pub mod model_run;

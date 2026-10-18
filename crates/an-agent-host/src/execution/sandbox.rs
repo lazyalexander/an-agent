@@ -8,7 +8,7 @@ use process::OwnedChild;
 #[cfg(target_os = "linux")]
 mod linux;
 #[cfg(any(not(target_os = "linux"), test))]
-mod macos;
+pub(crate) mod macos;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
@@ -99,9 +99,31 @@ pub fn execute(
         });
     }
     let mut launch = command(&executable)?;
+    launch.env_clear();
+    execute_command(launch, cwd, input, timeout, cancelled, false)
+}
+
+/// Host-built commands only. Policy and environment must already be installed.
+pub(crate) fn execute_command(
+    mut launch: std::process::Command,
+    cwd: &Path,
+    input: &[u8],
+    timeout: Duration,
+    cancelled: &AtomicBool,
+    group: bool,
+) -> Result<Execution> {
+    if cancelled.load(Ordering::Relaxed) {
+        return Ok(Execution {
+            status: "cancelled",
+            code: None,
+            stdout: vec![],
+            stderr: vec![],
+            pid: None,
+            reaped: false,
+        });
+    }
     launch
         .current_dir(cwd)
-        .env_clear()
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
@@ -114,7 +136,19 @@ pub fn execute(
     )]
     let start = Instant::now();
     thread::scope(|scope| {
-        let mut child = OwnedChild::new(launch.spawn()?);
+        #[cfg(target_os = "macos")]
+        let mut child = if group {
+            OwnedChild::group(launch.spawn()?)
+        } else {
+            OwnedChild::new(launch.spawn()?)
+        };
+        #[cfg(not(target_os = "macos"))]
+        let mut child = {
+            if group {
+                return Err("process-group jobs unsupported on this platform".into());
+            }
+            OwnedChild::new(launch.spawn()?)
+        };
         let pid = Some(child.child.id());
         let result = (|| -> Result<Execution> {
             let mut stdin = child.child.stdin.take().ok_or("missing stdin")?;
@@ -229,6 +263,42 @@ pub fn execute(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn compiler_group_timeout_and_cancel_use_the_existing_supervisor() -> Result<()> {
+        use std::os::unix::process::CommandExt;
+        for cancel in [false, true] {
+            let cancelled = AtomicBool::new(false);
+            thread::scope(|scope| -> Result<()> {
+                scope.spawn(|| {
+                    if cancel {
+                        thread::sleep(Duration::from_millis(150));
+                        cancelled.store(true, Ordering::Relaxed);
+                    }
+                });
+                let mut command = std::process::Command::new("/bin/sh");
+                command
+                    .args(["-c", "/bin/sleep 30 & wait"])
+                    .env_clear()
+                    .process_group(0);
+                let result = execute_command(
+                    command,
+                    Path::new("/"),
+                    b"",
+                    Duration::from_millis(300),
+                    &cancelled,
+                    true,
+                )?;
+                assert_eq!(
+                    result.status,
+                    if cancel { "cancelled" } else { "timed_out" }
+                );
+                assert_reaped(&result);
+                Ok(())
+            })?;
+        }
+        Ok(())
+    }
     #[cfg(any(target_os = "macos", target_os = "linux"))]
     use std::process::Command;
 

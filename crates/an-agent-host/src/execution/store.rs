@@ -111,33 +111,50 @@ pub(super) fn lock(root: &Path) -> Result<Lock> {
 pub(super) fn load(folder: &Path) -> Result<Deployment> {
     let yaml = String::from_utf8(read(&folder.join("spool.yaml"), 64 * 1024)?)?;
     let spec = spool::parse(&yaml)?;
+    let file = spec.config.get("profile").and_then(|v| v.as_str()) == Some("file-kit-v1");
     // A descriptor requests a capability; this host independently limits the
     // accepted ABI. Source analysis from the producer is never trusted here.
     if spec.constructor
         != (Constructor::Host {
-            name: "an-agent-stdio-v1".into(),
+            name: if file {
+                "an-agent-file-v1"
+            } else {
+                "an-agent-stdio-v1"
+            }
+            .into(),
         })
         || spec.sort != Sort::Beat
         || !spec.requires.is_empty()
         || spec.inverse != Inverse::Irreversible
         || spec.consumes != ["kit.request"]
         || spec.produces != ["kit.execute"]
-        || spec.effect.file != FileFacet::None
+        || spec.effect.file
+            != if file {
+                FileFacet::ReadWrite {
+                    path: "/work".into(),
+                    recursive: true,
+                }
+            } else {
+                FileFacet::None
+            }
         || spec.effect.memory != MemoryFacet::Ignore
         || spec.effect.net != Net::None
         || spec.effect.proc_ != Proc::Spawn
         || spec.effect.model != ModelFacet::None
         || spec.effect.flow != Flow::Both
-        || spec.config.get("profile").and_then(|v| v.as_str()) != Some("stdio-only-v1")
+        || !matches!(
+            spec.config.get("profile").and_then(|v| v.as_str()),
+            Some("stdio-only-v1" | "file-kit-v1")
+        )
     {
-        return Err("descriptor exceeds the supported host stdio contract".into());
+        return Err("descriptor exceeds the supported host CLI contract".into());
     }
     if spec
         .config
         .keys()
         .any(|key| !["profile", "executable_sha256", "source_sha256"].contains(&key.as_str()))
     {
-        return Err("unknown stdio configuration; no silent interpretation".into());
+        return Err("unknown CLI configuration; no silent interpretation".into());
     }
     let program = read(&folder.join("program"), 20 * 1024 * 1024)?;
     let expected = spec

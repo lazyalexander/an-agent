@@ -4,7 +4,7 @@ use std::path::Path;
 #[cfg(target_os = "macos")]
 use std::process::Command;
 
-fn quoted(path: &Path) -> Result<String> {
+pub(crate) fn quoted(path: &Path) -> Result<String> {
     let text = path.to_str().ok_or("sandbox path must be UTF-8")?;
     // SBPL string syntax must not be injectable through user directory names.
     if text.chars().any(|c| c.is_control()) {
