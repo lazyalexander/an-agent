@@ -61,8 +61,8 @@ SIGINT/SIGTERM registration ownership belongs to the CLI, not the host library.
 Registration guards remove successfully installed handlers on partial failure,
 normal return and unwind. Cancellation settles through normal receipt/audit and
 store-lock release. A later cancellation does not undo an already settled run.
-This covers the kit run command, not cancellation of the separate blocking HTTP
-model command.
+This covers the kit run command. For cancellation of the separate HTTP
+model command, see [model cancellation and deadlines](MODEL-CLI.md#cancellation-and-deadlines).
 
 ## Limits
 

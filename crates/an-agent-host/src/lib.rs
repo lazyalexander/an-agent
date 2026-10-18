@@ -38,7 +38,7 @@ pub mod model_run;
 
 pub use connection::ModelConnection;
 pub use hooks::HostHooks;
-pub use model::HttpModelClient;
+pub use model::{HttpModelClient, ModelCallControl};
 
 use std::collections::HashMap;
 use std::sync::Arc;

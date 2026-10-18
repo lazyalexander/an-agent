@@ -101,6 +101,59 @@ fn messages() -> Vec<ModelMessage> {
 
 const OK_BODY: &str = r#"{"choices":[{"message":{"role":"assistant","content":"welcome, traveler"}}],"usage":{"prompt_tokens":42,"completion_tokens":7}}"#;
 
+#[test]
+fn controlled_attempt_is_single_use_and_late_cancel_does_not_rewrite_success() {
+    use std::sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    };
+    let (url, received) = serve_once(200, OK_BODY);
+    let flag = Arc::new(AtomicBool::new(false));
+    let control =
+        an_agent_host::ModelCallControl::new(flag.clone(), std::time::Duration::from_secs(2))
+            .unwrap();
+    let client = HttpModelClient::new()
+        .unwrap()
+        .with_control(control.clone());
+    client.complete(&spec(&url), messages()).unwrap();
+    received.recv().unwrap();
+    flag.store(true, Ordering::SeqCst);
+    assert_eq!(control.status(), "succeeded");
+    assert!(
+        client
+            .complete(&spec(&url), messages())
+            .unwrap_err()
+            .contains("already used")
+    );
+    assert_eq!(control.status(), "succeeded");
+}
+
+#[test]
+fn uncontrolled_client_can_make_separate_explicit_calls() {
+    let client = HttpModelClient::new().unwrap();
+    for _ in 0..2 {
+        let (url, received) = serve_once(200, OK_BODY);
+        client.complete(&spec(&url), messages()).unwrap();
+        received.recv().unwrap();
+    }
+}
+
+#[test]
+fn async_runtime_misuse_returns_error_instead_of_panicking() {
+    let client = HttpModelClient::new().unwrap();
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .build()
+        .unwrap();
+    rt.block_on(async {
+        assert!(
+            client
+                .complete(&spec("http://127.0.0.1:1"), messages())
+                .unwrap_err()
+                .contains("blocking worker")
+        );
+    });
+}
+
 fn model_inputs(root: &std::path::Path, url: &str) -> (std::path::PathBuf, std::path::PathBuf) {
     use sha2::{Digest, Sha256};
     let root = root.canonicalize().unwrap();

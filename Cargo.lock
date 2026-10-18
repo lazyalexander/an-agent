@@ -75,6 +75,7 @@ dependencies = [
  "sha2",
  "signal-hook",
  "thiserror",
+ "tokio",
  "uuid",
 ]
 

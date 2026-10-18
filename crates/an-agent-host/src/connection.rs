@@ -12,6 +12,11 @@ pub struct ModelConnection {
 }
 
 impl ModelConnection {
+    /// The host owns cancellation and deadlines; the core only sees ModelClient.
+    pub fn with_control(mut self, control: crate::ModelCallControl) -> Self {
+        self.client = self.client.with_control(control);
+        self
+    }
     /// Credentials are supplied by the operator's secret resolver, never YAML.
     /// Plain HTTP is supported only for literal loopback development endpoints.
     pub fn new(spec: ModelSpec, bearer: Option<String>) -> Result<Self, String> {
