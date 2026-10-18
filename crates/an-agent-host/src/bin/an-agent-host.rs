@@ -30,6 +30,8 @@ fn supervised_run(
 
 fn run(args: Vec<String>) -> Result<()> {
     let result = match args.as_slice() {
+        [cmd, run, stream, audience, budget, output] if cmd == "context-export" =>
+            an_agent_host::artifact_context::export(Path::new(run), stream, uuid::Uuid::parse_str(audience)?, budget.parse()?, Path::new(output))?,
         [cmd, profile, packet, output] if cmd == "model" => an_agent_host::model_run::run(Path::new(profile), Path::new(packet), Path::new(output), None)?,
         [cmd, profile, packet, output, flag, digest] if cmd == "model" && flag == "--approve" => an_agent_host::model_run::run(Path::new(profile), Path::new(packet), Path::new(output), Some(digest))?,
         [cmd, audience, file] if cmd == "context-check" => {
@@ -43,7 +45,7 @@ fn run(args: Vec<String>) -> Result<()> {
         [cmd, folder, store] if cmd == "register" => execution::register(Path::new(folder), Path::new(store))?,
         [cmd, store, release, input] if cmd == "run" => supervised_run(store, release, input, false)?,
         [cmd, store, release, input, flag] if cmd == "run" && flag == "--execute" => supervised_run(store, release, input, true)?,
-        _ => return Err("usage: an-agent-host check DEPLOYMENT | register DEPLOYMENT STORE | run STORE RELEASE INPUT [--execute] | context-check THREAD PACKET | model PROFILE PACKET NEW_OUTPUT [--approve PLAN_SHA256]".into()),
+        _ => return Err("usage: an-agent-host check DEPLOYMENT | register DEPLOYMENT STORE | run STORE RELEASE INPUT [--execute] | context-check THREAD PACKET | context-export RUN stdout|stderr|model THREAD TEXT_BYTE_BUDGET NEW_OUTPUT | model PROFILE PACKET NEW_OUTPUT [--approve PLAN_SHA256]".into()),
     };
     println!("{}", serde_json::to_string(&result)?);
     if result

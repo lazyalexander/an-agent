@@ -54,6 +54,11 @@ cross-thread authorization service. The host must approve each import.
 
 ## Acceptance
 
+For large retained kit/model output, use the host's
+[bounded artifact-context export](CONTEXT-OUTPUT.md). The selection is explicit,
+receipt-checked and does not automatically import or send the packet. This keeps
+the original evidence separate from a smaller model-facing view.
+
 `tests/model_client.rs` runs an actual local HTTP fixture through AgentControl,
 a declared policy body, a bound credentialed connection and selected context.
 It verifies unrelated notes/events are not sent and the secret is absent from

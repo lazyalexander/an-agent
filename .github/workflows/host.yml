@@ -1,0 +1,26 @@
+name: Host acceptance
+
+on:
+  pull_request:
+    branches: [dev-advance, main]
+  push:
+    branches: [dev-advance]
+
+permissions:
+  contents: read
+
+jobs:
+  native-host:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - run: cargo fmt --all -- --check
+      - run: cargo test -p an-agent-host --locked
+      - run: cargo clippy -p an-agent-host --all-targets --locked -- -D warnings

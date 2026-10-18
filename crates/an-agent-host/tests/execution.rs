@@ -154,6 +154,20 @@ fn actual_execution_retains_context_receipt_and_kernel_audit() -> Result<()> {
         );
         assert_eq!(fs::read(folder.join("stdout.txt"))?, b"hello kit");
         assert!(audit.contains("applied"));
+        let selected = fixture.root.join("selected-context");
+        an_agent_host::artifact_context::export(
+            folder,
+            "stdout",
+            uuid::Uuid::nil(),
+            128,
+            &selected,
+        )?;
+        let packet = an_agent_host::context_exchange::ContextPacket::parse(
+            &fs::read(selected.join("context.json"))?,
+            uuid::Uuid::nil(),
+        )?;
+        assert_eq!(packet.text, "hello kit");
+        assert!(packet.source.starts_with("host-artifact:succeeded:"));
     } else {
         assert_eq!(result["status"], "refused");
         assert!(!audit.contains("\"applied\""));

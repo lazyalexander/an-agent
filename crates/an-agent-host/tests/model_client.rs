@@ -157,6 +157,58 @@ fn model_cli_previews_binds_approval_and_preserves_full_response() {
     let request = rx.recv().unwrap();
     assert_eq!(request.body["max_tokens"], 128);
     assert!(request.body.to_string().contains("selected data"));
+    // A full model artifact becomes a bounded explicit context, not implicit history.
+    let view = root.path().canonicalize().unwrap().join("context-view");
+    let exported = Command::new(env!("CARGO_BIN_EXE_an-agent-host"))
+        .arg("context-export")
+        .arg(&output)
+        .args(["model", "dddddddd-dddd-dddd-dddd-dddddddddddd", "1024"])
+        .arg(&view)
+        .output()
+        .unwrap();
+    assert!(
+        exported.status.success(),
+        "{}",
+        String::from_utf8_lossy(&exported.stderr)
+    );
+    let selected = std::fs::read(view.join("context.json")).unwrap();
+    let parsed = an_agent_host::context_exchange::ContextPacket::parse(
+        &selected,
+        uuid::Uuid::parse_str("dddddddd-dddd-dddd-dddd-dddddddddddd").unwrap(),
+    )
+    .unwrap();
+    assert!(parsed.text.len() <= 1024);
+    assert!(parsed.text.contains("source bytes omitted"));
+    assert_eq!(
+        std::fs::read_to_string(output.join("output.txt")).unwrap(),
+        content
+    );
+    let (next_url, next_rx) = serve_once(200, OK_BODY);
+    let next = root.path().canonicalize().unwrap().join("next");
+    std::fs::create_dir(&next).unwrap();
+    let (next_profile, _) = model_inputs(&next, &next_url);
+    let next_output = next.join("result");
+    let next_plan = an_agent_host::model_run::run(
+        &next_profile,
+        &view.join("context.json"),
+        &next_output,
+        None,
+    )
+    .unwrap();
+    assert!(next_rx.try_recv().is_err());
+    let next_result = an_agent_host::model_run::run(
+        &next_profile,
+        &view.join("context.json"),
+        &next_output,
+        next_plan["approval_sha256"].as_str(),
+    )
+    .unwrap();
+    assert_eq!(next_result["status"], "succeeded");
+    let next_request = next_rx.recv().unwrap();
+    let sent = next_request.body.to_string();
+    assert!(sent.contains("source bytes omitted"));
+    assert!(sent.contains("host-artifact:succeeded:"));
+    assert!(!sent.contains(&content));
     assert!(
         std::fs::read_to_string(output.join("audit.json"))
             .unwrap()
