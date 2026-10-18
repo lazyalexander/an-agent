@@ -130,3 +130,7 @@ Use the host-owned `ModelConnection` and explicit `an-context-v1` packets for
 bounded text exchange. See [the contract](MODEL-CONTEXT.md) and
 [security layers and platform boundaries](SECURITY-LAYERS.md). These additions
 do not give the stdio-only kit network access or expand core.
+
+The [model CLI](MODEL-CLI.md) adds preview-bound approval for one text request,
+retained output and audit evidence. [Linux container validation](LINUX-VALIDATION.md)
+is recorded separately from the still-unsupported Linux native kit backend.

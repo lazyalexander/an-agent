@@ -1,7 +1,7 @@
 //! Host-owned CLI execution: immutable deployment, bounded context, native
 //! sandbox, and receipts through real AgentControl admission. No Waver imports.
 mod sandbox;
-mod store;
+pub(crate) mod store;
 
 use an_agent_core::det_seam::Entropy;
 use an_agent_core::{
