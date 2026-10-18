@@ -28,10 +28,13 @@
 //!
 //! [`applied`]: an_agent_core::control::AgentControl::applied
 
+mod connection;
+pub mod context_exchange;
 pub mod execution;
 mod hooks;
 mod model;
 
+pub use connection::ModelConnection;
 pub use hooks::HostHooks;
 pub use model::HttpModelClient;
 

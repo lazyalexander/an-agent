@@ -123,3 +123,10 @@ construct deployments without Waver, reject wider permissions, mutation,
 symlinks, oversized context and version conflicts, and test actual Seatbelt
 denials, deadlines and output caps. macOS execution tests must run where the OS
 permits Seatbelt activation. Linux tests require refusal, never mock success.
+
+## Model and context boundary
+
+Use the host-owned `ModelConnection` and explicit `an-context-v1` packets for
+bounded text exchange. See [the contract](MODEL-CONTEXT.md) and
+[security layers and platform boundaries](SECURITY-LAYERS.md). These additions
+do not give the stdio-only kit network access or expand core.
