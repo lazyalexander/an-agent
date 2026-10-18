@@ -2,7 +2,8 @@
 
 This crate owns host-side effects, not kit business logic. The library's
 `execution::{check, register, run}` and `an-agent-host` CLI implement a narrow
-stdio capability. Core remains unchanged. `Host::pump` keeps its existing event
+stdio capability and a separate [bounded build/file profile](FILE-JOBS.md).
+Core remains unchanged. `Host::pump` keeps its existing event
 semantics; a fallible process is not executed inside its infallible text sink.
 
 ## Responsibility and dependency direction
@@ -68,7 +69,7 @@ HTTP deadlines, cancellation, retained context, and no-retry settlement.
 See [process lifecycle ownership](PROCESS-LIFECYCLE.md) for cancellation,
 deadline handling, scoped pipe cleanup, confirmed reaping and crash limitations.
 
-macOS Seatbelt denies writes, arbitrary file reads, networking and child process
+For the stdio profile, macOS Seatbelt denies writes, arbitrary file reads, networking and child process
 creation. Only the selected executable, OS runtime libraries, random devices,
 and necessary system metadata are accessible. The literal root directory is
 readable for dyld; this can expose root entry names, not subtree file contents.

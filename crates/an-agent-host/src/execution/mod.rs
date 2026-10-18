@@ -1,6 +1,6 @@
 //! Host-owned CLI execution: immutable deployment, bounded context, native
 //! sandbox, and receipts through real AgentControl admission. No Waver imports.
-mod sandbox;
+pub(crate) mod sandbox;
 pub(crate) mod store;
 
 use an_agent_core::det_seam::Entropy;
@@ -104,6 +104,7 @@ pub fn run_cancellable(
     no_links(&root.join("registry"))?;
     let deployment = load(&root.join("releases").join(release))?;
     let spec = deployment.spec;
+    let file = spec.config.get("profile").and_then(|v| v.as_str()) == Some("file-kit-v1");
     if spec.sha256 != release {
         return Err("release identity mismatch".into());
     }
@@ -120,11 +121,18 @@ pub fn run_cancellable(
     let run_dir = root.join("runs").join(run_id.to_string());
     let executable = run_dir.join("program");
     let mut plan = json!({"release":release,"cwd":run_dir,"environment":{},"context":{"kind":"explicit-stdin","sha256":digest(&input),"bytes":input.len(),"trust":"caller-supplied-data"},"limits":{"input_bytes":8192,"output_bytes_per_stream":65536,"wall_seconds":5},"artifact_boundary":run_dir,"execute":execute});
-    for (key, value) in sandbox::plan(&executable)?
-        .as_object()
-        .ok_or("invalid backend plan")?
-    {
+    let backend_plan = if file {
+        crate::file_job::file_plan(&executable, &run_dir.join("work"))?
+    } else {
+        sandbox::plan(&executable)?
+    };
+    for (key, value) in backend_plan.as_object().ok_or("invalid backend plan")? {
         plan[key] = value.clone();
+    }
+    if file {
+        plan["cwd"] = json!(run_dir.join("work"));
+        plan["context"]["kind"] = json!("explicit-file-snapshot");
+        plan["files"] = json!({"declaration_slot":"/work","bound_directory":run_dir.join("work"),"read":"work/input.txt","write":"work/output.txt","output_limit":65536,"other_writes":false});
     }
     if !execute {
         return Ok(plan);
@@ -200,13 +208,20 @@ pub fn run_cancellable(
         use std::os::unix::fs::PermissionsExt;
         fs::set_permissions(&executable, fs::Permissions::from_mode(0o500))?;
     }
-    let (status, code, stdout, stderr, pid, reaped) = match sandbox::execute(
-        &executable,
-        &run_dir,
-        &input,
-        Duration::from_secs(5),
-        cancelled,
-    ) {
+    let execution = if file {
+        directory(&run_dir.join("work"))?;
+        write_new(&run_dir.join("work/input.txt"), &input)?;
+        crate::file_job::execute_file(&executable, &run_dir.join("work"), cancelled)
+    } else {
+        sandbox::execute(
+            &executable,
+            &run_dir,
+            &input,
+            Duration::from_secs(5),
+            cancelled,
+        )
+    };
+    let (mut status, code, stdout, mut stderr, pid, reaped) = match execution {
         Ok(result) => (
             result.status,
             result.code,
@@ -224,9 +239,27 @@ pub fn run_cancellable(
             false,
         ),
     };
+    let mut artifact = Value::Null;
+    if file && status == "succeeded" {
+        match crate::file_job::regular(&run_dir.join("work/output.txt"), 65536) {
+            Ok(bytes) => {
+                write_new(&run_dir.join("artifact.txt"), &bytes)?;
+                artifact =
+                    json!({"path":"artifact.txt","sha256":digest(&bytes),"bytes":bytes.len()});
+            }
+            Err(error) => {
+                status = "failed";
+                stderr.extend_from_slice(format!("\nartifact rejected: {error}").as_bytes());
+            }
+        }
+    }
     write_new(&run_dir.join("stdout.txt"), &stdout)?;
     write_new(&run_dir.join("stderr.txt"), &stderr)?;
     let receipt = json!({"schema_version":1,"run_id":run_id,"release":release,"request_event":event.id,"execution_event":intent.id,"reply_tape_id":reply.tape_id,"status":status,"exit_code":code,"process":{"pid":pid,"reaped":reaped,"scope":"direct-child"},"context":{"path":"input.txt","sha256":digest(&input),"trust":"caller-supplied-data"},"stdout":{"path":"stdout.txt","sha256":digest(&stdout)},"stderr":{"path":"stderr.txt","sha256":digest(&stderr)},"plan_sha256":digest(&serde_json::to_vec_pretty(&plan)?),"retention":"manual; no automatic cleanup","backend":plan["backend"],"container":false});
+    let mut receipt = receipt;
+    if file {
+        receipt["artifact"] = artifact;
+    }
     write_new(
         &run_dir.join("receipt.json"),
         &serde_json::to_vec_pretty(&receipt)?,

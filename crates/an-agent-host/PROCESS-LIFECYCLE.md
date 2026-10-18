@@ -66,6 +66,12 @@ model command, see [model cancellation and deadlines](MODEL-CLI.md#cancellation-
 
 ## Limits
 
+The separate [bounded build recipe](FILE-JOBS.md) adds a macOS process-group scope
+for trusted compiler/linker children. It retains the leader until group cleanup
+and checks individual members when macOS denies the group signal, following the
+approach reviewed in [Codex process-group helpers](https://github.com/openai/codex/blob/2351d9e1b608e6f9d9a3699b71d7eb39ee41cfa4/codex-rs/utils/pty/src/process_group.rs).
+This does not grant subprocesses to stdio/file kits or tests.
+
 The stdio profile still denies process creation. This fixes direct-child
 ownership; it does not implement arbitrary descendant discovery or process-tree
 management. Allowing child processes in a future profile requires a new reviewed
