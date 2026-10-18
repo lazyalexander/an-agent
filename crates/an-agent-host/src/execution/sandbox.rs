@@ -3,14 +3,45 @@ use std::io::{Read, Write};
 use std::path::Path;
 use std::process::Stdio;
 
+#[cfg(target_os = "linux")]
+mod linux;
+#[cfg(any(not(target_os = "linux"), test))]
 mod macos;
-pub use macos::profile;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
 use std::time::{Duration, Instant};
 
 use super::Result;
+
+pub fn plan(executable: &Path) -> Result<serde_json::Value> {
+    #[cfg(target_os = "linux")]
+    {
+        Ok(linux::plan(executable))
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        Ok(
+            serde_json::json!({"backend":"macos-seatbelt-stdio-v1","command":["/usr/bin/sandbox-exec","-p",macos::profile(executable)?,executable],"supported":cfg!(target_os="macos")}),
+        )
+    }
+}
+
+fn command(executable: &Path) -> Result<std::process::Command> {
+    #[cfg(target_os = "linux")]
+    {
+        linux::command(executable)
+    }
+    #[cfg(target_os = "macos")]
+    {
+        macos::command(executable)
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+    {
+        let _ = executable;
+        Err("unsupported native sandbox".into())
+    }
+}
 
 pub const INPUT_LIMIT: usize = 8192;
 const OUTPUT_LIMIT: usize = 65536;
@@ -44,15 +75,21 @@ pub fn execute(
     cwd: &Path,
     input: &[u8],
     timeout: Duration,
+    cancelled: &AtomicBool,
 ) -> Result<Execution> {
-    if !cfg!(target_os = "macos") {
-        return Err("no supported sandbox backend; refusing native execution".into());
-    }
     if input.len() > INPUT_LIMIT {
         return Err("input exceeds 8192 bytes".into());
     }
     let executable = executable.canonicalize()?;
-    let mut child = macos::command(&executable)?
+    if cancelled.load(Ordering::Relaxed) {
+        return Ok(Execution {
+            status: "cancelled",
+            code: None,
+            stdout: vec![],
+            stderr: vec![],
+        });
+    }
+    let mut child = command(&executable)?
         .current_dir(cwd)
         .env_clear()
         .stdin(Stdio::piped())
@@ -78,6 +115,9 @@ pub fn execute(
     let start = Instant::now();
     let mut reason = None;
     let status = loop {
+        if cancelled.load(Ordering::Relaxed) {
+            reason = Some("cancelled");
+        }
         if exceeded.load(Ordering::Relaxed) {
             reason = Some("output_limit");
         }
@@ -88,7 +128,7 @@ pub fn execute(
             break status;
         }
         if reason.is_some() {
-            child.kill()?;
+            let _ = child.kill();
             break child.wait()?;
         }
         thread::sleep(Duration::from_millis(10));
@@ -114,23 +154,23 @@ pub fn execute(
 #[cfg(test)]
 mod tests {
     use super::*;
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
     use std::process::Command;
 
     #[test]
     fn profile_is_deny_by_default_and_quotes_paths() -> Result<()> {
-        let text = profile(Path::new("/tmp/a\"b"))?;
+        let text = macos::profile(Path::new("/tmp/a\"b"))?;
         assert!(text.contains("(deny default)"));
         assert!(!text.contains("allow network"));
         assert!(!text.contains("allow file-write"));
         assert!(!text.contains("allow process-fork"));
         assert!(text.contains("a\\\"b"));
-        assert!(profile(Path::new("/tmp/a\nb")).is_err());
+        assert!(macos::profile(Path::new("/tmp/a\nb")).is_err());
         Ok(())
     }
 
     #[test]
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
     fn actual_backend_denies_effects_and_bounds_output_and_time() -> Result<()> {
         let root = std::env::temp_dir().join(format!(
             "host-sandbox-{}",
@@ -152,6 +192,10 @@ mod tests {
         assert!(status.success());
         let secret = root.join("host-secret.txt");
         std::fs::write(&secret, b"test-only host data")?;
+        // Positive controls: the surrounding environment permits these effects.
+        assert_eq!(std::fs::read(&secret)?, b"test-only host data");
+        let listener = std::net::TcpListener::bind("127.0.0.1:0")?;
+        drop(listener);
         for input in [
             "write",
             "network",
@@ -159,7 +203,13 @@ mod tests {
             "env",
             secret.to_str().ok_or("bad path")?,
         ] {
-            let result = execute(&executable, &root, input.as_bytes(), Duration::from_secs(3))?;
+            let result = execute(
+                &executable,
+                &root,
+                input.as_bytes(),
+                Duration::from_secs(3),
+                &AtomicBool::new(false),
+            )?;
             assert_eq!(
                 result.status,
                 "succeeded",
@@ -170,12 +220,46 @@ mod tests {
         }
         assert!(!root.join("forbidden.txt").exists());
         assert_eq!(
-            execute(&executable, &root, b"hang", Duration::from_millis(150))?.status,
+            execute(
+                &executable,
+                &root,
+                b"hang",
+                Duration::from_millis(150),
+                &AtomicBool::new(false)
+            )?
+            .status,
             "timed_out"
         );
-        let flooded = execute(&executable, &root, b"flood", Duration::from_secs(3))?;
+        let flooded = execute(
+            &executable,
+            &root,
+            b"flood",
+            Duration::from_secs(3),
+            &AtomicBool::new(false),
+        )?;
         assert_eq!(flooded.status, "output_limit");
         assert!(flooded.stdout.len() <= OUTPUT_LIMIT);
+        let cancelled = AtomicBool::new(false);
+        thread::scope(|scope| -> Result<()> {
+            scope.spawn(|| {
+                thread::sleep(Duration::from_millis(150));
+                cancelled.store(true, Ordering::Relaxed);
+            });
+            assert_eq!(
+                execute(
+                    &executable,
+                    &root,
+                    b"hang",
+                    Duration::from_secs(3),
+                    &cancelled
+                )?
+                .status,
+                "cancelled"
+            );
+            Ok(())
+        })?;
+        // Child confinement must not restrict the parent.
+        assert_eq!(std::fs::read(&secret)?, b"test-only host data");
         std::fs::remove_dir_all(root)?;
         Ok(())
     }

@@ -11,7 +11,7 @@ boundary. No single prompt, shell classifier, or filesystem check is sufficient.
 | Operator/tool | Explicit run approval, narrow CLI, untrusted-output guidance | Prompts and external tool approval modes are not OS isolation |
 | Model connection | Host binds endpoint/model/options and keeps bearer secret | Trusted process; no provider proxy or namespace |
 | Context | Explicit destination, digest, bounded user-data clips | Attribution is claimed; prompt injection is not solved |
-| Process/files/network | Native backend, empty environment, fixed executable, deny-by-default | macOS-specific policy; no container or resource quota |
+| Process/files/network | Native backend, empty environment, fixed executable, deny-by-default | Platform-specific enforcement; Linux resource limits are not macOS guarantees |
 | Evidence/files | Private run artifacts, bounded streams, receipts and tape | Disk failure/crash may leave partial evidence; no global rollback |
 
 ## Platform boundary
@@ -19,9 +19,10 @@ boundary. No single prompt, shell classifier, or filesystem check is sufficient.
 Keep macOS SBPL quoting, dyld root-vnode exception and system-library allowlist
 inside the macOS backend. Common pipe draining, input/output limits, timeout and
 receipt logic must not encode those platform assumptions. Unsupported platforms
-refuse native execution; Linux CI tests refusal, not Linux containment.
+refuse native execution. Linux uses Landlock, seccomp and resource limits in the
+host backend; Docker is only an optional development environment.
 
-A future Linux/container backend must demonstrate read/write and network denial,
+The Linux backend must demonstrate read/write and network denial,
 process-tree termination, resource limits, protected supervisor state, credential
 non-disclosure and evidence retention on failure. Do not translate macOS path
 exceptions into Linux policy. Do not silently run unsandboxed on missing features.

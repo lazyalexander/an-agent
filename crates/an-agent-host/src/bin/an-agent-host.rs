@@ -2,6 +2,32 @@
 use an_agent_host::execution::{self, Result};
 use std::{path::Path, process::ExitCode};
 
+fn supervised_run(
+    store: &str,
+    release: &str,
+    input: &str,
+    execute: bool,
+) -> Result<serde_json::Value> {
+    let cancelled = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    #[cfg(unix)]
+    let signals = [signal_hook::consts::SIGINT, signal_hook::consts::SIGTERM]
+        .map(|signal| signal_hook::flag::register(signal, std::sync::Arc::clone(&cancelled)))
+        .into_iter()
+        .collect::<std::io::Result<Vec<_>>>()?;
+    let result = execution::run_cancellable(
+        Path::new(store),
+        release,
+        Path::new(input),
+        execute,
+        &cancelled,
+    );
+    #[cfg(unix)]
+    for id in signals {
+        signal_hook::low_level::unregister(id);
+    }
+    result
+}
+
 fn run(args: Vec<String>) -> Result<()> {
     let result = match args.as_slice() {
         [cmd, profile, packet, output] if cmd == "model" => an_agent_host::model_run::run(Path::new(profile), Path::new(packet), Path::new(output), None)?,
@@ -15,8 +41,8 @@ fn run(args: Vec<String>) -> Result<()> {
         }
         [cmd, folder] if cmd == "check" => execution::check(Path::new(folder))?,
         [cmd, folder, store] if cmd == "register" => execution::register(Path::new(folder), Path::new(store))?,
-        [cmd, store, release, input] if cmd == "run" => execution::run(Path::new(store), release, Path::new(input), false)?,
-        [cmd, store, release, input, flag] if cmd == "run" && flag == "--execute" => execution::run(Path::new(store), release, Path::new(input), true)?,
+        [cmd, store, release, input] if cmd == "run" => supervised_run(store, release, input, false)?,
+        [cmd, store, release, input, flag] if cmd == "run" && flag == "--execute" => supervised_run(store, release, input, true)?,
         _ => return Err("usage: an-agent-host check DEPLOYMENT | register DEPLOYMENT STORE | run STORE RELEASE INPUT [--execute] | context-check THREAD PACKET | model PROFILE PACKET NEW_OUTPUT [--approve PLAN_SHA256]".into()),
     };
     println!("{}", serde_json::to_string(&result)?);

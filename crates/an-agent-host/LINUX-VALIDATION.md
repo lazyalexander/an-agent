@@ -1,40 +1,53 @@
-# Linux compatibility validation
+# Native Linux execution
 
-An isolated Docker Desktop Linux/aarch64 run passed the host suite, including
-the text model CLI. The official Rust image was resolved to
-`rust@sha256:a24e292b4af7bdee351a31d3a6379972a5652f0ea22a1b6d6883324ac4f5097c`.
-The repository toolchain selected Rust 1.98.0. Only a disposable source snapshot
-and build directory were mounted; no credentials or Docker socket were mounted.
-Public dependency downloads were allowed during compilation.
+Linux is the deployment target. Docker may supply a disposable development
+environment on macOS; it is not a runtime backend, dependency, or Waver contract.
+The same host run command selects the native platform implementation.
 
-To reproduce, prepare an explicit source snapshot and an empty build directory,
-then mount only those directories. Replace the uppercase paths below with
-absolute paths selected by the operator (never a home directory or Docker socket):
+## Boundary
 
-```sh
-docker run --rm --cap-drop ALL --security-opt no-new-privileges \
-  --pids-limit 256 --memory 4g --cpus 4 \
-  --mount type=bind,source=SOURCE_SNAPSHOT,target=/src,readonly \
-  --mount type=bind,source=BUILD_DIRECTORY,target=/validation \
-  -w /src -e CARGO_HOME=/validation/cargo -e CARGO_TARGET_DIR=/validation/target \
-  rust@sha256:a24e292b4af7bdee351a31d3a6379972a5652f0ea22a1b6d6883324ac4f5097c \
-  cargo test -p an-agent-host --locked
-```
+The host applies Landlock ABI 3 with hard compatibility requirements, a seccomp
+syscall allowlist, no-new-privileges and resource limits. Missing enforcement
+refuses execution. The host must run as a non-root user.
 
-The 12 model-client/CLI tests then passed again from the compiled artifacts with
-network disabled, read-only root and artifact mounts, UID/GID 65534, all
-capabilities dropped, no-new-privileges, 64-process and 512 MiB limits, and a
-64 MiB noexec/nosuid temporary filesystem. Loopback HTTP fixtures still work in
-the isolated network namespace; external model access was not granted.
+Only the selected executable and standard runtime libraries are readable.
+Arbitrary workspace reads, writes, sockets, process creation, ptrace and mounts
+are denied. Environment variables are cleared. Descriptors above stdio become
+close-on-exec. Linux limits address space to 256 MiB, CPU to five seconds, open
+files to 64, regular-file output and core dumps to zero. Shared supervision
+bounds wall time and output and kills/reaps cancelled children. Linux also sets
+a parent-death signal. These Linux mechanisms do not imply equivalent macOS
+resource quotas.
 
-This is compatibility evidence, **not a shipped Linux spool sandbox**. Native
-kit execution on Linux still fails closed. The Docker build container was not
-used as a substitute for runtime admission. No platform-specific macOS exception
-was translated to Linux and no core code changed.
+All policy construction occurs before fork; the child installs prepared rules
+using raw OS calls. The host itself is not restricted by the child's policy.
+Ordinary dynamically linked Linux CLI programs are supported; static linking
+and container images are not required.
 
-Next Linux slice: an explicit host-selected container backend with immutable
-image identity, controlled mounts, no workload Docker socket, bounded output,
-process-tree cleanup on timeout/cancel, and negative filesystem/network tests.
-Evaluate a mature backend before adding one. Provider networking requires a
-separate authority from the offline kit. Keep container construction and platform
-readiness checks outside Waver and outside core.
+Landlock does not conceal all filesystem metadata. Standard runtime directories
+are readable. The private host store and same-user supervisor remain trusted.
+This is not a complete multi-user security boundary or arbitrary dependency
+mounting facility.
+
+## Validation
+
+Run cargo test -p an-agent-host --locked as a non-root Linux user with Landlock
+ABI 3 or newer. Compilation alone does not prove containment. An outer sandbox
+may prevent feature activation; refusal is correct, not a reason to weaken policy.
+
+The initial Linux/aarch64 execution integration suite passed all five tests in
+a disposable official Rust development image, using Rust 1.99.1. Tests ran as
+UID 65534. The outer Docker seccomp filter was disabled so it could not substitute
+for the host's native syscall policy. Successful execution, write denial,
+context retention, audit, registration and tamper rejection passed. This is
+initial evidence, not a completed security certification or real-provider test.
+
+The Waver cross-repository handoff also passed on Linux/aarch64: explicit
+context, approved model CLI call against a local HTTP fixture, matching model
+response/kit input digests, and native controlled kit execution. The same
+handoff passed on macOS. This does not claim a new live Kimi/Grok provider run.
+
+Policy construction reuses [landlock](https://docs.rs/landlock/0.4.7/landlock/)
+and [seccompiler](https://docs.rs/seccompiler/0.5.0/seccompiler/). Model networking
+remains an independently approved host operation; only explicit selected bytes
+enter the offline kit. Waver owns development and packaging, not Linux policy.

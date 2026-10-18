@@ -69,6 +69,9 @@ and necessary system metadata are accessible. The literal root directory is
 readable for dyld; this can expose root entry names, not subtree file contents.
 An empty environment, 8 KiB UTF-8 input, 64 KiB per output stream and five-second
 wall deadline bound one run. Output is drained concurrently with input delivery.
+Linux uses native Landlock filesystem restrictions, a seccomp syscall allowlist,
+and resource limits. It requires a non-root host and Landlock ABI 3 or newer;
+missing enforcement fails closed. No Docker daemon or image is required.
 Unsupported systems refuse execution, retaining a refusal receipt. There is no
 unrestricted fallback. Nested sandbox activation failure is a failed test, not
 a reason to disable the sandbox.
@@ -102,7 +105,8 @@ not authority. Native context isolation is tested with an outside-file probe.
 ## Limits, deliberately explicit
 
 This is an OS-like host responsibility boundary, **not a container manager**.
-There are no memory/CPU quotas, arbitrary native dependency mounts, multi-user
+Linux has per-process address-space and CPU limits; macOS does not yet have
+equivalent quotas. There are no arbitrary native dependency mounts, multi-user
 service protection, syscall-denial event telemetry, or guaranteed crash recovery.
 The store must be private and trusted; static symlink checks are not protection
 from hostile same-user concurrent renames. A lock serializes cooperating commands;
@@ -122,7 +126,7 @@ cleanup and container backends need their own concrete consumer and contract.
 construct deployments without Waver, reject wider permissions, mutation,
 symlinks, oversized context and version conflicts, and test actual Seatbelt
 denials, deadlines and output caps. macOS execution tests must run where the OS
-permits Seatbelt activation. Linux tests require refusal, never mock success.
+permits Seatbelt activation. Linux tests require native enforcement, never mock success.
 
 ## Model and context boundary
 
@@ -132,5 +136,5 @@ bounded text exchange. See [the contract](MODEL-CONTEXT.md) and
 do not give the stdio-only kit network access or expand core.
 
 The [model CLI](MODEL-CLI.md) adds preview-bound approval for one text request,
-retained output and audit evidence. [Linux container validation](LINUX-VALIDATION.md)
-is recorded separately from the still-unsupported Linux native kit backend.
+retained output and audit evidence. Linux native enforcement is independent of
+the optional Docker development environment.
