@@ -27,6 +27,12 @@ struct Profile {
     system_prompt: String,
     auth_env: Option<String>,
     max_tokens: u32,
+    #[serde(default = "default_timeout_ms")]
+    timeout_ms: u64,
+}
+
+fn default_timeout_ms() -> u64 {
+    300_000
 }
 
 impl Profile {
@@ -35,6 +41,8 @@ impl Profile {
             || self.system_prompt.len() > 4096
             || self.max_tokens == 0
             || self.max_tokens > 1024
+            || self.timeout_ms == 0
+            || self.timeout_ms > 300_000
             || self.auth_env.as_ref().is_some_and(|name| {
                 name.is_empty()
                     || name.len() > 128
@@ -78,6 +86,23 @@ pub fn run(
     output: &Path,
     approval: Option<&str>,
 ) -> Result<Value> {
+    run_cancellable(
+        profile_path,
+        packet_path,
+        output,
+        approval,
+        Arc::new(std::sync::atomic::AtomicBool::new(false)),
+    )
+}
+
+/// The caller owns the cancellation flag. Interruptions settle evidence without retry.
+pub fn run_cancellable(
+    profile_path: &Path,
+    packet_path: &Path,
+    output: &Path,
+    approval: Option<&str>,
+    cancelled: Arc<std::sync::atomic::AtomicBool>,
+) -> Result<Value> {
     let profile_bytes = store::read(profile_path, 16384)?;
     let profile: Profile = serde_json::from_slice(&profile_bytes)?;
     let spec = profile.spec()?;
@@ -96,7 +121,7 @@ pub fn run(
     let output = parent
         .canonicalize()?
         .join(output.file_name().ok_or("missing output name")?);
-    let plan = json!({"schema":"an-model-plan-v1", "profile_sha256":store::digest(&profile_bytes), "context_sha256":store::digest(&packet_bytes), "audience":packet.audience, "endpoint":spec.base_url, "model":spec.model, "max_tokens":profile.max_tokens, "auth_env":profile.auth_env, "output":output, "descriptor_sha256":store::digest(DESCRIPTOR.as_bytes()), "automatic_retries":0});
+    let plan = json!({"schema":"an-model-plan-v1", "profile_sha256":store::digest(&profile_bytes), "context_sha256":store::digest(&packet_bytes), "audience":packet.audience, "endpoint":spec.base_url, "model":spec.model, "max_tokens":profile.max_tokens, "timeout_ms":profile.timeout_ms, "auth_env":profile.auth_env, "output":output, "descriptor_sha256":store::digest(DESCRIPTOR.as_bytes()), "automatic_retries":0});
     let plan_bytes = serde_json::to_vec(&plan)?;
     let plan_sha = store::digest(&plan_bytes);
     let Some(approval) = approval else {
@@ -110,7 +135,11 @@ pub fn run(
         .as_ref()
         .map(|name| std::env::var(name).map_err(|_| "model credential is unavailable"))
         .transpose()?;
-    let connection = ModelConnection::new(spec.clone(), credential)?;
+    let call = crate::ModelCallControl::new(
+        cancelled,
+        std::time::Duration::from_millis(profile.timeout_ms),
+    )?;
+    let connection = ModelConnection::new(spec.clone(), credential)?.with_control(call.clone());
     // create_dir is exclusive, including concurrent executions of the same plan.
     #[cfg(unix)]
     {
@@ -135,7 +164,11 @@ pub fn run(
     let (status, detail) = match result {
         Ok(detail) => ("succeeded", detail),
         Err(_) => (
-            "failed",
+            match call.status() {
+                "cancelled" => "cancelled",
+                "timed_out" => "timed_out",
+                _ => "failed",
+            },
             json!({"reason":"model request did not complete; inspect audit; do not retry automatically"}),
         ),
     };
@@ -148,7 +181,12 @@ pub fn run(
         &serde_json::to_vec_pretty(&audit)?,
     )?;
     finished?;
-    let receipt = json!({"schema":"an-model-receipt-v1","status":status,"plan_sha256":plan_sha,"thread":packet.audience,"result":detail,"retention":"manual","retry":"new explicit approval required; remote request may already have executed"});
+    let remote_outcome = if call.status() == "succeeded" {
+        "response_received"
+    } else {
+        "unknown"
+    };
+    let receipt = json!({"schema":"an-model-receipt-v1","status":status,"model_attempt":call.status(),"remote_outcome":remote_outcome,"plan_sha256":plan_sha,"thread":packet.audience,"result":detail,"retention":"manual","retry":"new explicit approval required; remote request may already have executed"});
     store::write_new(
         &output.join("receipt.json"),
         &serde_json::to_vec_pretty(&receipt)?,

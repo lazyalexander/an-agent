@@ -63,6 +63,8 @@ must retain their own command approval policy.
 
 ## Actual enforcement and evidence
 
+See [model interruption](MODEL-CLI.md#cancellation-and-deadlines) for approved
+HTTP deadlines, cancellation, retained context, and no-retry settlement.
 See [process lifecycle ownership](PROCESS-LIFECYCLE.md) for cancellation,
 deadline handling, scoped pipe cleanup, confirmed reaping and crash limitations.
 

@@ -21,6 +21,20 @@ fn supervised_run(
     input: &str,
     execute: bool,
 ) -> Result<serde_json::Value> {
+    with_cancellation(|cancelled| {
+        execution::run_cancellable(
+            Path::new(store),
+            release,
+            Path::new(input),
+            execute,
+            &cancelled,
+        )
+    })
+}
+
+fn with_cancellation(
+    run: impl FnOnce(std::sync::Arc<std::sync::atomic::AtomicBool>) -> Result<serde_json::Value>,
+) -> Result<serde_json::Value> {
     let cancelled = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
     #[cfg(unix)]
     let mut signals = SignalRegistrations::default();
@@ -32,21 +46,15 @@ fn supervised_run(
             std::sync::Arc::clone(&cancelled),
         )?);
     }
-    execution::run_cancellable(
-        Path::new(store),
-        release,
-        Path::new(input),
-        execute,
-        &cancelled,
-    )
+    run(cancelled)
 }
 
 fn run(args: Vec<String>) -> Result<()> {
     let result = match args.as_slice() {
         [cmd, run, stream, audience, budget, output] if cmd == "context-export" =>
             an_agent_host::artifact_context::export(Path::new(run), stream, uuid::Uuid::parse_str(audience)?, budget.parse()?, Path::new(output))?,
-        [cmd, profile, packet, output] if cmd == "model" => an_agent_host::model_run::run(Path::new(profile), Path::new(packet), Path::new(output), None)?,
-        [cmd, profile, packet, output, flag, digest] if cmd == "model" && flag == "--approve" => an_agent_host::model_run::run(Path::new(profile), Path::new(packet), Path::new(output), Some(digest))?,
+        [cmd, profile, packet, output] if cmd == "model" => with_cancellation(|cancelled| an_agent_host::model_run::run_cancellable(Path::new(profile), Path::new(packet), Path::new(output), None, cancelled))?,
+        [cmd, profile, packet, output, flag, digest] if cmd == "model" && flag == "--approve" => with_cancellation(|cancelled| an_agent_host::model_run::run_cancellable(Path::new(profile), Path::new(packet), Path::new(output), Some(digest), cancelled))?,
         [cmd, audience, file] if cmd == "context-check" => {
             use std::io::Read;
             let mut bytes = Vec::new();
