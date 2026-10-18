@@ -8,6 +8,10 @@ semantics; a fallible process is not executed inside its infallible text sink.
 
 ## Responsibility and dependency direction
 
+See [the architecture boundary](ARCHITECTURE.md) for the separation of explicit
+dependency updates, optional attention policy and execution authority. Attention
+management remains a design boundary; no GNN or new core subsystem is introduced.
+
 ```text
 developer / code tool -> Waver -> deployment files
                                       |
@@ -139,6 +143,7 @@ permits Seatbelt activation. Linux tests require native enforcement, never mock 
 The [artifact-context exporter](CONTEXT-OUTPUT.md) turns one receipt-checked kit
 or model output into a bounded, provenance-linked context packet without changing
 the original artifact or calling a model. It reuses the existing context ABI.
+Select `artifact` for a file kit's accepted product, not its diagnostic stdout.
 
 Use the host-owned `ModelConnection` and explicit `an-context-v1` packets for
 bounded text exchange. See [the contract](MODEL-CONTEXT.md) and
