@@ -67,6 +67,9 @@ fn filter() -> Result<BpfProgram> {
     use libc::*;
     let calls = [
         SYS_read,
+        // x86_64 glibc reads ELF headers by offset while loading shared objects.
+        // Landlock still controls which files can be opened for this operation.
+        SYS_pread64,
         SYS_write,
         SYS_readv,
         SYS_writev,
