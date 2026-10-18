@@ -47,8 +47,8 @@ Do not use an infallible output sink to claim a fallible file write succeeded.
 
 `an-agent-host context-check THREAD PACKET` validates without importing, granting
 authority or calling a model. Waver's `context-packet` produces this wire format.
-The current CLI does **not** run model requests; actual use is through the host
-library. A digest binds bytes, not authorship, truth or confidence. Source labels
+The [one-shot model CLI](MODEL-CLI.md) now runs explicitly approved requests
+through this host library. A digest binds bytes, not authorship, truth or confidence. Source labels
 are claims. Re-import can create duplicate notes; there is no deduplication or
 cross-thread authorization service. The host must approve each import.
 
@@ -63,6 +63,6 @@ the imported context stays out of the system message and is cited by the action.
 Waver's pinned cross-repository test checks packet compatibility and audience
 rejection through the real CLI. These are not live vendor-model quality tests.
 
-Next: operator-controlled named profiles, explicit per-call spending controls,
-authenticated remote approval if needed, and a narrow model CLI workflow. Do
+Next: named profile management, stronger spending controls and authenticated
+remote approval if needed. Do
 not grant network/model access to the existing stdio-only kit profile to get it.

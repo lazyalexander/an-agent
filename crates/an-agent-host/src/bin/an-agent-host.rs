@@ -4,6 +4,8 @@ use std::{path::Path, process::ExitCode};
 
 fn run(args: Vec<String>) -> Result<()> {
     let result = match args.as_slice() {
+        [cmd, profile, packet, output] if cmd == "model" => an_agent_host::model_run::run(Path::new(profile), Path::new(packet), Path::new(output), None)?,
+        [cmd, profile, packet, output, flag, digest] if cmd == "model" && flag == "--approve" => an_agent_host::model_run::run(Path::new(profile), Path::new(packet), Path::new(output), Some(digest))?,
         [cmd, audience, file] if cmd == "context-check" => {
             use std::io::Read;
             let mut bytes = Vec::new();
@@ -15,7 +17,7 @@ fn run(args: Vec<String>) -> Result<()> {
         [cmd, folder, store] if cmd == "register" => execution::register(Path::new(folder), Path::new(store))?,
         [cmd, store, release, input] if cmd == "run" => execution::run(Path::new(store), release, Path::new(input), false)?,
         [cmd, store, release, input, flag] if cmd == "run" && flag == "--execute" => execution::run(Path::new(store), release, Path::new(input), true)?,
-        _ => return Err("usage: an-agent-host check DEPLOYMENT | register DEPLOYMENT STORE | run STORE RELEASE INPUT [--execute] | context-check THREAD PACKET".into()),
+        _ => return Err("usage: an-agent-host check DEPLOYMENT | register DEPLOYMENT STORE | run STORE RELEASE INPUT [--execute] | context-check THREAD PACKET | model PROFILE PACKET NEW_OUTPUT [--approve PLAN_SHA256]".into()),
     };
     println!("{}", serde_json::to_string(&result)?);
     if result

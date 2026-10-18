@@ -17,7 +17,7 @@ pub(super) struct Deployment {
     pub program: Vec<u8>,
 }
 
-pub(super) fn digest(bytes: &[u8]) -> String {
+pub(crate) fn digest(bytes: &[u8]) -> String {
     format!("{:x}", Sha256::digest(bytes))
 }
 
@@ -30,7 +30,7 @@ pub(super) fn valid_digest(value: &str) -> bool {
 
 // Store ownership is trusted: these checks reject static symlinks, not hostile
 // same-user concurrent rename attacks. Never expose the store to a kit.
-pub(super) fn no_links(path: &Path) -> Result<()> {
+pub(crate) fn no_links(path: &Path) -> Result<()> {
     let mut cursor = PathBuf::new();
     for part in path.components() {
         if matches!(part, Component::ParentDir) {
@@ -47,7 +47,7 @@ pub(super) fn no_links(path: &Path) -> Result<()> {
     Ok(())
 }
 
-pub(super) fn directory(path: &Path) -> Result<()> {
+pub(crate) fn directory(path: &Path) -> Result<()> {
     no_links(path)?;
     if !path.exists() {
         let mut builder = fs::DirBuilder::new();
@@ -64,7 +64,7 @@ pub(super) fn directory(path: &Path) -> Result<()> {
     Ok(())
 }
 
-pub(super) fn read(path: &Path, limit: usize) -> Result<Vec<u8>> {
+pub(crate) fn read(path: &Path, limit: usize) -> Result<Vec<u8>> {
     no_links(path)?;
     if !fs::metadata(path)?.is_file() {
         return Err("expected regular file".into());
@@ -79,7 +79,7 @@ pub(super) fn read(path: &Path, limit: usize) -> Result<Vec<u8>> {
     Ok(bytes)
 }
 
-pub(super) fn write_new(path: &Path, bytes: &[u8]) -> Result<()> {
+pub(crate) fn write_new(path: &Path, bytes: &[u8]) -> Result<()> {
     let mut options = OpenOptions::new();
     options.write(true).create_new(true);
     #[cfg(unix)]

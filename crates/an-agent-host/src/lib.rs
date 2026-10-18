@@ -33,6 +33,7 @@ pub mod context_exchange;
 pub mod execution;
 mod hooks;
 mod model;
+pub mod model_run;
 
 pub use connection::ModelConnection;
 pub use hooks::HostHooks;
