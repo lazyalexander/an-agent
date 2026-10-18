@@ -1,5 +1,6 @@
 //! Host-owned CLI execution: immutable deployment, bounded context, native
 //! sandbox, and receipts through real AgentControl admission. No Waver imports.
+pub mod container;
 mod sandbox;
 pub(crate) mod store;
 
@@ -78,6 +79,25 @@ fn route(name: &str, spools: Vec<String>) -> EventRoute {
 /// `execute=true`; it does not grant arbitrary shell or filesystem authority.
 /// Stores must be private to the trusted host, not writable by callers or kits.
 pub fn run(root: &Path, release: &str, input_path: &Path, execute: bool) -> Result<Value> {
+    run_with_container(
+        root,
+        release,
+        input_path,
+        execute,
+        None,
+        &std::sync::atomic::AtomicBool::new(false),
+    )
+}
+
+/// Container selection is trusted host configuration, never package authority.
+pub fn run_with_container(
+    root: &Path,
+    release: &str,
+    input_path: &Path,
+    execute: bool,
+    container: Option<&container::Profile>,
+    cancelled: &std::sync::atomic::AtomicBool,
+) -> Result<Value> {
     if !valid_digest(release) {
         return Err("release must be a full SHA-256 digest".into());
     }
@@ -102,7 +122,15 @@ pub fn run(root: &Path, release: &str, input_path: &Path, execute: bool) -> Resu
     let run_id = Entropy::os().uuid_v4();
     let run_dir = root.join("runs").join(run_id.to_string());
     let executable = run_dir.join("program");
-    let plan = json!({"release":release,"command":["/usr/bin/sandbox-exec","-p",sandbox::profile(&executable)?,executable],"cwd":run_dir,"environment":{},"context":{"kind":"explicit-stdin","sha256":digest(&input),"bytes":input.len(),"trust":"caller-supplied-data"},"limits":{"input_bytes":8192,"output_bytes_per_stream":65536,"wall_seconds":5},"artifact_boundary":run_dir,"execute":execute,"supported":cfg!(target_os="macos")});
+    let container_name = format!("an-agent-{run_id}");
+    let mut plan = json!({"release":release,"command":["/usr/bin/sandbox-exec","-p",sandbox::profile(&executable)?,executable],"cwd":run_dir,"environment":{},"context":{"kind":"explicit-stdin","sha256":digest(&input),"bytes":input.len(),"trust":"caller-supplied-data"},"limits":{"input_bytes":8192,"output_bytes_per_stream":65536,"wall_seconds":5},"artifact_boundary":run_dir,"execute":execute,"supported":cfg!(target_os="macos"),"backend":"macos-seatbelt-stdio-v1","container":false});
+    if let Some(profile) = container {
+        let details = profile.plan(&run_dir, &container_name)?;
+        for (key, value) in details.as_object().ok_or("invalid container plan")? {
+            plan[key] = value.clone();
+        }
+        plan["supported"] = json!(true);
+    }
     if !execute {
         return Ok(plan);
     }
@@ -175,16 +203,22 @@ pub fn run(root: &Path, release: &str, input_path: &Path, execute: bool) -> Resu
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        fs::set_permissions(&executable, fs::Permissions::from_mode(0o500))?;
+        fs::set_permissions(
+            &executable,
+            fs::Permissions::from_mode(if container.is_some() { 0o555 } else { 0o500 }),
+        )?;
     }
-    let (status, code, stdout, stderr) =
-        match sandbox::execute(&executable, &run_dir, &input, Duration::from_secs(5)) {
-            Ok(result) => (result.status, result.code, result.stdout, result.stderr),
-            Err(error) => ("refused", None, vec![], error.to_string().into_bytes()),
-        };
+    let (status, code, stdout, stderr) = match if let Some(profile) = container {
+        container::execute(profile, &run_dir, &container_name, &input, cancelled)
+    } else {
+        sandbox::execute(&executable, &run_dir, &input, Duration::from_secs(5))
+    } {
+        Ok(result) => (result.status, result.code, result.stdout, result.stderr),
+        Err(error) => ("refused", None, vec![], error.to_string().into_bytes()),
+    };
     write_new(&run_dir.join("stdout.txt"), &stdout)?;
     write_new(&run_dir.join("stderr.txt"), &stderr)?;
-    let receipt = json!({"schema_version":1,"run_id":run_id,"release":release,"request_event":event.id,"execution_event":intent.id,"reply_tape_id":reply.tape_id,"status":status,"exit_code":code,"context":{"path":"input.txt","sha256":digest(&input),"trust":"caller-supplied-data"},"stdout":{"path":"stdout.txt","sha256":digest(&stdout)},"stderr":{"path":"stderr.txt","sha256":digest(&stderr)},"plan_sha256":digest(&serde_json::to_vec_pretty(&plan)?),"retention":"manual; no automatic cleanup","backend":"macos-seatbelt-stdio-v1","container":false});
+    let receipt = json!({"schema_version":1,"run_id":run_id,"release":release,"request_event":event.id,"execution_event":intent.id,"reply_tape_id":reply.tape_id,"status":status,"exit_code":code,"context":{"path":"input.txt","sha256":digest(&input),"trust":"caller-supplied-data"},"stdout":{"path":"stdout.txt","sha256":digest(&stdout)},"stderr":{"path":"stderr.txt","sha256":digest(&stderr)},"plan_sha256":digest(&serde_json::to_vec_pretty(&plan)?),"retention":"manual; no automatic cleanup","backend":plan["backend"],"container":container.is_some(),"container_name":container.map(|_| &container_name),"image":container.map(|p| &p.image)});
     write_new(
         &run_dir.join("receipt.json"),
         &serde_json::to_vec_pretty(&receipt)?,

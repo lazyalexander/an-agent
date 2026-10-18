@@ -1,5 +1,9 @@
 # Linux compatibility validation
 
+This records the earlier compatibility-only baseline. The next slice adds the
+explicit [controlled container CLI](CONTAINER-CLI.md); unsupported native Linux
+execution still refuses rather than selecting a backend automatically.
+
 An isolated Docker Desktop Linux/aarch64 run passed the host suite, including
 the text model CLI. The official Rust image was resolved to
 `rust@sha256:a24e292b4af7bdee351a31d3a6379972a5652f0ea22a1b6d6883324ac4f5097c`.
@@ -27,7 +31,7 @@ capabilities dropped, no-new-privileges, 64-process and 512 MiB limits, and a
 64 MiB noexec/nosuid temporary filesystem. Loopback HTTP fixtures still work in
 the isolated network namespace; external model access was not granted.
 
-This is compatibility evidence, **not a shipped Linux spool sandbox**. Native
+The baseline below is compatibility evidence, **not a Linux spool sandbox**. Native
 kit execution on Linux still fails closed. The Docker build container was not
 used as a substitute for runtime admission. No platform-specific macOS exception
 was translated to Linux and no core code changed.

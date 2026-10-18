@@ -2,8 +2,39 @@
 use an_agent_host::execution::{self, Result};
 use std::{path::Path, process::ExitCode};
 
+fn container_run(
+    store: &str,
+    release: &str,
+    input: &str,
+    profile: &str,
+    execute: bool,
+) -> Result<serde_json::Value> {
+    let profile = execution::container::Profile::load(Path::new(profile))?;
+    let cancelled = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    #[cfg(unix)]
+    let signals = [signal_hook::consts::SIGINT, signal_hook::consts::SIGTERM]
+        .map(|signal| signal_hook::flag::register(signal, std::sync::Arc::clone(&cancelled)))
+        .into_iter()
+        .collect::<std::io::Result<Vec<_>>>()?;
+    let result = execution::run_with_container(
+        Path::new(store),
+        release,
+        Path::new(input),
+        execute,
+        Some(&profile),
+        &cancelled,
+    );
+    #[cfg(unix)]
+    for id in signals {
+        signal_hook::low_level::unregister(id);
+    }
+    result
+}
+
 fn run(args: Vec<String>) -> Result<()> {
     let result = match args.as_slice() {
+        [cmd, store, release, input, flag, profile] if cmd == "run" && flag == "--container" => container_run(store,release,input,profile,false)?,
+        [cmd, store, release, input, flag, profile, approve] if cmd == "run" && flag == "--container" && approve == "--execute" => container_run(store,release,input,profile,true)?,
         [cmd, profile, packet, output] if cmd == "model" => an_agent_host::model_run::run(Path::new(profile), Path::new(packet), Path::new(output), None)?,
         [cmd, profile, packet, output, flag, digest] if cmd == "model" && flag == "--approve" => an_agent_host::model_run::run(Path::new(profile), Path::new(packet), Path::new(output), Some(digest))?,
         [cmd, audience, file] if cmd == "context-check" => {
@@ -17,7 +48,7 @@ fn run(args: Vec<String>) -> Result<()> {
         [cmd, folder, store] if cmd == "register" => execution::register(Path::new(folder), Path::new(store))?,
         [cmd, store, release, input] if cmd == "run" => execution::run(Path::new(store), release, Path::new(input), false)?,
         [cmd, store, release, input, flag] if cmd == "run" && flag == "--execute" => execution::run(Path::new(store), release, Path::new(input), true)?,
-        _ => return Err("usage: an-agent-host check DEPLOYMENT | register DEPLOYMENT STORE | run STORE RELEASE INPUT [--execute] | context-check THREAD PACKET | model PROFILE PACKET NEW_OUTPUT [--approve PLAN_SHA256]".into()),
+        _ => return Err("usage: an-agent-host check DEPLOYMENT | register DEPLOYMENT STORE | run STORE RELEASE INPUT [--container PROFILE] [--execute] | context-check THREAD PACKET | model PROFILE PACKET NEW_OUTPUT [--approve PLAN_SHA256]".into()),
     };
     println!("{}", serde_json::to_string(&result)?);
     if result

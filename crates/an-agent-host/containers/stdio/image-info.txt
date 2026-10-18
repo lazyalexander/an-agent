@@ -1,0 +1,1 @@
+an-agent-host static Linux stdio runtime. No workload, shell, model or credentials.

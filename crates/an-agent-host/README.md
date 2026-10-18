@@ -69,9 +69,13 @@ and necessary system metadata are accessible. The literal root directory is
 readable for dyld; this can expose root entry names, not subtree file contents.
 An empty environment, 8 KiB UTF-8 input, 64 KiB per output stream and five-second
 wall deadline bound one run. Output is drained concurrently with input delivery.
-Unsupported systems refuse execution, retaining a refusal receipt. There is no
+Unsupported systems refuse native execution, retaining a refusal receipt. There is no
 unrestricted fallback. Nested sandbox activation failure is a failed test, not
 a reason to disable the sandbox.
+
+An explicitly selected [Linux Docker backend](CONTAINER-CLI.md) runs static CLI
+kits with a fixed local image, a read-only executable mount, no network, resource
+limits and a narrow seccomp policy. Model calls remain outside the kit container.
 
 The native shuttle only maps a request event to an intent. Actual core
 registration, described mounting, delivery, intent admission and tape recording
@@ -101,8 +105,9 @@ not authority. Native context isolation is tested with an outside-file probe.
 
 ## Limits, deliberately explicit
 
-This is an OS-like host responsibility boundary, **not a container manager**.
-There are no memory/CPU quotas, arbitrary native dependency mounts, multi-user
+This is an OS-like host responsibility boundary, not a general container manager.
+The Docker profile has memory/CPU quotas; the native profile does not. Neither
+provides arbitrary native dependency mounts, multi-user
 service protection, syscall-denial event telemetry, or guaranteed crash recovery.
 The store must be private and trusted; static symlink checks are not protection
 from hostile same-user concurrent renames. A lock serializes cooperating commands;
@@ -113,7 +118,7 @@ evidence by age or overwrite external documents. Retaining input and executable
 bytes supports investigation, not exact re-execution or recovery of the external
 world. The existing content-addressed workspace crate is not duplicated or
 silently wired into the recorder here. Broader versioning, reference-aware
-cleanup and container backends need their own concrete consumer and contract.
+cleanup need their own concrete consumer and contract.
 
 ## Acceptance
 
@@ -122,7 +127,8 @@ cleanup and container backends need their own concrete consumer and contract.
 construct deployments without Waver, reject wider permissions, mutation,
 symlinks, oversized context and version conflicts, and test actual Seatbelt
 denials, deadlines and output caps. macOS execution tests must run where the OS
-permits Seatbelt activation. Linux tests require refusal, never mock success.
+permits Seatbelt activation. Linux native tests require refusal, never mock success.
+Opt-in real Docker tests cover the independently selected container backend.
 
 ## Model and context boundary
 
@@ -133,4 +139,5 @@ do not give the stdio-only kit network access or expand core.
 
 The [model CLI](MODEL-CLI.md) adds preview-bound approval for one text request,
 retained output and audit evidence. [Linux container validation](LINUX-VALIDATION.md)
-is recorded separately from the still-unsupported Linux native kit backend.
+is recorded separately from the still-unsupported Linux native kit backend;
+[container execution](CONTAINER-CLI.md) adds an explicit alternative.

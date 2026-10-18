@@ -18,6 +18,9 @@ serde_json.workspace = true
 thiserror.workspace = true
 uuid.workspace = true
 
+[target.'cfg(unix)'.dependencies]
+signal-hook = "0.3"
+
 [dev-dependencies]
 an-agent-core = { path = "../an-agent-core", features = ["testkit"] }
 an-agent-spool = { path = "../an-agent-spool" }
