@@ -2,6 +2,19 @@
 use an_agent_host::execution::{self, Result};
 use std::{path::Path, process::ExitCode};
 
+#[cfg(unix)]
+#[derive(Default)]
+struct SignalRegistrations(Vec<signal_hook::SigId>);
+
+#[cfg(unix)]
+impl Drop for SignalRegistrations {
+    fn drop(&mut self) {
+        for id in self.0.drain(..) {
+            signal_hook::low_level::unregister(id);
+        }
+    }
+}
+
 fn supervised_run(
     store: &str,
     release: &str,
@@ -10,22 +23,22 @@ fn supervised_run(
 ) -> Result<serde_json::Value> {
     let cancelled = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
     #[cfg(unix)]
-    let signals = [signal_hook::consts::SIGINT, signal_hook::consts::SIGTERM]
-        .map(|signal| signal_hook::flag::register(signal, std::sync::Arc::clone(&cancelled)))
-        .into_iter()
-        .collect::<std::io::Result<Vec<_>>>()?;
-    let result = execution::run_cancellable(
+    let mut signals = SignalRegistrations::default();
+    #[cfg(unix)]
+    for signal in [signal_hook::consts::SIGINT, signal_hook::consts::SIGTERM] {
+        // Earlier registrations are also released if a later registration fails.
+        signals.0.push(signal_hook::flag::register(
+            signal,
+            std::sync::Arc::clone(&cancelled),
+        )?);
+    }
+    execution::run_cancellable(
         Path::new(store),
         release,
         Path::new(input),
         execute,
         &cancelled,
-    );
-    #[cfg(unix)]
-    for id in signals {
-        signal_hook::low_level::unregister(id);
-    }
-    result
+    )
 }
 
 fn run(args: Vec<String>) -> Result<()> {

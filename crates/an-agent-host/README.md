@@ -63,6 +63,9 @@ must retain their own command approval policy.
 
 ## Actual enforcement and evidence
 
+See [process lifecycle ownership](PROCESS-LIFECYCLE.md) for cancellation,
+deadline handling, scoped pipe cleanup, confirmed reaping and crash limitations.
+
 macOS Seatbelt denies writes, arbitrary file reads, networking and child process
 creation. Only the selected executable, OS runtime libraries, random devices,
 and necessary system metadata are accessible. The literal root directory is

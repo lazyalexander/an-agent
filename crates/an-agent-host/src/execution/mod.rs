@@ -200,19 +200,33 @@ pub fn run_cancellable(
         use std::os::unix::fs::PermissionsExt;
         fs::set_permissions(&executable, fs::Permissions::from_mode(0o500))?;
     }
-    let (status, code, stdout, stderr) = match sandbox::execute(
+    let (status, code, stdout, stderr, pid, reaped) = match sandbox::execute(
         &executable,
         &run_dir,
         &input,
         Duration::from_secs(5),
         cancelled,
     ) {
-        Ok(result) => (result.status, result.code, result.stdout, result.stderr),
-        Err(error) => ("refused", None, vec![], error.to_string().into_bytes()),
+        Ok(result) => (
+            result.status,
+            result.code,
+            result.stdout,
+            result.stderr,
+            result.pid,
+            result.reaped,
+        ),
+        Err(error) => (
+            "refused",
+            None,
+            vec![],
+            error.to_string().into_bytes(),
+            None,
+            false,
+        ),
     };
     write_new(&run_dir.join("stdout.txt"), &stdout)?;
     write_new(&run_dir.join("stderr.txt"), &stderr)?;
-    let receipt = json!({"schema_version":1,"run_id":run_id,"release":release,"request_event":event.id,"execution_event":intent.id,"reply_tape_id":reply.tape_id,"status":status,"exit_code":code,"context":{"path":"input.txt","sha256":digest(&input),"trust":"caller-supplied-data"},"stdout":{"path":"stdout.txt","sha256":digest(&stdout)},"stderr":{"path":"stderr.txt","sha256":digest(&stderr)},"plan_sha256":digest(&serde_json::to_vec_pretty(&plan)?),"retention":"manual; no automatic cleanup","backend":plan["backend"],"container":false});
+    let receipt = json!({"schema_version":1,"run_id":run_id,"release":release,"request_event":event.id,"execution_event":intent.id,"reply_tape_id":reply.tape_id,"status":status,"exit_code":code,"process":{"pid":pid,"reaped":reaped,"scope":"direct-child"},"context":{"path":"input.txt","sha256":digest(&input),"trust":"caller-supplied-data"},"stdout":{"path":"stdout.txt","sha256":digest(&stdout)},"stderr":{"path":"stderr.txt","sha256":digest(&stderr)},"plan_sha256":digest(&serde_json::to_vec_pretty(&plan)?),"retention":"manual; no automatic cleanup","backend":plan["backend"],"container":false});
     write_new(
         &run_dir.join("receipt.json"),
         &serde_json::to_vec_pretty(&receipt)?,
