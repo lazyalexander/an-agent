@@ -3,6 +3,8 @@
 This crate owns host-side effects, not kit business logic. The library's
 `execution::{check, register, run}` and `an-agent-host` CLI implement a narrow
 stdio capability and a separate [bounded build/file profile](FILE-JOBS.md).
+Fixed-file execution supports macOS and native Linux. The isolated Rust build
+recipe remains macOS-only; see [Linux file permissions](LINUX-VALIDATION.md#fixed-file-runtime).
 Core remains unchanged. `Host::pump` keeps its existing event
 semantics; a fallible process is not executed inside its infallible text sink.
 

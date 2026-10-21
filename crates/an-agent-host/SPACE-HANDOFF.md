@@ -61,7 +61,7 @@ package download or network access is needed by the kit.
 Build for the actual Linux guest architecture using an approved toolchain;
 never reuse the macOS binary as Linux acceptance evidence. Pin source, program,
 toolchain and resolved template identities. Reuse the business fixture, not the
-macOS-only file-job enforcement profile. The SPACE transport/profile must be
+native file-kit enforcement profile as SPACE evidence. The SPACE transport/profile must be
 qualified separately before it can become a supported host deployment.
 
 ## Ordered gates for the next implementation
