@@ -1,6 +1,6 @@
 //! The real model client: OpenAI-compatible chat completions over HTTP.
-//! Sync and blocking, like the trait it implements — the async world, if
-//! a host lives in one, wraps this in its own runtime.
+//! Synchronous at the core boundary, cancellable async HTTP inside the host.
+//! Async callers must use a blocking worker, not a runtime executor thread.
 //!
 //! Two honesty rules, both fail-loud:
 //!
@@ -12,6 +12,10 @@
 //!   provider knobs (temperature, penalties), but `model` and `messages`
 //!   are written after it and cannot be shadowed by config.
 
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, AtomicU8, Ordering},
+};
 use std::time::Duration;
 
 use serde_json::{Map, Value, json};
@@ -24,15 +28,49 @@ use an_agent_core::principal::card::ModelSpec;
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 const CALL_TIMEOUT: Duration = Duration::from_secs(300);
 
-/// How much of an error response body reaches the error string.
-const ERROR_SNIPPET: usize = 512;
+const RESPONSE_LIMIT: u64 = 1024 * 1024;
+
+/// One approved attempt. Clone to observe settlement; never reuse for retries.
+#[derive(Clone)]
+pub struct ModelCallControl {
+    cancelled: Arc<AtomicBool>,
+    timeout: Duration,
+    state: Arc<AtomicU8>,
+}
+
+impl ModelCallControl {
+    /// A caller-owned cancellation flag and a bounded whole-request deadline.
+    pub fn new(cancelled: Arc<AtomicBool>, timeout: Duration) -> Result<Self, String> {
+        if timeout.is_zero() || timeout > CALL_TIMEOUT {
+            return Err("model timeout must be in (0, 300 seconds]".into());
+        }
+        Ok(Self {
+            cancelled,
+            timeout,
+            state: Arc::new(AtomicU8::new(0)),
+        })
+    }
+
+    /// Actual local attempt settlement, not the current signal flag or remote state.
+    pub fn status(&self) -> &'static str {
+        match self.state.load(Ordering::SeqCst) {
+            0 => "not_started",
+            1 => "running",
+            2 => "succeeded",
+            3 => "cancelled",
+            4 => "timed_out",
+            _ => "failed",
+        }
+    }
+}
 
 /// A blocking HTTP [`ModelClient`] for OpenAI-compatible endpoints
 /// (`POST {base_url}/chat/completions`). Bearer auth is the host's to
 /// give — the key never lives on a card, so the tape never records it.
 pub struct HttpModelClient {
-    client: reqwest::blocking::Client,
+    client: reqwest::Client,
     auth: Option<String>,
+    control: Option<ModelCallControl>,
 }
 
 impl HttpModelClient {
@@ -48,17 +86,77 @@ impl HttpModelClient {
     }
 
     fn build(auth: Option<String>) -> Result<Self, String> {
-        let client = reqwest::blocking::Client::builder()
+        let client = reqwest::Client::builder()
             .connect_timeout(CONNECT_TIMEOUT)
-            .timeout(CALL_TIMEOUT)
+            .retry(reqwest::retry::never())
+            .pool_max_idle_per_host(0)
+            .redirect(reqwest::redirect::Policy::none())
+            .no_proxy()
             .build()
             .map_err(|e| format!("model client build: {e}"))?;
-        Ok(Self { client, auth })
+        Ok(Self {
+            client,
+            auth,
+            control: None,
+        })
+    }
+
+    /// Bind a single controlled attempt without changing core's synchronous trait.
+    pub fn with_control(mut self, control: ModelCallControl) -> Self {
+        self.control = Some(control);
+        self
     }
 }
 
 impl ModelClient for HttpModelClient {
     fn complete(
+        &self,
+        spec: &ModelSpec,
+        messages: Vec<ModelMessage>,
+    ) -> Result<Completion, String> {
+        if tokio::runtime::Handle::try_current().is_ok() {
+            return Err(
+                "synchronous model client requires a blocking worker outside the async runtime"
+                    .into(),
+            );
+        }
+        // Own the runtime and the future: interruption drops both before return.
+        // Never detach a blocking HTTP worker that keeps generating after cancellation.
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .map_err(|_| "model runtime unavailable".to_string())?;
+        let control = self.control.clone().unwrap_or(ModelCallControl::new(
+            Arc::new(AtomicBool::new(false)),
+            CALL_TIMEOUT,
+        )?);
+        control
+            .state
+            .compare_exchange(0, 1, Ordering::SeqCst, Ordering::SeqCst)
+            .map_err(|_| "model attempt already used; no automatic retry".to_string())?;
+        let (state, result) = runtime.block_on(async {
+            let cancelled = async {
+                loop {
+                    if control.cancelled.load(Ordering::SeqCst) { break; }
+                    tokio::time::sleep(Duration::from_millis(10)).await;
+                }
+            };
+            tokio::select! {
+                biased;
+                _ = cancelled => (3, Err("model request cancelled".into())),
+                _ = tokio::time::sleep(control.timeout) => (4, Err("model request timed out".into())),
+                result = self.request(spec, messages) => {
+                    (if result.is_ok() {2} else {5}, result)
+                }
+            }
+        });
+        control.state.store(state, Ordering::SeqCst);
+        result
+    }
+}
+
+impl HttpModelClient {
+    async fn request(
         &self,
         spec: &ModelSpec,
         messages: Vec<ModelMessage>,
@@ -84,17 +182,28 @@ impl ModelClient for HttpModelClient {
         if let Some(key) = &self.auth {
             request = request.bearer_auth(key);
         }
-        let response = request.send().map_err(|e| format!("model call: {e}"))?;
+        let mut response = request
+            .send()
+            .await
+            .map_err(|_| "model transport failed".to_string())?;
         let status = response.status();
-        let text = response
-            .text()
-            .map_err(|e| format!("model response unreadable: {e}"))?;
         if !status.is_success() {
-            let snippet: String = text.chars().take(ERROR_SNIPPET).collect();
-            return Err(format!("model http {status}: {snippet}"));
+            // Provider error bodies may echo credentials or private input.
+            return Err(format!("model http {status}"));
+        }
+        let mut text = Vec::new();
+        while let Some(chunk) = response
+            .chunk()
+            .await
+            .map_err(|_| "model response unreadable".to_string())?
+        {
+            if (text.len() + chunk.len()) as u64 > RESPONSE_LIMIT {
+                return Err("model response exceeds limit".into());
+            }
+            text.extend_from_slice(&chunk);
         }
         let value: Value =
-            serde_json::from_str(&text).map_err(|e| format!("model response not json: {e}"))?;
+            serde_json::from_slice(&text).map_err(|_| "model response not json".to_string())?;
         let content = value["choices"][0]["message"]["content"]
             .as_str()
             .ok_or_else(|| "model response carries no content".to_string())?;

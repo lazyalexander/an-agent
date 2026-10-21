@@ -16,13 +16,13 @@ This is an early-stage library and integration effort, not a finished creative a
 
 ## Current demonstration
 
-[![Mechanical ink animation](assets/demos/mechanical-ink.gif)](assets/demos/mechanical-ink.mp4)
+![Mechanical ink animation](assets/demos/mechanical-ink.gif)
 
-[Watch or download the video](assets/demos/mechanical-ink.mp4) · 12 seconds · 1080 × 810 · silent
+![Mechanical reference clip](assets/demos/mechanical-three-reference.gif)
 
 A mechanical drawing experiment separates prescribed mechanism motion from its drawing treatment. The geometry supplies the poses and visibility; an ink treatment follows those poses. The working artifacts include editable SVG and layered OpenRaster drawings. AI-generated bitmap references contribute surface appearance, not the mechanism's motion.
 
-This is an independent workflow prototype informing the framework's direction, not an end-to-end feature of the Rust kernel. The video shows four repetitions of one operating cycle, not an assembly sequence or a force simulation. It does not demonstrate automatic propagation of arbitrary painting edits, live CAD synchronization, or full recovery from the event log.
+This is an independent workflow prototype informing the framework's direction, not an end-to-end feature of the Rust kernel. The ink study shows four repetitions of one operating cycle, not an assembly sequence or a force simulation. The animation after it is a painted reference view of the same study. Neither demonstrates automatic propagation of arbitrary painting edits, live CAD synchronization, or full recovery from the event log.
 
 ## Architecture and current capabilities
 
@@ -33,6 +33,7 @@ The host application owns the workspace, user interaction, and execution of appl
 - **Semantic checks:** a separate crate represents claims, concrete attempts, version-bound grants, receipts, contract assessments, and dependency validity. It does not own business scheduling or user interaction. Trusted adapters determine what evidence and enforcement are actually available.
 - **Supervision:** operations requiring review can yield to a live supervisor. Approvals are bound to the exact operation and current authority; explicit denial or missing capabilities cannot be bypassed through approval. Changes to relevant live state invalidate affected reviews.
 - **Audit and limited recovery:** append-only tapes retain execution evidence, while session APIs support bounded recovery with required inputs available. Dependency checks can quarantine stale model results rather than treating them as current work.
+- **Bounded CLI hosting:** `an-agent-host` independently registers hash-bound deployments and runs an explicit stdio-only capability through admission, native macOS restrictions, and retained receipts. Development and packaging tools are not runtime dependencies. See [the host execution contract](crates/an-agent-host/README.md).
 
 Semantic assessment and execution enforcement are distinct. The host or supervising agent decides how to respond to findings; trusted execution boundaries enforce permissions. A declaration or a recorded receipt is not, by itself, an operating-system sandbox.
 

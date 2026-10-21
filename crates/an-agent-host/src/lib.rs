@@ -28,11 +28,18 @@
 //!
 //! [`applied`]: an_agent_core::control::AgentControl::applied
 
+pub mod artifact_context;
+mod connection;
+pub mod context_exchange;
+pub mod execution;
+pub mod file_job;
 mod hooks;
 mod model;
+pub mod model_run;
 
+pub use connection::ModelConnection;
 pub use hooks::HostHooks;
-pub use model::HttpModelClient;
+pub use model::{HttpModelClient, ModelCallControl};
 
 use std::collections::HashMap;
 use std::sync::Arc;

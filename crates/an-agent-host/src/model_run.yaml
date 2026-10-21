@@ -1,0 +1,19 @@
+v: 1
+kind: spool
+name: host-model
+version: 1.0.0
+summary: One explicitly selected text context and one host model request
+sort: policy
+constructor: host
+host: an-agent-text-model-v1
+effect:
+  net: none
+  file: { op: none }
+  proc: none
+  memory: { op: ignore }
+  model: { op: complete }
+  flow: none
+inverse: irreversible
+requires: []
+consumes: [model.request]
+produces: []
