@@ -171,6 +171,51 @@ fn actual_execution_retains_context_receipt_and_kernel_audit() -> Result<()> {
         )?;
         assert_eq!(packet.text, "hello kit");
         assert!(packet.source.starts_with("host-artifact:succeeded:"));
+        // Selection alone must not run a downstream kit. The caller explicitly
+        // validates the audience and chooses the selected bytes as new input.
+        assert_eq!(fs::read_dir(fixture.store.join("runs"))?.count(), 1);
+        let packet_bytes = fs::read(selected.join("context.json"))?;
+        assert!(
+            an_agent_host::context_exchange::ContextPacket::parse(
+                &packet_bytes,
+                uuid::Uuid::from_u128(1),
+            )
+            .is_err()
+        );
+        let next_input = fixture.root.join("next-input.txt");
+        fs::write(&next_input, packet.text.as_bytes())?;
+        let next = execution::run(&fixture.store, &release, &next_input, true)?;
+        assert_eq!(next["status"], "succeeded");
+        let next_receipt = Path::new(next["receipt"].as_str().ok_or("missing receipt")?);
+        let received: Value = serde_json::from_slice(&fs::read(next_receipt)?)?;
+        assert_eq!(
+            received["context"]["sha256"],
+            format!("{:x}", Sha256::digest(packet.text.as_bytes()))
+        );
+        assert_ne!(result["receipt"], next["receipt"]);
+        assert_eq!(
+            fs::read(
+                next_receipt
+                    .parent()
+                    .ok_or("missing run")?
+                    .join("stdout.txt")
+            )?,
+            b"hello kit"
+        );
+        // A modified retained output cannot produce a fresh context packet.
+        fs::write(folder.join("stdout.txt"), b"tampered")?;
+        let rejected = fixture.root.join("rejected-context");
+        assert!(
+            an_agent_host::artifact_context::export(
+                folder,
+                "stdout",
+                uuid::Uuid::nil(),
+                128,
+                &rejected
+            )
+            .is_err()
+        );
+        assert!(!rejected.exists());
     } else {
         assert_eq!(result["status"], "refused");
         assert!(!audit.contains("\"applied\""));

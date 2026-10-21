@@ -76,6 +76,11 @@ must retain their own command approval policy.
 
 ## Actual enforcement and evidence
 
+See [native ARM Linux VM validation](ARM-LINUX-VALIDATION.md) for an isolated
+developer VM recipe and explicit stdio output/context handoff. This validates
+the existing native Linux policy, not a new VM execution backend, Linux file-kit
+support or SPACE deployment.
+
 See [model interruption](MODEL-CLI.md#cancellation-and-deadlines) for approved
 HTTP deadlines, cancellation, retained context, and no-retry settlement.
 See [process lifecycle ownership](PROCESS-LIFECYCLE.md) for cancellation,
