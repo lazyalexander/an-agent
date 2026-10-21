@@ -31,6 +31,10 @@ mounting facility.
 
 ## Validation
 
+The [ARM Linux VM recipe](ARM-LINUX-VALIDATION.md) provides a separate native
+guest validation path without Docker, host directory sharing or SPACE changes.
+It uses the existing stdio profile; Linux file-kit/build support remains deferred.
+
 Run cargo test -p an-agent-host --locked as a non-root Linux user with Landlock
 ABI 3 or newer. Compilation alone does not prove containment. An outer sandbox
 may prevent feature activation; refusal is correct, not a reason to weaken policy.
