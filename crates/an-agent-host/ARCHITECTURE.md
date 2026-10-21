@@ -4,16 +4,73 @@ Status: execution and artifact handoff are implemented in the bounded profiles
 linked below. Attention management is a design boundary, not a new runtime
 service, graph schema, scheduler, or GNN dependency.
 
+## Workflow package direction
+
+A spool is intended to be a reusable workflow package: stages, CLI-first kits,
+configuration, documentation, dependencies and requested capabilities. A shuttle
+is an independently deployed application adapter, not a mandatory component of
+every spool. The current embedded-body descriptor and registration contracts
+remain unchanged; general multi-stage execution and remote VM execution are not
+implemented by this document.
+
+Keep package identity, run identity and stage-attempt identity separate. A run
+binds immutable package/input identities and an approved policy. A stage consumes
+scoped context references and accepted upstream artifacts; it produces a report,
+context changes and candidate artifacts. The host validates and accepts those
+outputs before making them downstream inputs. Failure, cancellation and unknown
+outcomes are first-class results, not implicit permission to retry.
+
+Context changes cannot grant capabilities or promote untrusted text into system
+instructions. Connection declarations reference host-owned profiles; packages
+must not carry live credentials. Reports and model claims are evidence to assess,
+not authenticated proof of execution or domain correctness.
+
+## Permission and scheduling boundaries
+
+The model agent and spool payload are untrusted. The host authorization service,
+execution enforcement and application-side capability gate are trusted computing
+components. A supervising model may propose a plan or ask an operator for a
+grant; it cannot edit policy or authorize itself.
+
+The host owns workflow dependencies, admission, context disclosure, budgets,
+artifact acceptance and retention decisions. SPACE (or another qualified backend)
+owns placement, VM lifecycle, actual process termination and enforced resource,
+filesystem and network restrictions. Do not move SPACE controllers into an-agent
+or maintain a competing VM state machine. Record requested cancellation separately
+from confirmed termination; a disconnected stream is not proof of completion.
+
+Required backend capabilities are admission requirements. Unsupported or unknown
+isolation must fail closed, never fall back to an unrestricted local shell.
+macOS and Linux adapters need separate acceptance evidence; snapshots are not
+assumed portable between them. See [SPACE handoff preparation](SPACE-HANDOFF.md).
+
+Shuttles accept bounded application operations, recheck grants and object
+revisions at application time, and return actual-effect receipts. They must not
+expose arbitrary host execution as a shortcut around the VM. Receiving an artifact
+does not authorize applying it to a user document. A VM snapshot cannot roll back
+an external application, sent message or model request.
+
+Fixed-kit execution and code-generation execution are separate proposed profiles.
+The former binds reviewed entrypoints and dependencies and avoids general-purpose
+interpreter/plugin entrypoints; the latter permits development only inside an
+explicitly authorized sandbox. Neither may self-register or publish a new release,
+alter trusted policy, acquire production credentials or expand shuttle access.
+Writing code-shaped text is not a reliable security boundary: `noexec`, removal
+of a compiler and denial of child processes do not prevent all interpreted code.
+Static checks are bounded evidence; restrictions still apply to generated code.
+These profiles are requirements, not newly implemented runtime modes.
+
 ## Ownership
 
 | Component | Responsibility |
 | --- | --- |
 | Waver | Developer scaffolds, code-tool briefs, source checks, declarations, portable package evidence and delivery |
-| Shuttle | Application-native events and translation between application objects and kit inputs/results |
-| Spool / kit | Developer-owned domain computation and optional assistance/context-selection policy |
+| Shuttle | Application-native events, narrowly authorized operations, revision checks and actual-effect receipts |
+| Spool | Workflow definition, stage contracts, dependencies and requested capabilities; no self-grants |
+| Kit | Developer-owned computation and intermediate artifacts, normally through a CLI |
 | an-agent host | Concrete execution policy, model connections, scoped context exchange, process lifecycle, audit and artifact reception |
 | Core | Existing admission and causal recording contracts; no application-specific attention model or packaging implementation |
-| OS backend | Enforced process, filesystem and network restrictions; unsupported profiles fail closed |
+| Execution backend | VM/process lifecycle and enforced resource, filesystem and network restrictions; unsupported profiles fail closed |
 
 Waver and the host exchange explicit files and CLI results, not implementation
 dependencies. Package checks cannot grant execution rights. The runtime does
