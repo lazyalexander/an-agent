@@ -1,18 +1,28 @@
-# Native ARM Linux VM acceptance
+# Native Linux acceptance and optional ARM development VM
 
 This is a developer validation environment, not a SPACE adapter, production
 microVM profile or multi-tenant security certification. The native host enforces
 Landlock/seccomp inside the Linux guest. Lima supplies an ordinary Linux machine;
 it is not a runtime dependency or part of spool declarations.
 
-## Reproduce the environment
+## Native Linux first
+
+The host runs directly on a supported Linux kernel as a non-root user. Its
+Landlock/seccomp backend does not invoke or depend on Lima, Docker or a VM
+manager. Run the tests below on a native Linux machine without installing any
+of those tools. A Mac developer may use the optional environment below to
+exercise the same Linux binaries; VM provisioning is repository infrastructure,
+not an execution backend or part of the host crate.
+
+## Optional Mac developer environment
 
 On an Apple silicon Mac with a supported Virtualization.framework, install Lima
-explicitly, review [the VM configuration](validation/arm-linux.yaml), then run:
+explicitly, review [the VM configuration](../../infra/dev/lima/arm-linux.yaml),
+then run from the repository root:
 
 ```sh
-limactl validate crates/an-agent-host/validation/arm-linux.yaml
-limactl start --tty=false --name=an-agent-arm-validation crates/an-agent-host/validation/arm-linux.yaml
+limactl validate infra/dev/lima/arm-linux.yaml
+limactl start --tty=false --name=an-agent-arm-validation infra/dev/lima/arm-linux.yaml
 limactl shell --workdir=/home/runner an-agent-arm-validation uname -srmo
 ```
 
@@ -64,9 +74,10 @@ anything. Existing containment/lifecycle tests cover denied operations, timeouts
 cancellation and process reaping. Never skip or weaken a failing sandbox test.
 
 Waver's cross-repository model exchange uses a local HTTP fixture, not a live
-provider or model quality benchmark. The host's Linux file-profile test checks refusal:
-Linux file-kit/build execution remains unsupported. A green suite must not be
-reported as acceptance of that unsupported profile.
+provider or model quality benchmark. Native Linux supports the bounded fixed-file
+kit profile; see [file-kit acceptance](../../crates/an-agent-host/LINUX-VALIDATION.md).
+Isolated source-build execution remains unsupported on Linux. Do not confuse
+file-kit runtime acceptance with build isolation or SPACE acceptance.
 
 ## Retained CLI handoff
 
@@ -111,7 +122,10 @@ not host paths, machine names, credentials or private raw logs.
 SPACE's Linux/x86_64 KVM path remains a separate acceptance target. Successful
 ARM Linux testing neither qualifies that deployment nor requires modifying SPACE.
 
-## Recorded acceptance: 2026-10-22
+## Historical stdio acceptance: 2026-10-22
+
+This record predates fixed-file runtime support. Preserve its scope; current
+file-kit evidence is recorded separately in the link above.
 
 Validated host source: `b7ef851b3a847495ffe7e882c2cee71d5eb4c0f0`.
 Waver source: `5a25caceb90fa3e94b2d2b6c1c30507e438211ec`.

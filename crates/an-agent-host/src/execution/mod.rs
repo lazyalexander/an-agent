@@ -225,6 +225,10 @@ pub fn run_cancellable(
             cancelled,
         )
     };
+    let refusal = execution
+        .as_ref()
+        .err()
+        .map(|error| sandbox::refusal_evidence(error.as_ref()));
     let (mut status, code, stdout, mut stderr, pid, reaped) = match execution {
         Ok(result) => (
             result.status,
@@ -266,6 +270,9 @@ pub fn run_cancellable(
     write_new(&run_dir.join("stderr.txt"), &stderr)?;
     let receipt = json!({"schema_version":1,"run_id":run_id,"release":release,"request_event":event.id,"execution_event":intent.id,"reply_tape_id":reply.tape_id,"status":status,"exit_code":code,"process":{"pid":pid,"reaped":reaped,"scope":"direct-child"},"context":{"path":"input.txt","sha256":digest(&input),"trust":"caller-supplied-data"},"stdout":{"path":"stdout.txt","sha256":digest(&stdout)},"stderr":{"path":"stderr.txt","sha256":digest(&stderr)},"plan_sha256":digest(&serde_json::to_vec_pretty(&plan)?),"retention":"manual; no automatic cleanup","backend":plan["backend"],"container":false});
     let mut receipt = receipt;
+    if let Some(error) = refusal {
+        receipt["error"] = error;
+    }
     if file {
         receipt["artifact"] = artifact;
     }

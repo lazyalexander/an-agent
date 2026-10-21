@@ -78,15 +78,19 @@ must retain their own command approval policy.
 
 ## Actual enforcement and evidence
 
-See [native ARM Linux VM validation](ARM-LINUX-VALIDATION.md) for an isolated
-developer VM recipe and explicit stdio output/context handoff. This validates
-the existing native Linux policy, not a new VM execution backend, Linux file-kit
-support or SPACE deployment.
+See [native Linux validation](../../infra/validation/native-linux.md) for an isolated
+developer VM recipe and explicit stdio output/context handoff. Fixed-file runtime
+acceptance is recorded separately in [Linux validation](LINUX-VALIDATION.md).
+Neither is a new VM execution backend or SPACE deployment.
 
 See [model interruption](MODEL-CLI.md#cancellation-and-deadlines) for approved
 HTTP deadlines, cancellation, retained context, and no-retry settlement.
 See [process lifecycle ownership](PROCESS-LIFECYCLE.md) for cancellation,
 deadline handling, scoped pipe cleanup, confirmed reaping and crash limitations.
+See [CLI restart diagnosis](../../infra/validation/cli-restart.md) for the
+inherited-writer regression and required CI gates. Refusal receipts include
+additive `error` evidence (stage, optional OS code, I/O kind and no-retry flag);
+the standard process API cannot distinguish spawn from pre-exec policy failure.
 
 For the stdio profile, macOS Seatbelt denies writes, arbitrary file reads, networking and child process
 creation. Only the selected executable, OS runtime libraries, random devices,

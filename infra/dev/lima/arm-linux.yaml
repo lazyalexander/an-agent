@@ -1,4 +1,4 @@
-# Developer acceptance VM, not a production sandbox or SPACE deployment.
+# Optional developer machine, not a host runtime dependency or SPACE deployment.
 minimumLimaVersion: 2.2.1
 vmType: vz
 arch: aarch64
