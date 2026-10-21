@@ -64,7 +64,7 @@ anything. Existing containment/lifecycle tests cover denied operations, timeouts
 cancellation and process reaping. Never skip or weaken a failing sandbox test.
 
 Waver's cross-repository model exchange uses a local HTTP fixture, not a live
-provider or model quality benchmark. Its Linux file-job test is a refusal test:
+provider or model quality benchmark. The host's Linux file-profile test checks refusal:
 Linux file-kit/build execution remains unsupported. A green suite must not be
 reported as acceptance of that unsupported profile.
 
