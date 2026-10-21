@@ -79,10 +79,23 @@ pub fn export(
 ) -> Result<Value> {
     store::no_links(run)?;
     let run = run.canonicalize()?;
-    let receipt_bytes = store::read(&run.join("receipt.json"), 65536)?;
+    let receipt_bytes = crate::file_job::regular(&run.join("receipt.json"), 65536)?;
     let receipt: Value = serde_json::from_slice(&receipt_bytes)?;
     let status = receipt["status"].as_str().ok_or("missing run status")?;
     let (filename, expected, limit) = match stream {
+        "artifact"
+            if receipt["schema_version"] == 1
+                && status == "succeeded"
+                && receipt["exit_code"] == 0
+                && receipt["process"]["reaped"] == true =>
+        {
+            // Select only the host's accepted copy, never the kit's writable file
+            // or an arbitrary receipt-supplied path. Acceptance is not trust.
+            if receipt["artifact"]["path"] != "artifact.txt" {
+                return Err("missing or unexpected accepted artifact path".into());
+            }
+            ("artifact.txt", &receipt["artifact"]["sha256"], 65536)
+        }
         "stdout" | "stderr"
             if receipt["schema_version"] == 1
                 && [
@@ -112,14 +125,18 @@ pub fn export(
         ),
         _ => {
             return Err(
-                "unsupported receipt, outcome or stream; use stdout, stderr or model".into(),
+                "unsupported receipt, outcome or stream; use artifact, stdout, stderr or model"
+                    .into(),
             );
         }
     };
-    let bytes = store::read(&run.join(filename), limit)?;
+    let bytes = crate::file_job::regular(&run.join(filename), limit)?;
     let digest = store::digest(&bytes);
     if expected.as_str() != Some(&digest) {
         return Err("artifact digest mismatch".into());
+    }
+    if stream == "artifact" && receipt["artifact"]["bytes"].as_u64() != Some(bytes.len() as u64) {
+        return Err("accepted artifact byte count mismatch".into());
     }
     let view = excerpt(std::str::from_utf8(&bytes)?, budget)?;
     let receipt_digest = store::digest(&receipt_bytes);
@@ -153,7 +170,11 @@ pub fn export(
         "ranges":view.ranges, "omitted_bytes":view.omitted_bytes,
         "selected_text_bytes":view.text.len(), "packet_bytes":packet_bytes.len(),
         "packet_sha256":store::digest(&packet_bytes),
-        "source_scope":"retained artifact only; not a claim that process output was complete",
+        "source_scope":if stream == "artifact" {
+            "host-accepted file artifact; not a domain-correctness or authenticity claim"
+        } else {
+            "retained output only; not a claim that process output was complete"
+        },
         "trust":"untrusted data; digests establish byte identity, not authorship or permission"
     });
     // Exclusive directory creation: never overwrite previous selections. Partial

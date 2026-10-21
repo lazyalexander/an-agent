@@ -29,9 +29,20 @@ an-agent-host model PROFILE NEW_CONTEXT_DIRECTORY/context.json NEW_MODEL_OUTPUT
 # Inspect the preview, then approve its exact digest using the existing model CLI.
 ```
 
-Choose exactly one stream: `stdout`, `stderr`, or `model`. The last selects
+Choose exactly one source: `artifact`, `stdout`, `stderr`, or `model`. The last selects
 `output.txt` from a successful model run. Kit failure outputs may be selected
 for diagnosis; their original status is preserved in the source label.
+
+For a file kit, use `context-export RUN artifact THREAD_UUID 1024 NEW_OUTPUT`.
+This selects only the host's accepted `artifact.txt`, never `work/output.txt`
+or diagnostic stdout. The receipt must report success, exit zero and a reaped
+process, and bind the fixed artifact path, exact byte count and SHA-256. A failed
+run cannot promote a partial file to accepted context. Missing, oversized,
+symlinked, hard-linked, changed or non-UTF-8 artifacts are refused before output
+creation. Receipt files are also bounded regular files without links.
+
+This selector adds no new context ABI or automatic model call. The existing
+head/tail budget and explicit audience still apply; it is not semantic routing.
 
 The text budget is 128–2048 **UTF-8 bytes**, including the omission marker, not
 tokens. A short artifact passes unchanged. A longer artifact retains a prefix
@@ -55,7 +66,7 @@ partial evidence but is never reported as success.
 ## Trust and responsibility
 
 The host reads only fixed filenames for recognized receipts, checks the retained
-artifact hash, rejects static symlinks and bounds every read. It does not follow
+artifact hash, rejects static symlinks/hardlinks and bounds every read. It does not follow
 arbitrary paths embedded in a receipt. The operator selects the private run and
 destination audience. No run-store discovery, thread import, model call, shell
 execution or grant occurs during export.
@@ -83,3 +94,9 @@ A real controlled kit produces the receipt used for export. The model CLI test
 preserves a 5000-byte response, exports a bounded view, and submits only that view
 through a second explicitly approved HTTP-fixture request. No live provider claim
 or model-quality evaluation is implied.
+
+File-profile acceptance additionally checks that the accepted product, not the
+diagnostic stream or writable working copy, is exported. Failure, cancellation,
+timeout, unreaped process, inconsistent size/path/hash and linked receipt or
+artifact fixtures are rejected without creating a destination. This is local
+receipt validation, not proof against a forged trusted run directory.

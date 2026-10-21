@@ -88,6 +88,13 @@ symlinked, hard-linked or non-regular output. Accepted bytes are copied to
 Nothing is automatically applied to the user's original document. The original
 stdio-only-v1 permissions and native Linux implementation are unchanged.
 
+To pass the accepted product to a subsequent model request, explicitly select
+`context-export RUN artifact THREAD_UUID TEXT_BYTE_BUDGET NEW_OUTPUT`. The host
+checks success, exit/reaping evidence, fixed path, size and digest before making
+a bounded context view. It never substitutes diagnostics or the kit's writable
+working copy. [Context export](CONTEXT-OUTPUT.md) and model approval remain
+separate steps; Waver does not own runtime context selection.
+
 ## Platform and lifecycle limits
 
 This new build/file profile currently executes on **macOS only**. Linux and other

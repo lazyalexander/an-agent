@@ -98,3 +98,116 @@ fn rejects_tampering_paths_binary_and_escaped_packet_overflow_before_writes() ->
     assert!(!output.exists());
     Ok(())
 }
+
+fn accepted_fixture(run: &Path, bytes: &[u8]) -> Result<serde_json::Value> {
+    fs::create_dir(run)?;
+    fs::create_dir(run.join("work"))?;
+    fs::write(run.join("work/output.txt"), b"unaccepted working copy")?;
+    fs::write(run.join("stdout.txt"), b"diagnostics are not the product")?;
+    fs::write(run.join("artifact.txt"), bytes)?;
+    let receipt = json!({"schema_version":1,"status":"succeeded","exit_code":0,
+        "process":{"reaped":true},"artifact":{"path":"artifact.txt",
+        "sha256":format!("{:x}",Sha256::digest(bytes)),"bytes":bytes.len()}});
+    fs::write(run.join("receipt.json"), receipt.to_string())?;
+    Ok(receipt)
+}
+
+#[test]
+fn accepted_file_is_selected_not_diagnostics_or_working_copy() -> Result<()> {
+    let temp = TempDir::new("accepted-artifact-context");
+    let root = temp.path().canonicalize()?;
+    let run = root.join("run");
+    let original = "alpha\nbeta\n";
+    accepted_fixture(&run, original.as_bytes())?;
+    let receipt = fs::read(run.join("receipt.json"))?;
+    let output = root.join("view");
+    artifact_context::export(&run, "artifact", Uuid::nil(), 128, &output)?;
+    let packet = ContextPacket::parse(&fs::read(output.join("context.json"))?, Uuid::nil())?;
+    assert_eq!(packet.text, original);
+    assert!(packet.source.starts_with("host-artifact:succeeded:"));
+    assert!(packet.source.ends_with(":artifact"));
+    let selection: serde_json::Value =
+        serde_json::from_slice(&fs::read(output.join("selection.json"))?)?;
+    assert_eq!(selection["artifact"], "artifact.txt");
+    assert_eq!(selection["artifact_bytes"], original.len());
+    assert_eq!(selection["omitted_bytes"], 0);
+    assert_eq!(fs::read(run.join("receipt.json"))?, receipt);
+    assert_eq!(fs::read(run.join("artifact.txt"))?, original.as_bytes());
+    Ok(())
+}
+
+#[test]
+fn unaccepted_or_inconsistent_files_are_refused_before_export() -> Result<()> {
+    let temp = TempDir::new("rejected-artifact-context");
+    let root = temp.path().canonicalize()?;
+    for case in [
+        "failed",
+        "cancelled",
+        "timed_out",
+        "refused",
+        "output_limit",
+        "exit",
+        "unreaped",
+        "missing-metadata",
+        "path",
+        "size",
+        "hash",
+        "missing-file",
+        "binary",
+        "oversize",
+        "symlink",
+        "hardlink",
+        "receipt-hardlink",
+    ] {
+        let run = root.join(case);
+        let data = match case {
+            "binary" => vec![255],
+            "oversize" => vec![b'x'; 65537],
+            _ => b"accepted".to_vec(),
+        };
+        let mut receipt = accepted_fixture(&run, &data)?;
+        match case {
+            "failed" | "cancelled" | "timed_out" | "refused" | "output_limit" => {
+                receipt["status"] = json!(case);
+            }
+            "exit" => receipt["exit_code"] = json!(1),
+            "unreaped" => receipt["process"]["reaped"] = json!(false),
+            "missing-metadata" => receipt["artifact"] = serde_json::Value::Null,
+            "path" => receipt["artifact"]["path"] = json!("work/output.txt"),
+            "size" => receipt["artifact"]["bytes"] = json!(data.len() + 1),
+            "hash" => fs::write(run.join("artifact.txt"), b"tampered")?,
+            "missing-file" => fs::remove_file(run.join("artifact.txt"))?,
+            "symlink" => {
+                #[cfg(unix)]
+                {
+                    fs::remove_file(run.join("artifact.txt"))?;
+                    std::os::unix::fs::symlink("work/output.txt", run.join("artifact.txt"))?;
+                }
+                #[cfg(not(unix))]
+                continue;
+            }
+            "hardlink" | "receipt-hardlink" => {
+                #[cfg(unix)]
+                fs::hard_link(
+                    run.join(if case == "hardlink" {
+                        "artifact.txt"
+                    } else {
+                        "receipt.json"
+                    }),
+                    run.join("alias"),
+                )?;
+                #[cfg(not(unix))]
+                continue;
+            }
+            _ => (),
+        }
+        fs::write(run.join("receipt.json"), receipt.to_string())?;
+        let output = root.join(format!("{case}-view"));
+        assert!(
+            artifact_context::export(&run, "artifact", Uuid::nil(), 128, &output).is_err(),
+            "{case}"
+        );
+        assert!(!output.exists(), "{case}");
+    }
+    Ok(())
+}

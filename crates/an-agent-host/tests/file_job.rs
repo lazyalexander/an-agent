@@ -2,7 +2,7 @@
 #![cfg(target_os = "macos")]
 #![allow(clippy::unwrap_used)]
 use an_agent_core::testkit::TempDir;
-use an_agent_host::{execution, file_job};
+use an_agent_host::{artifact_context, context_exchange::ContextPacket, execution, file_job};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::{fs, path::Path, process::Command, sync::atomic::AtomicBool};
@@ -113,6 +113,22 @@ fn main() -> std::io::Result<()> {
         b"ALPHA\n"
     );
     assert_eq!(fs::read(&input).unwrap(), b"alpha\n");
+    let view = root.join("context-view");
+    artifact_context::export(
+        receipt_path.parent().unwrap(),
+        "artifact",
+        uuid::Uuid::nil(),
+        128,
+        &view,
+    )
+    .unwrap();
+    let packet = ContextPacket::parse(
+        &fs::read(view.join("context.json")).unwrap(),
+        uuid::Uuid::nil(),
+    )
+    .unwrap();
+    assert_eq!(packet.text, "ALPHA\n");
+    assert!(packet.source.ends_with(":artifact"));
     assert!(
         fs::read_to_string(receipt_path.parent().unwrap().join("audit.json"))
             .unwrap()
@@ -132,6 +148,11 @@ fn main() -> std::io::Result<()> {
             .parent()
             .unwrap();
         assert!(!folder.join("artifact.txt").exists());
+        let view = root.join(format!("rejected-{rejected}"));
+        assert!(
+            artifact_context::export(folder, "artifact", uuid::Uuid::nil(), 128, &view).is_err()
+        );
+        assert!(!view.exists());
         assert!(
             !fs::read_to_string(folder.join("audit.json"))
                 .unwrap()
