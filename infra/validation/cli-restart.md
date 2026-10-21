@@ -28,10 +28,13 @@ descriptor inheritance the supported explanation rather than a guessed retry.
 
 ## Changes and limits
 
-- Run the real CLI cancellation/restart test in its own test process, following
+- Run each real-execution integration test in its own test process, following
   the isolation approach used by the reference Codex PTY tests. Both operations
   now invoke the CLI; the cancelled run and explicit next run have distinct
   receipts, and the next output, reaping and lock release are checked.
+  Isolating only the signal test was insufficient: the same error moved to the
+  ordinary execution test in stress iteration 3. Isolation covers the entire
+  execution test group, not just the originally failing assertion.
 - Preserve the next receipt and stderr in assertion output before fixtures are
   removed. A failed assertion must explain `refused`, not merely print a status.
 - Add a deterministic inherited-writer regression with a pre-exec pipe barrier,

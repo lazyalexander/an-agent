@@ -11,6 +11,9 @@ struct HostProcess(Option<Child>);
 #[cfg(target_os = "linux")]
 #[test]
 fn spawn_refusal_retains_error_context_and_audit_without_claiming_a_child() -> Result<()> {
+    if !isolated_execution_test()? {
+        return Ok(());
+    }
     let fixture = Fixture::new()?;
     let path = fixture.deployment.join("program");
     let original = fs::read(&path)?;
@@ -50,6 +53,9 @@ fn spawn_refusal_retains_error_context_and_audit_without_claiming_a_child() -> R
 
 #[test]
 fn prelaunch_cancellation_and_timeout_have_honest_process_evidence() -> Result<()> {
+    if !isolated_execution_test()? {
+        return Ok(());
+    }
     let fixture = Fixture::new()?;
     let release = fixture.release()?;
     fs::write(&fixture.input, b"hang")?;
@@ -120,26 +126,7 @@ impl Drop for HostProcess {
 #[test]
 #[allow(clippy::disallowed_methods, reason = "real process test deadline")]
 fn cli_signals_reap_child_preserve_receipt_and_release_store_lock() -> Result<()> {
-    // Isolate the writer/fork boundary from sibling Rust test threads. A fork
-    // can retain their writable executable descriptors until its own exec,
-    // producing ETXTBSY unrelated to cancellation (also covered in Codex's PTY
-    // tests). This is process isolation, not a retry of a refused operation.
-    const ISOLATED: &str = "AN_AGENT_TEST_ISOLATED_LIFECYCLE";
-    if std::env::var_os(ISOLATED).is_none() {
-        let output = Command::new(std::env::current_exe()?)
-            .args([
-                "--exact",
-                "lifecycle::cli_signals_reap_child_preserve_receipt_and_release_store_lock",
-                "--nocapture",
-            ])
-            .env(ISOLATED, "1")
-            .output()?;
-        assert!(
-            output.status.success(),
-            "isolated lifecycle test failed: stdout={} stderr={}",
-            String::from_utf8_lossy(&output.stdout),
-            String::from_utf8_lossy(&output.stderr)
-        );
+    if !isolated_execution_test()? {
         return Ok(());
     }
     let fixture = Fixture::new()?;
