@@ -6,7 +6,7 @@ mod process;
 use process::OwnedChild;
 
 #[cfg(target_os = "linux")]
-mod linux;
+pub(crate) mod linux;
 #[cfg(any(not(target_os = "linux"), test))]
 pub(crate) mod macos;
 use std::sync::Arc;

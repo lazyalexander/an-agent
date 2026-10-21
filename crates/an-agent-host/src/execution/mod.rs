@@ -208,10 +208,14 @@ pub fn run_cancellable(
         use std::os::unix::fs::PermissionsExt;
         fs::set_permissions(&executable, fs::Permissions::from_mode(0o500))?;
     }
+    let mut output_slot = None;
     let execution = if file {
         directory(&run_dir.join("work"))?;
         write_new(&run_dir.join("work/input.txt"), &input)?;
-        crate::file_job::execute_file(&executable, &run_dir.join("work"), cancelled)
+        crate::file_job::prepare_output(&run_dir.join("work")).and_then(|slot| {
+            output_slot = slot;
+            crate::file_job::execute_file(&executable, &run_dir.join("work"), cancelled)
+        })
     } else {
         sandbox::execute(
             &executable,
@@ -241,7 +245,12 @@ pub fn run_cancellable(
     };
     let mut artifact = Value::Null;
     if file && status == "succeeded" {
-        match crate::file_job::regular(&run_dir.join("work/output.txt"), 65536) {
+        let accepted = if code != Some(0) || !reaped {
+            Err("file output requires a reaped successful process".into())
+        } else {
+            crate::file_job::accept_output(&run_dir.join("work"), output_slot.as_ref())
+        };
+        match accepted {
             Ok(bytes) => {
                 write_new(&run_dir.join("artifact.txt"), &bytes)?;
                 artifact =

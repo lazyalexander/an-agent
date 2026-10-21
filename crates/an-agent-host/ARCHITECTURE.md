@@ -139,6 +139,7 @@ permission to overwrite the user's document. Waver only packages portable build
 evidence; local plans, audit and context selections stay out of that package.
 
 These are bounded local profiles, not authenticated remote attestations or
-crash-atomic transactions. Retention remains manual, native Linux build/file
-execution and SPACE machine acceptance remain deferred, and no automatic
+crash-atomic transactions. Retention remains manual. Native Linux fixed-file
+execution is supported; isolated Linux builds and SPACE machine acceptance
+remain deferred, and no automatic
 application of results or cleanup is added by this boundary document.
