@@ -1,5 +1,8 @@
 //! The host accepts a deployment made without Waver or a source analyzer.
 #[cfg(any(target_os = "macos", target_os = "linux"))]
+#[path = "execution/concurrency.rs"]
+mod concurrency;
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 #[path = "execution/lifecycle.rs"]
 mod lifecycle;
 use an_agent_host::execution::{self, Result};
@@ -18,27 +21,6 @@ struct Fixture {
     input: PathBuf,
 }
 
-// Each real-execution test owns its writer/fork boundary. A sibling test must
-// not inherit a writable snapshot and cause unrelated Linux ETXTBSY refusals.
-fn isolated_execution_test() -> Result<bool> {
-    let current = std::thread::current();
-    let name = current.name().ok_or("missing test name")?;
-    const MARKER: &str = "AN_AGENT_TEST_ISOLATED_EXECUTION";
-    if std::env::var(MARKER).ok().as_deref() == Some(name) {
-        return Ok(true);
-    }
-    let output = Command::new(std::env::current_exe()?)
-        .args(["--exact", name, "--nocapture"])
-        .env(MARKER, name)
-        .output()?;
-    assert!(
-        output.status.success(),
-        "isolated {name} failed: stdout={} stderr={}",
-        String::from_utf8_lossy(&output.stdout),
-        String::from_utf8_lossy(&output.stderr)
-    );
-    Ok(false)
-}
 impl Fixture {
     fn new() -> Result<Self> {
         let root = std::env::temp_dir().canonicalize()?.join(format!(
@@ -97,9 +79,6 @@ impl Drop for Fixture {
 
 #[test]
 fn runtime_contract_is_independent_and_refuses_tampering() -> Result<()> {
-    if !isolated_execution_test()? {
-        return Ok(());
-    }
     let fixture = Fixture::new()?;
     let release = fixture.release()?;
     assert_eq!(fixture.release()?, release);
@@ -108,6 +87,18 @@ fn runtime_contract_is_independent_and_refuses_tampering() -> Result<()> {
     assert_eq!(plan["context"]["trust"], "caller-supplied-data");
     assert!(!fixture.store.join("runs").exists());
     assert!(execution::run(&fixture.store, "../../escape", &fixture.input, true).is_err());
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(
+            fixture
+                .store
+                .join("releases")
+                .join(&release)
+                .join("program"),
+            fs::Permissions::from_mode(0o600),
+        )?;
+    }
     fs::write(
         fixture
             .store
@@ -123,9 +114,6 @@ fn runtime_contract_is_independent_and_refuses_tampering() -> Result<()> {
 
 #[test]
 fn contract_does_not_accept_extra_authority_or_ambiguous_config() -> Result<()> {
-    if !isolated_execution_test()? {
-        return Ok(());
-    }
     let fixture = Fixture::new()?;
     let path = fixture.deployment.join("spool.yaml");
     let original = fs::read_to_string(&path)?;
@@ -148,9 +136,6 @@ fn contract_does_not_accept_extra_authority_or_ambiguous_config() -> Result<()> 
 
 #[test]
 fn input_bounds_and_links_are_rejected_before_execution() -> Result<()> {
-    if !isolated_execution_test()? {
-        return Ok(());
-    }
     let fixture = Fixture::new()?;
     let release = fixture.release()?;
     fs::write(&fixture.input, vec![b'x'; 8193])?;
@@ -167,9 +152,6 @@ fn input_bounds_and_links_are_rejected_before_execution() -> Result<()> {
 
 #[test]
 fn actual_execution_retains_context_receipt_and_kernel_audit() -> Result<()> {
-    if !isolated_execution_test()? {
-        return Ok(());
-    }
     let fixture = Fixture::new()?;
     let release = fixture.release()?;
     let result = execution::run(&fixture.store, &release, &fixture.input, true)?;
@@ -264,9 +246,6 @@ fn actual_execution_retains_context_receipt_and_kernel_audit() -> Result<()> {
 #[test]
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 fn undeclared_effect_is_denied_and_failure_never_becomes_applied() -> Result<()> {
-    if !isolated_execution_test()? {
-        return Ok(());
-    }
     let fixture = Fixture::new()?;
     let release = fixture.release()?;
     fs::write(&fixture.input, b"attempt-write")?;

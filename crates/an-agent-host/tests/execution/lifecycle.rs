@@ -11,9 +11,6 @@ struct HostProcess(Option<Child>);
 #[cfg(target_os = "linux")]
 #[test]
 fn spawn_refusal_retains_error_context_and_audit_without_claiming_a_child() -> Result<()> {
-    if !isolated_execution_test()? {
-        return Ok(());
-    }
     let fixture = Fixture::new()?;
     let path = fixture.deployment.join("program");
     let original = fs::read(&path)?;
@@ -53,9 +50,6 @@ fn spawn_refusal_retains_error_context_and_audit_without_claiming_a_child() -> R
 
 #[test]
 fn prelaunch_cancellation_and_timeout_have_honest_process_evidence() -> Result<()> {
-    if !isolated_execution_test()? {
-        return Ok(());
-    }
     let fixture = Fixture::new()?;
     let release = fixture.release()?;
     fs::write(&fixture.input, b"hang")?;
@@ -73,6 +67,8 @@ fn prelaunch_cancellation_and_timeout_have_honest_process_evidence() -> Result<(
         let path = Path::new(result["receipt"].as_str().ok_or("missing receipt")?);
         let receipt: Value = serde_json::from_slice(&fs::read(path)?)?;
         if result["status"] == "cancelled" {
+            assert_eq!(receipt["publication"]["published"], false);
+            assert!(receipt["publication"]["helper"]["pid"].is_null());
             assert!(receipt["process"]["pid"].is_null());
             assert_eq!(receipt["process"]["reaped"], false);
         } else {
@@ -126,9 +122,6 @@ impl Drop for HostProcess {
 #[test]
 #[allow(clippy::disallowed_methods, reason = "real process test deadline")]
 fn cli_signals_reap_child_preserve_receipt_and_release_store_lock() -> Result<()> {
-    if !isolated_execution_test()? {
-        return Ok(());
-    }
     let fixture = Fixture::new()?;
     let release = fixture.release()?;
     for signal in [libc::SIGINT, libc::SIGTERM] {
@@ -149,10 +142,23 @@ fn cli_signals_reap_child_preserve_receipt_and_release_store_lock() -> Result<()
             let children = Command::new("pgrep")
                 .args(["-P", &host_pid.to_string()])
                 .output()?;
-            if let Some(pid) = String::from_utf8_lossy(&children.stdout)
+            let mut kit = None;
+            for pid in String::from_utf8_lossy(&children.stdout)
                 .lines()
-                .find_map(|s| s.parse::<u32>().ok())
+                .filter_map(|s| s.parse::<u32>().ok())
             {
+                let command = Command::new("ps")
+                    .args(["-p", &pid.to_string(), "-o", "comm="])
+                    .output()?;
+                let name = String::from_utf8_lossy(&command.stdout);
+                // The trusted copy helper is not the kit. Wait for the real
+                // executable, not merely the first direct child of the CLI.
+                if Path::new(name.trim()).file_name() == Some(std::ffi::OsStr::new("program")) {
+                    kit = Some(pid);
+                    break;
+                }
+            }
+            if let Some(pid) = kit {
                 break pid;
             }
             assert!(

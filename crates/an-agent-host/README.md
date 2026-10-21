@@ -88,7 +88,17 @@ HTTP deadlines, cancellation, retained context, and no-retry settlement.
 See [process lifecycle ownership](PROCESS-LIFECYCLE.md) for cancellation,
 deadline handling, scoped pipe cleanup, confirmed reaping and crash limitations.
 See [CLI restart diagnosis](../../infra/validation/cli-restart.md) for the
-inherited-writer regression and required CI gates. Refusal receipts include
+product executable publisher, concurrent-host regression and required CI gates.
+Registration, run snapshots and macOS build acceptance use fixed `/bin/cp` in
+a supervised trusted process to create the executable inode, verify its bytes,
+and publish without replacing existing files. The embedding process never holds
+a writer on that inode. There is no shell, project-selected helper or retry.
+The run preview declares the helper's separate ten-second deadline; receipts
+separate publication evidence from kit process evidence. This does not replace
+the kit sandbox. macOS is the current primary platform; existing Linux CI is
+retained without expanding deployment support.
+
+Refusal receipts include
 additive `error` evidence (stage, optional OS code, I/O kind and no-retry flag);
 the standard process API cannot distinguish spawn from pre-exec policy failure.
 

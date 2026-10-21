@@ -68,8 +68,11 @@ pub(super) fn refusal_evidence(error: &(dyn std::error::Error + 'static)) -> ser
     let mut os_error = None;
     let mut stage = "sandbox-setup";
     while let Some(cause) = current {
-        if cause.is::<LaunchError>() {
+        if cause.is::<LaunchError>() && stage != "executable-publication" {
             stage = "spawn-or-pre-exec";
+        }
+        if cause.is::<super::publication::PublicationError>() {
+            stage = "executable-publication";
         }
         if let Some(cause) = cause.downcast_ref::<std::io::Error>() {
             os_error = Some(cause);
@@ -291,14 +294,6 @@ mod tests {
     #[cfg(target_os = "linux")]
     #[test]
     fn inherited_writer_refuses_exec_with_preserved_errno_without_retry() -> Result<()> {
-        const ISOLATED: &str = "AN_AGENT_TEST_ISOLATED_WRITER";
-        if std::env::var_os(ISOLATED).is_none() {
-            let output = Command::new(std::env::current_exe()?)
-                .args(["--exact", "execution::sandbox::tests::inherited_writer_refuses_exec_with_preserved_errno_without_retry", "--nocapture"])
-                .env(ISOLATED, "1").output()?;
-            assert!(output.status.success(), "writer probe failed: {output:?}");
-            return Ok(());
-        }
         use std::os::{
             fd::AsRawFd,
             unix::{fs::PermissionsExt, net::UnixStream, process::CommandExt},
@@ -369,8 +364,15 @@ mod tests {
             assert!(sibling.join().map_err(|_| "sibling panicked")??.success());
             result
         })?;
+        let published = root.join("published");
+        let publication = super::super::publication::publish(
+            &published,
+            &std::fs::read(&executable)?,
+            &AtomicBool::new(false),
+        )?;
+        assert!(publication.stopped.is_none());
         let next = execute(
-            &executable,
+            &published,
             &root,
             b"",
             Duration::from_secs(1),
