@@ -8,6 +8,14 @@ semantics; a fallible process is not executed inside its infallible text sink.
 
 ## Responsibility and dependency direction
 
+The [architecture contract](ARCHITECTURE.md) separates workflow packages, runs,
+stages, CLI kits, application-side shuttles and trusted host/backend authority.
+The [SPACE preparation guide](SPACE-HANDOFF.md) specifies the next Mac-control to
+Linux-worker acceptance, without introducing a remote executor or changing the
+existing deployment schema. `an-agent-host space-preflight` emits local read-only
+prerequisite observations; exit zero means only that the diagnostic ran, and
+never grants execution or establishes SPACE readiness.
+
 See [the architecture boundary](ARCHITECTURE.md) for the separation of explicit
 dependency updates, optional attention policy and execution authority. Attention
 management remains a design boundary; no GNN or new core subsystem is introduced.
