@@ -432,6 +432,9 @@ fn run_selected(
         &run_dir.join("audit.json"),
         &serde_json::to_vec_pretty(&control.events(thread)?)?,
     )?;
+    // Only published after receipt, kernel finish and audit are all committed.
+    // A crash before this marker is not authority to reclaim or grant a request.
+    crate::settled_run::seal(&run_dir, &receipt)?;
     Ok(
         json!({"status":status,"receipt":run_dir.join("receipt.json"),"stdout":run_dir.join("stdout.txt")}),
     )

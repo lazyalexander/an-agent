@@ -10,6 +10,8 @@ use std::{
     process::Command,
 };
 
+#[path = "file_runtime/lifecycle.rs"]
+mod lifecycle;
 #[path = "file_runtime/revisions.rs"]
 mod revisions;
 
@@ -35,6 +37,7 @@ fn main() -> io::Result<()> {
     assert!(fs::write("../audit.json", "bad").is_err());
     assert!(fs::read("../plan.json").is_err());
     assert!(fs::read("HOST_SECRET").is_err());
+    assert!(fs::read_dir("HOST_CATALOG").is_err());
     assert!(fs::create_dir("new-directory").is_err());
     assert!(fs::remove_file("input.txt").is_err());
     assert!(fs::rename("input.txt", "moved-input").is_err());
@@ -55,12 +58,14 @@ fn main() -> io::Result<()> {
         _ => (),
     }
     let mut output = fs::OpenOptions::new().write(true).create(true).truncate(true).open("output.txt")?;
-    output.write_all(input.to_uppercase().as_bytes())?;
+    let result = input.strip_prefix("capability:").map(str::to_owned).unwrap_or_else(|| input.to_uppercase());
+    output.write_all(result.as_bytes())?;
     output.sync_all()?;
     println!("diagnostics are not the product");
     Ok(())
 }
 "#.replace("HOST_SECRET", root.join("secret").to_str().ok_or("invalid path")?)
+    .replace("HOST_CATALOG", root.join("catalog").to_str().ok_or("invalid path")?)
     .replace("NETWORK_TARGET", &listener.local_addr()?.to_string());
         fs::write(root.join("main.rs"), source)?;
         let deployment = root.join("deployment");
@@ -225,6 +230,18 @@ fn cancelling_a_written_but_unfinished_output_never_accepts_it() -> execution::R
                         if fs::read(run.path().join("work/output.txt"))
                             .is_ok_and(|bytes| bytes == b"partial")
                         {
+                            assert!(
+                                an_agent_host::retention::reclaim(
+                                    &fixture.root.join("store"),
+                                    run.file_name().to_str().unwrap(),
+                                    None,
+                                )
+                                .is_err()
+                            );
+                            assert_eq!(
+                                fs::read(run.path().join("work/output.txt")).unwrap(),
+                                b"partial"
+                            );
                             cancelled.store(true, Ordering::Relaxed);
                             return true;
                         }
@@ -253,6 +270,14 @@ fn cancelling_a_written_but_unfinished_output_never_accepts_it() -> execution::R
         .ok_or("missing run")?;
     let receipt: Value = serde_json::from_slice(&fs::read(run.join("receipt.json"))?)?;
     assert_eq!(receipt["process"]["reaped"], true);
+    assert!(
+        an_agent_host::retention::reclaim(
+            &fixture.root.join("store"),
+            run.file_name().unwrap().to_str().unwrap(),
+            None,
+        )
+        .is_err()
+    );
     assert!(!run.join("artifact.txt").exists());
     assert!(!fs::read_to_string(run.join("audit.json"))?.contains("applied"));
     Ok(())
