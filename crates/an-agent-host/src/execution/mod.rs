@@ -147,6 +147,48 @@ fn run_backend(
     cancelled: &std::sync::atomic::AtomicBool,
     backend: &dyn backend::ExecutionBackend,
 ) -> Result<Value> {
+    run_selected(
+        root,
+        release,
+        Input::File(input_path),
+        execute,
+        cancelled,
+        backend,
+    )
+}
+
+/// Explicit version selection does not authorize execution or follow later edits.
+pub fn run_revision(
+    root: &Path,
+    release: &str,
+    catalog: &Path,
+    revision: &str,
+    execute: bool,
+    cancelled: &std::sync::atomic::AtomicBool,
+) -> Result<Value> {
+    run_selected(
+        root,
+        release,
+        Input::Revision(catalog, revision),
+        execute,
+        cancelled,
+        &backend::Native,
+    )
+}
+
+enum Input<'a> {
+    File(&'a Path),
+    Revision(&'a Path, &'a str),
+}
+
+fn run_selected(
+    root: &Path,
+    release: &str,
+    selected: Input<'_>,
+    execute: bool,
+    cancelled: &std::sync::atomic::AtomicBool,
+    backend: &dyn backend::ExecutionBackend,
+) -> Result<Value> {
     if !valid_digest(release) {
         return Err("release must be a full SHA-256 digest".into());
     }
@@ -168,13 +210,22 @@ fn run_backend(
     {
         return Err("registered descriptor mismatch".into());
     }
-    let input = read(input_path, sandbox::INPUT_LIMIT)?;
+    let (input, binding) = match selected {
+        Input::File(path) => (read(path, sandbox::INPUT_LIMIT)?, Value::Null),
+        Input::Revision(catalog, revision) => crate::artifact_versions::read(catalog, revision)?,
+    };
+    if input.len() > sandbox::INPUT_LIMIT {
+        return Err("selected revision exceeds execution input limit".into());
+    }
     let text = std::str::from_utf8(&input)?;
     let run_id = Entropy::os().uuid_v4();
     let run_dir = root.join("runs").join(run_id.to_string());
     let executable = run_dir.join("program");
     let mut plan = json!({"release":release,"cwd":run_dir,"environment":{},"context":{"kind":"explicit-stdin","sha256":digest(&input),"bytes":input.len(),"trust":"caller-supplied-data"},"limits":{"input_bytes":8192,"output_bytes_per_stream":65536,"wall_seconds":5},"artifact_boundary":run_dir,"execute":execute});
     plan["executable_publication"] = publication::plan();
+    if !binding.is_null() {
+        plan["input_revision"] = binding.clone();
+    }
     backend.plan(&executable, &run_dir, file, &mut plan)?;
     if !execute {
         return Ok(plan);
@@ -347,6 +398,9 @@ fn run_backend(
     write_new(&run_dir.join("stderr.txt"), &stderr)?;
     let receipt = json!({"schema_version":1,"run_id":run_id,"release":release,"request_event":event.id,"execution_event":intent.id,"reply_tape_id":reply.tape_id,"status":status,"exit_code":code,"process":{"pid":pid,"reaped":reaped,"scope":"direct-child"},"context":{"path":"input.txt","sha256":digest(&input),"trust":"caller-supplied-data"},"stdout":{"path":"stdout.txt","sha256":digest(&stdout)},"stderr":{"path":"stderr.txt","sha256":digest(&stderr)},"plan_sha256":digest(&serde_json::to_vec_pretty(&plan)?),"retention":"manual; no automatic cleanup","backend":plan["backend"],"container":false});
     let mut receipt = receipt;
+    if !binding.is_null() {
+        receipt["input_revision"] = binding;
+    }
     receipt["publication"] = publication;
     receipt["operation"] = json!({"intent":operation,"observation":observation,
         "cancel_requested":cancelled.load(std::sync::atomic::Ordering::Relaxed),

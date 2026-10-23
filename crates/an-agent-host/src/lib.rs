@@ -29,6 +29,7 @@
 //! [`applied`]: an_agent_core::control::AgentControl::applied
 
 pub mod artifact_context;
+pub mod artifact_versions;
 mod connection;
 pub mod context_exchange;
 pub mod execution;

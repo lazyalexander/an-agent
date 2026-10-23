@@ -10,6 +10,9 @@ use std::{
     process::Command,
 };
 
+#[path = "file_runtime/revisions.rs"]
+mod revisions;
+
 struct Fixture {
     _directory: TempDir,
     _listener: std::net::TcpListener,

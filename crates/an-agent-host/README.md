@@ -25,6 +25,12 @@ intent and settlement observations are additive, not a new VM control plane.
 
 ## Responsibility and dependency direction
 
+A spool carries domain knowledge: business rules, skills, workflows and domain
+acceptance criteria. The host manages execution and artifact identities without
+learning those rules. [Artifact revisions](ARTIFACT-VERSIONS.md) provide a bounded
+accepted-output -> editable copy -> new checkpoint -> pinned downstream input
+loop. A VM working disk is not the authoritative artifact catalog.
+
 The [architecture contract](ARCHITECTURE.md) separates workflow packages, runs,
 stages, CLI kits, application-side shuttles and trusted host/backend authority.
 The [local VM direction](LOCAL-VM.md) separates host authorization and artifact
