@@ -1,0 +1,56 @@
+# Checked by cargo arch, using the revision-pinned SPACE engine.
+[rules.file_size]
+limit = 500
+
+[rules.file_size.no_crossing]
+mode = "required"
+
+[rules.file_size.no_new_entries]
+mode = "required"
+
+[rules.file_size.no_raised_caps]
+mode = "required"
+
+[rules.file_size.listed_no_growth]
+mode = "required"
+
+[rules.file_size.stale_entries]
+mode = "required"
+
+# Command construction is restricted to reviewed host boundaries.
+# Counts textual mentions, including inline tests; not a security proof.
+[rules.pattern_ratchet.command_construction]
+patterns = ['\bCommand\s*::\s*new\s*\(']
+allow = [
+  "crates/an-agent-host/src/execution/sandbox.rs",
+  "crates/an-agent-host/src/execution/sandbox/**",
+  "crates/an-agent-host/src/execution/publication.rs",
+  "crates/an-agent-host/src/openshell/transport.rs",
+]
+
+[rules.pattern_ratchet.command_construction.no_crossing]
+mode = "required"
+
+[rules.pattern_ratchet.command_construction.no_new_entries]
+mode = "required"
+
+[rules.pattern_ratchet.command_construction.no_raised_caps]
+mode = "required"
+
+[rules.pattern_ratchet.command_construction.listed_no_growth]
+mode = "required"
+
+[rules.pattern_ratchet.command_construction.stale_entries]
+mode = "required"
+
+[rules.crate_names]
+banned_tokens = ["common", "shared", "util", "utils", "helper", "helpers", "misc"]
+allow = []
+
+[rules.crate_names.no_new]
+mode = "required"
+[rules.crate_names.stale_entries]
+mode = "required"
+[rules.crate_names.policy_changed]
+mode = "required"
+

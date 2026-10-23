@@ -26,7 +26,9 @@ This is an independent workflow prototype informing the framework's direction, n
 
 ## Architecture and current capabilities
 
-The host application owns the workspace, user interaction, and execution of application-specific effects. Spools are embedded capability bodies with declared contracts and configuration. The host controls how events are dispatched and how replies become real actions.
+The host application owns the workspace, user interaction, and execution of application-specific effects. Today, spools are embedded capability bodies with declared contracts and configuration. The target packaging model is a reusable workflow package containing stages, kits, configuration and documentation; it requests shuttle capabilities rather than necessarily containing a shuttle. A spool carries domain knowledge, business rules, skills and domain acceptance criteria; the host supplies generic execution and artifact management rather than absorbing those rules. Package identity, a workflow run and an individual stage are distinct. The existing descriptor and mounting APIs are not changed by this design direction.
+
+Waver owns development and packaging. The an-agent host owns workflow admission, scoped context/model services and accepted artifacts; an execution backend enforces isolation and owns VM/process lifecycle. Shuttles remain application-side bridges, not unrestricted host shells. See [the responsibility and permission boundaries](crates/an-agent-host/ARCHITECTURE.md) and [the local VM direction and capability limits](crates/an-agent-host/LOCAL-VM.md). Local execution is the priority; no remote orchestration platform is required.
 
 - **Workspace integration:** events, configuration, environment snapshots, and registration provide the host-facing context. The workspace is the interaction center; its durable documents and assets remain essential inputs.
 - **Agent execution:** `AgentControl` coordinates mounted bodies, model and tool boundaries, hooks, and recorded outcomes. The host supplies model clients and native integrations.
@@ -65,6 +67,10 @@ cargo check --workspace --all-targets
 cargo test --workspace
 cargo clippy --workspace --all-targets
 cargo fmt --all -- --check
+cargo arch
 ```
 
 The toolchain is pinned via `rust-toolchain.toml`. Experiments stay outside the product dependency graph. Promote a proven integration through a tested implementation, rather than treating a successful standalone demo as a kernel guarantee.
+
+See [architecture gates](ARCHITECTURE-GATES.md) for the TOML rules, existing-debt
+baseline, dependency boundaries and the separately locked SPACE-based checker.

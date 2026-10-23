@@ -4,13 +4,14 @@ on:
   pull_request:
     branches: [dev-advance, main]
   push:
-    branches: [dev-advance]
+    branches: [dev-advance, main]
 
 permissions:
   contents: read
 
 jobs:
   native-host:
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
@@ -18,9 +19,24 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy, rustfmt
       - run: cargo fmt --all -- --check
-      - run: cargo test -p an-agent-host --locked
-      - run: cargo clippy -p an-agent-host --all-targets --locked -- -D warnings
+      - run: cargo test --workspace --locked
+      - run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - name: Architecture tool tests and lint
+        run: |
+          cargo fmt --manifest-path tools/archcheck/Cargo.toml -- --check
+          cargo test --manifest-path tools/archcheck/Cargo.toml --locked
+          cargo clippy --manifest-path tools/archcheck/Cargo.toml --all-targets --locked -- -D warnings
+      - name: Architecture gate
+        env:
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PUSH_BASE: ${{ github.event.before }}
+        run: |
+          base="${PR_BASE:-$PUSH_BASE}"
+          test -n "$base"
+          cargo arch --base "$base"

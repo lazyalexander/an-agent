@@ -29,6 +29,8 @@
 //! [`applied`]: an_agent_core::control::AgentControl::applied
 
 pub mod artifact_context;
+pub mod artifact_versions;
+pub mod capability;
 mod connection;
 pub mod context_exchange;
 pub mod execution;
@@ -36,6 +38,9 @@ pub mod file_job;
 mod hooks;
 mod model;
 pub mod model_run;
+pub mod openshell;
+pub mod retention;
+mod settled_run;
 
 pub use connection::ModelConnection;
 pub use hooks::HostHooks;

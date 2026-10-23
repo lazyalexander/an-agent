@@ -36,7 +36,20 @@ pub fn plan(executable: &Path) -> serde_json::Value {
         "readiness":"enforced at spawn; no fallback when kernel features are unavailable"})
 }
 
-fn filesystem(executable: &Path) -> Result<OwnedFd> {
+pub fn file_plan(executable: &Path, work: &Path) -> serde_json::Value {
+    let mut result = plan(executable);
+    result["backend"] = serde_json::json!("linux-landlock-seccomp-file-v1");
+    result["resource_limits"]["regular_file_bytes"] = serde_json::json!(65536);
+    result["policy"]["files"] = serde_json::json!({
+        "directory": work, "input": work.join("input.txt"),
+        "output": work.join("output.txt"), "other_writes": false,
+        "output_initialization": "host-created inode with unproduced marker; truncate or replace contents",
+        "create_remove_rename_link": false
+    });
+    result
+}
+
+fn filesystem(executable: &Path, work: Option<&Path>) -> Result<OwnedFd> {
     let mut rules = Ruleset::default()
         .set_compatibility(CompatLevel::HardRequirement)
         .handle_access(AccessFs::from_all(ABI::V3))?
@@ -58,12 +71,24 @@ fn filesystem(executable: &Path) -> Result<OwnedFd> {
             rules = rules.add_rule(PathBeneath::new(PathFd::new(path)?, AccessFs::ReadFile))?;
         }
     }
+    if let Some(work) = work {
+        rules = rules
+            .add_rule(PathBeneath::new(PathFd::new(work)?, AccessFs::ReadDir))?
+            .add_rule(PathBeneath::new(
+                PathFd::new(work.join("input.txt"))?,
+                AccessFs::ReadFile,
+            ))?
+            .add_rule(PathBeneath::new(
+                PathFd::new(work.join("output.txt"))?,
+                AccessFs::ReadFile | AccessFs::WriteFile | AccessFs::Truncate,
+            ))?;
+    }
     // The public conversion exposes an owned FD without applying restrictions
     // to the host. HardRequirement above refuses partial or absent enforcement.
     Option::<OwnedFd>::from(rules).ok_or_else(|| "Landlock ruleset unavailable".into())
 }
 
-fn filter() -> Result<BpfProgram> {
+fn filter(file: bool) -> Result<BpfProgram> {
     use libc::*;
     let calls = [
         SYS_read,
@@ -118,6 +143,13 @@ fn filter() -> Result<BpfProgram> {
         SYS_fcntl,
     ];
     let mut rules: BTreeMap<_, _> = calls.into_iter().map(|call| (call, vec![])).collect();
+    if file {
+        // Landlock limits these descriptor operations to the approved output.
+        // Do not add creation, link, rename, chmod or process syscalls.
+        for call in [SYS_fsync, SYS_fdatasync, SYS_ftruncate] {
+            rules.insert(call, vec![]);
+        }
+    }
     #[cfg(target_arch = "x86_64")]
     for call in [
         SYS_arch_prctl,
@@ -151,14 +183,23 @@ fn filter() -> Result<BpfProgram> {
 }
 
 pub fn command(executable: &Path) -> Result<Command> {
+    confined_command(executable, None)
+}
+
+pub fn file_command(executable: &Path, work: &Path) -> Result<Command> {
+    confined_command(executable, Some(work))
+}
+
+fn confined_command(executable: &Path, work: Option<&Path>) -> Result<Command> {
     // Non-root use is intentional; the host never escalates or changes identity.
     // SAFETY: geteuid/getpid have no pointer arguments and do not change state.
     let (uid, parent) = unsafe { (libc::geteuid(), libc::getpid()) };
     if uid == 0 {
         return Err("native Linux kit execution requires a non-root host".into());
     }
-    let rules = filesystem(executable)?;
-    let program = filter()?;
+    let rules = filesystem(executable, work)?;
+    let program = filter(work.is_some())?;
+    let file_bytes = if work.is_some() { 65536 } else { 0 };
     let mut command = Command::new(executable);
     // SAFETY: the post-fork callback performs only raw OS calls, stack work and
     // errno conversion. Rules and BPF storage are prepared/owned before fork;
@@ -179,7 +220,7 @@ pub fn command(executable: &Path) -> Result<Command> {
                 (libc::RLIMIT_AS, 268435456),
                 (libc::RLIMIT_CPU, 5),
                 (libc::RLIMIT_NOFILE, 64),
-                (libc::RLIMIT_FSIZE, 0),
+                (libc::RLIMIT_FSIZE, file_bytes),
                 (libc::RLIMIT_CORE, 0),
             ] {
                 let limit = libc::rlimit {

@@ -1,5 +1,8 @@
 //! The host accepts a deployment made without Waver or a source analyzer.
 #[cfg(any(target_os = "macos", target_os = "linux"))]
+#[path = "execution/concurrency.rs"]
+mod concurrency;
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 #[path = "execution/lifecycle.rs"]
 mod lifecycle;
 use an_agent_host::execution::{self, Result};
@@ -17,6 +20,7 @@ struct Fixture {
     store: PathBuf,
     input: PathBuf,
 }
+
 impl Fixture {
     fn new() -> Result<Self> {
         let root = std::env::temp_dir().canonicalize()?.join(format!(
@@ -83,6 +87,18 @@ fn runtime_contract_is_independent_and_refuses_tampering() -> Result<()> {
     assert_eq!(plan["context"]["trust"], "caller-supplied-data");
     assert!(!fixture.store.join("runs").exists());
     assert!(execution::run(&fixture.store, "../../escape", &fixture.input, true).is_err());
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(
+            fixture
+                .store
+                .join("releases")
+                .join(&release)
+                .join("program"),
+            fs::Permissions::from_mode(0o600),
+        )?;
+    }
     fs::write(
         fixture
             .store
@@ -147,6 +163,10 @@ fn actual_execution_retains_context_receipt_and_kernel_audit() -> Result<()> {
         fs::read(&fixture.input)?
     );
     assert_eq!(receipt["release"], release);
+    let operation: Value = serde_json::from_slice(&fs::read(folder.join("operation.json"))?)?;
+    assert_eq!(receipt["operation"]["intent"], operation);
+    assert_eq!(operation["run_id"], receipt["run_id"]);
+    assert_ne!(operation["operation_id"], operation["run_id"]);
     let audit = fs::read_to_string(folder.join("audit.json"))?;
     if cfg!(any(target_os = "macos", target_os = "linux")) {
         assert_eq!(
@@ -171,6 +191,55 @@ fn actual_execution_retains_context_receipt_and_kernel_audit() -> Result<()> {
         )?;
         assert_eq!(packet.text, "hello kit");
         assert!(packet.source.starts_with("host-artifact:succeeded:"));
+        // Selection alone must not run a downstream kit. The caller explicitly
+        // validates the audience and chooses the selected bytes as new input.
+        assert_eq!(fs::read_dir(fixture.store.join("runs"))?.count(), 1);
+        let packet_bytes = fs::read(selected.join("context.json"))?;
+        assert!(
+            an_agent_host::context_exchange::ContextPacket::parse(
+                &packet_bytes,
+                uuid::Uuid::from_u128(1),
+            )
+            .is_err()
+        );
+        let next_input = fixture.root.join("next-input.txt");
+        fs::write(&next_input, packet.text.as_bytes())?;
+        let next = execution::run(&fixture.store, &release, &next_input, true)?;
+        assert_eq!(next["status"], "succeeded");
+        let next_receipt = Path::new(next["receipt"].as_str().ok_or("missing receipt")?);
+        let received: Value = serde_json::from_slice(&fs::read(next_receipt)?)?;
+        assert_eq!(
+            received["context"]["sha256"],
+            format!("{:x}", Sha256::digest(packet.text.as_bytes()))
+        );
+        assert_ne!(result["receipt"], next["receipt"]);
+        assert_ne!(
+            receipt["operation"]["intent"]["operation_id"],
+            received["operation"]["intent"]["operation_id"]
+        );
+        assert_eq!(
+            fs::read(
+                next_receipt
+                    .parent()
+                    .ok_or("missing run")?
+                    .join("stdout.txt")
+            )?,
+            b"hello kit"
+        );
+        // A modified retained output cannot produce a fresh context packet.
+        fs::write(folder.join("stdout.txt"), b"tampered")?;
+        let rejected = fixture.root.join("rejected-context");
+        assert!(
+            an_agent_host::artifact_context::export(
+                folder,
+                "stdout",
+                uuid::Uuid::nil(),
+                128,
+                &rejected
+            )
+            .is_err()
+        );
+        assert!(!rejected.exists());
     } else {
         assert_eq!(result["status"], "refused");
         assert!(!audit.contains("\"applied\""));

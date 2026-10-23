@@ -1,5 +1,7 @@
 //! Host-owned CLI execution: immutable deployment, bounded context, native
 //! sandbox, and receipts through real AgentControl admission. No Waver imports.
+mod backend;
+pub(crate) mod publication;
 pub(crate) mod sandbox;
 pub(crate) mod store;
 
@@ -14,7 +16,7 @@ use an_agent_core::{
 };
 use an_agent_spool::spool::Registry;
 use serde_json::{Value, json};
-use std::{fs, path::Path, sync::Arc, time::Duration};
+use std::{fs, path::Path, sync::Arc};
 use store::{digest, directory, load, lock, no_links, read, valid_digest, write_new};
 
 pub type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
@@ -49,7 +51,18 @@ pub fn register(folder: &Path, root: &Path) -> Result<Value> {
             .join(format!("{}.pending", Entropy::os().uuid_v4()));
         fs::create_dir(&staging)?;
         write_new(&staging.join("spool.yaml"), spec.body.as_bytes())?;
-        write_new(&staging.join("program"), &deployment.program)?;
+        let published = publication::publish(
+            &staging.join("program"),
+            &deployment.program,
+            &std::sync::atomic::AtomicBool::new(false),
+        )?;
+        if published.stopped.is_some() {
+            return Err(format!(
+                "registration publisher did not complete: {}",
+                published.evidence
+            )
+            .into());
+        }
         fs::rename(staging, &target)?;
     }
     let retained = load(&target)?;
@@ -95,6 +108,87 @@ pub fn run_cancellable(
     execute: bool,
     cancelled: &std::sync::atomic::AtomicBool,
 ) -> Result<Value> {
+    run_backend(
+        root,
+        release,
+        input_path,
+        execute,
+        cancelled,
+        &backend::Native,
+    )
+}
+
+/// Use an explicitly selected, operator-owned OpenShell VM profile. Registration
+/// and AgentControl admission are identical to native file-kit execution.
+pub fn run_openshell(
+    profile: &Path,
+    root: &Path,
+    release: &str,
+    input_path: &Path,
+    execute: bool,
+    cancelled: &std::sync::atomic::AtomicBool,
+) -> Result<Value> {
+    let profile = crate::openshell::Profile::load(profile)?;
+    run_backend(
+        root,
+        release,
+        input_path,
+        execute,
+        cancelled,
+        &backend::OpenShell(&profile),
+    )
+}
+
+fn run_backend(
+    root: &Path,
+    release: &str,
+    input_path: &Path,
+    execute: bool,
+    cancelled: &std::sync::atomic::AtomicBool,
+    backend: &dyn backend::ExecutionBackend,
+) -> Result<Value> {
+    run_selected(
+        root,
+        release,
+        Input::File(input_path),
+        execute,
+        cancelled,
+        backend,
+    )
+}
+
+/// Explicit version selection does not authorize execution or follow later edits.
+pub fn run_revision(
+    root: &Path,
+    release: &str,
+    catalog: &Path,
+    revision: &str,
+    execute: bool,
+    cancelled: &std::sync::atomic::AtomicBool,
+) -> Result<Value> {
+    run_selected(
+        root,
+        release,
+        Input::Revision(catalog, revision),
+        execute,
+        cancelled,
+        &backend::Native,
+    )
+}
+
+enum Input<'a> {
+    File(&'a Path),
+    Revision(&'a Path, &'a str),
+}
+
+fn run_selected(
+    root: &Path,
+    release: &str,
+    selected: Input<'_>,
+    execute: bool,
+    cancelled: &std::sync::atomic::AtomicBool,
+    backend: &dyn backend::ExecutionBackend,
+) -> Result<Value> {
     if !valid_digest(release) {
         return Err("release must be a full SHA-256 digest".into());
     }
@@ -105,6 +199,7 @@ pub fn run_cancellable(
     let deployment = load(&root.join("releases").join(release))?;
     let spec = deployment.spec;
     let file = spec.config.get("profile").and_then(|v| v.as_str()) == Some("file-kit-v1");
+    backend.validate(file)?;
     if spec.sha256 != release {
         return Err("release identity mismatch".into());
     }
@@ -115,25 +210,23 @@ pub fn run_cancellable(
     {
         return Err("registered descriptor mismatch".into());
     }
-    let input = read(input_path, sandbox::INPUT_LIMIT)?;
+    let (input, binding) = match selected {
+        Input::File(path) => (read(path, sandbox::INPUT_LIMIT)?, Value::Null),
+        Input::Revision(catalog, revision) => crate::artifact_versions::read(catalog, revision)?,
+    };
+    if input.len() > sandbox::INPUT_LIMIT {
+        return Err("selected revision exceeds execution input limit".into());
+    }
     let text = std::str::from_utf8(&input)?;
     let run_id = Entropy::os().uuid_v4();
     let run_dir = root.join("runs").join(run_id.to_string());
     let executable = run_dir.join("program");
     let mut plan = json!({"release":release,"cwd":run_dir,"environment":{},"context":{"kind":"explicit-stdin","sha256":digest(&input),"bytes":input.len(),"trust":"caller-supplied-data"},"limits":{"input_bytes":8192,"output_bytes_per_stream":65536,"wall_seconds":5},"artifact_boundary":run_dir,"execute":execute});
-    let backend_plan = if file {
-        crate::file_job::file_plan(&executable, &run_dir.join("work"))?
-    } else {
-        sandbox::plan(&executable)?
-    };
-    for (key, value) in backend_plan.as_object().ok_or("invalid backend plan")? {
-        plan[key] = value.clone();
+    plan["executable_publication"] = publication::plan();
+    if !binding.is_null() {
+        plan["input_revision"] = binding.clone();
     }
-    if file {
-        plan["cwd"] = json!(run_dir.join("work"));
-        plan["context"]["kind"] = json!("explicit-file-snapshot");
-        plan["files"] = json!({"declaration_slot":"/work","bound_directory":run_dir.join("work"),"read":"work/input.txt","write":"work/output.txt","output_limit":65536,"other_writes":false});
-    }
+    backend.plan(&executable, &run_dir, file, &mut plan)?;
     if !execute {
         return Ok(plan);
     }
@@ -202,25 +295,62 @@ pub fn run_cancellable(
         return Err("unexpected admitted intent; no process started".into());
     }
     let intent = control.push_event("kit.execute", text)?;
-    write_new(&executable, &deployment.program)?;
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        fs::set_permissions(&executable, fs::Permissions::from_mode(0o500))?;
-    }
-    let execution = if file {
-        directory(&run_dir.join("work"))?;
-        write_new(&run_dir.join("work/input.txt"), &input)?;
-        crate::file_job::execute_file(&executable, &run_dir.join("work"), cancelled)
-    } else {
-        sandbox::execute(
-            &executable,
-            &run_dir,
-            &input,
-            Duration::from_secs(5),
-            cancelled,
-        )
+    let operation = backend::Operation {
+        run_id: run_id.to_string(),
+        operation_id: Entropy::os().uuid_v4().to_string(),
     };
+    // Intent is recorded before publication or submission. A missing receipt is
+    // an unsettled operation, never implicit permission to retry.
+    write_new(
+        &run_dir.join("operation.json"),
+        &serde_json::to_vec_pretty(&operation)?,
+    )?;
+    let mut publication = Value::Null;
+    let mut evidence = Value::Null;
+    let mut observation = Value::Null;
+    let mut candidate = backend::Candidate::None;
+    let execution = (|| -> Result<sandbox::Execution> {
+        let published = publication::publish(&executable, &deployment.program, cancelled)?;
+        publication = published.evidence;
+        if let Some(stopped) = published.stopped {
+            return Ok(stopped);
+        }
+        let mut result = backend.execute(
+            backend::Request {
+                operation: &operation,
+                executable: &executable,
+                directory: &run_dir,
+                input: &input,
+                cancelled,
+            },
+            file,
+        )?;
+        evidence = result.evidence.clone();
+        observation = json!({"operation":result.operation,"status":result.execution.status,
+            "exit_code":result.execution.code,"environment":result.environment,
+            "settled_environment":result.settled_environment,
+            "termination_confirmed":result.termination_confirmed});
+        if let Err(error) = result.reconcile(&operation) {
+            observation["reconciliation_error"] = json!(error.to_string());
+            result.execution.status = "refused";
+            result
+                .execution
+                .stderr
+                .extend_from_slice(format!("\nresult rejected: {error}").as_bytes());
+            result.candidate = backend::Candidate::None;
+        }
+        candidate = result.candidate;
+        Ok(result.execution)
+    })();
+    if let Err(error) = &execution
+        && let Some(error) = error.downcast_ref::<publication::PublicationError>()
+    {
+        publication = error.evidence.clone();
+    }
+    let refusal = execution
+        .as_ref()
+        .err()
+        .map(|error| sandbox::refusal_evidence(error.as_ref()));
     let (mut status, code, stdout, mut stderr, pid, reaped) = match execution {
         Ok(result) => (
             result.status,
@@ -240,8 +370,19 @@ pub fn run_cancellable(
         ),
     };
     let mut artifact = Value::Null;
+    if backend.cancel_before_acceptance()
+        && status == "succeeded"
+        && cancelled.load(std::sync::atomic::Ordering::Relaxed)
+    {
+        status = "cancelled";
+    }
     if file && status == "succeeded" {
-        match crate::file_job::regular(&run_dir.join("work/output.txt"), 65536) {
+        let accepted = if code != Some(0) || !reaped {
+            Err("file output requires a reaped successful process".into())
+        } else {
+            backend::accept(candidate, &run_dir)
+        };
+        match accepted {
             Ok(bytes) => {
                 write_new(&run_dir.join("artifact.txt"), &bytes)?;
                 artifact =
@@ -257,6 +398,17 @@ pub fn run_cancellable(
     write_new(&run_dir.join("stderr.txt"), &stderr)?;
     let receipt = json!({"schema_version":1,"run_id":run_id,"release":release,"request_event":event.id,"execution_event":intent.id,"reply_tape_id":reply.tape_id,"status":status,"exit_code":code,"process":{"pid":pid,"reaped":reaped,"scope":"direct-child"},"context":{"path":"input.txt","sha256":digest(&input),"trust":"caller-supplied-data"},"stdout":{"path":"stdout.txt","sha256":digest(&stdout)},"stderr":{"path":"stderr.txt","sha256":digest(&stderr)},"plan_sha256":digest(&serde_json::to_vec_pretty(&plan)?),"retention":"manual; no automatic cleanup","backend":plan["backend"],"container":false});
     let mut receipt = receipt;
+    if !binding.is_null() {
+        receipt["input_revision"] = binding;
+    }
+    receipt["publication"] = publication;
+    receipt["operation"] = json!({"intent":operation,"observation":observation,
+        "cancel_requested":cancelled.load(std::sync::atomic::Ordering::Relaxed),
+        "automatic_retries":0});
+    backend.decorate_receipt(&mut receipt, evidence, !artifact.is_null());
+    if let Some(error) = refusal {
+        receipt["error"] = error;
+    }
     if file {
         receipt["artifact"] = artifact;
     }
@@ -280,6 +432,9 @@ pub fn run_cancellable(
         &run_dir.join("audit.json"),
         &serde_json::to_vec_pretty(&control.events(thread)?)?,
     )?;
+    // Only published after receipt, kernel finish and audit are all committed.
+    // A crash before this marker is not authority to reclaim or grant a request.
+    crate::settled_run::seal(&run_dir, &receipt)?;
     Ok(
         json!({"status":status,"receipt":run_dir.join("receipt.json"),"stdout":run_dir.join("stdout.txt")}),
     )

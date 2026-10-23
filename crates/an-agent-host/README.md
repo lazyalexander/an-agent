@@ -3,10 +3,47 @@
 This crate owns host-side effects, not kit business logic. The library's
 `execution::{check, register, run}` and `an-agent-host` CLI implement a narrow
 stdio capability and a separate [bounded build/file profile](FILE-JOBS.md).
+Fixed-file execution supports macOS and native Linux. The isolated Rust build
+recipe remains macOS-only; see [Linux file permissions](LINUX-VALIDATION.md#fixed-file-runtime).
 Core remains unchanged. `Host::pump` keeps its existing event
 semantics; a fallible process is not executed inside its infallible text sink.
 
+The optional [OpenShell VM adapter](OPENSHELL.md) runs the same file-kit contract
+in an independently owned VM. It gates artifact publication on successful
+execution and confirmed remote stop, with explicit uncertain termination results.
+The [local lifecycle assessment](OPENSHELL-RECOVERY.md) distinguishes backend
+cold workspace restart from VM pause, memory suspension and whole-VM backups.
+Its opt-in test uses the real host first, then explicit operator inspection;
+the production adapter still never restarts a settled run.
+
+Native and OpenShell now implement one internal host-owned execution backend
+contract. The host retains admission, operation/result reconciliation and
+artifact acceptance; each backend retains enforcement and termination evidence.
+See [the execution boundary](ARCHITECTURE.md#internal-execution-backend-contract).
+Existing CLI commands, profiles and receipt fields remain compatible; operation
+intent and settlement observations are additive, not a new VM control plane.
+
 ## Responsibility and dependency direction
+
+A spool carries domain knowledge: business rules, skills, workflows and domain
+acceptance criteria. The host manages execution and artifact identities without
+learning those rules. [Artifact revisions](ARTIFACT-VERSIONS.md) provide a bounded
+accepted-output -> editable copy -> new checkpoint -> pinned downstream input
+loop. A VM working disk is not the authoritative artifact catalog.
+
+[Settled work reclamation and mediated capabilities](RETENTION-CAPABILITIES.md)
+add explicit native work-copy cleanup and an approved `artifact.read` handoff.
+Unconfirmed termination cannot authorize cleanup; accepted products and audit
+remain intact. Kits request access but never select host paths or self-grant it.
+
+The [architecture contract](ARCHITECTURE.md) separates workflow packages, runs,
+stages, CLI kits, application-side shuttles and trusted host/backend authority.
+The [local VM direction](LOCAL-VM.md) separates host authorization and artifact
+ownership from backend enforcement and VM state. Local-first execution does not
+require a remote orchestration platform. Suspend/resume, VM pause and backups
+remain unimplemented capabilities, not promises made by the current adapter.
+The unused `space-preflight` CLI and library module have been retired; existing
+native execution and OpenShell profiles are unchanged.
 
 See [the architecture boundary](ARCHITECTURE.md) for the separation of explicit
 dependency updates, optional attention policy and execution authority. Attention
@@ -68,10 +105,29 @@ must retain their own command approval policy.
 
 ## Actual enforcement and evidence
 
+See [native Linux validation](../../infra/validation/native-linux.md) for an isolated
+developer VM recipe and explicit stdio output/context handoff. Fixed-file runtime
+acceptance is recorded separately in [Linux validation](LINUX-VALIDATION.md).
+Neither qualifies a production VM backend.
+
 See [model interruption](MODEL-CLI.md#cancellation-and-deadlines) for approved
 HTTP deadlines, cancellation, retained context, and no-retry settlement.
 See [process lifecycle ownership](PROCESS-LIFECYCLE.md) for cancellation,
 deadline handling, scoped pipe cleanup, confirmed reaping and crash limitations.
+See [CLI restart diagnosis](../../infra/validation/cli-restart.md) for the
+product executable publisher, concurrent-host regression and required CI gates.
+Registration, run snapshots and macOS build acceptance use fixed `/bin/cp` in
+a supervised trusted process to create the executable inode, verify its bytes,
+and publish without replacing existing files. The embedding process never holds
+a writer on that inode. There is no shell, project-selected helper or retry.
+The run preview declares the helper's separate ten-second deadline; receipts
+separate publication evidence from kit process evidence. This does not replace
+the kit sandbox. macOS is the current primary platform; existing Linux CI is
+retained without expanding deployment support.
+
+Refusal receipts include
+additive `error` evidence (stage, optional OS code, I/O kind and no-retry flag);
+the standard process API cannot distinguish spawn from pre-exec policy failure.
 
 For the stdio profile, macOS Seatbelt denies writes, arbitrary file reads, networking and child process
 creation. Only the selected executable, OS runtime libraries, random devices,
@@ -100,6 +156,7 @@ host-store/
   runs/<run-id>/
     plan.json                       exact invocation, bounds, input hash
     input.txt                       explicit context snapshot
+    operation.json                   host operation identity before submission
     program                         selected executable
     stdout.txt, stderr.txt          bounded results
     receipt.json                    identities, outcome, evidence paths
@@ -128,6 +185,19 @@ bytes supports investigation, not exact re-execution or recovery of the external
 world. The existing content-addressed workspace crate is not duplicated or
 silently wired into the recorder here. Broader versioning, reference-aware
 cleanup and container backends need their own concrete consumer and contract.
+
+## Internal module boundaries
+
+`execution/sandbox.rs` owns one complete process supervision flow, including
+bounded streams, deadlines and cancellation. Its regression suite lives in
+`execution/sandbox/tests.rs`; platform policy and child ownership remain in the
+existing `sandbox/{macos,linux,process}.rs` modules.
+
+`file_job.rs` retains platform policies and process launch sites.
+`file_job/build.rs` owns preview/approval, admission and build receipts;
+`file_job/artifacts.rs` owns regular-file and output-inode acceptance. Existing
+public and crate-internal entry paths remain unchanged. These are source-code
+boundaries, not additional runtime stages or authorization services.
 
 ## Acceptance
 

@@ -76,7 +76,9 @@ The execution plan records its binding to one run's private `work/` directory.
 Do not interpret this descriptor with another host.
 
 The kit starts in that directory. It reads `input.txt` (a snapshot, at most
-8 KiB UTF-8) and creates `output.txt` (at most 64 KiB). The actual policy is
+8 KiB UTF-8) and writes `output.txt` (at most 64 KiB), using create-or-truncate.
+On Linux, the host pre-creates the output inode; `create_new`, atomic replacement
+and temporary files are outside this ABI. The actual policy is
 stricter than the coarse YAML request: only that output path is writable.
 It cannot modify input, audit, registry, source documents, or other runs.
 Network, model calls and subprocesses remain denied. Stdin is empty; stdout
@@ -86,7 +88,7 @@ After reaping a successful process, the host rejects a missing, oversized,
 symlinked, hard-linked or non-regular output. Accepted bytes are copied to
 `artifact.txt` outside the writable directory and identified in `receipt.json`.
 Nothing is automatically applied to the user's original document. The original
-stdio-only-v1 permissions and native Linux implementation are unchanged.
+stdio-only-v1 permissions remain unchanged.
 
 To pass the accepted product to a subsequent model request, explicitly select
 `context-export RUN artifact THREAD_UUID TEXT_BYTE_BUDGET NEW_OUTPUT`. The host
@@ -97,10 +99,12 @@ separate steps; Waver does not own runtime context selection.
 
 ## Platform and lifecycle limits
 
-This new build/file profile currently executes on **macOS only**. Linux and other
-platforms fail closed; no Docker substitute or unrestricted fallback is used.
-Native Linux file/build policy and SPACE machine acceptance are subsequent work,
-not represented as completed by these tests.
+The isolated Rust **build** recipe remains macOS-only. File-kit **execution** is
+supported on macOS and native Linux; other systems refuse. Linux uses the
+existing Landlock/seccomp supervisor with the fixed file permissions detailed in
+[Linux validation](LINUX-VALIDATION.md#fixed-file-runtime). A Linux deployment
+needs a separately built native program; successful file execution does not
+establish isolated compilation. SPACE machine acceptance remains separate.
 
 Compiler stages reuse the host's bounded pipe/cancel/deadline supervisor with a
 dedicated process group. The leader remains unreaped while the group is signaled,

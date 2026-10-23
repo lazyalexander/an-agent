@@ -1,5 +1,5 @@
 //! An unsupported native file backend must retain refusal, never run directly.
-#![cfg(not(target_os = "macos"))]
+#![cfg(not(any(target_os = "macos", target_os = "linux")))]
 use an_agent_core::testkit::TempDir;
 use an_agent_host::execution;
 use sha2::{Digest, Sha256};

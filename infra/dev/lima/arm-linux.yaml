@@ -1,0 +1,27 @@
+# Optional developer machine, not a host runtime dependency or SPACE deployment.
+minimumLimaVersion: 2.2.1
+vmType: vz
+arch: aarch64
+cpus: 4
+memory: 8GiB
+disk: 32GiB
+images:
+  - location: https://cloud-images.ubuntu.com/minimal/releases/noble/release-20261001/ubuntu-24.04-minimal-cloudimg-arm64.img
+    arch: aarch64
+    digest: sha256:fbf6b15c50c474dc6dee5b3c74da212bb687a2625e877227828e6492d88dc151
+plain: true
+mounts: []
+containerd:
+  system: false
+  user: false
+ssh:
+  loadDotSSHPubKeys: false
+  forwardAgent: false
+  forwardX11: false
+propagateProxyEnv: false
+nestedVirtualization: false
+user:
+  name: runner
+  comment: Validation operator
+  home: /home/runner
+  uid: 1000

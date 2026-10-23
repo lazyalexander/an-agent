@@ -1,0 +1,18 @@
+# Local extensions; SPACE's ARCHITECTURE.toml schema remains unchanged.
+version = 1
+production_warning = 350
+test_warning = 600
+test_limit_advisory = 800
+# Bootstrap is permitted only against the last pre-policy development commit.
+bootstrap_base = "f54cfa71e463a7b2902a16a26494dc44fce2485a"
+
+[[dependencies]]
+from = "an-agent-core"
+forbid = ["an-agent-host", "an-waver", "pplx-space-archcheck", "reqwest"]
+
+[[dependencies]]
+from = "*"
+forbid = ["an-waver", "pplx-space-archcheck"]
+
+# These are development-tool-only dependencies, never product workspace members.
+

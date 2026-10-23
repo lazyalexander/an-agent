@@ -21,7 +21,7 @@ pub(crate) fn digest(bytes: &[u8]) -> String {
     format!("{:x}", Sha256::digest(bytes))
 }
 
-pub(super) fn valid_digest(value: &str) -> bool {
+pub(crate) fn valid_digest(value: &str) -> bool {
     value.len() == 64
         && value
             .bytes()
@@ -93,13 +93,13 @@ pub(crate) fn write_new(path: &Path, bytes: &[u8]) -> Result<()> {
     Ok(())
 }
 
-pub(super) struct Lock(PathBuf);
+pub(crate) struct Lock(PathBuf);
 impl Drop for Lock {
     fn drop(&mut self) {
         let _ = fs::remove_file(&self.0);
     }
 }
-pub(super) fn lock(root: &Path) -> Result<Lock> {
+pub(crate) fn lock(root: &Path) -> Result<Lock> {
     let path = root.join("host.lock");
     write_new(
         &path,

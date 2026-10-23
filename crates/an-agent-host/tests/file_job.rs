@@ -79,6 +79,10 @@ fn main() -> std::io::Result<()> {
         &listener.local_addr().unwrap().to_string(),
     );
     assert_eq!(build(&root, &source)["status"], "succeeded");
+    let publication: Value =
+        serde_json::from_slice(&fs::read(root.join("job/publication.json")).unwrap()).unwrap();
+    assert_eq!(publication["published"], true);
+    assert_eq!(publication["helper"]["reaped"], true);
     assert!(!root.join("job/leak").exists());
     let program = fs::read(root.join("job/accepted/program")).unwrap();
     assert!(

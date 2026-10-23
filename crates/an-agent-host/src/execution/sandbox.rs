@@ -6,7 +6,7 @@ mod process;
 use process::OwnedChild;
 
 #[cfg(target_os = "linux")]
-mod linux;
+pub(crate) mod linux;
 #[cfg(any(not(target_os = "linux"), test))]
 pub(crate) mod macos;
 use std::sync::Arc;
@@ -55,6 +55,34 @@ pub struct Execution {
     pub stderr: Vec<u8>,
     pub pid: Option<u32>,
     pub reaped: bool,
+}
+
+/// The standard process API reports spawn and pre-exec failures together.
+/// Do not claim a child was launched or attribute an errno to a specific policy.
+#[derive(Debug, thiserror::Error)]
+#[error("spawn or pre-exec refused: {0}")]
+struct LaunchError(#[source] std::io::Error);
+
+pub(super) fn refusal_evidence(error: &(dyn std::error::Error + 'static)) -> serde_json::Value {
+    let mut current = Some(error);
+    let mut os_error = None;
+    let mut stage = "sandbox-setup";
+    while let Some(cause) = current {
+        if cause.is::<LaunchError>() && stage != "executable-publication" {
+            stage = "spawn-or-pre-exec";
+        }
+        if cause.is::<super::publication::PublicationError>() {
+            stage = "executable-publication";
+        }
+        if let Some(cause) = cause.downcast_ref::<std::io::Error>() {
+            os_error = Some(cause);
+        }
+        current = cause.source();
+    }
+    serde_json::json!({"stage":stage,"message":error.to_string(),
+        "os_code":os_error.and_then(std::io::Error::raw_os_error),
+        "io_kind":os_error.map(|error| format!("{:?}", error.kind())),
+        "retry_attempted":false})
 }
 
 fn reader(mut pipe: impl Read, exceeded: Arc<AtomicBool>) -> std::io::Result<Vec<u8>> {
@@ -138,16 +166,16 @@ pub(crate) fn execute_command(
     thread::scope(|scope| {
         #[cfg(target_os = "macos")]
         let mut child = if group {
-            OwnedChild::group(launch.spawn()?)
+            OwnedChild::group(launch.spawn().map_err(LaunchError)?)
         } else {
-            OwnedChild::new(launch.spawn()?)
+            OwnedChild::new(launch.spawn().map_err(LaunchError)?)
         };
         #[cfg(not(target_os = "macos"))]
         let mut child = {
             if group {
                 return Err("process-group jobs unsupported on this platform".into());
             }
-            OwnedChild::new(launch.spawn()?)
+            OwnedChild::new(launch.spawn().map_err(LaunchError)?)
         };
         let pid = Some(child.child.id());
         let result = (|| -> Result<Execution> {
@@ -261,189 +289,4 @@ pub(crate) fn execute_command(
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    #[cfg(target_os = "macos")]
-    #[test]
-    fn compiler_group_timeout_and_cancel_use_the_existing_supervisor() -> Result<()> {
-        use std::os::unix::process::CommandExt;
-        for cancel in [false, true] {
-            let cancelled = AtomicBool::new(false);
-            thread::scope(|scope| -> Result<()> {
-                scope.spawn(|| {
-                    if cancel {
-                        thread::sleep(Duration::from_millis(150));
-                        cancelled.store(true, Ordering::Relaxed);
-                    }
-                });
-                let mut command = std::process::Command::new("/bin/sh");
-                command
-                    .args(["-c", "/bin/sleep 30 & wait"])
-                    .env_clear()
-                    .process_group(0);
-                let result = execute_command(
-                    command,
-                    Path::new("/"),
-                    b"",
-                    Duration::from_millis(300),
-                    &cancelled,
-                    true,
-                )?;
-                assert_eq!(
-                    result.status,
-                    if cancel { "cancelled" } else { "timed_out" }
-                );
-                assert_reaped(&result);
-                Ok(())
-            })?;
-        }
-        Ok(())
-    }
-    #[cfg(any(target_os = "macos", target_os = "linux"))]
-    use std::process::Command;
-
-    #[test]
-    fn interrupted_read_is_not_a_supervision_failure() -> Result<()> {
-        struct InterruptedOnce(bool);
-        impl Read for InterruptedOnce {
-            fn read(&mut self, output: &mut [u8]) -> std::io::Result<usize> {
-                if !self.0 {
-                    self.0 = true;
-                    return Err(std::io::ErrorKind::Interrupted.into());
-                }
-                let _ = output;
-                Ok(0)
-            }
-        }
-        assert!(reader(InterruptedOnce(false), Arc::new(AtomicBool::new(false)))?.is_empty());
-        Ok(())
-    }
-
-    #[cfg(unix)]
-    fn assert_reaped(result: &Execution) {
-        assert!(result.reaped);
-        let pid = result.pid.expect("execution must have started");
-        // SAFETY: query only the direct child whose ownership just settled.
-        assert_eq!(
-            unsafe { libc::waitpid(pid as i32, std::ptr::null_mut(), libc::WNOHANG) },
-            -1
-        );
-        assert_eq!(
-            std::io::Error::last_os_error().raw_os_error(),
-            Some(libc::ECHILD)
-        );
-    }
-
-    #[test]
-    fn profile_is_deny_by_default_and_quotes_paths() -> Result<()> {
-        let text = macos::profile(Path::new("/tmp/a\"b"))?;
-        assert!(text.contains("(deny default)"));
-        assert!(!text.contains("allow network"));
-        assert!(!text.contains("allow file-write"));
-        assert!(!text.contains("allow process-fork"));
-        assert!(text.contains("a\\\"b"));
-        assert!(macos::profile(Path::new("/tmp/a\nb")).is_err());
-        Ok(())
-    }
-
-    #[test]
-    #[cfg(any(target_os = "macos", target_os = "linux"))]
-    fn actual_backend_denies_effects_and_bounds_output_and_time() -> Result<()> {
-        let root = std::env::temp_dir().join(format!(
-            "host-sandbox-{}",
-            an_agent_core::det_seam::Entropy::os().uuid_v4()
-        ));
-        std::fs::create_dir(&root)?;
-        let source = root.join("probe.rs");
-        let executable = root.join("probe");
-        std::fs::write(
-            &source,
-            include_bytes!("../../tests/fixtures/execution_probe.rs"),
-        )?;
-        let status = Command::new("rustc")
-            .arg("--edition=2024")
-            .arg(&source)
-            .arg("-o")
-            .arg(&executable)
-            .status()?;
-        assert!(status.success());
-        let secret = root.join("host-secret.txt");
-        std::fs::write(&secret, b"test-only host data")?;
-        // Positive controls: the surrounding environment permits these effects.
-        assert_eq!(std::fs::read(&secret)?, b"test-only host data");
-        let listener = std::net::TcpListener::bind("127.0.0.1:0")?;
-        drop(listener);
-        for input in [
-            "write",
-            "network",
-            "spawn",
-            "env",
-            secret.to_str().ok_or("bad path")?,
-        ] {
-            let result = execute(
-                &executable,
-                &root,
-                input.as_bytes(),
-                Duration::from_secs(3),
-                &AtomicBool::new(false),
-            )?;
-            assert_eq!(
-                result.status,
-                "succeeded",
-                "{input}: {}",
-                String::from_utf8_lossy(&result.stderr)
-            );
-            assert_eq!(result.stdout, b"denied as expected\n");
-        }
-        assert!(!root.join("forbidden.txt").exists());
-        let timed = execute(
-            &executable,
-            &root,
-            b"hang",
-            Duration::from_millis(150),
-            &AtomicBool::new(false),
-        )?;
-        assert_eq!(timed.status, "timed_out");
-        assert_reaped(&timed);
-        let flooded = execute(
-            &executable,
-            &root,
-            b"flood",
-            Duration::from_secs(3),
-            &AtomicBool::new(false),
-        )?;
-        assert_eq!(flooded.status, "output_limit");
-        assert!(flooded.stdout.len() <= OUTPUT_LIMIT);
-        assert_reaped(&flooded);
-        let cancelled = AtomicBool::new(false);
-        thread::scope(|scope| -> Result<()> {
-            scope.spawn(|| {
-                thread::sleep(Duration::from_millis(150));
-                cancelled.store(true, Ordering::Relaxed);
-            });
-            let stopped = execute(
-                &executable,
-                &root,
-                b"hang",
-                Duration::from_secs(3),
-                &cancelled,
-            )?;
-            assert_eq!(stopped.status, "cancelled");
-            assert_reaped(&stopped);
-            Ok(())
-        })?;
-        let before_spawn = execute(
-            &executable,
-            &root,
-            b"hang",
-            Duration::ZERO,
-            &AtomicBool::new(true),
-        )?;
-        assert_eq!(before_spawn.status, "cancelled");
-        assert!(before_spawn.pid.is_none());
-        // Child confinement must not restrict the parent.
-        assert_eq!(std::fs::read(&secret)?, b"test-only host data");
-        std::fs::remove_dir_all(root)?;
-        Ok(())
-    }
-}
+mod tests;
