@@ -89,6 +89,8 @@ watch, it belongs to the lab.
 1. `cargo test --workspace` — green.
 2. `cargo clippy --workspace --all-targets` — zero warnings.
 3. `cargo fmt --all` — applied.
+4. `cargo arch` — green against the target branch. Do not reset or raise the
+   baseline to make a feature pass. See `ARCHITECTURE-GATES.md`.
 
 Plus the discipline-specific checks:
 

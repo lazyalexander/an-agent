@@ -1,0 +1,13 @@
+# Existing debt. Only lower or remove caps after the bootstrap review.
+[file_size]
+"crates/an-agent-core/src/control/agent_beat.rs" = 514
+"crates/an-agent-core/src/control/spool.rs" = 624
+"crates/an-agent-host/src/execution/sandbox.rs" = 535
+"crates/an-agent-host/src/file_job.rs" = 515
+
+[pattern_ratchet.command_construction]
+"crates/an-agent-factory/src/bash.rs" = 1
+"crates/an-agent-host/src/file_job.rs" = 2
+
+[crate_names]
+

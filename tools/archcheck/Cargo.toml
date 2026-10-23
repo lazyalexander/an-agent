@@ -1,0 +1,16 @@
+[package]
+name = "an-agent-architecture"
+version = "0.1.0"
+edition = "2024"
+publish = false
+license = "MIT"
+
+[workspace]
+
+[dependencies]
+pplx-space-archcheck = { git = "https://github.com/perplexityai/SPACE.git", rev = "57c7c0c47a73373a974c5b542d180599795465da" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "1"
+tempfile = "3"
+
