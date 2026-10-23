@@ -14,7 +14,18 @@ pub(crate) struct Accepted {
     pub evidence: Value,
 }
 
+fn native_file(receipt: &Value) -> bool {
+    matches!(
+        receipt["backend"].as_str(),
+        Some("macos-file-kit-v1" | "linux-landlock-seccomp-file-v1")
+    )
+}
+
 pub(crate) fn seal(run: &Path, receipt: &Value) -> Result<()> {
+    // Do not impose a new metadata-size/retention contract on other backends.
+    if !native_file(receipt) {
+        return Ok(());
+    }
     let marker = json!({"schema":"an-host-settlement-v1",
         "run_id":receipt["run_id"],"operation":receipt["operation"]["intent"],
         "receipt_sha256":store::digest(&regular(&run.join("receipt.json"), LIMIT)?),
@@ -48,10 +59,7 @@ pub(crate) fn accepted(root: &Path, id: &str) -> Result<Accepted> {
         || receipt["exit_code"] != 0
         || receipt["process"]["reaped"] != true
         || receipt["process"]["scope"] != "direct-child"
-        || !matches!(
-            backend,
-            "macos-file-kit-v1" | "linux-landlock-seccomp-file-v1"
-        )
+        || !native_file(&receipt)
         || observation["termination_confirmed"] != true
         || observation["status"] != "succeeded"
         || observation["exit_code"] != 0
@@ -94,4 +102,20 @@ pub(crate) fn accepted(root: &Path, id: &str) -> Result<Accepted> {
         "receipt_sha256":store::digest(&receipt_bytes),"settlement":marker,
         "artifact":receipt["artifact"],"backend":backend}),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn unsupported_profiles_do_not_acquire_a_retention_contract() -> Result<()> {
+        let temp = an_agent_core::testkit::TempDir::new("no-retention-marker");
+        for backend in ["openshell-vm-file-v1", "macos-seatbelt-stdio-v1", "unknown"] {
+            // No receipt/audit files: unrelated backends must not even read them.
+            seal(temp.path(), &json!({"backend":backend}))?;
+            assert!(!temp.path().join("settled.json").exists());
+        }
+        Ok(())
+    }
 }

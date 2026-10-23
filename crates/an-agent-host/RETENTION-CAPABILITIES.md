@@ -12,7 +12,7 @@ VM disks, arbitrary scratch trees, failed runs, logs or artifact catalogs.
 
 ## Evidence before reclamation
 
-New executions write `settled.json` only after the receipt, kernel finish and
+New native file executions write `settled.json` only after receipt, kernel finish and
 audit have been written. The marker binds the receipt and audit digests and the
 operation identity. It records completion of host bookkeeping, not necessarily
 successful execution. Reclamation independently requires all of:
