@@ -4,12 +4,10 @@
 "crates/an-agent-core/src/control/spool.rs" = 624
 "crates/an-agent-host/src/execution/sandbox.rs" = 535
 "crates/an-agent-host/src/file_job.rs" = 515
-"crates/an-agent-host/src/openshell.rs" = 603
 
 [pattern_ratchet.command_construction]
 "crates/an-agent-factory/src/bash.rs" = 1
 "crates/an-agent-host/src/file_job.rs" = 2
-"crates/an-agent-host/src/openshell.rs" = 1
 
 [crate_names]
 
