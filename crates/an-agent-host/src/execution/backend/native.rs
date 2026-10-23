@@ -51,7 +51,12 @@ impl ExecutionBackend for Native {
             )
         };
         Ok(Outcome {
+            operation: request.operation.clone(),
+            termination_confirmed: execution.reaped,
+            requires_environment: false,
             execution,
+            environment: None,
+            settled_environment: None,
             candidate,
             evidence: Value::Null,
         })

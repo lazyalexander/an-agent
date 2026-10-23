@@ -163,6 +163,10 @@ fn actual_execution_retains_context_receipt_and_kernel_audit() -> Result<()> {
         fs::read(&fixture.input)?
     );
     assert_eq!(receipt["release"], release);
+    let operation: Value = serde_json::from_slice(&fs::read(folder.join("operation.json"))?)?;
+    assert_eq!(receipt["operation"]["intent"], operation);
+    assert_eq!(operation["run_id"], receipt["run_id"]);
+    assert_ne!(operation["operation_id"], operation["run_id"]);
     let audit = fs::read_to_string(folder.join("audit.json"))?;
     if cfg!(any(target_os = "macos", target_os = "linux")) {
         assert_eq!(
@@ -209,6 +213,10 @@ fn actual_execution_retains_context_receipt_and_kernel_audit() -> Result<()> {
             format!("{:x}", Sha256::digest(packet.text.as_bytes()))
         );
         assert_ne!(result["receipt"], next["receipt"]);
+        assert_ne!(
+            receipt["operation"]["intent"]["operation_id"],
+            received["operation"]["intent"]["operation_id"]
+        );
         assert_eq!(
             fs::read(
                 next_receipt

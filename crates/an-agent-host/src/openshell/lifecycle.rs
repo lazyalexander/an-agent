@@ -1,5 +1,5 @@
 //! One lifecycle authority: submission, cancellation, stop proof and acceptance.
-use super::{Profile, RemoteExecution, transport::Transport};
+use super::{Profile, RemoteExecution, RuntimeIdentity, transport::Transport};
 use crate::execution::{Result, sandbox, store};
 use serde_json::{Value, json};
 use std::{
@@ -217,6 +217,7 @@ pub(super) fn drive<T: Transport>(
         }
     };
     let mut stopped = !attempted;
+    let mut settled_environment = None;
     if attempted {
         // An ambiguous create must never authorize stopping someone else's VM.
         let owned = session
@@ -251,6 +252,16 @@ pub(super) fn drive<T: Transport>(
                 .filter(succeeded)
                 .and_then(|r| serde_json::from_slice::<Value>(&r.stdout).ok())
                 .is_some_and(|state| {
+                    settled_environment = state["id"]
+                        .as_str()
+                        .zip(
+                            state["annotations"]["internal.openshell.ai/runtime-generation"]
+                                .as_str(),
+                        )
+                        .map(|(id, generation)| RuntimeIdentity {
+                            id: id.into(),
+                            generation: generation.into(),
+                        });
                     state["name"] == name
                         && state["annotations"]["an-agent.run"] == owner.as_ref()
                         && state["phase"] == "Stopped"
@@ -278,6 +289,11 @@ pub(super) fn drive<T: Transport>(
         "submitted":attempted,"status":status,"stop_reason":reason,"termination_confirmed":attempted && stopped,
         "candidate_eligible":accept,"automatic_retries":0,"steps":session.evidence});
     RemoteExecution {
+        environment: identity
+            .zip(generation)
+            .map(|(id, generation)| RuntimeIdentity { id, generation }),
+        settled_environment,
+        termination_confirmed: attempted && stopped,
         execution,
         artifact: if accept { candidate } else { None },
         evidence,

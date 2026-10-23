@@ -244,8 +244,19 @@ fn run_backend(
         return Err("unexpected admitted intent; no process started".into());
     }
     let intent = control.push_event("kit.execute", text)?;
+    let operation = backend::Operation {
+        run_id: run_id.to_string(),
+        operation_id: Entropy::os().uuid_v4().to_string(),
+    };
+    // Intent is recorded before publication or submission. A missing receipt is
+    // an unsettled operation, never implicit permission to retry.
+    write_new(
+        &run_dir.join("operation.json"),
+        &serde_json::to_vec_pretty(&operation)?,
+    )?;
     let mut publication = Value::Null;
     let mut evidence = Value::Null;
+    let mut observation = Value::Null;
     let mut candidate = backend::Candidate::None;
     let execution = (|| -> Result<sandbox::Execution> {
         let published = publication::publish(&executable, &deployment.program, cancelled)?;
@@ -253,8 +264,9 @@ fn run_backend(
         if let Some(stopped) = published.stopped {
             return Ok(stopped);
         }
-        let result = backend.execute(
+        let mut result = backend.execute(
             backend::Request {
+                operation: &operation,
                 executable: &executable,
                 directory: &run_dir,
                 input: &input,
@@ -263,6 +275,19 @@ fn run_backend(
             file,
         )?;
         evidence = result.evidence.clone();
+        observation = json!({"operation":result.operation,"status":result.execution.status,
+            "exit_code":result.execution.code,"environment":result.environment,
+            "settled_environment":result.settled_environment,
+            "termination_confirmed":result.termination_confirmed});
+        if let Err(error) = result.reconcile(&operation) {
+            observation["reconciliation_error"] = json!(error.to_string());
+            result.execution.status = "refused";
+            result
+                .execution
+                .stderr
+                .extend_from_slice(format!("\nresult rejected: {error}").as_bytes());
+            result.candidate = backend::Candidate::None;
+        }
         candidate = result.candidate;
         Ok(result.execution)
     })();
@@ -323,6 +348,9 @@ fn run_backend(
     let receipt = json!({"schema_version":1,"run_id":run_id,"release":release,"request_event":event.id,"execution_event":intent.id,"reply_tape_id":reply.tape_id,"status":status,"exit_code":code,"process":{"pid":pid,"reaped":reaped,"scope":"direct-child"},"context":{"path":"input.txt","sha256":digest(&input),"trust":"caller-supplied-data"},"stdout":{"path":"stdout.txt","sha256":digest(&stdout)},"stderr":{"path":"stderr.txt","sha256":digest(&stderr)},"plan_sha256":digest(&serde_json::to_vec_pretty(&plan)?),"retention":"manual; no automatic cleanup","backend":plan["backend"],"container":false});
     let mut receipt = receipt;
     receipt["publication"] = publication;
+    receipt["operation"] = json!({"intent":operation,"observation":observation,
+        "cancel_requested":cancelled.load(std::sync::atomic::Ordering::Relaxed),
+        "automatic_retries":0});
     backend.decorate_receipt(&mut receipt, evidence, !artifact.is_null());
     if let Some(error) = refusal {
         receipt["error"] = error;

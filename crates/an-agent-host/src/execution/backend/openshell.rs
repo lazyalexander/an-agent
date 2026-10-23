@@ -37,7 +37,12 @@ impl ExecutionBackend for OpenShell<'_> {
             request.cancelled,
         )?;
         Ok(Outcome {
+            operation: request.operation.clone(),
             execution: result.execution,
+            environment: result.environment.map(environment),
+            settled_environment: result.settled_environment.map(environment),
+            termination_confirmed: result.termination_confirmed,
+            requires_environment: true,
             candidate: result.artifact.map_or(Candidate::None, Candidate::Bytes),
             evidence: result.evidence,
         })
@@ -52,5 +57,12 @@ impl ExecutionBackend for OpenShell<'_> {
         receipt["process"]["scope"] =
             json!("local-openshell-cli-only; remote termination is recorded separately");
         receipt["container"] = Value::Null;
+    }
+}
+
+fn environment(identity: crate::openshell::RuntimeIdentity) -> Environment {
+    Environment {
+        id: identity.id,
+        generation: identity.generation,
     }
 }
