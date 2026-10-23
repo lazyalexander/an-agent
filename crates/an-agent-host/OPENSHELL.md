@@ -108,6 +108,11 @@ confirm its state. Do not restart it or adopt its output automatically. No disk
 rollback, transactional external-effect reversal or general security proof is
 claimed. SPACE integration and provider/model routing are outside this slice.
 
+[Local lifecycle assessment](OPENSHELL-RECOVERY.md) examines the selected
+backend's stop/start implementation and provides an opt-in cold workspace
+recovery test. This does not add pause, memory restore, backups or restart
+authority to the production adapter.
+
 ## Verification
 
 Regular unit tests cover timeout, cancellation after candidate capture, failed

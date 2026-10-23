@@ -11,6 +11,10 @@ semantics; a fallible process is not executed inside its infallible text sink.
 The optional [OpenShell VM adapter](OPENSHELL.md) runs the same file-kit contract
 in an independently owned VM. It gates artifact publication on successful
 execution and confirmed remote stop, with explicit uncertain termination results.
+The [local lifecycle assessment](OPENSHELL-RECOVERY.md) distinguishes backend
+cold workspace restart from VM pause, memory suspension and whole-VM backups.
+Its opt-in test uses the real host first, then explicit operator inspection;
+the production adapter still never restarts a settled run.
 
 ## Responsibility and dependency direction
 
