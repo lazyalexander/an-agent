@@ -8,6 +8,10 @@ recipe remains macOS-only; see [Linux file permissions](LINUX-VALIDATION.md#fixe
 Core remains unchanged. `Host::pump` keeps its existing event
 semantics; a fallible process is not executed inside its infallible text sink.
 
+The optional [OpenShell VM adapter](OPENSHELL.md) runs the same file-kit contract
+in an independently owned VM. It gates artifact publication on successful
+execution and confirmed remote stop, with explicit uncertain termination results.
+
 ## Responsibility and dependency direction
 
 The [architecture contract](ARCHITECTURE.md) separates workflow packages, runs,
