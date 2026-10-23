@@ -16,11 +16,12 @@ execution and confirmed remote stop, with explicit uncertain termination results
 
 The [architecture contract](ARCHITECTURE.md) separates workflow packages, runs,
 stages, CLI kits, application-side shuttles and trusted host/backend authority.
-The [SPACE preparation guide](SPACE-HANDOFF.md) specifies the next Mac-control to
-Linux-worker acceptance, without introducing a remote executor or changing the
-existing deployment schema. `an-agent-host space-preflight` emits local read-only
-prerequisite observations; exit zero means only that the diagnostic ran, and
-never grants execution or establishes SPACE readiness.
+The [local VM direction](LOCAL-VM.md) separates host authorization and artifact
+ownership from backend enforcement and VM state. Local-first execution does not
+require a remote orchestration platform. Suspend/resume, VM pause and backups
+remain unimplemented capabilities, not promises made by the current adapter.
+The unused `space-preflight` CLI and library module have been retired; existing
+native execution and OpenShell profiles are unchanged.
 
 See [the architecture boundary](ARCHITECTURE.md) for the separation of explicit
 dependency updates, optional attention policy and execution authority. Attention
@@ -85,7 +86,7 @@ must retain their own command approval policy.
 See [native Linux validation](../../infra/validation/native-linux.md) for an isolated
 developer VM recipe and explicit stdio output/context handoff. Fixed-file runtime
 acceptance is recorded separately in [Linux validation](LINUX-VALIDATION.md).
-Neither is a new VM execution backend or SPACE deployment.
+Neither qualifies a production VM backend.
 
 See [model interruption](MODEL-CLI.md#cancellation-and-deadlines) for approved
 HTTP deadlines, cancellation, retained context, and no-retry settlement.
@@ -161,6 +162,19 @@ bytes supports investigation, not exact re-execution or recovery of the external
 world. The existing content-addressed workspace crate is not duplicated or
 silently wired into the recorder here. Broader versioning, reference-aware
 cleanup and container backends need their own concrete consumer and contract.
+
+## Internal module boundaries
+
+`execution/sandbox.rs` owns one complete process supervision flow, including
+bounded streams, deadlines and cancellation. Its regression suite lives in
+`execution/sandbox/tests.rs`; platform policy and child ownership remain in the
+existing `sandbox/{macos,linux,process}.rs` modules.
+
+`file_job.rs` retains platform policies and process launch sites.
+`file_job/build.rs` owns preview/approval, admission and build receipts;
+`file_job/artifacts.rs` owns regular-file and output-inode acceptance. Existing
+public and crate-internal entry paths remain unchanged. These are source-code
+boundaries, not additional runtime stages or authorization services.
 
 ## Acceptance
 
