@@ -79,6 +79,60 @@ fn unchanged_tree_passes_and_missing_base_fails() {
     fs::remove_file(dir.path().join("architecture-baseline.toml")).unwrap();
     assert!(!gate(dir.path(), &base).0);
 }
+
+#[test]
+fn first_main_promotion_keeps_committed_policy_and_debt_caps() {
+    // Local object sharing needs no network and leaves the source checkout alone.
+    // CI fetches full history; missing pinned history intentionally fails closed.
+    let directory = tempfile::tempdir().unwrap();
+    let root = directory.path().join("checkout");
+    let source = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .canonicalize()
+        .unwrap();
+    let head = git(&source, &["rev-parse", "HEAD"]);
+    let common = source
+        .join(git(&source, &["rev-parse", "--git-common-dir"]))
+        .canonicalize()
+        .unwrap();
+    let cloned = Command::new("git")
+        .args(["clone", "--quiet", "--shared", "--no-checkout"])
+        .arg(common)
+        .arg(&root)
+        .output()
+        .unwrap();
+    assert!(
+        cloned.status.success(),
+        "{}",
+        String::from_utf8_lossy(&cloned.stderr)
+    );
+    git(&root, &["checkout", "--quiet", "--detach", &head]);
+    let base = "a3ff193c7d9732f2c272125e9b9c925bc9096567";
+    let (ok, log) = gate(&root, base);
+    assert!(ok && log.contains("first main promotion"), "{log}");
+
+    let rules = root.join("ARCHITECTURE.toml");
+    let original = fs::read_to_string(&rules).unwrap();
+    fs::write(&rules, original.replace("limit = 500", "limit = 5000")).unwrap();
+    let (ok, log) = gate(&root, base);
+    assert!(!ok && log.contains("policy changed"), "{log}");
+    fs::write(&rules, original).unwrap();
+
+    let baseline = root.join("architecture-baseline.toml");
+    let original = fs::read_to_string(&baseline).unwrap();
+    fs::write(&baseline, original.replace("= 624", "= 625")).unwrap();
+    let (ok, log) = gate(&root, base);
+    assert!(!ok && log.contains("no_raised_caps"), "{log}");
+    fs::write(&baseline, original).unwrap();
+
+    fs::write(
+        root.join("crates/an-agent-host/src/oversized.rs"),
+        "pub fn item() {}\n".repeat(501),
+    )
+    .unwrap();
+    let (ok, log) = gate(&root, base);
+    assert!(!ok && log.contains("no_crossing"), "{log}");
+}
 #[test]
 fn growth_and_baseline_laundering_fail() {
     let (dir, base) = fixture();

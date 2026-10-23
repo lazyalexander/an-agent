@@ -60,6 +60,16 @@ Only the exact last pre-policy commit
 baseline. This anchor is checked in code as well as TOML. It is not a generic
 "missing baseline means pass" path.
 
+The first stable-line promotion has one separately reviewed migration: when the
+base is exactly pre-gate main `a3ff193c7d9732f2c272125e9b9c925bc9096567`, compare
+against rules and baseline committed in the original gate implementation
+`8c89829b9de7506925a5d1d107d04df500ddd54f`. That policy commit must exist in HEAD's
+ancestry. The gate still checks the current tree, policy equality, new entries,
+raised caps and stale entries; rename detection still uses the actual PR base.
+It does not copy the current baseline or disable any finding. No branch name,
+other older commit, missing file or malformed policy activates this migration.
+Once main carries the gate, ordinary base-to-head comparison applies again.
+
 Semantic changes to either rules file fail comparison with the target commit.
 An intentional policy migration therefore needs its own explicitly reviewed
 change to the gate, not an ordinary feature PR's new exemption. Comments may

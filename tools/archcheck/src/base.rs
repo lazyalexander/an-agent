@@ -3,6 +3,19 @@ use crate::Result;
 use pplx_space_archcheck::{Baseline, Context, Renames, config::CrateNamesPolicy};
 use std::{fs, path::Path, process::Command};
 
+// One reviewed migration for main's first receipt of the architecture gate.
+// Compare against committed rules, never the feature's proposed baseline.
+const PRE_GATE_MAIN: &str = "a3ff193c7d9732f2c272125e9b9c925bc9096567";
+const FIRST_POLICY: &str = "8c89829b9de7506925a5d1d107d04df500ddd54f";
+
+fn policy_revision(revision: &str) -> &str {
+    if revision == PRE_GATE_MAIN {
+        FIRST_POLICY
+    } else {
+        revision
+    }
+}
+
 fn git(root: &Path, args: &[&str]) -> Result<Vec<u8>> {
     let output = Command::new("git").current_dir(root).args(args).output()?;
     if !output.status.success() {
@@ -32,6 +45,12 @@ pub fn attach(
     .trim()
     .to_owned();
     let bootstrap_mode = revision == bootstrap;
+    let policy_base = policy_revision(&revision);
+    if policy_base != revision {
+        // Missing history or an unrelated checkout must fail, not seed policy.
+        git(root, &["merge-base", "--is-ancestor", FIRST_POLICY, "HEAD"])?;
+        eprintln!("first main promotion: compare {revision} against reviewed policy {policy_base}");
+    }
     for file in [
         "ARCHITECTURE.toml",
         "architecture-baseline.toml",
@@ -45,7 +64,7 @@ pub fn attach(
         } else {
             fs::write(
                 &target,
-                git(root, &["show", &format!("{revision}:{file}")])?,
+                git(root, &["show", &format!("{policy_base}:{file}")])?,
             )?;
         }
     }
@@ -74,4 +93,24 @@ pub fn attach(
     )?;
     ctx.renames = Some(Renames::load(&renamed)?);
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn migration_is_pinned_to_one_base_and_never_selects_a_moving_branch() {
+        assert_eq!(policy_revision(PRE_GATE_MAIN), FIRST_POLICY);
+        for other in [
+            "main",
+            "origin/main",
+            "HEAD",
+            FIRST_POLICY,
+            "f54cfa71e463a7b2902a16a26494dc44fce2485a",
+            "0000000000000000000000000000000000000000",
+        ] {
+            assert_eq!(policy_revision(other), other);
+        }
+    }
 }
