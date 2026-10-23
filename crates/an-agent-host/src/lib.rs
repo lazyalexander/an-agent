@@ -36,6 +36,7 @@ pub mod file_job;
 mod hooks;
 mod model;
 pub mod model_run;
+pub mod openshell;
 pub mod space_preflight;
 
 pub use connection::ModelConnection;

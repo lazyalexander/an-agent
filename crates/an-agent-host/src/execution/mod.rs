@@ -107,6 +107,38 @@ pub fn run_cancellable(
     execute: bool,
     cancelled: &std::sync::atomic::AtomicBool,
 ) -> Result<Value> {
+    run_backend(root, release, input_path, execute, cancelled, None)
+}
+
+/// Use an explicitly selected, operator-owned OpenShell VM profile. Registration
+/// and AgentControl admission are identical to native file-kit execution.
+pub fn run_openshell(
+    profile: &Path,
+    root: &Path,
+    release: &str,
+    input_path: &Path,
+    execute: bool,
+    cancelled: &std::sync::atomic::AtomicBool,
+) -> Result<Value> {
+    let profile = crate::openshell::Profile::load(profile)?;
+    run_backend(
+        root,
+        release,
+        input_path,
+        execute,
+        cancelled,
+        Some(&profile),
+    )
+}
+
+fn run_backend(
+    root: &Path,
+    release: &str,
+    input_path: &Path,
+    execute: bool,
+    cancelled: &std::sync::atomic::AtomicBool,
+    remote: Option<&crate::openshell::Profile>,
+) -> Result<Value> {
     if !valid_digest(release) {
         return Err("release must be a full SHA-256 digest".into());
     }
@@ -117,6 +149,9 @@ pub fn run_cancellable(
     let deployment = load(&root.join("releases").join(release))?;
     let spec = deployment.spec;
     let file = spec.config.get("profile").and_then(|v| v.as_str()) == Some("file-kit-v1");
+    if remote.is_some() && !file {
+        return Err("OpenShell adapter requires a file-kit-v1 deployment".into());
+    }
     if spec.sha256 != release {
         return Err("release identity mismatch".into());
     }
@@ -134,7 +169,9 @@ pub fn run_cancellable(
     let executable = run_dir.join("program");
     let mut plan = json!({"release":release,"cwd":run_dir,"environment":{},"context":{"kind":"explicit-stdin","sha256":digest(&input),"bytes":input.len(),"trust":"caller-supplied-data"},"limits":{"input_bytes":8192,"output_bytes_per_stream":65536,"wall_seconds":5},"artifact_boundary":run_dir,"execute":execute});
     plan["executable_publication"] = publication::plan();
-    let backend_plan = if file {
+    let backend_plan = if let Some(profile) = remote {
+        profile.plan()
+    } else if file {
         crate::file_job::file_plan(&executable, &run_dir.join("work"))?
     } else {
         sandbox::plan(&executable)?
@@ -142,10 +179,17 @@ pub fn run_cancellable(
     for (key, value) in backend_plan.as_object().ok_or("invalid backend plan")? {
         plan[key] = value.clone();
     }
-    if file {
+    if file && remote.is_none() {
         plan["cwd"] = json!(run_dir.join("work"));
         plan["context"]["kind"] = json!("explicit-file-snapshot");
         plan["files"] = json!({"declaration_slot":"/work","bound_directory":run_dir.join("work"),"read":"work/input.txt","write":"work/output.txt","output_limit":65536,"other_writes":false});
+    }
+    if remote.is_some() {
+        plan["context"]["kind"] = json!("explicit-file-snapshot");
+        plan["limits"]["wall_seconds"] = plan["wall_seconds"].clone();
+        plan["files"] = json!({"declaration_slot":"/work","guest_directory":"/sandbox",
+            "input":"/sandbox/input.txt","candidate":"/sandbox/output.txt","output_limit":65536,
+            "guest_scratch":"/tmp","host_mounts":false,"extra_guest_files":"never imported"});
     }
     if !execute {
         return Ok(plan);
@@ -217,13 +261,21 @@ pub fn run_cancellable(
     let intent = control.push_event("kit.execute", text)?;
     let mut output_slot = None;
     let mut publication = Value::Null;
+    let mut remote_evidence = Value::Null;
+    let mut remote_artifact = None;
     let execution = (|| -> Result<sandbox::Execution> {
         let published = publication::publish(&executable, &deployment.program, cancelled)?;
         publication = published.evidence;
         if let Some(stopped) = published.stopped {
             return Ok(stopped);
         }
-        if file {
+        if let Some(profile) = remote {
+            let result =
+                crate::openshell::execute(profile, &executable, &run_dir, &input, cancelled)?;
+            remote_artifact = result.artifact;
+            remote_evidence = result.evidence;
+            Ok(result.execution)
+        } else if file {
             directory(&run_dir.join("work"))?;
             write_new(&run_dir.join("work/input.txt"), &input)?;
             crate::file_job::prepare_output(&run_dir.join("work")).and_then(|slot| {
@@ -268,8 +320,16 @@ pub fn run_cancellable(
         ),
     };
     let mut artifact = Value::Null;
+    if remote.is_some()
+        && status == "succeeded"
+        && cancelled.load(std::sync::atomic::Ordering::Relaxed)
+    {
+        status = "cancelled";
+    }
     if file && status == "succeeded" {
-        let accepted = if code != Some(0) || !reaped {
+        let accepted = if remote.is_some() {
+            remote_artifact.ok_or_else(|| "OpenShell returned no accepted artifact".into())
+        } else if code != Some(0) || !reaped {
             Err("file output requires a reaped successful process".into())
         } else {
             crate::file_job::accept_output(&run_dir.join("work"), output_slot.as_ref())
@@ -291,6 +351,13 @@ pub fn run_cancellable(
     let receipt = json!({"schema_version":1,"run_id":run_id,"release":release,"request_event":event.id,"execution_event":intent.id,"reply_tape_id":reply.tape_id,"status":status,"exit_code":code,"process":{"pid":pid,"reaped":reaped,"scope":"direct-child"},"context":{"path":"input.txt","sha256":digest(&input),"trust":"caller-supplied-data"},"stdout":{"path":"stdout.txt","sha256":digest(&stdout)},"stderr":{"path":"stderr.txt","sha256":digest(&stderr)},"plan_sha256":digest(&serde_json::to_vec_pretty(&plan)?),"retention":"manual; no automatic cleanup","backend":plan["backend"],"container":false});
     let mut receipt = receipt;
     receipt["publication"] = publication;
+    if remote.is_some() {
+        remote_evidence["artifact_accepted"] = json!(!artifact.is_null());
+        receipt["openshell"] = remote_evidence;
+        receipt["process"]["scope"] =
+            json!("local-openshell-cli-only; remote termination is recorded separately");
+        receipt["container"] = Value::Null;
+    }
     if let Some(error) = refusal {
         receipt["error"] = error;
     }
