@@ -33,16 +33,18 @@ components. A supervising model may propose a plan or ask an operator for a
 grant; it cannot edit policy or authorize itself.
 
 The host owns workflow dependencies, admission, context disclosure, budgets,
-artifact acceptance and retention decisions. SPACE (or another qualified backend)
-owns placement, VM lifecycle, actual process termination and enforced resource,
-filesystem and network restrictions. Do not move SPACE controllers into an-agent
-or maintain a competing VM state machine. Record requested cancellation separately
-from confirmed termination; a disconnected stream is not proof of completion.
+artifact acceptance and retention decisions. A qualified execution backend owns
+VM lifecycle, actual process termination and enforced resource, filesystem and
+network restrictions. Prioritize local execution; do not require a remote
+orchestration platform or copy its controllers into an-agent. The host records
+intent and evidence rather than maintaining a competing VM state machine.
+Record requested cancellation separately from confirmed termination; a
+disconnected stream is not proof of completion.
 
 Required backend capabilities are admission requirements. Unsupported or unknown
 isolation must fail closed, never fall back to an unrestricted local shell.
 macOS and Linux adapters need separate acceptance evidence; snapshots are not
-assumed portable between them. See [SPACE handoff preparation](SPACE-HANDOFF.md).
+assumed portable between them. See [local VM capabilities and limits](LOCAL-VM.md).
 
 Shuttles accept bounded application operations, recheck grants and object
 revisions at application time, and return actual-effect receipts. They must not
@@ -140,6 +142,6 @@ evidence; local plans, audit and context selections stay out of that package.
 
 These are bounded local profiles, not authenticated remote attestations or
 crash-atomic transactions. Retention remains manual. Native Linux fixed-file
-execution is supported; isolated Linux builds and SPACE machine acceptance
-remain deferred, and no automatic
-application of results or cleanup is added by this boundary document.
+execution is supported; isolated Linux builds, VM pause/suspend and snapshot
+recovery remain deferred. No automatic application of results or cleanup is
+added by this boundary document.

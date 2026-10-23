@@ -53,7 +53,6 @@ fn run(args: Vec<String>) -> Result<()> {
     let result = match args.as_slice() {
         [cmd, profile, store, release, input] if cmd == "run-openshell" => with_cancellation(|cancelled| execution::run_openshell(Path::new(profile), Path::new(store), release, Path::new(input), false, &cancelled))?,
         [cmd, profile, store, release, input, flag] if cmd == "run-openshell" && flag == "--execute" => with_cancellation(|cancelled| execution::run_openshell(Path::new(profile), Path::new(store), release, Path::new(input), true, &cancelled))?,
-        [cmd] if cmd == "space-preflight" => an_agent_host::space_preflight::inspect(),
         [cmd, source, toolchain, output] if cmd == "build-kit" => with_cancellation(|cancelled| an_agent_host::file_job::build(Path::new(source), Path::new(toolchain), Path::new(output), None, &cancelled))?,
         [cmd, source, toolchain, output, flag, digest] if cmd == "build-kit" && flag == "--approve" => with_cancellation(|cancelled| an_agent_host::file_job::build(Path::new(source), Path::new(toolchain), Path::new(output), Some(digest), &cancelled))?,
         [cmd, run, stream, audience, budget, output] if cmd == "context-export" =>
@@ -71,7 +70,7 @@ fn run(args: Vec<String>) -> Result<()> {
         [cmd, folder, store] if cmd == "register" => execution::register(Path::new(folder), Path::new(store))?,
         [cmd, store, release, input] if cmd == "run" => supervised_run(store, release, input, false)?,
         [cmd, store, release, input, flag] if cmd == "run" && flag == "--execute" => supervised_run(store, release, input, true)?,
-        _ => return Err("usage: an-agent-host space-preflight | build-kit SOURCE TOOLCHAIN NEW_OUTPUT [--approve PLAN_SHA256] | check DEPLOYMENT | register DEPLOYMENT STORE | run STORE RELEASE INPUT [--execute] | run-openshell PROFILE STORE RELEASE INPUT [--execute] | context-check THREAD PACKET | context-export RUN artifact|stdout|stderr|model THREAD TEXT_BYTE_BUDGET NEW_OUTPUT | model PROFILE PACKET NEW_OUTPUT [--approve PLAN_SHA256]".into()),
+        _ => return Err("usage: an-agent-host build-kit SOURCE TOOLCHAIN NEW_OUTPUT [--approve PLAN_SHA256] | check DEPLOYMENT | register DEPLOYMENT STORE | run STORE RELEASE INPUT [--execute] | run-openshell PROFILE STORE RELEASE INPUT [--execute] | context-check THREAD PACKET | context-export RUN artifact|stdout|stderr|model THREAD TEXT_BYTE_BUDGET NEW_OUTPUT | model PROFILE PACKET NEW_OUTPUT [--approve PLAN_SHA256]".into()),
     };
     println!("{}", serde_json::to_string(&result)?);
     if result
