@@ -6,6 +6,42 @@ service, graph schema, scheduler, or GNN dependency.
 
 ## Workflow package direction
 
+A spool is a carrier of domain knowledge: workflow decisions, domain rules,
+skills, algorithms and acceptance criteria belong in its package and kits.
+The host must not absorb those rules. It provides execution authority, generic
+integrity checks, version provenance and retention mechanisms. Waver helps
+developers produce packages without becoming coupled to a particular domain.
+
+### Execution history, package releases and artifact revisions
+
+These are distinct assets, not three implementations of one version system.
+Global tape is primarily diagnostic and causal evidence. A spool may explicitly
+use its own log as recovery material; neither logs nor base images promise full
+execution recovery. Disk snapshots and memory/device checkpoints have different
+backend-specific guarantees, and cannot restore external side effects.
+
+The host owns accepted artifact identities, lineage, access and retention.
+A spool defines output meaning and domain validation. A backend owns isolation
+and environment state; its writable disk is not the authoritative artifact
+catalog or an independent backup. Spools may be business black boxes, but their
+inputs, permissions, outputs and termination remain explicit boundary contracts.
+
+An accepted revision is immutable. A human edits a separate working copy and
+explicitly submits a saved checkpoint as a new revision with a parent reference.
+Human-edit provenance is an operator declaration, not authenticated authorship.
+Downstream runs bind an exact revision and byte digest; they never follow a
+mutable latest pointer. Later edits neither replace running inputs nor authorize
+reruns. Divergent edits may share a parent. Domain-specific merging belongs to
+the spool or application, not a generic last-writer-wins host policy.
+
+The initial artifact revision profile is bounded UTF-8 file data, not a general
+document repository. It preserves accepted run output and explicit edits outside
+the VM, verifies identity on every read, and binds selected bytes into the
+existing controlled execution path. There is no automatic watching, merge,
+garbage collection, VM snapshot, or independent backup claim. An operator must
+save a coherent file and approve its byte digest before importing an edit.
+Existing native input/output limits still apply.
+
 A spool is intended to be a reusable workflow package: stages, CLI-first kits,
 configuration, documentation, dependencies and requested capabilities. A shuttle
 is an independently deployed application adapter, not a mandatory component of
@@ -139,7 +175,7 @@ These profiles are requirements, not newly implemented runtime modes.
 | --- | --- |
 | Waver | Developer scaffolds, code-tool briefs, source checks, declarations, portable package evidence and delivery |
 | Shuttle | Application-native events, narrowly authorized operations, revision checks and actual-effect receipts |
-| Spool | Workflow definition, stage contracts, dependencies and requested capabilities; no self-grants |
+| Spool | Domain knowledge, workflow rules, skills, stage contracts and domain acceptance; declares dependencies and capabilities, never self-grants |
 | Kit | Developer-owned computation and intermediate artifacts, normally through a CLI |
 | an-agent host | Concrete execution policy, model connections, scoped context exchange, process lifecycle, audit and artifact reception |
 | Core | Existing admission and causal recording contracts; no application-specific attention model or packaging implementation |
