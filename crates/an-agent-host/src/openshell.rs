@@ -81,10 +81,18 @@ impl Profile {
     }
 }
 
+pub(crate) struct RuntimeIdentity {
+    pub id: String,
+    pub generation: String,
+}
+
 pub(crate) struct RemoteExecution {
     pub execution: sandbox::Execution,
     pub artifact: Option<Vec<u8>>,
     pub evidence: Value,
+    pub environment: Option<RuntimeIdentity>,
+    pub settled_environment: Option<RuntimeIdentity>,
+    pub termination_confirmed: bool,
 }
 
 /// Run only after the existing host admission path authorizes this invocation.

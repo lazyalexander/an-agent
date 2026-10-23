@@ -10,8 +10,9 @@ A spool is intended to be a reusable workflow package: stages, CLI-first kits,
 configuration, documentation, dependencies and requested capabilities. A shuttle
 is an independently deployed application adapter, not a mandatory component of
 every spool. The current embedded-body descriptor and registration contracts
-remain unchanged; general multi-stage execution and remote VM execution are not
-implemented by this document.
+remain unchanged; general multi-stage execution is not implemented by this
+document. The optional OpenShell profile implements bounded VM file-kit execution,
+not a general workflow scheduler.
 
 Keep package identity, run identity and stage-attempt identity separate. A run
 binds immutable package/input identities and an approved policy. A stage consumes
@@ -26,6 +27,76 @@ must not carry live credentials. Reports and model claims are evidence to assess
 not authenticated proof of execution or domain correctness.
 
 ## Permission and scheduling boundaries
+
+### Internal execution backend contract
+
+`execution/backend.rs` defines the host-owned `ExecutionBackend` contract.
+Native and OpenShell implement validation, plan resolution, bounded execution,
+and compatibility receipt decoration. Both enter through the same registration,
+AgentControl admission, executable publication and host settlement path. Public
+entrypoints, CLI selection, preview fields and existing receipt fields remain
+compatible. This is not a stable third-party plugin API yet.
+
+```text
+caller -> host admission -> operation intent -> executable publication
+                                  |
+                           ExecutionBackend
+                           /              \
+                   Native supervisor   OpenShell lifecycle
+                   Seatbelt/Landlock   qualified VM driver
+                           \              /
+                      typed outcome + candidate
+                                  |
+                 host reconciliation -> artifact validation
+                                  |
+                       receipt + tape + accepted product
+```
+
+The host persists `operation.json` before publication/submission. It separates
+the run ID from a fresh operation ID. An additive `receipt.operation` records
+intent, returned observation and cancellation request independently of the
+legacy status. Successful outcomes require matching operation identity and
+confirmed termination. A VM outcome additionally requires the same non-missing
+environment ID and runtime generation at execution and settlement. Native
+execution has no VM generation; a reaped child is its existing termination
+evidence, not a memory snapshot or VM lifecycle claim.
+
+OpenShell retains its own ownership checks and stop-confirmation sequence. It
+returns typed initial/settled identities; host decisions do not parse diagnostic
+log text. A mismatch is refused before artifact publication, while stdout,
+stderr, process observations and reconciliation error remain inspectable. An
+unconfirmed termination stays unconfirmed, not success. Candidate bytes are
+bounded data, not permission to write a host path. Native file acceptance keeps
+the existing inode/regular-file checks; only the host writes `artifact.txt`.
+
+Cancellation uses the existing request token and backend-specific cleanup.
+Cancellation request is not termination confirmation. The current late-cancel
+window for OpenShell and native supervisor behavior remain unchanged. No
+automatic retry, fallback, restart or adoption of a late result is added.
+Publication failures remain separate from backend observations. A missing
+receipt after a crash is an unsettled operation requiring investigation, not a
+recoverable job queue. Writes retain the existing durability semantics; the new
+intent file does not promise power-loss durability or crash reconciliation.
+
+This borrows [SPACE's separation of intent, runtime evidence and guarded completion](https://github.com/perplexityai/SPACE/blob/57c7c0c47a73373a974c5b542d180599795465da/crates/libs/placement/machine/README.md),
+not its control plane or placement machinery. Operation IDs correlate trusted
+adapter returns; they are not cryptographic remote execution attestations. There is no
+distributed fence or compare-and-swap claim: execution is synchronous and the
+existing whole-store lock remains held. A future concurrent/remote scheduler
+would need persistent claims and guarded commits before relaxing that lock.
+Pause, suspension, backup and another VM backend are outside this contract's
+current supported operations. Adding one must not turn unsupported capabilities
+into native fallbacks or equate disk restart with memory resume.
+
+Acceptance for this boundary: existing native process/file-kit regressions;
+shared-contract tests for stale operations, replaced generations, missing
+termination evidence and bounded candidates; real registration/admission fault
+injection proving rejected candidates never become artifacts while diagnostics
+remain available. The opt-in `openshell_live` test also compares operation IDs
+and initial/settled VM identities for success, timeout and cancellation.
+The macOS OpenShell 0.1.5 real run on 2026-10-23 passed all three paths in 56.92s;
+all three confirmed stop, and only success produced an accepted artifact.
+This does not qualify crash recovery, another VM backend or distributed fencing.
 
 The model agent and spool payload are untrusted. The host authorization service,
 execution enforcement and application-side capability gate are trusted computing

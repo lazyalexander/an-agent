@@ -1,5 +1,6 @@
 //! Host-owned CLI execution: immutable deployment, bounded context, native
 //! sandbox, and receipts through real AgentControl admission. No Waver imports.
+mod backend;
 pub(crate) mod publication;
 pub(crate) mod sandbox;
 pub(crate) mod store;
@@ -15,7 +16,7 @@ use an_agent_core::{
 };
 use an_agent_spool::spool::Registry;
 use serde_json::{Value, json};
-use std::{fs, path::Path, sync::Arc, time::Duration};
+use std::{fs, path::Path, sync::Arc};
 use store::{digest, directory, load, lock, no_links, read, valid_digest, write_new};
 
 pub type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
@@ -107,7 +108,14 @@ pub fn run_cancellable(
     execute: bool,
     cancelled: &std::sync::atomic::AtomicBool,
 ) -> Result<Value> {
-    run_backend(root, release, input_path, execute, cancelled, None)
+    run_backend(
+        root,
+        release,
+        input_path,
+        execute,
+        cancelled,
+        &backend::Native,
+    )
 }
 
 /// Use an explicitly selected, operator-owned OpenShell VM profile. Registration
@@ -127,7 +135,7 @@ pub fn run_openshell(
         input_path,
         execute,
         cancelled,
-        Some(&profile),
+        &backend::OpenShell(&profile),
     )
 }
 
@@ -137,7 +145,7 @@ fn run_backend(
     input_path: &Path,
     execute: bool,
     cancelled: &std::sync::atomic::AtomicBool,
-    remote: Option<&crate::openshell::Profile>,
+    backend: &dyn backend::ExecutionBackend,
 ) -> Result<Value> {
     if !valid_digest(release) {
         return Err("release must be a full SHA-256 digest".into());
@@ -149,9 +157,7 @@ fn run_backend(
     let deployment = load(&root.join("releases").join(release))?;
     let spec = deployment.spec;
     let file = spec.config.get("profile").and_then(|v| v.as_str()) == Some("file-kit-v1");
-    if remote.is_some() && !file {
-        return Err("OpenShell adapter requires a file-kit-v1 deployment".into());
-    }
+    backend.validate(file)?;
     if spec.sha256 != release {
         return Err("release identity mismatch".into());
     }
@@ -169,28 +175,7 @@ fn run_backend(
     let executable = run_dir.join("program");
     let mut plan = json!({"release":release,"cwd":run_dir,"environment":{},"context":{"kind":"explicit-stdin","sha256":digest(&input),"bytes":input.len(),"trust":"caller-supplied-data"},"limits":{"input_bytes":8192,"output_bytes_per_stream":65536,"wall_seconds":5},"artifact_boundary":run_dir,"execute":execute});
     plan["executable_publication"] = publication::plan();
-    let backend_plan = if let Some(profile) = remote {
-        profile.plan()
-    } else if file {
-        crate::file_job::file_plan(&executable, &run_dir.join("work"))?
-    } else {
-        sandbox::plan(&executable)?
-    };
-    for (key, value) in backend_plan.as_object().ok_or("invalid backend plan")? {
-        plan[key] = value.clone();
-    }
-    if file && remote.is_none() {
-        plan["cwd"] = json!(run_dir.join("work"));
-        plan["context"]["kind"] = json!("explicit-file-snapshot");
-        plan["files"] = json!({"declaration_slot":"/work","bound_directory":run_dir.join("work"),"read":"work/input.txt","write":"work/output.txt","output_limit":65536,"other_writes":false});
-    }
-    if remote.is_some() {
-        plan["context"]["kind"] = json!("explicit-file-snapshot");
-        plan["limits"]["wall_seconds"] = plan["wall_seconds"].clone();
-        plan["files"] = json!({"declaration_slot":"/work","guest_directory":"/sandbox",
-            "input":"/sandbox/input.txt","candidate":"/sandbox/output.txt","output_limit":65536,
-            "guest_scratch":"/tmp","host_mounts":false,"extra_guest_files":"never imported"});
-    }
+    backend.plan(&executable, &run_dir, file, &mut plan)?;
     if !execute {
         return Ok(plan);
     }
@@ -259,38 +244,52 @@ fn run_backend(
         return Err("unexpected admitted intent; no process started".into());
     }
     let intent = control.push_event("kit.execute", text)?;
-    let mut output_slot = None;
+    let operation = backend::Operation {
+        run_id: run_id.to_string(),
+        operation_id: Entropy::os().uuid_v4().to_string(),
+    };
+    // Intent is recorded before publication or submission. A missing receipt is
+    // an unsettled operation, never implicit permission to retry.
+    write_new(
+        &run_dir.join("operation.json"),
+        &serde_json::to_vec_pretty(&operation)?,
+    )?;
     let mut publication = Value::Null;
-    let mut remote_evidence = Value::Null;
-    let mut remote_artifact = None;
+    let mut evidence = Value::Null;
+    let mut observation = Value::Null;
+    let mut candidate = backend::Candidate::None;
     let execution = (|| -> Result<sandbox::Execution> {
         let published = publication::publish(&executable, &deployment.program, cancelled)?;
         publication = published.evidence;
         if let Some(stopped) = published.stopped {
             return Ok(stopped);
         }
-        if let Some(profile) = remote {
-            let result =
-                crate::openshell::execute(profile, &executable, &run_dir, &input, cancelled)?;
-            remote_artifact = result.artifact;
-            remote_evidence = result.evidence;
-            Ok(result.execution)
-        } else if file {
-            directory(&run_dir.join("work"))?;
-            write_new(&run_dir.join("work/input.txt"), &input)?;
-            crate::file_job::prepare_output(&run_dir.join("work")).and_then(|slot| {
-                output_slot = slot;
-                crate::file_job::execute_file(&executable, &run_dir.join("work"), cancelled)
-            })
-        } else {
-            sandbox::execute(
-                &executable,
-                &run_dir,
-                &input,
-                Duration::from_secs(5),
+        let mut result = backend.execute(
+            backend::Request {
+                operation: &operation,
+                executable: &executable,
+                directory: &run_dir,
+                input: &input,
                 cancelled,
-            )
+            },
+            file,
+        )?;
+        evidence = result.evidence.clone();
+        observation = json!({"operation":result.operation,"status":result.execution.status,
+            "exit_code":result.execution.code,"environment":result.environment,
+            "settled_environment":result.settled_environment,
+            "termination_confirmed":result.termination_confirmed});
+        if let Err(error) = result.reconcile(&operation) {
+            observation["reconciliation_error"] = json!(error.to_string());
+            result.execution.status = "refused";
+            result
+                .execution
+                .stderr
+                .extend_from_slice(format!("\nresult rejected: {error}").as_bytes());
+            result.candidate = backend::Candidate::None;
         }
+        candidate = result.candidate;
+        Ok(result.execution)
     })();
     if let Err(error) = &execution
         && let Some(error) = error.downcast_ref::<publication::PublicationError>()
@@ -320,19 +319,17 @@ fn run_backend(
         ),
     };
     let mut artifact = Value::Null;
-    if remote.is_some()
+    if backend.cancel_before_acceptance()
         && status == "succeeded"
         && cancelled.load(std::sync::atomic::Ordering::Relaxed)
     {
         status = "cancelled";
     }
     if file && status == "succeeded" {
-        let accepted = if remote.is_some() {
-            remote_artifact.ok_or_else(|| "OpenShell returned no accepted artifact".into())
-        } else if code != Some(0) || !reaped {
+        let accepted = if code != Some(0) || !reaped {
             Err("file output requires a reaped successful process".into())
         } else {
-            crate::file_job::accept_output(&run_dir.join("work"), output_slot.as_ref())
+            backend::accept(candidate, &run_dir)
         };
         match accepted {
             Ok(bytes) => {
@@ -351,13 +348,10 @@ fn run_backend(
     let receipt = json!({"schema_version":1,"run_id":run_id,"release":release,"request_event":event.id,"execution_event":intent.id,"reply_tape_id":reply.tape_id,"status":status,"exit_code":code,"process":{"pid":pid,"reaped":reaped,"scope":"direct-child"},"context":{"path":"input.txt","sha256":digest(&input),"trust":"caller-supplied-data"},"stdout":{"path":"stdout.txt","sha256":digest(&stdout)},"stderr":{"path":"stderr.txt","sha256":digest(&stderr)},"plan_sha256":digest(&serde_json::to_vec_pretty(&plan)?),"retention":"manual; no automatic cleanup","backend":plan["backend"],"container":false});
     let mut receipt = receipt;
     receipt["publication"] = publication;
-    if remote.is_some() {
-        remote_evidence["artifact_accepted"] = json!(!artifact.is_null());
-        receipt["openshell"] = remote_evidence;
-        receipt["process"]["scope"] =
-            json!("local-openshell-cli-only; remote termination is recorded separately");
-        receipt["container"] = Value::Null;
-    }
+    receipt["operation"] = json!({"intent":operation,"observation":observation,
+        "cancel_requested":cancelled.load(std::sync::atomic::Ordering::Relaxed),
+        "automatic_retries":0});
+    backend.decorate_receipt(&mut receipt, evidence, !artifact.is_null());
     if let Some(error) = refusal {
         receipt["error"] = error;
     }

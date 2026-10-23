@@ -81,6 +81,21 @@ fn real_submission_timeout_and_cancellation() -> Result<()> {
         let receipt_path = PathBuf::from(result["receipt"].as_str().unwrap());
         let receipt: Value = serde_json::from_slice(&fs::read(&receipt_path)?)?;
         assert_eq!(receipt["openshell"]["termination_confirmed"], true);
+        let observation = &receipt["operation"]["observation"];
+        assert_eq!(observation["operation"], receipt["operation"]["intent"]);
+        assert_eq!(observation["termination_confirmed"], true);
+        assert_eq!(
+            observation["environment"],
+            observation["settled_environment"]
+        );
+        assert_eq!(
+            observation["environment"]["id"],
+            receipt["openshell"]["sandbox_id"]
+        );
+        assert_eq!(
+            observation["environment"]["generation"],
+            receipt["openshell"]["runtime_generation"]
+        );
         let artifact = receipt_path.parent().unwrap().join("artifact.txt");
         if expected == "succeeded" {
             assert_eq!(fs::read(&artifact)?, b"alpha\nbeta\n");

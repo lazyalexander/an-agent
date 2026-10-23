@@ -16,6 +16,13 @@ cold workspace restart from VM pause, memory suspension and whole-VM backups.
 Its opt-in test uses the real host first, then explicit operator inspection;
 the production adapter still never restarts a settled run.
 
+Native and OpenShell now implement one internal host-owned execution backend
+contract. The host retains admission, operation/result reconciliation and
+artifact acceptance; each backend retains enforcement and termination evidence.
+See [the execution boundary](ARCHITECTURE.md#internal-execution-backend-contract).
+Existing CLI commands, profiles and receipt fields remain compatible; operation
+intent and settlement observations are additive, not a new VM control plane.
+
 ## Responsibility and dependency direction
 
 The [architecture contract](ARCHITECTURE.md) separates workflow packages, runs,
@@ -138,6 +145,7 @@ host-store/
   runs/<run-id>/
     plan.json                       exact invocation, bounds, input hash
     input.txt                       explicit context snapshot
+    operation.json                   host operation identity before submission
     program                         selected executable
     stdout.txt, stderr.txt          bounded results
     receipt.json                    identities, outcome, evidence paths
