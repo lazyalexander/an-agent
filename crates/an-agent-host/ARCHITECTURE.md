@@ -12,6 +12,41 @@ The host must not absorb those rules. It provides execution authority, generic
 integrity checks, version provenance and retention mechanisms. Waver helps
 developers produce packages without becoming coupled to a particular domain.
 
+### Ephemeral internals and mediated external capabilities
+
+A spool owns domain computation inside its granted boundary. Internal working
+materials are disposable by default, not automatically registered as versioned
+assets. Only explicitly delivered and host-accepted outputs become artifacts.
+Optional recovery checkpoints require an explicit retention contract. The host
+retains bounded request/result evidence without preserving every scratch file.
+
+Reclamation requires confirmed termination, not a returned CLI or elapsed
+deadline. Unknown termination is quarantined for investigation. The first
+reclamation operation is operator-approved and limited to the native file-kit
+work directory after successful settlement and verified accepted output. It
+keeps the artifact, input evidence, receipt, plan, program and audit. It refuses
+other backends, unexpected directory entries and incomplete/failed runs; it is
+not periodic garbage collection or VM deletion. Failures/cancellations retain
+their work material pending a separately qualified retention policy.
+
+External access follows request -> host authorization -> bounded service ->
+result handoff. Spools do not receive host credentials, arbitrary paths or an
+unrestricted host shell. Application changes still go through shuttles with
+revision preconditions and actual-effect receipts. Internal authorized kit
+computation does not need a host request for every local step.
+
+The first mediated capability is `artifact.read`: a settled kit explicitly
+delivers a typed request for one revision. The host selects its private catalog
+and continuation release, previews the exact grant, and requires its digest for
+execution. It reuses artifact verification and controlled revision execution;
+the continuation receives only the selected bytes, not catalog access. The
+handoff is a new run, not an in-process suspension/resume protocol. Recorded
+intent and a one-shot grant directory prevent automatic duplicate submission;
+an interrupted handoff remains uncertain and is not automatically retried.
+This is not a general external-tool registry or a new business workflow engine.
+See [retention and capability acceptance](RETENTION-CAPABILITIES.md) for the CLI,
+settlement evidence, trusted-store assumptions and executable regressions.
+
 ### Execution history, package releases and artifact revisions
 
 These are distinct assets, not three implementations of one version system.
@@ -251,4 +286,5 @@ These are bounded local profiles, not authenticated remote attestations or
 crash-atomic transactions. Retention remains manual. Native Linux fixed-file
 execution is supported; isolated Linux builds, VM pause/suspend and snapshot
 recovery remain deferred. No automatic application of results or cleanup is
-added by this boundary document.
+added implicitly. The separately approved native work-copy reclamation above
+does not extend to uncertain runs or VM environments.

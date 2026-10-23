@@ -2,7 +2,7 @@
 use super::*;
 use an_agent_host::artifact_versions;
 
-fn cli(args: &[String]) -> execution::Result<Value> {
+pub(super) fn cli(args: &[String]) -> execution::Result<Value> {
     let output = Command::new(env!("CARGO_BIN_EXE_an-agent-host"))
         .args(args)
         .output()?;
@@ -15,10 +15,10 @@ fn cli(args: &[String]) -> execution::Result<Value> {
     )?)
 }
 
-fn path(path: &Path) -> String {
+pub(super) fn path(path: &Path) -> String {
     path.to_string_lossy().into_owned()
 }
-fn digest(bytes: &[u8]) -> String {
+pub(super) fn digest(bytes: &[u8]) -> String {
     format!("{:x}", Sha256::digest(bytes))
 }
 

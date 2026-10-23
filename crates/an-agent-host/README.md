@@ -31,6 +31,11 @@ learning those rules. [Artifact revisions](ARTIFACT-VERSIONS.md) provide a bound
 accepted-output -> editable copy -> new checkpoint -> pinned downstream input
 loop. A VM working disk is not the authoritative artifact catalog.
 
+[Settled work reclamation and mediated capabilities](RETENTION-CAPABILITIES.md)
+add explicit native work-copy cleanup and an approved `artifact.read` handoff.
+Unconfirmed termination cannot authorize cleanup; accepted products and audit
+remain intact. Kits request access but never select host paths or self-grant it.
+
 The [architecture contract](ARCHITECTURE.md) separates workflow packages, runs,
 stages, CLI kits, application-side shuttles and trusted host/backend authority.
 The [local VM direction](LOCAL-VM.md) separates host authorization and artifact
