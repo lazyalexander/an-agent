@@ -28,6 +28,7 @@ that follows from its name.
 | Launch and execute | Bound package, input, environment and policy; no weaker fallback | Implemented in bounded native and optional OpenShell profiles |
 | Assemble a workspace | Expose only approved inputs, dependencies and writable outputs | Fixed profiles only; arbitrary mounts or stage assembly are not implemented |
 | Cancel or stop | Confirm termination, retain uncertain outcomes and reject late success | Existing process supervision and OpenShell stop-settlement checks |
+| Cold workspace restart | Boot again from retained disk, without continuing old processes | OpenShell backend primitive; opt-in operator test only, not host-directed resume |
 | Pause scheduling | Admit no new work; define what already-running work may do | Not a general host operation |
 | Pause a VM | Backend-confirmed execution freeze, distinct from cancellation | Not implemented |
 | Suspend and resume | Preserve execution state with a documented restore contract | Not implemented |
@@ -36,6 +37,8 @@ that follows from its name.
 A disk snapshot is not a memory checkpoint. Neither reverses a shuttle operation,
 message or model request outside the VM. Backup consistency, encryption, secret
 retention and restore compatibility need independent acceptance.
+See the [OpenShell lifecycle assessment](OPENSHELL-RECOVERY.md) for source
+evidence, the bounded cold-restart acceptance and the remaining capability gaps.
 
 ## Next evidence, not a generic framework
 

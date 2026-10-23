@@ -3,6 +3,9 @@
 mod lifecycle;
 mod transport;
 
+#[cfg(all(test, target_os = "macos"))]
+mod cold_recovery_tests;
+
 use lifecycle::{Session, drive};
 use transport::Cli;
 
