@@ -67,6 +67,10 @@ cargo check --workspace --all-targets
 cargo test --workspace
 cargo clippy --workspace --all-targets
 cargo fmt --all -- --check
+cargo arch
 ```
 
 The toolchain is pinned via `rust-toolchain.toml`. Experiments stay outside the product dependency graph. Promote a proven integration through a tested implementation, rather than treating a successful standalone demo as a kernel guarantee.
+
+See [architecture gates](ARCHITECTURE-GATES.md) for the TOML rules, existing-debt
+baseline, dependency boundaries and the separately locked SPACE-based checker.
