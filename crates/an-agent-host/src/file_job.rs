@@ -141,6 +141,7 @@ pub fn build(
         .collect();
     let mut plan = json!({"schema":"an-rust-build-plan-v1","source_sha256":store::digest(&source_bytes),"toolchain_profile_sha256":store::digest(&profile),"rustc_sha256":tool_digest(&rustc)?,"linker_sha256":tool_digest(&linker)?,"toolchain_root":toolchain_root,"sdk":sdk,"output":output,"commands":commands,"test_command":[output.join("build/tests"),PathBuf::from("--test-threads=1")],"environment":{"PATH":"/usr/bin:/bin","TMPDIR":output.join("build"),"SDKROOT":sdk},"backend":"macos-rust-build-v1","supported":cfg!(target_os="macos"),"limits":{"stage_seconds":60,"stream_bytes":65536,"file_bytes":20971520},"automatic_retries":0});
     plan["policies"] = policies(&output, &tools, toolchain_root)?;
+    plan["executable_publication"] = crate::execution::publication::plan();
     plan["compiler_cwd"] = json!(output.join("build"));
     plan["test_cwd"] = json!(output);
     plan["test_environment"] = json!({});
@@ -345,7 +346,25 @@ fn stages(
     // Accepted files are outside every workload's writable directory.
     store::directory(&output.join("accepted"))?;
     store::write_new(&output.join("accepted/main.rs"), &source)?;
-    store::write_new(&output.join("accepted/program"), &program)?;
+    let published = crate::execution::publication::publish(
+        &output.join("accepted/program"),
+        &program,
+        cancelled,
+    );
+    let evidence = match &published {
+        Ok(result) => result.evidence.clone(),
+        Err(error) => error
+            .downcast_ref::<crate::execution::publication::PublicationError>()
+            .map(|error| error.evidence.clone())
+            .unwrap_or(Value::Null),
+    };
+    store::write_new(
+        &output.join("publication.json"),
+        &serde_json::to_vec_pretty(&evidence)?,
+    )?;
+    if let Some(stopped) = published?.stopped {
+        return Ok(json!({"status":stopped.status,"stage":"publication"}));
+    }
     let manifest = json!({"schema":"an-rust-build-artifacts-v1","source_sha256":store::digest(&source),"program_sha256":store::digest(&program),"tests":"passed","compiler":"operator-selected; not a reproducible-build attestation"});
     store::write_new(
         &output.join("accepted/manifest.json"),

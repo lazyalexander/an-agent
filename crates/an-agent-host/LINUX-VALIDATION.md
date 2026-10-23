@@ -104,7 +104,7 @@ qualification is included in this result.
 
 ## Validation
 
-The [ARM Linux VM recipe](ARM-LINUX-VALIDATION.md) provides a separate native
+The [ARM Linux VM recipe](../../infra/validation/native-linux.md) provides a separate native
 guest validation path without Docker, host directory sharing or SPACE changes.
 It uses the existing stdio profile; Linux file-kit/build support remains deferred.
 

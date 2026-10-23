@@ -1,5 +1,8 @@
 //! The host accepts a deployment made without Waver or a source analyzer.
 #[cfg(any(target_os = "macos", target_os = "linux"))]
+#[path = "execution/concurrency.rs"]
+mod concurrency;
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 #[path = "execution/lifecycle.rs"]
 mod lifecycle;
 use an_agent_host::execution::{self, Result};
@@ -17,6 +20,7 @@ struct Fixture {
     store: PathBuf,
     input: PathBuf,
 }
+
 impl Fixture {
     fn new() -> Result<Self> {
         let root = std::env::temp_dir().canonicalize()?.join(format!(
@@ -83,6 +87,18 @@ fn runtime_contract_is_independent_and_refuses_tampering() -> Result<()> {
     assert_eq!(plan["context"]["trust"], "caller-supplied-data");
     assert!(!fixture.store.join("runs").exists());
     assert!(execution::run(&fixture.store, "../../escape", &fixture.input, true).is_err());
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(
+            fixture
+                .store
+                .join("releases")
+                .join(&release)
+                .join("program"),
+            fs::Permissions::from_mode(0o600),
+        )?;
+    }
     fs::write(
         fixture
             .store

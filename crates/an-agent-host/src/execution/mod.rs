@@ -1,5 +1,6 @@
 //! Host-owned CLI execution: immutable deployment, bounded context, native
 //! sandbox, and receipts through real AgentControl admission. No Waver imports.
+pub(crate) mod publication;
 pub(crate) mod sandbox;
 pub(crate) mod store;
 
@@ -49,7 +50,18 @@ pub fn register(folder: &Path, root: &Path) -> Result<Value> {
             .join(format!("{}.pending", Entropy::os().uuid_v4()));
         fs::create_dir(&staging)?;
         write_new(&staging.join("spool.yaml"), spec.body.as_bytes())?;
-        write_new(&staging.join("program"), &deployment.program)?;
+        let published = publication::publish(
+            &staging.join("program"),
+            &deployment.program,
+            &std::sync::atomic::AtomicBool::new(false),
+        )?;
+        if published.stopped.is_some() {
+            return Err(format!(
+                "registration publisher did not complete: {}",
+                published.evidence
+            )
+            .into());
+        }
         fs::rename(staging, &target)?;
     }
     let retained = load(&target)?;
@@ -121,6 +133,7 @@ pub fn run_cancellable(
     let run_dir = root.join("runs").join(run_id.to_string());
     let executable = run_dir.join("program");
     let mut plan = json!({"release":release,"cwd":run_dir,"environment":{},"context":{"kind":"explicit-stdin","sha256":digest(&input),"bytes":input.len(),"trust":"caller-supplied-data"},"limits":{"input_bytes":8192,"output_bytes_per_stream":65536,"wall_seconds":5},"artifact_boundary":run_dir,"execute":execute});
+    plan["executable_publication"] = publication::plan();
     let backend_plan = if file {
         crate::file_job::file_plan(&executable, &run_dir.join("work"))?
     } else {
@@ -202,29 +215,40 @@ pub fn run_cancellable(
         return Err("unexpected admitted intent; no process started".into());
     }
     let intent = control.push_event("kit.execute", text)?;
-    write_new(&executable, &deployment.program)?;
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        fs::set_permissions(&executable, fs::Permissions::from_mode(0o500))?;
-    }
     let mut output_slot = None;
-    let execution = if file {
-        directory(&run_dir.join("work"))?;
-        write_new(&run_dir.join("work/input.txt"), &input)?;
-        crate::file_job::prepare_output(&run_dir.join("work")).and_then(|slot| {
-            output_slot = slot;
-            crate::file_job::execute_file(&executable, &run_dir.join("work"), cancelled)
-        })
-    } else {
-        sandbox::execute(
-            &executable,
-            &run_dir,
-            &input,
-            Duration::from_secs(5),
-            cancelled,
-        )
-    };
+    let mut publication = Value::Null;
+    let execution = (|| -> Result<sandbox::Execution> {
+        let published = publication::publish(&executable, &deployment.program, cancelled)?;
+        publication = published.evidence;
+        if let Some(stopped) = published.stopped {
+            return Ok(stopped);
+        }
+        if file {
+            directory(&run_dir.join("work"))?;
+            write_new(&run_dir.join("work/input.txt"), &input)?;
+            crate::file_job::prepare_output(&run_dir.join("work")).and_then(|slot| {
+                output_slot = slot;
+                crate::file_job::execute_file(&executable, &run_dir.join("work"), cancelled)
+            })
+        } else {
+            sandbox::execute(
+                &executable,
+                &run_dir,
+                &input,
+                Duration::from_secs(5),
+                cancelled,
+            )
+        }
+    })();
+    if let Err(error) = &execution
+        && let Some(error) = error.downcast_ref::<publication::PublicationError>()
+    {
+        publication = error.evidence.clone();
+    }
+    let refusal = execution
+        .as_ref()
+        .err()
+        .map(|error| sandbox::refusal_evidence(error.as_ref()));
     let (mut status, code, stdout, mut stderr, pid, reaped) = match execution {
         Ok(result) => (
             result.status,
@@ -266,6 +290,10 @@ pub fn run_cancellable(
     write_new(&run_dir.join("stderr.txt"), &stderr)?;
     let receipt = json!({"schema_version":1,"run_id":run_id,"release":release,"request_event":event.id,"execution_event":intent.id,"reply_tape_id":reply.tape_id,"status":status,"exit_code":code,"process":{"pid":pid,"reaped":reaped,"scope":"direct-child"},"context":{"path":"input.txt","sha256":digest(&input),"trust":"caller-supplied-data"},"stdout":{"path":"stdout.txt","sha256":digest(&stdout)},"stderr":{"path":"stderr.txt","sha256":digest(&stderr)},"plan_sha256":digest(&serde_json::to_vec_pretty(&plan)?),"retention":"manual; no automatic cleanup","backend":plan["backend"],"container":false});
     let mut receipt = receipt;
+    receipt["publication"] = publication;
+    if let Some(error) = refusal {
+        receipt["error"] = error;
+    }
     if file {
         receipt["artifact"] = artifact;
     }

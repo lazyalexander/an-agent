@@ -57,6 +57,34 @@ pub struct Execution {
     pub reaped: bool,
 }
 
+/// The standard process API reports spawn and pre-exec failures together.
+/// Do not claim a child was launched or attribute an errno to a specific policy.
+#[derive(Debug, thiserror::Error)]
+#[error("spawn or pre-exec refused: {0}")]
+struct LaunchError(#[source] std::io::Error);
+
+pub(super) fn refusal_evidence(error: &(dyn std::error::Error + 'static)) -> serde_json::Value {
+    let mut current = Some(error);
+    let mut os_error = None;
+    let mut stage = "sandbox-setup";
+    while let Some(cause) = current {
+        if cause.is::<LaunchError>() && stage != "executable-publication" {
+            stage = "spawn-or-pre-exec";
+        }
+        if cause.is::<super::publication::PublicationError>() {
+            stage = "executable-publication";
+        }
+        if let Some(cause) = cause.downcast_ref::<std::io::Error>() {
+            os_error = Some(cause);
+        }
+        current = cause.source();
+    }
+    serde_json::json!({"stage":stage,"message":error.to_string(),
+        "os_code":os_error.and_then(std::io::Error::raw_os_error),
+        "io_kind":os_error.map(|error| format!("{:?}", error.kind())),
+        "retry_attempted":false})
+}
+
 fn reader(mut pipe: impl Read, exceeded: Arc<AtomicBool>) -> std::io::Result<Vec<u8>> {
     let mut output = Vec::new();
     let mut chunk = [0u8; 4096];
@@ -138,16 +166,16 @@ pub(crate) fn execute_command(
     thread::scope(|scope| {
         #[cfg(target_os = "macos")]
         let mut child = if group {
-            OwnedChild::group(launch.spawn()?)
+            OwnedChild::group(launch.spawn().map_err(LaunchError)?)
         } else {
-            OwnedChild::new(launch.spawn()?)
+            OwnedChild::new(launch.spawn().map_err(LaunchError)?)
         };
         #[cfg(not(target_os = "macos"))]
         let mut child = {
             if group {
                 return Err("process-group jobs unsupported on this platform".into());
             }
-            OwnedChild::new(launch.spawn()?)
+            OwnedChild::new(launch.spawn().map_err(LaunchError)?)
         };
         let pid = Some(child.child.id());
         let result = (|| -> Result<Execution> {
@@ -263,6 +291,98 @@ pub(crate) fn execute_command(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn inherited_writer_refuses_exec_with_preserved_errno_without_retry() -> Result<()> {
+        use std::os::{
+            fd::AsRawFd,
+            unix::{fs::PermissionsExt, net::UnixStream, process::CommandExt},
+        };
+        let root = std::env::temp_dir().join(format!(
+            "host-text-busy-{}",
+            an_agent_core::det_seam::Entropy::os().uuid_v4()
+        ));
+        std::fs::create_dir(&root)?;
+        let executable = root.join("program");
+        std::fs::copy("/usr/bin/true", &executable)?;
+        let writer = std::fs::OpenOptions::new().write(true).open(&executable)?;
+        std::fs::set_permissions(&executable, std::fs::Permissions::from_mode(0o500))?;
+        let (mut parent, child) = UnixStream::pair()?;
+        parent.set_read_timeout(Some(Duration::from_secs(3)))?;
+        let parent_fd = parent.as_raw_fd();
+        let child_fd = child.as_raw_fd();
+        let mut sibling = Command::new("/usr/bin/true");
+        // SAFETY: raw close/read/write only after fork. The pipe synchronizes an
+        // inherited writable FD deterministically, without sleeps or retries.
+        unsafe {
+            sibling.pre_exec(move || {
+                libc::close(parent_fd);
+                let mut byte = 1_u8;
+                if libc::write(child_fd, (&byte as *const u8).cast(), 1) != 1 {
+                    return Err(std::io::Error::last_os_error());
+                }
+                if libc::read(child_fd, (&mut byte as *mut u8).cast(), 1) < 0 {
+                    return Err(std::io::Error::last_os_error());
+                }
+                Ok(())
+            });
+        }
+        thread::scope(|scope| -> Result<()> {
+            let sibling = scope.spawn(move || {
+                let result = sibling.status();
+                drop(child);
+                result
+            });
+            let result = (|| -> Result<()> {
+                parent.read_exact(&mut [0_u8])?;
+                drop(writer); // Only the sibling's pre-exec copy remains open.
+                let error = match execute(
+                    &executable,
+                    &root,
+                    b"",
+                    Duration::from_secs(1),
+                    &AtomicBool::new(false),
+                ) {
+                    Err(error) => error,
+                    Ok(_) => {
+                        return Err(
+                            "executable with an inherited writer unexpectedly launched".into()
+                        );
+                    }
+                };
+                let evidence = refusal_evidence(error.as_ref());
+                if evidence["stage"] != "spawn-or-pre-exec"
+                    || evidence["os_code"] != libc::ETXTBSY
+                    || evidence["retry_attempted"] != false
+                {
+                    return Err(format!("unexpected refusal evidence: {evidence}").into());
+                }
+                Ok(())
+            })();
+            // EOF releases the sibling even when a preceding assertion fails.
+            drop(parent);
+            assert!(sibling.join().map_err(|_| "sibling panicked")??.success());
+            result
+        })?;
+        let published = root.join("published");
+        let publication = super::super::publication::publish(
+            &published,
+            &std::fs::read(&executable)?,
+            &AtomicBool::new(false),
+        )?;
+        assert!(publication.stopped.is_none());
+        let next = execute(
+            &published,
+            &root,
+            b"",
+            Duration::from_secs(1),
+            &AtomicBool::new(false),
+        )?;
+        assert_eq!(next.status, "succeeded");
+        assert_reaped(&next);
+        std::fs::remove_dir_all(root)?;
+        Ok(())
+    }
     #[cfg(target_os = "macos")]
     #[test]
     fn compiler_group_timeout_and_cancel_use_the_existing_supervisor() -> Result<()> {
