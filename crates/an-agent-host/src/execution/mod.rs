@@ -1,6 +1,7 @@
 //! Host-owned CLI execution: immutable deployment, bounded context, native
 //! sandbox, and receipts through real AgentControl admission. No Waver imports.
 mod backend;
+mod environment;
 pub(crate) mod publication;
 pub(crate) mod sandbox;
 pub(crate) mod store;
