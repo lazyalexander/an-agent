@@ -10,6 +10,8 @@ use std::{
     process::Command,
 };
 
+#[path = "file_runtime/instance.rs"]
+mod instance;
 #[path = "file_runtime/lifecycle.rs"]
 mod lifecycle;
 #[path = "file_runtime/revisions.rs"]
@@ -24,11 +26,15 @@ struct Fixture {
 
 impl Fixture {
     fn new() -> execution::Result<Self> {
+        Self::with_source(None)
+    }
+
+    fn with_source(source: Option<&str>) -> execution::Result<Self> {
         let directory = TempDir::new("file-runtime");
         let root = directory.path().canonicalize()?;
         let listener = std::net::TcpListener::bind("127.0.0.1:0")?;
         fs::write(root.join("secret"), b"private host data")?;
-        let source = r#"
+        let source = source.unwrap_or(r#"
 use std::{fs, io::{self, Write}};
 fn main() -> io::Result<()> {
     let input = fs::read_to_string("input.txt")?;
@@ -64,7 +70,8 @@ fn main() -> io::Result<()> {
     println!("diagnostics are not the product");
     Ok(())
 }
-"#.replace("HOST_SECRET", root.join("secret").to_str().ok_or("invalid path")?)
+"#).replace("HOST_SECRET", root.join("secret").to_str().ok_or("invalid path")?)
+    .replace("HOST_INSTANCES", root.join("store/instances").to_str().ok_or("invalid path")?)
     .replace("HOST_CATALOG", root.join("catalog").to_str().ok_or("invalid path")?)
     .replace("NETWORK_TARGET", &listener.local_addr()?.to_string());
         fs::write(root.join("main.rs"), source)?;

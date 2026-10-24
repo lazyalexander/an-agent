@@ -36,6 +36,11 @@ add explicit native work-copy cleanup and an approved `artifact.read` handoff.
 Unconfirmed termination cannot authorize cleanup; accepted products and audit
 remain intact. Kits request access but never select host paths or self-grant it.
 
+[Instance state commits](INSTANCE-STATE.md) separate immutable releases,
+long-lived instances and fresh execution attempts. Approved commits publish
+state, product and report together and reject stale state versions; domain
+transitions remain in kits.
+
 The [architecture contract](ARCHITECTURE.md) separates workflow packages, runs,
 stages, CLI kits, application-side shuttles and trusted host/backend authority.
 The [local VM direction](LOCAL-VM.md) separates host authorization and artifact

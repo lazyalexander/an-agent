@@ -89,7 +89,12 @@ pub fn edit(catalog: &Path, parent: &str, file: &Path, approved: &str) -> Result
     )
 }
 
-fn publish(catalog: &Path, bytes: &[u8], parent: Option<String>, source: Value) -> Result<Value> {
+pub(crate) fn publish(
+    catalog: &Path,
+    bytes: &[u8],
+    parent: Option<String>,
+    source: Value,
+) -> Result<Value> {
     std::str::from_utf8(bytes)?;
     store::directory(catalog)?;
     let _lock = store::lock(catalog)?;

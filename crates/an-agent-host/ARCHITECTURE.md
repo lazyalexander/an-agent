@@ -47,6 +47,31 @@ This is not a general external-tool registry or a new business workflow engine.
 See [retention and capability acceptance](RETENTION-CAPABILITIES.md) for the CLI,
 settlement evidence, trusted-store assumptions and executable regressions.
 
+### Instance state commits
+
+Separate immutable package releases, long-lived instance identity and individual
+execution attempts. An instance binds one release and a committed state revision;
+it need not retain a process or VM. Domain state formats, validation, transitions
+and migrations remain spool responsibilities. The host owns identity, access,
+version preconditions and publication, not business-state interpretation.
+
+The initial native file-kit slice uses the existing artifact revision store and
+executor. One bounded JSON bundle contains opaque UTF-8 state, product and report
+strings. A run consumes an explicit committed bundle revision in a fresh work
+directory and produces a candidate bundle. Receiving that file does not update
+the instance. A separate operator-approved commit requires confirmed settlement,
+the instance's pinned release and input revision, and an unchanged current head.
+An old revision conflicts; it never silently overwrites, merges or retries.
+
+State, product and report become visible together through one atomic head-file
+replacement under the existing host-store lock. Revisions staged before that
+replacement are not committed instance outputs. A failed or interrupted attempt
+requires inspection; this is process-visible publication, not power-loss atomicity
+or external-effect rollback. Execution status and backend memory snapshots are
+not domain state. New environments continue from committed bytes, not tape replay.
+See [instance state acceptance](INSTANCE-STATE.md). No scheduler, database service,
+live suspension, general migration framework or core/Waver change is introduced.
+
 ### Execution history, package releases and artifact revisions
 
 These are distinct assets, not three implementations of one version system.

@@ -51,6 +51,14 @@ fn with_cancellation(
 
 fn run(args: Vec<String>) -> Result<()> {
     let result = match args.as_slice() {
+        [cmd, store, id, release, state] if cmd == "instance-init" => an_agent_host::instance::init(Path::new(store), id, release, Path::new(state), None)?,
+        [cmd, store, id, release, state, flag, digest] if cmd == "instance-init" && flag == "--approve" => an_agent_host::instance::init(Path::new(store), id, release, Path::new(state), Some(digest))?,
+        [cmd, store, id] if cmd == "instance-show" => an_agent_host::instance::inspect(Path::new(store), id, None)?,
+        [cmd, store, id, revision] if cmd == "instance-show" => an_agent_host::instance::inspect(Path::new(store), id, Some(revision))?,
+        [cmd, store, id, revision] if cmd == "instance-run" => with_cancellation(|cancelled| an_agent_host::instance::run(Path::new(store), id, revision, false, &cancelled))?,
+        [cmd, store, id, revision, flag] if cmd == "instance-run" && flag == "--execute" => with_cancellation(|cancelled| an_agent_host::instance::run(Path::new(store), id, revision, true, &cancelled))?,
+        [cmd, store, id, expected, run] if cmd == "instance-commit" => an_agent_host::instance::commit(Path::new(store), id, expected, run, None)?,
+        [cmd, store, id, expected, run, flag, digest] if cmd == "instance-commit" && flag == "--approve" => an_agent_host::instance::commit(Path::new(store), id, expected, run, Some(digest))?,
         [cmd, store, run] if cmd == "work-reclaim" => an_agent_host::retention::reclaim(Path::new(store), run, None)?,
         [cmd, store, run, flag, digest] if cmd == "work-reclaim" && flag == "--approve" => an_agent_host::retention::reclaim(Path::new(store), run, Some(digest))?,
         [cmd, store, run, catalog, release] if cmd == "capability-read" => with_cancellation(|cancelled| an_agent_host::capability::artifact_read(Path::new(store), run, Path::new(catalog), release, None, &cancelled))?,
@@ -79,7 +87,7 @@ fn run(args: Vec<String>) -> Result<()> {
         [cmd, folder, store] if cmd == "register" => execution::register(Path::new(folder), Path::new(store))?,
         [cmd, store, release, input] if cmd == "run" => supervised_run(store, release, input, false)?,
         [cmd, store, release, input, flag] if cmd == "run" && flag == "--execute" => supervised_run(store, release, input, true)?,
-        _ => return Err("usage: an-agent-host work-reclaim STORE RUN_ID [--approve PLAN_SHA256] | capability-read STORE REQUEST_RUN_ID CATALOG RELEASE [--approve PLAN_SHA256] | build-kit SOURCE TOOLCHAIN NEW_OUTPUT [--approve PLAN_SHA256] | check DEPLOYMENT | register DEPLOYMENT STORE | run STORE RELEASE INPUT [--execute] | run-openshell PROFILE STORE RELEASE INPUT [--execute] | artifact-import CATALOG RUN | artifact-checkout CATALOG REVISION NEW_FILE | artifact-edit CATALOG PARENT FILE APPROVED_SHA256 | run-version STORE RELEASE CATALOG REVISION [--execute] | context-check THREAD PACKET | context-export RUN artifact|stdout|stderr|model THREAD TEXT_BYTE_BUDGET NEW_OUTPUT | model PROFILE PACKET NEW_OUTPUT [--approve PLAN_SHA256]".into()),
+        _ => return Err("usage: an-agent-host instance-init STORE INSTANCE RELEASE STATE_FILE [--approve PLAN_SHA256] | instance-show STORE INSTANCE [REVISION] | instance-run STORE INSTANCE REVISION [--execute] | instance-commit STORE INSTANCE EXPECTED_REVISION RUN_ID [--approve PLAN_SHA256] | work-reclaim STORE RUN_ID [--approve PLAN_SHA256] | capability-read STORE REQUEST_RUN_ID CATALOG RELEASE [--approve PLAN_SHA256] | build-kit SOURCE TOOLCHAIN NEW_OUTPUT [--approve PLAN_SHA256] | check DEPLOYMENT | register DEPLOYMENT STORE | run STORE RELEASE INPUT [--execute] | run-openshell PROFILE STORE RELEASE INPUT [--execute] | artifact-import CATALOG RUN | artifact-checkout CATALOG REVISION NEW_FILE | artifact-edit CATALOG PARENT FILE APPROVED_SHA256 | run-version STORE RELEASE CATALOG REVISION [--execute] | context-check THREAD PACKET | context-export RUN artifact|stdout|stderr|model THREAD TEXT_BYTE_BUDGET NEW_OUTPUT | model PROFILE PACKET NEW_OUTPUT [--approve PLAN_SHA256]".into()),
     };
     println!("{}", serde_json::to_string(&result)?);
     if result
