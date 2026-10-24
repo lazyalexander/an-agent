@@ -198,6 +198,13 @@ cleanup and container backends need their own concrete consumer and contract.
 
 ## Internal module boundaries
 
+The [reviewed workspace job profile](WORKSPACE-JOBS.md) adds explicitly approved
+local workflow execution and scratch custody on macOS. It reuses the supervisor
+and artifact catalog, separates output acceptance from engine recovery data, and
+requires an explicit decision to abandon resume before collection. It is a
+trusted-tool profile, not arbitrary hostile process-tree containment or a wider
+file-kit grant. Domain workflow engines and Loom remain outside the host.
+
 `execution/sandbox.rs` owns one complete process supervision flow, including
 bounded streams, deadlines and cancellation. Its regression suite lives in
 `execution/sandbox/tests.rs`; platform policy and child ownership remain in the
