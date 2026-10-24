@@ -1,5 +1,6 @@
 //! Host custody for a reviewed local workflow's scratch and selected outputs.
 mod custody;
+mod inputs;
 mod inventory;
 mod profile;
 

@@ -170,3 +170,6 @@ fn deadline_and_linked_or_failed_outputs_are_not_promoted() -> Result<()> {
     }
     Ok(())
 }
+
+#[path = "workspace_job/binary.rs"]
+mod binary;

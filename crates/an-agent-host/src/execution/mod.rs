@@ -1,6 +1,7 @@
 //! Host-owned CLI execution: immutable deployment, bounded context, native
 //! sandbox, and receipts through real AgentControl admission. No Waver imports.
 mod backend;
+mod environment;
 pub(crate) mod publication;
 pub(crate) mod sandbox;
 pub(crate) mod store;
@@ -235,6 +236,9 @@ fn run_selected(
         Input::File(path) => (read(path, sandbox::INPUT_LIMIT)?, Value::Null),
         Input::Revision(catalog, revision) => crate::artifact_versions::read(catalog, revision)?,
     };
+    if binding["encoding"] == "bytes" {
+        return Err("text execution profile cannot consume binary artifacts".into());
+    }
     if input.len() > sandbox::INPUT_LIMIT {
         return Err("selected revision exceeds execution input limit".into());
     }
