@@ -15,7 +15,8 @@ pub(crate) fn policy(executable: &Path, work: &Path, roots: &[PathBuf]) -> Resul
 (allow file-read-metadata)
 (allow file-read* (literal "/") (subpath "/System/Library") (subpath "/usr/lib") (subpath "/usr/share") (subpath "/bin") (subpath "/usr/bin") (literal "/dev/urandom") (literal "/dev/random") (literal {exe}))
 (allow file-read* file-write* (subpath {work}) (literal "/dev/null"))
-(allow process-fork sysctl-read process-info*)
+(allow process-fork sysctl-read)
+(allow process-info* (target same-sandbox))
 (allow signal (target same-sandbox))
 ; JVM system-property initialization queries the macOS user directory service.
 ; Without this specific lookup, the qualified JDK crashes before Java starts.

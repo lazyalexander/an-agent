@@ -40,8 +40,8 @@ The macOS policy permits standard system tools and selected runtime roots to be
 read/executed, and permits writes only under `work/` plus `/dev/null`. Network
 operations are denied. The qualified JVM additionally needs the specific
 `com.apple.system.opendirectoryd.libinfo` Mach lookup for user-property startup;
-allowing arbitrary Mach services is unnecessary. Process metadata is visible to
-this trusted-runtime profile. There is no fallback execution on Linux or another
+allowing arbitrary Mach services is unnecessary. Process metadata queries and
+signals are limited to the same sandbox. There is no fallback on Linux or another
 unsupported platform; their existing host profiles remain unchanged.
 
 ## Run, interrupt and explicitly continue
