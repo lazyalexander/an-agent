@@ -39,6 +39,14 @@ assets. Only explicitly delivered and host-accepted outputs become artifacts.
 Optional recovery checkpoints require an explicit retention contract. The host
 retains bounded request/result evidence without preserving every scratch file.
 
+The separate [reviewed workspace profile](WORKSPACE-JOBS.md) preserves an existing
+local engine's work/cache as opaque recovery material until explicit abandonment.
+It receives only declared outputs into the existing revision catalog and confirms
+its trusted process-group termination boundary before continuation or collection.
+This does not widen the file-kit profile, define a new spool ABI, or make the
+host responsible for the engine's task semantics. Loom owns the example/project
+and package; the host owns execution approval, custody and retention.
+
 Reclamation requires confirmed termination, not a returned CLI or elapsed
 deadline. Unknown termination is quarantined for investigation. The first
 reclamation operation is operator-approved and limited to the native file-kit

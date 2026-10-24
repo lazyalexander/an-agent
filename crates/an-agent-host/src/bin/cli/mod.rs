@@ -6,6 +6,7 @@ mod host;
 mod instance;
 mod model;
 mod retention;
+mod workspace;
 
 use an_agent_host::execution::Result;
 use serde_json::Value;
@@ -51,6 +52,9 @@ pub(super) fn run(args: Vec<String>) -> Result<()> {
             artifact::dispatch(command, args)?
         }
         "work-reclaim" => retention::dispatch(command, args)?,
+        "workspace-run" | "workspace-resume" | "workspace-accept" | "workspace-reclaim" => {
+            workspace::dispatch(command, args)?
+        }
         "context-check" | "context-export" => context::dispatch(command, args)?,
         "model" => model::dispatch(command, args)?,
         "check" | "register" | "run" | "run-version" | "run-openshell" | "build-kit"

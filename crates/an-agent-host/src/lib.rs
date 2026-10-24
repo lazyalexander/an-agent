@@ -42,6 +42,7 @@ pub mod model_run;
 pub mod openshell;
 pub mod retention;
 mod settled_run;
+pub mod workspace_job;
 
 pub use connection::ModelConnection;
 pub use hooks::HostHooks;
