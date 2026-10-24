@@ -18,6 +18,9 @@ mod instance;
 mod lifecycle;
 #[path = "file_runtime/revisions.rs"]
 mod revisions;
+#[cfg(target_os = "macos")]
+#[path = "file_runtime/workspaces.rs"]
+mod workspaces;
 
 struct Fixture {
     _directory: TempDir,

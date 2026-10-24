@@ -1,0 +1,110 @@
+//! macOS adapter for reviewed multi-process tools. Not an adversarial VM boundary.
+use super::{Execution, Result};
+use serde_json::Value;
+use std::{
+    path::{Path, PathBuf},
+    sync::atomic::AtomicBool,
+};
+
+#[cfg(target_os = "macos")]
+pub(crate) fn policy(executable: &Path, work: &Path, roots: &[PathBuf]) -> Result<String> {
+    use super::macos::quoted;
+    let mut policy = format!(
+        r#"(version 1)
+(deny default)
+(allow file-read-metadata)
+(allow file-read* (literal "/") (subpath "/System/Library") (subpath "/usr/lib") (subpath "/usr/share") (subpath "/bin") (subpath "/usr/bin") (literal "/dev/urandom") (literal "/dev/random") (literal {exe}))
+(allow file-read* file-write* (subpath {work}) (literal "/dev/null"))
+(allow process-fork sysctl-read)
+(allow process-info* (target same-sandbox))
+(allow signal (target same-sandbox))
+; JVM system-property initialization queries the macOS user directory service.
+; Without this specific lookup, the qualified JDK crashes before Java starts.
+(allow mach-lookup (global-name "com.apple.system.opendirectoryd.libinfo"))
+(allow process-exec (subpath "/bin") (subpath "/usr/bin") (literal {exe}))
+"#,
+        exe = quoted(executable)?,
+        work = quoted(work)?
+    );
+    for root in roots {
+        policy.push_str(&format!(
+            "(allow file-read* process-exec (subpath {}))\n",
+            quoted(root)?
+        ));
+    }
+    Ok(policy)
+}
+
+#[cfg(not(target_os = "macos"))]
+pub(crate) fn policy(_: &Path, _: &Path, _: &[PathBuf]) -> Result<String> {
+    Ok(String::new())
+}
+
+#[cfg(target_os = "macos")]
+pub(crate) fn execute(plan: &Value, cancelled: &AtomicBool) -> Result<Execution> {
+    use std::{os::unix::process::CommandExt, time::Duration};
+    let mut command = std::process::Command::new("/usr/bin/sandbox-exec");
+    command.args(["-p", plan["policy"].as_str().ok_or("missing policy")?]);
+    command.arg(plan["executable"].as_str().ok_or("missing executable")?);
+    for arg in plan["args"].as_array().ok_or("missing args")? {
+        command.arg(arg.as_str().ok_or("invalid arg")?);
+    }
+    command.env_clear().process_group(0);
+    for (key, value) in plan["environment"]
+        .as_object()
+        .ok_or("missing environment")?
+    {
+        command.env(key, value.as_str().ok_or("invalid environment")?);
+    }
+    // Bound each generated file independently; total scratch is checked before
+    // acceptance/collection, not enforced as a filesystem quota in this profile.
+    unsafe {
+        command.pre_exec(|| {
+            let limit = libc::rlimit {
+                rlim_cur: 64 * 1024 * 1024,
+                rlim_max: 64 * 1024 * 1024,
+            };
+            if libc::setrlimit(libc::RLIMIT_FSIZE, &limit) != 0 {
+                return Err(std::io::Error::last_os_error());
+            }
+            Ok(())
+        });
+    }
+    let cwd = Path::new(plan["root"].as_str().ok_or("missing root")?).join("work");
+    super::execute_command(
+        command,
+        &cwd,
+        b"",
+        Duration::from_secs(plan["wall_seconds"].as_u64().ok_or("missing deadline")?),
+        cancelled,
+        true,
+    )
+}
+
+#[cfg(not(target_os = "macos"))]
+pub(crate) fn execute(_: &Value, _: &AtomicBool) -> Result<Execution> {
+    Err("trusted workspace execution is macOS-only; no fallback".into())
+}
+
+pub(crate) fn group_empty(pid: u32) -> Result<bool> {
+    #[cfg(target_os = "macos")]
+    {
+        let mut buffer = [0i32; 1];
+        let count = unsafe {
+            libc::proc_listpgrppids(
+                pid as i32,
+                buffer.as_mut_ptr().cast(),
+                size_of_val(&buffer) as i32,
+            )
+        };
+        if count < 0 {
+            return Err(std::io::Error::last_os_error().into());
+        }
+        Ok(count == 0)
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = pid;
+        Ok(false)
+    }
+}

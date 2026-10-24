@@ -3,6 +3,7 @@ use std::io::{Read, Write};
 use std::path::Path;
 use std::process::Stdio;
 mod process;
+pub(crate) mod workspace;
 use process::OwnedChild;
 
 #[cfg(target_os = "linux")]
@@ -63,7 +64,7 @@ pub struct Execution {
 #[error("spawn or pre-exec refused: {0}")]
 struct LaunchError(#[source] std::io::Error);
 
-pub(super) fn refusal_evidence(error: &(dyn std::error::Error + 'static)) -> serde_json::Value {
+pub(crate) fn refusal_evidence(error: &(dyn std::error::Error + 'static)) -> serde_json::Value {
     let mut current = Some(error);
     let mut os_error = None;
     let mut stage = "sandbox-setup";
