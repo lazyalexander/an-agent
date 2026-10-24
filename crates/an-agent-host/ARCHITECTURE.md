@@ -9,7 +9,7 @@ service, graph schema, scheduler, or GNN dependency.
 A spool is a carrier of domain knowledge: workflow decisions, domain rules,
 skills, algorithms and acceptance criteria belong in its package and kits.
 The host must not absorb those rules. It provides execution authority, generic
-integrity checks, version provenance and retention mechanisms. Waver helps
+integrity checks, version provenance and retention mechanisms. Loom helps
 developers produce packages without becoming coupled to a particular domain.
 
 Spool governance is release based. A published spool release is immutable and
@@ -354,3 +354,13 @@ execution is supported; isolated Linux builds, VM pause/suspend and snapshot
 recovery remain deferred. No automatic application of results or cleanup is
 added implicitly. The separately approved native work-copy reclamation above
 does not extend to uncertain runs or VM environments.
+
+### Coding clients and platform targets
+
+The [finite MCP bridge](AGENT-TOOLS.md) mediates untrusted model requests while
+keeping the native coding client and its own authentication in the operator's
+trust boundary. It does not turn reviewed workspace commands into an agent
+sandbox. Source proposals are inert until separately reviewed and built.
+[Platform qualification](PLATFORMS.md) distinguishes the control host, application
+shuttle and workflow execution target; per-target binaries do not unify their
+permissions or sandbox semantics.

@@ -154,6 +154,7 @@ fn run_backend(
         execute,
         cancelled,
         backend,
+        true,
     )
 }
 
@@ -173,12 +174,31 @@ pub fn run_revision(
         execute,
         cancelled,
         &backend::Native,
+        true,
     )
 }
 
 enum Input<'a> {
     File(&'a Path),
     Revision(&'a Path, &'a str),
+}
+
+/// Trusted capability transport: protocol stdout must not contain CLI previews.
+pub(crate) fn run_for_tool(
+    root: &Path,
+    release: &str,
+    input: &Path,
+    cancelled: &std::sync::atomic::AtomicBool,
+) -> Result<Value> {
+    run_selected(
+        root,
+        release,
+        Input::File(input),
+        true,
+        cancelled,
+        &backend::Native,
+        false,
+    )
 }
 
 fn run_selected(
@@ -188,6 +208,7 @@ fn run_selected(
     execute: bool,
     cancelled: &std::sync::atomic::AtomicBool,
     backend: &dyn backend::ExecutionBackend,
+    emit_plan: bool,
 ) -> Result<Value> {
     if !valid_digest(release) {
         return Err("release must be a full SHA-256 digest".into());
@@ -231,7 +252,9 @@ fn run_selected(
         return Ok(plan);
     }
     // Also show the actual resolved command before any process starts.
-    println!("{plan}");
+    if emit_plan {
+        println!("{plan}");
+    }
     directory(&root.join("runs"))?;
     fs::create_dir(&run_dir)?;
     write_new(
