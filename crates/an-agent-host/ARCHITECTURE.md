@@ -12,6 +12,25 @@ The host must not absorb those rules. It provides execution authority, generic
 integrity checks, version provenance and retention mechanisms. Waver helps
 developers produce packages without becoming coupled to a particular domain.
 
+Spool governance is release based. A published spool release is immutable and
+identified by its complete package digest; development, review and compatibility
+claims belong to the spool publisher and its release process. The host verifies
+package identity, declared capabilities and supported execution profiles. It
+does not certify domain quality or infer state schemas from code. A spool owns
+its checkpoint format and migration logic. Moving an instance to another release
+requires an explicit spool migration that reads a pinned old checkpoint and
+produces a candidate checkpoint for the new release; the host verifies both
+release bindings and publishes only after approval. Migration and rollback
+semantics are not implemented by the current file-kit profile.
+
+State belongs to a spool instance when it is needed to continue that instance's
+domain work. Keep derived caches and disposable work files outside the checkpoint
+unless the spool proves they are required for recovery. The host treats state as
+opaque bytes plus declared immutable references; it checks identity, size,
+lineage, retention and commit evidence, not whether the state is semantically
+complete. That boundary lets a fresh execution environment resume from business
+state without restoring a process, VM memory or the entire execution tape.
+
 ### Ephemeral internals and mediated external capabilities
 
 A spool owns domain computation inside its granted boundary. Internal working
