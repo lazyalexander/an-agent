@@ -3,7 +3,7 @@ use super::revisions::{cli, path};
 use super::*;
 use an_agent_host::{instance as api, retention};
 
-fn initialized(fixture: &Fixture, state: &str) -> execution::Result<(String, String)> {
+pub(super) fn initialized(fixture: &Fixture, state: &str) -> execution::Result<(String, String)> {
     let id = an_agent_core::det_seam::Entropy::os().uuid_v4().to_string();
     let seed = fixture.root.join(format!("{id}.txt"));
     fs::write(&seed, state)?;
@@ -33,7 +33,11 @@ fn initialized(fixture: &Fixture, state: &str) -> execution::Result<(String, Str
     ))
 }
 
-fn execute(fixture: &Fixture, id: &str, revision: &str) -> execution::Result<(String, PathBuf)> {
+pub(super) fn execute(
+    fixture: &Fixture,
+    id: &str,
+    revision: &str,
+) -> execution::Result<(String, PathBuf)> {
     let result = cli(&[
         "instance-run".into(),
         path(&fixture.root.join("store")),
