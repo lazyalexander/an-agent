@@ -36,6 +36,7 @@ pub mod context_exchange;
 pub mod execution;
 pub mod file_job;
 mod hooks;
+pub mod instance;
 mod model;
 pub mod model_run;
 pub mod openshell;
