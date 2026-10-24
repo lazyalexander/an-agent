@@ -130,3 +130,17 @@ another attempt. This slice neither promises rollback nor expands workspace GC.
 - Waver's pinned cross-repository `file_job_handoff` test: scaffold → check →
   approved host build → receive → declare → pack/verify → export → register →
   approved file execution. Both libraries remain independently buildable.
+
+## Exported debug metadata
+
+The fixed compiler recipe requests `-C link-arg=-Wl,-S` for both program and
+test binaries. Rust source-span remapping alone leaves macOS linker object-file
+records containing absolute toolchain paths. The selected native linker removes this metadata before the host publishes and
+hashes accepted bytes. This does not depend on a best-effort post-link strip
+helper that can fail with a compiler warning. Consumers do
+not need to mutate accepted programs or rewrite their build receipts.
+
+This removes compiler/linker debug-path records; it does not sanitize private
+strings deliberately embedded by source code or dependencies. Local plans and
+full diagnostics remain operator data and should not be published as portable
+build evidence.

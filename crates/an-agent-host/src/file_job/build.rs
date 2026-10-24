@@ -96,6 +96,10 @@ pub fn build(
             let mut args = vec![
                 rustc.display().to_string(),
                 "--edition=2024".into(),
+                // Span remapping does not remove the linker's object-file paths.
+                // Drop debug metadata before the host hashes and accepts bytes.
+                "-C".into(),
+                "link-arg=-Wl,-S".into(),
                 "--crate-name=file_kit".into(),
                 format!("--remap-path-prefix={}=/job", output.display()),
                 format!(
