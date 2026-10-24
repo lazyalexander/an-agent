@@ -10,6 +10,8 @@ use std::{
     process::Command,
 };
 
+#[path = "file_runtime/agent_tools.rs"]
+mod agent_tools;
 #[path = "file_runtime/checkpoint.rs"]
 mod checkpoint;
 #[path = "file_runtime/instance.rs"]

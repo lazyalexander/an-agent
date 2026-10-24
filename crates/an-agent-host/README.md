@@ -240,3 +240,9 @@ do not give the stdio-only kit network access or expand core.
 The [model CLI](MODEL-CLI.md) adds preview-bound approval for one text request,
 retained output and audit evidence. Linux native enforcement is independent of
 the optional Docker development environment.
+
+The [finite coding-agent bridge](AGENT-TOOLS.md) exposes selected source, source
+proposals and explicitly granted kit handles over the official MCP SDK. It uses
+the existing native file executor and artifact custody. It is not a sandbox for
+the third-party coding client, and grants no shell or arbitrary filesystem tool.
+See [the platform boundaries](PLATFORMS.md) before claiming cross-platform support.
