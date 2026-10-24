@@ -53,9 +53,8 @@ pub(super) fn run(args: Vec<String>) -> Result<()> {
         "work-reclaim" => retention::dispatch(command, args)?,
         "context-check" | "context-export" => context::dispatch(command, args)?,
         "model" => model::dispatch(command, args)?,
-        "check" | "register" | "run" | "run-version" | "run-openshell" | "build-kit" => {
-            host::dispatch(command, args)?
-        }
+        "check" | "register" | "run" | "run-version" | "run-openshell" | "build-kit"
+        | "capability-read" => host::dispatch(command, args)?,
         _ => return Err("unknown command; consult the host command reference".into()),
     };
     println!("{}", serde_json::to_string(&result)?);

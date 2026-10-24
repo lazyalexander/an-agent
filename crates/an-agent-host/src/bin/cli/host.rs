@@ -74,6 +74,32 @@ pub(super) fn dispatch(command: &str, args: &[String]) -> Result<Value> {
                 )
             })
         }
+        ("capability-read", [store, run, catalog, release]) => {
+            super::with_cancellation(|cancelled| {
+                an_agent_host::capability::artifact_read(
+                    Path::new(store),
+                    run,
+                    Path::new(catalog),
+                    release,
+                    None,
+                    &cancelled,
+                )
+            })
+        }
+        ("capability-read", [store, run, catalog, release, flag, digest])
+            if flag == "--approve" =>
+        {
+            super::with_cancellation(|cancelled| {
+                an_agent_host::capability::artifact_read(
+                    Path::new(store),
+                    run,
+                    Path::new(catalog),
+                    release,
+                    Some(digest),
+                    &cancelled,
+                )
+            })
+        }
         ("build-kit", [source, toolchain, output]) => super::with_cancellation(|cancelled| {
             an_agent_host::file_job::build(
                 Path::new(source),
