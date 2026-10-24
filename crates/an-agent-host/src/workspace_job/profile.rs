@@ -21,8 +21,20 @@ pub(super) struct Profile {
     pub readonly: Vec<PathBuf>,
     pub inputs: Vec<PathBuf>,
     pub outputs: Vec<String>,
+    #[serde(default)]
+    binary_outputs: Vec<String>,
+    #[serde(default)]
+    artifact_inputs: Vec<ArtifactInput>,
     pub wall_seconds: u64,
     trusted_process_group: bool,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct ArtifactInput {
+    pub path: PathBuf,
+    pub catalog: PathBuf,
+    pub revision: String,
 }
 
 impl Profile {
@@ -75,6 +87,15 @@ impl Profile {
         for path in &outputs {
             inventory::relative(path)?;
         }
+        let mut binary = p.binary_outputs.clone();
+        binary.sort();
+        binary.dedup();
+        if binary.len() != p.binary_outputs.len()
+            || binary.iter().any(|name| !outputs.contains(name))
+        {
+            return Err("binary outputs must be unique declared outputs".into());
+        }
+        let artifacts = super::inputs::bind(&p.artifact_inputs, &inputs, &roots, &work)?;
         let resolve = |s: &str| s.replace("{work}", &work.to_string_lossy());
         let args: Vec<_> = p.args.iter().map(|a| resolve(a)).collect();
         let mut env = BTreeMap::from([
@@ -100,13 +121,19 @@ impl Profile {
             return Err("argument or environment exceeds limits".into());
         }
         let policy = crate::execution::sandbox::workspace::policy(&exe, &work, &roots)?;
-        let plan = json!({"schema":"an-workspace-plan-v1","backend":"macos-trusted-workspace-v1",
+        let mut plan = json!({"schema":"an-workspace-plan-v1","backend":"macos-trusted-workspace-v1",
             "supported":cfg!(target_os="macos"),"profile_sha256":store::digest(bytes),
             "executable":exe,"executable_sha256":executable_hash,"args":args,"environment":env,
             "inputs":inputs,"readonly":roots,"outputs":outputs,"policy":policy,"root":root,
             "predecessor":predecessor,"scratch_before":if work.exists(){inventory::scan(&work)?}else{json!({})},
             "wall_seconds":p.wall_seconds,"network":false,"automatic_retries":0,
             "scope":"reviewed local tools without daemonization; not hostile process-tree containment"});
+        if !binary.is_empty() {
+            plan["binary_outputs"] = json!(binary);
+        }
+        if !artifacts.is_empty() {
+            plan["artifact_inputs"] = json!(artifacts);
+        }
         Ok((p, plan))
     }
 }
@@ -123,5 +150,6 @@ pub(super) fn verify_inputs(plan: &Value) -> Result<()> {
             return Err("selected workflow input changed during execution".into());
         }
     }
+    super::inputs::verify(plan)?;
     Ok(())
 }

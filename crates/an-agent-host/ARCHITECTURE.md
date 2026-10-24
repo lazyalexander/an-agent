@@ -364,3 +364,20 @@ sandbox. Source proposals are inert until separately reviewed and built.
 [Platform qualification](PLATFORMS.md) distinguishes the control host, application
 shuttle and workflow execution target; per-target binaries do not unify their
 permissions or sandbox semantics.
+
+### Environment mechanics, support and domain adapters
+
+`execution/environment.rs` owns operation/environment identities and result
+settlement, including candidate validation at the host acceptance boundary.
+`execution/backend.rs` keeps the existing backend interface and adapters. The
+old internal paths are re-exported; this module move changes no policy or CLI.
+It introduces no VM controller, backend, pause or snapshot implementation.
+
+Support means bounded generic byte custody, version lineage, explicit input
+bindings, termination evidence and retention. Coupling means a reviewed adapter
+for a concrete protocol/profile or document library, with an explicit compatibility
+scope. Invasion would mean host/core or Loom interpreting service log fields,
+spreadsheet formulas, slide layouts or one workflow engine's cache semantics.
+The office example keeps all such domain behavior in its independent kit.
+The host stores opaque data and compact provenance references; it never needs
+Nextflow, an Office SDK or a particular model to accept those bytes.

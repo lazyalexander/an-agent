@@ -134,3 +134,14 @@ survival after scratch collection. An external Nextflow acceptance in an-loom
 also sends a real CLI SIGINT during a task, resumes through the native engine
 cache and consumes pinned output revisions after reclamation. Native tape remains
 engine/agent-owned; the host records its boundary evidence, not internal replay.
+
+### Optional binary outputs and pinned artifacts
+
+The additive `binary_outputs` list opts selected declared outputs into bounded
+opaque byte custody; absent entries retain text-only behavior. `artifact_inputs`
+may bind a selected read-only snapshot to `{ "path": "/selected/snapshot",
+"catalog": "/host/catalog", "revision": "FULL_SHA256" }`. The catalog is not
+mounted or passed to the workload. Missing revisions, substituted snapshots,
+duplicate bindings and changed approval inputs are refused.
+See [artifact version semantics](ARTIFACT-VERSIONS.md). These are generic file
+capabilities; workbook parsing and presentation composition belong to the kit.

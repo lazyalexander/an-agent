@@ -19,12 +19,33 @@ pub fn accept(path: &Path, id: &str, approved: Option<&str>) -> Result<Value> {
     super::profile::verify_inputs(&execution)?;
     let mut candidates = Vec::new();
     let mut payloads = Vec::new();
+    let mut total = 0usize;
     for name in execution["outputs"].as_array().ok_or("missing outputs")? {
         let name = name.as_str().ok_or("invalid output name")?;
         inventory::relative(name)?;
-        let bytes = regular(&root.join("work").join(name), 65536)?;
-        std::str::from_utf8(&bytes)?;
-        candidates.push(json!({"path":name,"sha256":store::digest(&bytes),"bytes":bytes.len()}));
+        let binary = execution["binary_outputs"]
+            .as_array()
+            .is_some_and(|names| names.iter().any(|n| n == name));
+        let bytes = regular(
+            &root.join("work").join(name),
+            if binary {
+                crate::artifact_versions::BINARY_LIMIT
+            } else {
+                65536
+            },
+        )?;
+        if !binary {
+            std::str::from_utf8(&bytes)?;
+        }
+        total += bytes.len();
+        if total > 16 * 1024 * 1024 {
+            return Err("candidate outputs exceed 16 MiB".into());
+        }
+        let mut candidate = json!({"path":name,"sha256":store::digest(&bytes),"bytes":bytes.len()});
+        if binary {
+            candidate["encoding"] = json!("bytes");
+        }
+        candidates.push(candidate);
         payloads.push(bytes);
     }
     let plan = json!({"schema":"an-workspace-accept-v1","attempt":id,
@@ -37,13 +58,21 @@ pub fn accept(path: &Path, id: &str, approved: Option<&str>) -> Result<Value> {
     store::write_new(&dir.join("accept-intent.json"), &serde_json::to_vec(&plan)?)?;
     let mut revisions = Vec::new();
     for (item, bytes) in candidates.iter().zip(&payloads) {
-        let revision = crate::artifact_versions::publish(
-            &root.join("artifacts"),
-            bytes,
-            None,
-            json!({"kind":"workspace-output","attempt":id,"path":item["path"],
-                "receipt_sha256":plan["receipt_sha256"],"profile_sha256":execution["profile_sha256"]}),
-        )?;
+        let mut source = json!({"kind":"workspace-output","attempt":id,"path":item["path"],
+            "receipt_sha256":plan["receipt_sha256"],"profile_sha256":execution["profile_sha256"]});
+        if let Some(inputs) = execution["artifact_inputs"].as_array() {
+            source["input_revisions"] = json!(
+                inputs
+                    .iter()
+                    .map(|i| json!({"revision":i["binding"]["revision"],"content_sha256":i["binding"]["content_sha256"],"bytes":i["binding"]["bytes"]}))
+                    .collect::<Vec<_>>()
+            );
+        }
+        let revision = if item["encoding"] == "bytes" {
+            crate::artifact_versions::publish_bytes(&root.join("artifacts"), bytes, source)?
+        } else {
+            crate::artifact_versions::publish(&root.join("artifacts"), bytes, None, source)?
+        };
         revisions.push(json!({"path":item["path"],"binding":revision}));
     }
     let result = json!({"status":"succeeded","schema":"an-workspace-accepted-v1","approval_sha256":digest,"outputs":revisions});
