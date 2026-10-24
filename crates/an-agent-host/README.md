@@ -41,6 +41,11 @@ long-lived instances and fresh execution attempts. Approved commits publish
 state, product and report together and reject stale state versions; domain
 transitions remain in kits.
 
+[Checkpoint manifests and delivery evidence](CHECKPOINT-DELIVERY.md) add an
+opt-in product handoff to fixed recipients. Consumption commits with downstream
+state; missing acknowledgements can be reconstructed without running the kit
+again. Retained state references block product reclamation even after delivery.
+
 The [architecture contract](ARCHITECTURE.md) separates workflow packages, runs,
 stages, CLI kits, application-side shuttles and trusted host/backend authority.
 The [local VM direction](LOCAL-VM.md) separates host authorization and artifact

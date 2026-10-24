@@ -72,6 +72,20 @@ not domain state. New environments continue from committed bytes, not tape repla
 See [instance state acceptance](INSTANCE-STATE.md). No scheduler, database service,
 live suspension, general migration framework or core/Waver change is introduced.
 
+The opt-in [checkpoint and delivery contract](CHECKPOINT-DELIVERY.md) separates
+formal product bytes from state inputs. A reviewed commit manifest fixes recipients,
+state references and retention. The same instance head update publishes this
+manifest and consumption evidence with the new state. Delivery acknowledgement
+files are reconstructible projections; they never decide whether a domain
+transition committed. Unresolved execution intents prohibit automatic redelivery.
+
+Product reclamation requires an explicit delivery retention policy, committed
+consumption by all frozen recipients, and no reference from retained checkpoints.
+All history is retained in this bounded slice. Acknowledgement is not deletion
+authority, and no raw execution evidence is removed by product reclamation.
+State migration, history pruning, dynamic subscriptions, VM recovery and
+external-effect reconciliation remain separate future capabilities.
+
 ### Execution history, package releases and artifact revisions
 
 These are distinct assets, not three implementations of one version system.

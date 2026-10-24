@@ -10,6 +10,8 @@ use std::{
     process::Command,
 };
 
+#[path = "file_runtime/checkpoint.rs"]
+mod checkpoint;
 #[path = "file_runtime/instance.rs"]
 mod instance;
 #[path = "file_runtime/lifecycle.rs"]

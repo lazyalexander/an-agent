@@ -10,6 +10,12 @@ This bounded native profile reuses artifact revisions, `run_revision`, kernel
 admission, file-kit isolation and settled-run verification. It adds no executor,
 core abstraction or Waver dependency.
 
+This document describes the original bundle-only profile. The opt-in
+[checkpoint manifest profile](CHECKPOINT-DELIVERY.md) separates delivery product
+storage from state, adds frozen recipients and committed consumption evidence.
+After opting in, subsequent commits must provide a manifest; the legacy commit
+command cannot silently discard delivery or retention metadata.
+
 ## Bundle and commands
 
 The kit reads `input.txt` and writes `output.txt` using this JSON envelope:

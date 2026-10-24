@@ -1,4 +1,5 @@
 //! Bounded instance state publication over existing file-kit runs and revisions.
+pub mod checkpoint;
 mod storage;
 use crate::{
     artifact_versions,
@@ -123,7 +124,8 @@ pub fn run(
         let path = instance_path(&root, id)?;
         let package = release(&path, id)?;
         storage::committed(&path, &head(&path)?, expected)?;
-        read_bundle(&path, expected)?;
+        let (_, binding) = read_bundle(&path, expected)?;
+        checkpoint::validate_state(&root, &binding)?;
         (root, package, catalog(&path))
     };
     execution::run_revision(&root, &package, &catalog, expected, execute, cancelled)
@@ -137,6 +139,17 @@ pub fn commit(
     run_id: &str,
     approved: Option<&str>,
 ) -> Result<Value> {
+    commit_selected(root, id, expected, run_id, None, approved)
+}
+
+fn commit_selected(
+    root: &Path,
+    id: &str,
+    expected: &str,
+    run_id: &str,
+    manifest: Option<&checkpoint::Manifest>,
+    approved: Option<&str>,
+) -> Result<Value> {
     let (root, _lock) = root_lock(root)?;
     let path = instance_path(&root, id)?;
     let package = release(&path, id)?;
@@ -146,15 +159,26 @@ pub fn commit(
     let receipt: Value =
         serde_json::from_slice(&regular(&accepted.directory.join("receipt.json"), 65536)?)?;
     let (_, binding) = read_bundle(&path, expected)?;
-    if receipt["release"] != package || receipt["input_revision"] != binding {
+    if receipt["release"] != package {
         return Err("candidate release/input does not belong to this instance revision".into());
     }
+    let prepared = checkpoint::prepare(
+        &root,
+        id,
+        expected,
+        &binding,
+        &receipt["input_revision"],
+        manifest,
+    )?;
     Bundle::parse(&accepted.artifact)?;
     if accepted.artifact.len() > 8192 {
         return Err("candidate bundle exceeds next-run input limit".into());
     }
-    let plan = json!({"schema":"an-instance-commit-v1","store":root,"instance":id,
+    let mut plan = json!({"schema":"an-instance-commit-v1","store":root,"instance":id,
         "release":package,"expected":expected,"run_id":run_id,"evidence":accepted.evidence});
+    if let Some(metadata) = &prepared {
+        plan["checkpoint"] = serde_json::to_value(metadata)?;
+    }
     let (digest, execute) = approval(&plan, approved)?;
     if current != expected {
         let conflict = json!({"status":"conflict","instance":id,"expected":expected,
@@ -168,13 +192,14 @@ pub fn commit(
         return Ok(json!({"plan":plan,"approval_sha256":digest,"executed":false}));
     }
     storage::record(&path, &digest, "intent.json", &plan)?;
-    let published = artifact_versions::publish(
-        &catalog(&path),
-        &accepted.artifact,
-        Some(expected.into()),
-        json!({"kind":"instance-commit","instance":id,"run_id":run_id,
-            "approval_sha256":digest,"receipt_sha256":accepted.evidence["receipt_sha256"]}),
-    )?;
+    let (bytes, metadata) = checkpoint::stage(&root, run_id, &accepted.artifact, prepared)?;
+    let mut source = json!({"kind":"instance-commit","instance":id,"run_id":run_id,
+        "approval_sha256":digest,"receipt_sha256":accepted.evidence["receipt_sha256"]});
+    if let Some(metadata) = metadata {
+        source["checkpoint"] = serde_json::to_value(metadata)?;
+    }
+    let published =
+        artifact_versions::publish(&catalog(&path), &bytes, Some(expected.into()), source)?;
     let revision = published["revision"]
         .as_str()
         .ok_or("missing state revision")?;
