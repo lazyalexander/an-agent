@@ -127,3 +127,11 @@ No named silk survived settlement, no cancelled/failed candidate was accepted,
 and successful pinned versions survived scratch reclamation in this test set.
 The one-second timeout case runs in required regression, not in the soak mix.
 Saturation, disk-pressure, process-limit and host-crash tiers remain unexecuted.
+
+## Handoff pressure follow-up
+
+The [CLI handoff measurements](HANDOFF-PRESSURE.md) now cover 1–32 concurrent
+workers, bounded 1 KiB–16 MiB handoffs and shared-catalog contention. They select
+hash-only lock narrowing rather than speculative copying, and document a
+cancel-during-fork defect exposed by pressure. Disk exhaustion, host crash and
+long-duration resource-limit qualification remain future work.

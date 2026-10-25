@@ -31,6 +31,7 @@ them or turn a design requirement into an implemented guarantee.
 | Native process ownership | [Process lifecycle](../crates/an-agent-host/PROCESS-LIFECYCLE.md) |
 | Optional OpenShell backend | [Adapter contract](../crates/an-agent-host/OPENSHELL.md), [recovery limits](../crates/an-agent-host/OPENSHELL-RECOVERY.md) |
 | Reviewed operator workflows | [Workspace jobs](../crates/an-agent-host/WORKSPACE-JOBS.md) |
+| CLI handoff pressure and input references | [Measurements and bounded decision](../crates/an-agent-host/HANDOFF-PRESSURE.md) |
 | Artifact revisions and human edits | [Artifact versions](../crates/an-agent-host/ARTIFACT-VERSIONS.md) |
 | Instance state and delivery | [Instance commits](../crates/an-agent-host/INSTANCE-STATE.md), [checkpoint/delivery](../crates/an-agent-host/CHECKPOINT-DELIVERY.md) |
 | Model/context services | [Model/context](../crates/an-agent-host/MODEL-CONTEXT.md), [model CLI](../crates/an-agent-host/MODEL-CLI.md) |

@@ -96,6 +96,10 @@ impl OwnedChild {
     }
 
     #[cfg(target_os = "macos")]
+    #[allow(
+        clippy::disallowed_methods,
+        reason = "bounded owned-group cleanup observations"
+    )]
     fn terminate_group(&mut self) -> io::Result<ExitStatus> {
         // Confirm child ownership before using a numeric group identity.
         let mut info = std::mem::MaybeUninit::<libc::siginfo_t>::zeroed();
@@ -110,7 +114,36 @@ impl OwnedChild {
         {
             return Err(io::Error::last_os_error());
         }
+        let timing =
+            crate::execution::metrics::Span::new("group_cleanup", std::path::Path::new(""), 0);
         kill_owned_group(self.child.id() as i32)?;
+        // A fork may race the first group signal or its per-member fallback.
+        // First stop the leader without releasing its numeric group identity.
+        if unsafe {
+            libc::waitid(
+                libc::P_PID,
+                self.child.id(),
+                info.as_mut_ptr(),
+                libc::WEXITED | libc::WNOWAIT,
+            )
+        } != 0
+        {
+            return Err(io::Error::last_os_error());
+        }
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(1);
+        while group_has_peers(self.child.id())? {
+            if std::time::Instant::now() >= deadline {
+                timing.finish("unconfirmed");
+                return Err(io::Error::other(
+                    "owned group still has members after cleanup",
+                ));
+            }
+            // Leader remains unreaped. Re-observe and signal only this owned
+            // group; do not let a missed writer keep inherited pipes open.
+            kill_owned_group(self.child.id() as i32)?;
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        timing.finish("settled");
         let status = self.child.wait()?;
         self.reaped = Some(status);
         Ok(status)

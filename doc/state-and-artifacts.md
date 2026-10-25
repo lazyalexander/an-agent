@@ -55,3 +55,12 @@ See [artifact versions](../crates/an-agent-host/ARTIFACT-VERSIONS.md),
 [instance commits](../crates/an-agent-host/INSTANCE-STATE.md),
 [checkpoint/delivery](../crates/an-agent-host/CHECKPOINT-DELIVERY.md) and
 [retention/capabilities](../crates/an-agent-host/RETENTION-CAPABILITIES.md).
+
+## Opaque scratch and borrowed inputs
+
+Undeclared internal files are not published products or implicit state. Operational
+inventory/limits for safe cleanup remain distinct from business-level indexing.
+External read-only access can avoid an extra file copy, but does not freeze a
+source that another application can change. Fixed-version inputs need managed
+immutable bytes or a qualified snapshot; live inputs must not claim that guarantee.
+See the [handoff pressure decision](../crates/an-agent-host/HANDOFF-PRESSURE.md).

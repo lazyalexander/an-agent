@@ -176,3 +176,6 @@ mod binary;
 
 #[path = "workspace_job/multi_silk.rs"]
 mod multi_silk;
+
+#[path = "workspace_job/large_handoff.rs"]
+mod large_handoff;
