@@ -28,11 +28,11 @@ jobs:
       - run: cargo test --workspace --locked
         env:
           AN_AGENT_ACCEPTANCE_DIR: ${{ runner.temp }}/native-concurrency
-      - name: Retain native concurrency evidence
+      - name: Retain native lifecycle evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: native-concurrency-${{ matrix.os }}
+          name: native-lifecycle-${{ matrix.os }}
           path: ${{ runner.temp }}/native-concurrency
           if-no-files-found: warn
           retention-days: 14

@@ -8,6 +8,7 @@ use std::{
 pub(super) struct OwnedChild {
     pub child: Child,
     reaped: Option<ExitStatus>,
+    pub group_cleanup_required: bool,
     #[cfg(target_os = "macos")]
     group: bool,
 }
@@ -17,6 +18,7 @@ impl OwnedChild {
         Self {
             child,
             reaped: None,
+            group_cleanup_required: false,
             #[cfg(target_os = "macos")]
             group: false,
         }
@@ -27,6 +29,7 @@ impl OwnedChild {
         Self {
             child,
             reaped: None,
+            group_cleanup_required: false,
             group: true,
         }
     }
@@ -50,6 +53,9 @@ impl OwnedChild {
             }
             let info = unsafe { info.assume_init() };
             if info.si_pid != 0 {
+                // A zero leader exit is not success if a silk is still owned by
+                // the group. Killing leftover workers must not bless partial output.
+                self.group_cleanup_required = group_has_peers(self.child.id())?;
                 return self.terminate_group().map(Some);
             }
             return Ok(None);
@@ -109,6 +115,24 @@ impl OwnedChild {
         self.reaped = Some(status);
         Ok(status)
     }
+}
+
+#[cfg(target_os = "macos")]
+fn group_has_peers(leader: u32) -> io::Result<bool> {
+    // The unreaped leader pins the group identity. Two entries suffice to detect
+    // another member; zombies are conservatively considered unfinished cleanup.
+    let mut members = [0i32; 2];
+    let count = unsafe {
+        libc::proc_listpgrppids(
+            leader as i32,
+            members.as_mut_ptr().cast(),
+            size_of_val(&members) as i32,
+        )
+    };
+    if count < 0 {
+        return Err(io::Error::last_os_error());
+    }
+    Ok(members.iter().any(|pid| *pid > 0 && *pid != leader as i32))
 }
 
 #[cfg(target_os = "macos")]

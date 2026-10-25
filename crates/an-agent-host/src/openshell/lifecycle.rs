@@ -78,6 +78,7 @@ pub(super) fn drive<T: Transport>(
         stderr: vec![],
         pid: None,
         reaped: false,
+        group_cleanup_required: false,
     };
     let work = (|| -> Result<()> {
         let info = session.control("gateway", strings(&["gateway", "info", "-o", "json"]))?;

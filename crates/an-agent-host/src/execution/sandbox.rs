@@ -56,6 +56,7 @@ pub struct Execution {
     pub stderr: Vec<u8>,
     pub pid: Option<u32>,
     pub reaped: bool,
+    pub group_cleanup_required: bool,
 }
 
 /// The standard process API reports spawn and pre-exec failures together.
@@ -125,6 +126,7 @@ pub fn execute(
             stderr: vec![],
             pid: None,
             reaped: false,
+            group_cleanup_required: false,
         });
     }
     let mut launch = command(&executable)?;
@@ -149,6 +151,7 @@ pub(crate) fn execute_command(
             stderr: vec![],
             pid: None,
             reaped: false,
+            group_cleanup_required: false,
         });
     }
     launch
@@ -251,16 +254,19 @@ pub(crate) fn execute_command(
                 reason = Some("output_limit");
             }
             Ok(Execution {
-                status: reason.unwrap_or(if status.success() && input_result.is_ok() {
-                    "succeeded"
-                } else {
-                    "failed"
-                }),
+                status: reason.unwrap_or(
+                    if status.success() && input_result.is_ok() && !child.group_cleanup_required {
+                        "succeeded"
+                    } else {
+                        "failed"
+                    },
+                ),
                 code: status.code(),
                 stdout,
                 stderr,
                 pid,
                 reaped: true,
+                group_cleanup_required: child.group_cleanup_required,
             })
         })();
         match result {
@@ -283,6 +289,7 @@ pub(crate) fn execute_command(
                     stderr: diagnostic.into_bytes(),
                     pid,
                     reaped,
+                    group_cleanup_required: child.group_cleanup_required,
                 })
             }
         }

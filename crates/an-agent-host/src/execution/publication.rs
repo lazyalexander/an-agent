@@ -117,6 +117,7 @@ fn publish_inner(
             stderr: serde_json::to_vec(evidence)?,
             pid: None,
             reaped: false,
+            group_cleanup_required: false,
         }));
     }
     if !result.reaped || result.code != Some(0) {

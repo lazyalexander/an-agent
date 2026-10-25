@@ -13,6 +13,7 @@ pub(super) fn outcome() -> Outcome {
             stderr: vec![],
             pid: Some(7),
             reaped: true,
+            group_cleanup_required: false,
         },
         environment: Some(Environment {
             id: "sandbox".into(),

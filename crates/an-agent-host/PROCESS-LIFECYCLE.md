@@ -99,3 +99,18 @@ artifacts/stale locks after abrupt host death require inspection, not auto-repla
 Signal acceptance uses the standard pgrep utility available on native macOS and
 Ubuntu runners, only to identify children of the test's own CLI. Production does
 not depend on pgrep or shell-based process discovery.
+
+## Reviewed group completion
+
+A coordinator that exits zero with remaining group members is not a completed
+workflow. The supervisor observes peers while retaining the unreaped leader,
+records `group_cleanup_required`, terminates the owned group and reports failure
+unless a cancellation/timeout already supplies the stop reason. This avoids
+promoting partial output merely because forced cleanup succeeded. Single-child
+profiles and OpenShell retain their own existing completion contracts.
+
+The reviewed workspace adapter additionally records bounded post-reap group
+observations. Reaping and empty-group confirmation are distinct; missing/failed
+confirmation prevents acceptance, continuation and scratch reclamation. Numerical
+PIDs are diagnostic evidence, never durable handles for later signaling. See the
+[multi-silk execution plan](MULTI-SILK-PLAN.md) for qualification and limits.
