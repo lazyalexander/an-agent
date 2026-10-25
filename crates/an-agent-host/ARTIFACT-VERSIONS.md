@@ -108,3 +108,35 @@ edit, preview and pinned execution commands. It simulates an operator edit:
 the actual input snapshot, output, receipt binding and kernel applied audit.
 Additional cases reject corrupt sources/catalogs, unaccepted runs, linked files,
 unapproved edits, missing parents, invalid UTF-8 and over-limit execution input.
+
+## Opt-in opaque byte revisions
+
+Workspace profiles may explicitly list `binary_outputs`, a unique subset of
+`outputs`. Other outputs keep the existing 64 KiB UTF-8 contract. Byte objects
+are limited to 8 MiB each and 16 MiB per acceptance; their host-owned revision
+manifest uses `an-artifact-revision-v2` with `content.bin`. Existing v1 text
+manifests and identities remain unchanged. The host does not inspect extensions,
+parse Office ZIPs, evaluate formulas or certify a document safe to open.
+
+`artifact-checkout` makes a new editable copy. `artifact-edit` inherits the
+parent's storage format and commits only the approved saved bytes as a child
+revision. Operator provenance is a declaration, not authenticated human authorship.
+Original revisions remain immutable; there is no mutable `latest` reference.
+Text execution profiles explicitly refuse byte revisions, even when their bytes
+happen to be valid UTF-8. This does not widen `file-kit-v1` or VM output profiles.
+
+A workspace can separately declare `artifact_inputs` with `path`, `catalog` and
+an exact `revision`. The selected path must already be a declared read-only
+input and its bytes must match that revision. The catalog remains host-only;
+workloads receive only a checked-out snapshot. Approval binds both the snapshot
+and immutable revision. Publication rechecks the original input and catalog
+binding. Candidate provenance records compact revision/hash/size references,
+not a recursively copied transcript or domain interpretation.
+
+Cancelled, failed, unconfirmed or superseded attempts cannot publish bytes.
+A late candidate does not repair a cancelled receipt. Reclamation still requires
+settled evidence and separate approval; accepted revisions remain outside scratch.
+The existing trusted-local-ownership and nontransactional multi-output acceptance
+limitations apply. A content digest is neither a publisher signature nor an
+independent backup. Tests exercise native byte execution and tampering, saved
+edits, fixed downstream consumption, cancellation and late-output rejection.

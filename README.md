@@ -14,21 +14,31 @@ The framework provides execution coordination, semantic assessment, supervision,
 
 This is an early-stage library and integration effort, not a finished creative application.
 
+A spool is the domain execution isolation and lifecycle boundary; internal
+**silks** implement its callable steps. OpenShell is a replaceable execution
+backend, and application shuttles remain host-authorized external bridges.
+See the [implementation audit and staged migration](crates/an-agent-host/SPOOL-BOUNDARY.md).
+Existing bounded execution profiles do not yet provide a multi-silk runtime.
+
 ## Current demonstration
 
 ![Mechanical ink animation](assets/demos/mechanical-ink.gif)
 
-![Mechanical reference clip](assets/demos/mechanical-three-reference.gif)
-
 A mechanical drawing experiment separates prescribed mechanism motion from its drawing treatment. The geometry supplies the poses and visibility; an ink treatment follows those poses. The working artifacts include editable SVG and layered OpenRaster drawings. AI-generated bitmap references contribute surface appearance, not the mechanism's motion.
 
-This is an independent workflow prototype informing the framework's direction, not an end-to-end feature of the Rust kernel. The ink study shows four repetitions of one operating cycle, not an assembly sequence or a force simulation. The animation after it is a painted reference view of the same study. Neither demonstrates automatic propagation of arbitrary painting edits, live CAD synchronization, or full recovery from the event log.
+This is an independent workflow prototype informing the framework's direction, not an end-to-end feature of the Rust kernel. The ink study shows four repetitions of one operating cycle, not an assembly sequence or a force simulation. It does not demonstrate automatic propagation of arbitrary painting edits, live CAD synchronization, or full recovery from the event log.
+
+## Documentation
+
+Start with the [public documentation](doc/README.md) for architecture, spool/silk
+execution boundaries, state/artifact ownership and implementation status. Detailed
+contracts remain beside the crates that implement them.
 
 ## Architecture and current capabilities
 
-The host application owns the workspace, user interaction, and execution of application-specific effects. Today, spools are embedded capability bodies with declared contracts and configuration. The target packaging model is a reusable workflow package containing stages, kits, configuration and documentation; it requests shuttle capabilities rather than necessarily containing a shuttle. A spool carries domain knowledge, business rules, skills and domain acceptance criteria; the host supplies generic execution and artifact management rather than absorbing those rules. Package identity, a workflow run and an individual stage are distinct. The existing descriptor and mounting APIs are not changed by this design direction.
+The host application owns the workspace, user interaction, and execution of application-specific effects. Today, spools are embedded capability bodies with declared contracts and configuration. The target packaging model is a reusable workflow package containing stages, silks, configuration and documentation; it requests shuttle capabilities rather than necessarily containing a shuttle. A spool carries domain knowledge, business rules, skills and domain acceptance criteria; the host supplies generic execution and artifact management rather than absorbing those rules. Package identity, a workflow run and an individual stage are distinct. The existing descriptor and mounting APIs are not changed by this design direction.
 
-Waver owns development and packaging. The an-agent host owns workflow admission, scoped context/model services and accepted artifacts; an execution backend enforces isolation and owns VM/process lifecycle. Shuttles remain application-side bridges, not unrestricted host shells. See [the responsibility and permission boundaries](crates/an-agent-host/ARCHITECTURE.md) and [the local VM direction and capability limits](crates/an-agent-host/LOCAL-VM.md). Local execution is the priority; no remote orchestration platform is required.
+Loom owns development and packaging. The an-agent host owns workflow admission, scoped context/model services and accepted artifacts; an execution backend enforces isolation and owns VM/process lifecycle. Shuttles remain application-side bridges, not unrestricted host shells. See [the responsibility and permission boundaries](crates/an-agent-host/ARCHITECTURE.md) and [the local VM direction and capability limits](crates/an-agent-host/LOCAL-VM.md). Local execution is the priority; no remote orchestration platform is required.
 
 - **Workspace integration:** events, configuration, environment snapshots, and registration provide the host-facing context. The workspace is the interaction center; its durable documents and assets remain essential inputs.
 - **Agent execution:** `AgentControl` coordinates mounted bodies, model and tool boundaries, hooks, and recorded outcomes. The host supplies model clients and native integrations.
@@ -57,6 +67,7 @@ The content-addressed workspace store is not a complete document-versioning or r
 - `crates/an-agent-workspace` — content-addressed store. It is not the recorder workspace.
 - `packages/causal-web` — zero-dependency tape viewer: drop in a `.jsonl` tape, see the causal threads, get the tape validated in-page.
 - `packages/lean-probe` — tiny Lake package from a Lean 4 compatibility experiment (no Mathlib).
+- `doc/` — public architecture, execution, state/artifact and implementation-status guides.
 - `config/` — model endpoint configuration.
 - `assets/demos/` — presentation media, separate from runtime capabilities.
 

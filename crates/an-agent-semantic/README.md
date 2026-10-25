@@ -54,3 +54,9 @@ remain later slices.
 **Dependencies:** `serde` only. Product crates may depend on this crate; this
 crate never depends on them. Policy languages, storage, transport, interaction,
 and observation exporters remain replaceable adapters.
+
+**Execution terminology:** a silk is now an internal callable step of a spool.
+The spool attempt owns execution isolation and lifecycle; semantic assessment
+does not allocate a backend per silk. Historical Silk communication records
+retain their original schema and meaning. Vendor-specific policy and OpenShell
+state are translated at the host boundary, never imported into this crate.

@@ -1,5 +1,11 @@
 # Host execution and embedding
 
+A spool is the domain execution isolation and lifecycle boundary. Internal
+**silks** are callable computations sharing its granted environment; they do not
+each receive a VM. See [the boundary, implementation audit and migration](SPOOL-BOUNDARY.md).
+OpenShell is optional and replaceable. Existing `kit` profile/CLI names below
+remain compatibility spellings; multi-silk execution is not implemented yet.
+
 This crate owns host-side effects, not kit business logic. The library's
 `execution::{check, register, run}` and `an-agent-host` CLI implement a narrow
 stdio capability and a separate [bounded build/file profile](FILE-JOBS.md).
@@ -36,6 +42,16 @@ add explicit native work-copy cleanup and an approved `artifact.read` handoff.
 Unconfirmed termination cannot authorize cleanup; accepted products and audit
 remain intact. Kits request access but never select host paths or self-grant it.
 
+[Instance state commits](INSTANCE-STATE.md) separate immutable releases,
+long-lived instances and fresh execution attempts. Approved commits publish
+state, product and report together and reject stale state versions; domain
+transitions remain in kits.
+
+[Checkpoint manifests and delivery evidence](CHECKPOINT-DELIVERY.md) add an
+opt-in product handoff to fixed recipients. Consumption commits with downstream
+state; missing acknowledgements can be reconstructed without running the kit
+again. Retained state references block product reclamation even after delivery.
+
 The [architecture contract](ARCHITECTURE.md) separates workflow packages, runs,
 stages, CLI kits, application-side shuttles and trusted host/backend authority.
 The [local VM direction](LOCAL-VM.md) separates host authorization and artifact
@@ -50,7 +66,7 @@ dependency updates, optional attention policy and execution authority. Attention
 management remains a design boundary; no GNN or new core subsystem is introduced.
 
 ```text
-developer / code tool -> Waver -> deployment files
+developer / code tool -> Loom -> deployment files
                                       |
                                       v
                        an-agent-host -> core + spool
@@ -59,8 +75,8 @@ developer / code tool -> Waver -> deployment files
                               OS sandbox -> kit
 ```
 
-The runtime never imports Waver, parses its build archive, trusts its source
-analysis, or runs package installation hooks. Waver owns scaffolds, source
+The runtime never imports Loom, parses its build archive, trusts its source
+analysis, or runs package installation hooks. Loom owns scaffolds, source
 evidence, packaging and code-tool briefs. Kit authors own algorithms, domain
 validation and their native toolchain. The host owns execution policy, bounded
 context transfer, audit, and artifact files. Existing model clients and context
@@ -85,7 +101,7 @@ spawn describes the host's single launch, not permission for child processes.
 System runtime reads are backend necessities, not arbitrary workspace access.
 
 The deployment ID is SHA-256 of the exact YAML bytes, transitively binding the
-program hash. It is deliberately **not** a Waver archive ID. YAML is bounded to
+program hash. It is deliberately **not** a Loom archive ID. YAML is bounded to
 64 KiB and the executable to 20 MiB. Changed bytes require a new registered
 version. Identical registration is idempotent; execution is not deduplicated.
 
@@ -188,6 +204,13 @@ cleanup and container backends need their own concrete consumer and contract.
 
 ## Internal module boundaries
 
+The [reviewed workspace job profile](WORKSPACE-JOBS.md) adds explicitly approved
+local workflow execution and scratch custody on macOS. It reuses the supervisor
+and artifact catalog, separates output acceptance from engine recovery data, and
+requires an explicit decision to abandon resume before collection. It is a
+trusted-tool profile, not arbitrary hostile process-tree containment or a wider
+file-kit grant. Domain workflow engines and Loom remain outside the host.
+
 `execution/sandbox.rs` owns one complete process supervision flow, including
 bounded streams, deadlines and cancellation. Its regression suite lives in
 `execution/sandbox/tests.rs`; platform policy and child ownership remain in the
@@ -203,7 +226,7 @@ boundaries, not additional runtime stages or authorization services.
 
 `cargo test --workspace`, `cargo clippy --workspace --all-targets`, and
 `cargo fmt --all -- --check` cover the actual host and kernel path. Host tests
-construct deployments without Waver, reject wider permissions, mutation,
+construct deployments without Loom, reject wider permissions, mutation,
 symlinks, oversized context and version conflicts, and test actual Seatbelt
 denials, deadlines and output caps. macOS execution tests must run where the OS
 permits Seatbelt activation. Linux tests require native enforcement, never mock success.
@@ -223,3 +246,9 @@ do not give the stdio-only kit network access or expand core.
 The [model CLI](MODEL-CLI.md) adds preview-bound approval for one text request,
 retained output and audit evidence. Linux native enforcement is independent of
 the optional Docker development environment.
+
+The [finite coding-agent bridge](AGENT-TOOLS.md) exposes selected source, source
+proposals and explicitly granted kit handles over the official MCP SDK. It uses
+the existing native file executor and artifact custody. It is not a sandbox for
+the third-party coding client, and grants no shell or arbitrary filesystem tool.
+See [the platform boundaries](PLATFORMS.md) before claiming cross-platform support.

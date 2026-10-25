@@ -5,6 +5,15 @@ use serde_json::{Value, json};
 use std::{fs, path::Path};
 
 const LIMIT: usize = 65536;
+pub(crate) const BINARY_LIMIT: usize = 8 * 1024 * 1024;
+
+fn storage(schema: &str) -> Result<(&'static str, usize, bool)> {
+    match schema {
+        "an-artifact-revision-v1" => Ok(("content.txt", LIMIT, true)),
+        "an-artifact-revision-v2" => Ok(("content.bin", BINARY_LIMIT, false)),
+        _ => Err("unsupported artifact revision schema".into()),
+    }
+}
 
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -73,30 +82,63 @@ pub fn import(catalog: &Path, run: &Path) -> Result<Value> {
 /// Explicitly checkpoint an operator-saved file. The digest approves exact bytes;
 /// it does not prove the editor saved a semantically consistent document.
 pub fn edit(catalog: &Path, parent: &str, file: &Path, approved: &str) -> Result<Value> {
-    read(catalog, parent)?;
+    let (_, binding) = read(catalog, parent)?;
+    let binary = binding["encoding"] == "bytes";
     if !store::valid_digest(approved) {
         return Err("invalid approved content digest".into());
     }
-    let bytes = crate::file_job::regular(file, LIMIT)?;
+    let bytes = crate::file_job::regular(file, if binary { BINARY_LIMIT } else { LIMIT })?;
     if store::digest(&bytes) != approved {
         return Err("edited file changed since approval".into());
     }
-    publish(
+    publish_format(
         catalog,
         &bytes,
         Some(parent.to_owned()),
+        binary,
         json!({"kind":"operator-checkpoint","authorship":"operator-declared; not authenticated"}),
     )
 }
 
-fn publish(catalog: &Path, bytes: &[u8], parent: Option<String>, source: Value) -> Result<Value> {
-    std::str::from_utf8(bytes)?;
+pub(crate) fn publish(
+    catalog: &Path,
+    bytes: &[u8],
+    parent: Option<String>,
+    source: Value,
+) -> Result<Value> {
+    publish_format(catalog, bytes, parent, false, source)
+}
+
+/// Explicit byte-object acceptance. File format validation belongs to its consumer.
+pub(crate) fn publish_bytes(catalog: &Path, bytes: &[u8], source: Value) -> Result<Value> {
+    publish_format(catalog, bytes, None, true, source)
+}
+
+fn publish_format(
+    catalog: &Path,
+    bytes: &[u8],
+    parent: Option<String>,
+    binary: bool,
+    source: Value,
+) -> Result<Value> {
+    let schema = if binary {
+        "an-artifact-revision-v2"
+    } else {
+        "an-artifact-revision-v1"
+    };
+    let (content, limit, text) = storage(schema)?;
+    if bytes.len() > limit {
+        return Err("artifact content exceeds limit".into());
+    }
+    if text {
+        std::str::from_utf8(bytes)?;
+    }
     store::directory(catalog)?;
     let _lock = store::lock(catalog)?;
     let revisions = catalog.join("revisions");
     store::directory(&revisions)?;
     let manifest = Revision {
-        schema: "an-artifact-revision-v1".into(),
+        schema: schema.into(),
         content_sha256: store::digest(bytes),
         bytes: bytes.len(),
         parent,
@@ -116,14 +158,16 @@ fn publish(catalog: &Path, bytes: &[u8], parent: Option<String>, source: Value) 
             an_agent_core::det_seam::Entropy::os().uuid_v4()
         ));
         store::directory(&pending)?;
-        store::write_new(&pending.join("content.txt"), bytes)?;
+        store::write_new(&pending.join(content), bytes)?;
         store::write_new(&pending.join("revision.json"), &encoded)?;
         fs::rename(&pending, &target)?;
     }
-    Ok(
-        json!({"status":"succeeded","revision":revision,"content_sha256":manifest.content_sha256,
-        "bytes":manifest.bytes,"parent":manifest.parent}),
-    )
+    let mut result = json!({"status":"succeeded","revision":revision,"content_sha256":manifest.content_sha256,
+        "bytes":manifest.bytes,"parent":manifest.parent});
+    if binary {
+        result["encoding"] = json!("bytes");
+    }
+    Ok(result)
 }
 
 /// Read a specific immutable revision; never resolve a mutable latest pointer.
@@ -138,25 +182,28 @@ pub(crate) fn read(catalog: &Path, revision: &str) -> Result<(Vec<u8>, Value)> {
         return Err("revision manifest digest mismatch".into());
     }
     let manifest: Revision = serde_json::from_slice(&encoded)?;
-    if manifest.schema != "an-artifact-revision-v1"
-        || manifest
-            .parent
-            .as_ref()
-            .is_some_and(|p| !store::valid_digest(p))
+    let (content, limit, text) = storage(&manifest.schema)?;
+    if manifest
+        .parent
+        .as_ref()
+        .is_some_and(|p| !store::valid_digest(p))
     {
         return Err("invalid revision manifest".into());
     }
-    let bytes = crate::file_job::regular(&folder.join("content.txt"), LIMIT)?;
+    let bytes = crate::file_job::regular(&folder.join(content), limit)?;
     if bytes.len() != manifest.bytes || store::digest(&bytes) != manifest.content_sha256 {
         return Err("revision content identity mismatch".into());
     }
-    std::str::from_utf8(&bytes)?;
-    Ok((
-        bytes,
-        json!({"revision":revision,"content_sha256":manifest.content_sha256,
+    if text {
+        std::str::from_utf8(&bytes)?;
+    }
+    let mut binding = json!({"revision":revision,"content_sha256":manifest.content_sha256,
         "bytes":manifest.bytes,"parent":manifest.parent,"source":manifest.source,
-        "trust":"untrusted data; identity is not permission or domain correctness"}),
-    ))
+        "trust":"untrusted data; identity is not permission or domain correctness"});
+    if !text {
+        binding["encoding"] = json!("bytes");
+    }
+    Ok((bytes, binding))
 }
 
 /// Create a separate editable copy, never overwrite a revision or existing file.
@@ -176,3 +223,6 @@ pub fn checkout(catalog: &Path, revision: &str, output: &Path) -> Result<Value> 
     store::write_new(&target, &bytes)?;
     Ok(json!({"status":"succeeded","file":target,"binding":binding}))
 }
+
+#[cfg(test)]
+mod tests;

@@ -4,13 +4,41 @@ Status: execution and artifact handoff are implemented in the bounded profiles
 linked below. Attention management is a design boundary, not a new runtime
 service, graph schema, scheduler, or GNN dependency.
 
+## Spool execution boundary
+
+The current terminology and incremental migration are defined in
+[SPOOL-BOUNDARY.md](SPOOL-BOUNDARY.md). A spool attempt is the execution isolation
+and lifecycle unit; callable silks run inside it without a default per-silk VM.
+OpenShell remains a replaceable backend. Existing bounded profiles are
+single-entry specializations, not a completed multi-silk runtime. Historical
+`kit` and Silk-protocol wire identities remain compatibility data.
+
 ## Workflow package direction
 
 A spool is a carrier of domain knowledge: workflow decisions, domain rules,
 skills, algorithms and acceptance criteria belong in its package and kits.
 The host must not absorb those rules. It provides execution authority, generic
-integrity checks, version provenance and retention mechanisms. Waver helps
+integrity checks, version provenance and retention mechanisms. Loom helps
 developers produce packages without becoming coupled to a particular domain.
+
+Spool governance is release based. A published spool release is immutable and
+identified by its complete package digest; development, review and compatibility
+claims belong to the spool publisher and its release process. The host verifies
+package identity, declared capabilities and supported execution profiles. It
+does not certify domain quality or infer state schemas from code. A spool owns
+its checkpoint format and migration logic. Moving an instance to another release
+requires an explicit spool migration that reads a pinned old checkpoint and
+produces a candidate checkpoint for the new release; the host verifies both
+release bindings and publishes only after approval. Migration and rollback
+semantics are not implemented by the current file-kit profile.
+
+State belongs to a spool instance when it is needed to continue that instance's
+domain work. Keep derived caches and disposable work files outside the checkpoint
+unless the spool proves they are required for recovery. The host treats state as
+opaque bytes plus declared immutable references; it checks identity, size,
+lineage, retention and commit evidence, not whether the state is semantically
+complete. That boundary lets a fresh execution environment resume from business
+state without restoring a process, VM memory or the entire execution tape.
 
 ### Ephemeral internals and mediated external capabilities
 
@@ -19,6 +47,14 @@ materials are disposable by default, not automatically registered as versioned
 assets. Only explicitly delivered and host-accepted outputs become artifacts.
 Optional recovery checkpoints require an explicit retention contract. The host
 retains bounded request/result evidence without preserving every scratch file.
+
+The separate [reviewed workspace profile](WORKSPACE-JOBS.md) preserves an existing
+local engine's work/cache as opaque recovery material until explicit abandonment.
+It receives only declared outputs into the existing revision catalog and confirms
+its trusted process-group termination boundary before continuation or collection.
+This does not widen the file-kit profile, define a new spool ABI, or make the
+host responsible for the engine's task semantics. Loom owns the example/project
+and package; the host owns execution approval, custody and retention.
 
 Reclamation requires confirmed termination, not a returned CLI or elapsed
 deadline. Unknown termination is quarantined for investigation. The first
@@ -46,6 +82,45 @@ an interrupted handoff remains uncertain and is not automatically retried.
 This is not a general external-tool registry or a new business workflow engine.
 See [retention and capability acceptance](RETENTION-CAPABILITIES.md) for the CLI,
 settlement evidence, trusted-store assumptions and executable regressions.
+
+### Instance state commits
+
+Separate immutable package releases, long-lived instance identity and individual
+execution attempts. An instance binds one release and a committed state revision;
+it need not retain a process or VM. Domain state formats, validation, transitions
+and migrations remain spool responsibilities. The host owns identity, access,
+version preconditions and publication, not business-state interpretation.
+
+The initial native file-kit slice uses the existing artifact revision store and
+executor. One bounded JSON bundle contains opaque UTF-8 state, product and report
+strings. A run consumes an explicit committed bundle revision in a fresh work
+directory and produces a candidate bundle. Receiving that file does not update
+the instance. A separate operator-approved commit requires confirmed settlement,
+the instance's pinned release and input revision, and an unchanged current head.
+An old revision conflicts; it never silently overwrites, merges or retries.
+
+State, product and report become visible together through one atomic head-file
+replacement under the existing host-store lock. Revisions staged before that
+replacement are not committed instance outputs. A failed or interrupted attempt
+requires inspection; this is process-visible publication, not power-loss atomicity
+or external-effect rollback. Execution status and backend memory snapshots are
+not domain state. New environments continue from committed bytes, not tape replay.
+See [instance state acceptance](INSTANCE-STATE.md). No scheduler, database service,
+live suspension, general migration framework or core/Waver change is introduced.
+
+The opt-in [checkpoint and delivery contract](CHECKPOINT-DELIVERY.md) separates
+formal product bytes from state inputs. A reviewed commit manifest fixes recipients,
+state references and retention. The same instance head update publishes this
+manifest and consumption evidence with the new state. Delivery acknowledgement
+files are reconstructible projections; they never decide whether a domain
+transition committed. Unresolved execution intents prohibit automatic redelivery.
+
+Product reclamation requires an explicit delivery retention policy, committed
+consumption by all frozen recipients, and no reference from retained checkpoints.
+All history is retained in this bounded slice. Acknowledgement is not deletion
+authority, and no raw execution evidence is removed by product reclamation.
+State migration, history pruning, dynamic subscriptions, VM recovery and
+external-effect reconciliation remain separate future capabilities.
 
 ### Execution history, package releases and artifact revisions
 
@@ -288,3 +363,30 @@ execution is supported; isolated Linux builds, VM pause/suspend and snapshot
 recovery remain deferred. No automatic application of results or cleanup is
 added implicitly. The separately approved native work-copy reclamation above
 does not extend to uncertain runs or VM environments.
+
+### Coding clients and platform targets
+
+The [finite MCP bridge](AGENT-TOOLS.md) mediates untrusted model requests while
+keeping the native coding client and its own authentication in the operator's
+trust boundary. It does not turn reviewed workspace commands into an agent
+sandbox. Source proposals are inert until separately reviewed and built.
+[Platform qualification](PLATFORMS.md) distinguishes the control host, application
+shuttle and workflow execution target; per-target binaries do not unify their
+permissions or sandbox semantics.
+
+### Environment mechanics, support and domain adapters
+
+`execution/environment.rs` owns operation/environment identities and result
+settlement, including candidate validation at the host acceptance boundary.
+`execution/backend.rs` keeps the existing backend interface and adapters. The
+old internal paths are re-exported; this module move changes no policy or CLI.
+It introduces no VM controller, backend, pause or snapshot implementation.
+
+Support means bounded generic byte custody, version lineage, explicit input
+bindings, termination evidence and retention. Coupling means a reviewed adapter
+for a concrete protocol/profile or document library, with an explicit compatibility
+scope. Invasion would mean host/core or Loom interpreting service log fields,
+spreadsheet formulas, slide layouts or one workflow engine's cache semantics.
+The office example keeps all such domain behavior in its independent kit.
+The host stores opaque data and compact provenance references; it never needs
+Nextflow, an Office SDK or a particular model to accept those bytes.

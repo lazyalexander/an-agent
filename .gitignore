@@ -5,6 +5,14 @@ node_modules
 *.log
 *.jsonl
 doc/
+# Public documentation allowlist; other local design material stays ignored.
+!/doc/
+/doc/*
+!/doc/README.md
+!/doc/architecture.md
+!/doc/execution.md
+!/doc/state-and-artifacts.md
+!/doc/status.md
 docs/
 .notes/
 .superpowers/

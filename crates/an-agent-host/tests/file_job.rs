@@ -90,6 +90,21 @@ fn main() -> std::io::Result<()> {
             .windows(root.as_os_str().len())
             .any(|bytes| bytes == root.to_str().unwrap().as_bytes())
     );
+    let tools: Value =
+        serde_json::from_slice(&fs::read(root.join("toolchain.json")).unwrap()).unwrap();
+    let compiler_root = Path::new(tools["rustc"].as_str().unwrap())
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap()
+        .canonicalize()
+        .unwrap();
+    let private_prefix = compiler_root.to_str().unwrap().as_bytes();
+    assert!(
+        !program
+            .windows(private_prefix.len())
+            .any(|bytes| bytes == private_prefix)
+    );
     let deployment = root.join("deployment");
     fs::create_dir(&deployment).unwrap();
     fs::write(deployment.join("program"), &program).unwrap();
