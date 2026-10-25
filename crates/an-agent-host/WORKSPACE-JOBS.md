@@ -117,7 +117,13 @@ limit is checked during inventory, not an enforced disk quota. Runtime dependenc
 are read-only capabilities, not a hermetic or reproducible build attestation.
 
 The supervisor owns a process group, reaps its direct child and requires an empty
-group observation before declaring termination confirmed. Reviewed workers must
+group observation before declaring termination confirmed. After reaping, it makes
+bounded read-only observations for up to one second; this is not an execution
+retry and it never signals a reused numeric group during that observation window.
+Receipts retain group identity, emptiness, sample count, elapsed observation time
+and errors. If the coordinator exits while peers remain, required forced cleanup
+is recorded and the round cannot become successful, even with leader exit code 0.
+Reviewed workers must
 not daemonize, change process groups or launch remote work. Group emptiness cannot
 prove that an escaped/remote worker stopped. This boundary does not support such
 workloads or hostile agent-generated code; a stronger qualified backend is needed.
@@ -145,3 +151,14 @@ mounted or passed to the workload. Missing revisions, substituted snapshots,
 duplicate bindings and changed approval inputs are refused.
 See [artifact version semantics](ARTIFACT-VERSIONS.md). These are generic file
 capabilities; workbook parsing and presentation composition belong to the kit.
+
+### Two internal silks and stress qualification
+
+The [multi-silk plan](MULTI-SILK-PLAN.md) defines invariants, custody transfer,
+lock scope and staged stress tests. The real macOS fixture uses one coordinator,
+a producer and a consumer in the same native group, with no per-silk host run.
+It covers cancellation before/after handoff, early leader exit, silk failure,
+timeout, uncertain observations and pinned downstream consumption after copying.
+The explicit ignored soak runs four independent jobs for ten mixed rounds each.
+This is reviewed spool-body qualification through the existing workspace profile;
+it does not create a registered production multi-silk package ABI.

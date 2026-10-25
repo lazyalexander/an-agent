@@ -13,6 +13,7 @@ fn ok(bytes: Vec<u8>) -> sandbox::Execution {
         stderr: vec![],
         pid: Some(7),
         reaped: true,
+        group_cleanup_required: false,
     }
 }
 impl Transport for Fake<'_> {

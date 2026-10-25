@@ -107,3 +107,18 @@ The report includes relative event times, full plans, operation IDs, child PIDs,
 receipts, settlement/audit records, revision bindings and reclamation results.
 These synthetic test records can contain local paths: inspect before sharing.
 CI retains the report per OS; timing is diagnostic evidence, not a benchmark.
+
+## One reviewed body with two silks
+
+The next slice qualifies one coordinator and two internal silk processes through
+the existing macOS reviewed workspace profile. One process group, attempt and
+cancellation owner cover the whole round. A producer hands off an internal file;
+a consumer offers a candidate, and only whole-round settlement can authorize host
+copy/verification and publication. A zero-exit leader with abandoned members is
+failed, not successful after forced cleanup.
+
+The [implementation and stress plan](../crates/an-agent-host/MULTI-SILK-PLAN.md)
+separates current regression/soak evidence from future saturation and crash-fault
+tests. This is not a general registered multi-silk deployment or a hostile-code
+sandbox. Reuse the current authority boundary before designing another package
+ABI; Loom remains responsible for development and packaging only.

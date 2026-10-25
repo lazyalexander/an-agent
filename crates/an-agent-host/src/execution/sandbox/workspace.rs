@@ -108,3 +108,33 @@ pub(crate) fn group_empty(pid: u32) -> Result<bool> {
         Ok(false)
     }
 }
+
+/// Observe settlement after kill/reap; repeated reads are not execution retries.
+/// Never signal a numeric group after the leader has been reaped.
+#[allow(
+    clippy::disallowed_methods,
+    reason = "bounded native group settlement observation"
+)]
+pub(crate) fn settlement(pid: Option<u32>, reaped: bool) -> Value {
+    use serde_json::json;
+    use std::time::{Duration, Instant};
+    let start = Instant::now();
+    let Some(pid) = pid.filter(|_| reaped) else {
+        return json!({"empty":false,"samples":0,"error":"no reaped process group"});
+    };
+    let mut samples = 0;
+    loop {
+        samples += 1;
+        match group_empty(pid) {
+            Ok(empty) if empty || start.elapsed() >= Duration::from_secs(1) => {
+                return json!({"group":pid,"empty":empty,"samples":samples,
+                    "elapsed_ms":start.elapsed().as_millis()});
+            }
+            Ok(_) => std::thread::sleep(Duration::from_millis(10)),
+            Err(error) => {
+                return json!({"group":pid,"empty":false,"samples":samples,
+                "elapsed_ms":start.elapsed().as_millis(),"error":error.to_string()});
+            }
+        }
+    }
+}

@@ -46,6 +46,12 @@ pub(super) fn record(root: &Path, id: &str) -> Result<(PathBuf, Value)> {
         || plan["root"] != json!(root)
         || receipt["termination_confirmed"] != true
         || receipt["reaped"] != true
+        || receipt.get("group_observation").is_some_and(|group| {
+            group["empty"] != true
+                || group["group"] != receipt["pid"]
+                || group.get("error").is_some()
+        })
+        || (receipt["status"] == "succeeded" && receipt["group_cleanup_required"] == true)
         || dir.join("successor.json").exists()
         || root.join("reclaim-intent.json").exists()
     {
@@ -134,10 +140,10 @@ pub fn run(
         "status":"refused","reaped":false,"termination_confirmed":false,"automatic_retries":0});
     match execution {
         Ok(result) => {
-            let confirmed = result.reaped
-                && result
-                    .pid
-                    .is_some_and(|pid| sandbox::workspace::group_empty(pid).unwrap_or(false));
+            let group_observation = sandbox::workspace::settlement(result.pid, result.reaped);
+            let confirmed = result.reaped && group_observation["empty"] == true;
+            receipt["group_observation"] = group_observation;
+            receipt["group_cleanup_required"] = json!(result.group_cleanup_required);
             receipt["execution_status"] = json!(result.status);
             receipt["status"] = json!(if confirmed {
                 result.status

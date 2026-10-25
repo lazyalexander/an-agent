@@ -27,6 +27,7 @@ them or turn a design requirement into an implemented guarantee.
 | Spool boundary and migration | [Spool boundary](../crates/an-agent-host/SPOOL-BOUNDARY.md) |
 | Permissions and settlement | [Host architecture](../crates/an-agent-host/ARCHITECTURE.md) |
 | Platform-specific enforcement | [Security layers](../crates/an-agent-host/SECURITY-LAYERS.md), [platforms](../crates/an-agent-host/PLATFORMS.md) |
+| Multi-silk implementation and stress plan | [Native round lifecycle and custody](../crates/an-agent-host/MULTI-SILK-PLAN.md) |
 | Native process ownership | [Process lifecycle](../crates/an-agent-host/PROCESS-LIFECYCLE.md) |
 | Optional OpenShell backend | [Adapter contract](../crates/an-agent-host/OPENSHELL.md), [recovery limits](../crates/an-agent-host/OPENSHELL-RECOVERY.md) |
 | Reviewed operator workflows | [Workspace jobs](../crates/an-agent-host/WORKSPACE-JOBS.md) |
