@@ -7,6 +7,7 @@ by the architecture diagram. An example's success does not widen a runtime grant
 | --- | --- |
 | Embedded agents | Existing event/admission/tape and supervision paths; in-process bodies are trusted code, not isolated workloads |
 | Native deployment | Registered hash-bound stdio/file profiles with platform-specific enforcement and receipts; not arbitrary code-agent execution |
+| Concurrent native attempts | Two single-entry spool releases in one store; independent cancellation/restart, pinned inputs and evidence-gated scratch cleanup; no queue or general multi-silk supervisor |
 | Optional OpenShell | Qualified single-program file execution, owned environment/identity checks, cancellation/timeout settlement and guarded output acceptance |
 | Reviewed workspace jobs | Trusted native macOS workflow execution, retained engine scratch and selected binary artifact custody; not a general production spool ABI |
 | Document handoff | Independent example acceptance for saved XLSX versions and fixed downstream PPT consumption; not a built-in Office application |

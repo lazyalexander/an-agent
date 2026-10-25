@@ -37,6 +37,11 @@ survive eligible scratch collection. Retained state references and unresolved
 delivery/execution evidence can prevent product reclamation. A successful
 consumer acknowledgement is not by itself deletion authority.
 
+The fixed native file profile permits explicit reclamation after confirmed
+cancellation as well as success. Cancelled partial output is never published or
+used as a capability request. Missing settlement or unknown termination refuses
+cleanup; failed and timed-out runs remain outside this cleanup policy.
+
 Interrupted attempts retain uncertainty and required diagnostic/recovery data.
 Do not collect a directory while possible writers remain. Current reclamation
 is bounded and explicit; there is no general periodic collector or complete
