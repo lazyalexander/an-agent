@@ -2,8 +2,10 @@
 
 This file is the discipline every agent working in this repo follows. It
 is shorter than the design docs on purpose: it covers how code moves,
-not what the code means. For the design contracts see the docs repo
-(`~/docs/an-agent/`), especially `workspace.md` and `constraints.md`.
+not what the code means. For public architecture and implementation contracts, start at
+[`doc/README.md`](doc/README.md) and follow the linked crate-local documents.
+Private collaboration/design notes are supplementary and must not be copied
+into the public repository.
 
 ## Project language
 
