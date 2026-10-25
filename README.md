@@ -14,6 +14,12 @@ The framework provides execution coordination, semantic assessment, supervision,
 
 This is an early-stage library and integration effort, not a finished creative application.
 
+A spool is the domain execution isolation and lifecycle boundary; internal
+**silks** implement its callable steps. OpenShell is a replaceable execution
+backend, and application shuttles remain host-authorized external bridges.
+See the [implementation audit and staged migration](crates/an-agent-host/SPOOL-BOUNDARY.md).
+Existing bounded execution profiles do not yet provide a multi-silk runtime.
+
 ## Current demonstration
 
 ![Mechanical ink animation](assets/demos/mechanical-ink.gif)

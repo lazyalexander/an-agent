@@ -1,5 +1,11 @@
 # Host execution and embedding
 
+A spool is the domain execution isolation and lifecycle boundary. Internal
+**silks** are callable computations sharing its granted environment; they do not
+each receive a VM. See [the boundary, implementation audit and migration](SPOOL-BOUNDARY.md).
+OpenShell is optional and replaceable. Existing `kit` profile/CLI names below
+remain compatibility spellings; multi-silk execution is not implemented yet.
+
 This crate owns host-side effects, not kit business logic. The library's
 `execution::{check, register, run}` and `an-agent-host` CLI implement a narrow
 stdio capability and a separate [bounded build/file profile](FILE-JOBS.md).
@@ -60,7 +66,7 @@ dependency updates, optional attention policy and execution authority. Attention
 management remains a design boundary; no GNN or new core subsystem is introduced.
 
 ```text
-developer / code tool -> Waver -> deployment files
+developer / code tool -> Loom -> deployment files
                                       |
                                       v
                        an-agent-host -> core + spool
@@ -69,8 +75,8 @@ developer / code tool -> Waver -> deployment files
                               OS sandbox -> kit
 ```
 
-The runtime never imports Waver, parses its build archive, trusts its source
-analysis, or runs package installation hooks. Waver owns scaffolds, source
+The runtime never imports Loom, parses its build archive, trusts its source
+analysis, or runs package installation hooks. Loom owns scaffolds, source
 evidence, packaging and code-tool briefs. Kit authors own algorithms, domain
 validation and their native toolchain. The host owns execution policy, bounded
 context transfer, audit, and artifact files. Existing model clients and context
@@ -95,7 +101,7 @@ spawn describes the host's single launch, not permission for child processes.
 System runtime reads are backend necessities, not arbitrary workspace access.
 
 The deployment ID is SHA-256 of the exact YAML bytes, transitively binding the
-program hash. It is deliberately **not** a Waver archive ID. YAML is bounded to
+program hash. It is deliberately **not** a Loom archive ID. YAML is bounded to
 64 KiB and the executable to 20 MiB. Changed bytes require a new registered
 version. Identical registration is idempotent; execution is not deduplicated.
 
@@ -220,7 +226,7 @@ boundaries, not additional runtime stages or authorization services.
 
 `cargo test --workspace`, `cargo clippy --workspace --all-targets`, and
 `cargo fmt --all -- --check` cover the actual host and kernel path. Host tests
-construct deployments without Waver, reject wider permissions, mutation,
+construct deployments without Loom, reject wider permissions, mutation,
 symlinks, oversized context and version conflicts, and test actual Seatbelt
 denials, deadlines and output caps. macOS execution tests must run where the OS
 permits Seatbelt activation. Linux tests require native enforcement, never mock success.
