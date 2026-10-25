@@ -39,6 +39,16 @@ pub(crate) fn seal(run: &Path, receipt: &Value) -> Result<()> {
 /// Call while holding the whole-store lock. Host storage is trusted and must
 /// never be writable by a kit or an untrusted same-user process.
 pub(crate) fn accepted(root: &Path, id: &str) -> Result<Accepted> {
+    inspect(root, id, false)
+}
+
+/// Cleanup may also inspect a cancelled direct child, but never authorize a
+/// capability or accept its partial output. Uncertain termination stays fenced.
+pub(crate) fn reclaimable(root: &Path, id: &str) -> Result<Accepted> {
+    inspect(root, id, true)
+}
+
+fn inspect(root: &Path, id: &str, allow_cancelled: bool) -> Result<Accepted> {
     if uuid::Uuid::parse_str(id)?.to_string() != id {
         return Err("run must be a canonical UUID".into());
     }
@@ -53,16 +63,24 @@ pub(crate) fn accepted(root: &Path, id: &str) -> Result<Accepted> {
     let plan_bytes = regular(&directory.join("plan.json"), LIMIT)?;
     let plan: Value = serde_json::from_slice(&plan_bytes)?;
     let backend = receipt["backend"].as_str().unwrap_or_default();
+    let cancelled = allow_cancelled
+        && receipt["status"] == "cancelled"
+        && observation["status"] == "cancelled"
+        && receipt["operation"]["cancel_requested"] == true
+        && receipt["artifact"].is_null()
+        && !directory.join("artifact.txt").exists();
+    let successful = receipt["status"] == "succeeded"
+        && receipt["exit_code"] == 0
+        && observation["status"] == "succeeded"
+        && observation["exit_code"] == 0
+        && receipt["artifact"]["path"] == "artifact.txt";
     if receipt["schema_version"] != 1
         || receipt["run_id"] != id
-        || receipt["status"] != "succeeded"
-        || receipt["exit_code"] != 0
+        || !(successful || cancelled)
         || receipt["process"]["reaped"] != true
         || receipt["process"]["scope"] != "direct-child"
         || !native_file(&receipt)
         || observation["termination_confirmed"] != true
-        || observation["status"] != "succeeded"
-        || observation["exit_code"] != 0
         || observation.get("reconciliation_error").is_some()
         || operation["run_id"] != id
         || receipt["operation"]["intent"] != operation
@@ -78,7 +96,6 @@ pub(crate) fn accepted(root: &Path, id: &str) -> Result<Accepted> {
         || plan["release"] != receipt["release"]
         || plan["files"]["other_writes"] != false
         || plan["cwd"] != json!(directory.join("work"))
-        || receipt["artifact"]["path"] != "artifact.txt"
     {
         return Err(
             "post-run action requires a settled, termination-confirmed native file run".into(),
@@ -89,9 +106,14 @@ pub(crate) fn accepted(root: &Path, id: &str) -> Result<Accepted> {
             .as_str()
             .ok_or("missing operation identity")?,
     )?;
-    let artifact = regular(&directory.join("artifact.txt"), LIMIT)?;
-    if receipt["artifact"]["sha256"] != store::digest(&artifact)
-        || receipt["artifact"]["bytes"].as_u64() != Some(artifact.len() as u64)
+    let artifact = if cancelled {
+        Vec::new()
+    } else {
+        regular(&directory.join("artifact.txt"), LIMIT)?
+    };
+    if !cancelled
+        && (receipt["artifact"]["sha256"] != store::digest(&artifact)
+            || receipt["artifact"]["bytes"].as_u64() != Some(artifact.len() as u64))
     {
         return Err("accepted artifact identity mismatch".into());
     }

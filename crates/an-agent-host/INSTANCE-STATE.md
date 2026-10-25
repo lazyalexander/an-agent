@@ -51,7 +51,8 @@ Two runs may consume the same committed revision. After the first commit advance
 the head, the second returns `conflict` and the CLI exits unsuccessfully, even if
 both produced identical state bytes. An approved stale commit records expected
 and actual revisions. There is no automatic retry, rebase or overwrite. The
-existing store lock still serializes execution; this is not a new scheduler.
+store lock still serializes head validation and commit. Independent attempts can
+execute concurrently in separate run directories; this is not a new scheduler.
 
 ## Publication and interruption
 

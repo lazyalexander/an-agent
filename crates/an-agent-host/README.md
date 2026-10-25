@@ -192,7 +192,7 @@ Linux has per-process address-space and CPU limits; macOS does not yet have
 equivalent quotas. There are no arbitrary native dependency mounts, multi-user
 service protection, syscall-denial event telemetry, or guaranteed crash recovery.
 The store must be private and trusted; static symlink checks are not protection
-from hostile same-user concurrent renames. A lock serializes cooperating commands;
+from hostile same-user concurrent renames. A lock serializes shared metadata operations, not independent child lifetimes;
 after a crash, investigate before manually removing a stale lock.
 
 Retention is manual. Failed and partial runs remain inspectable. Do not delete

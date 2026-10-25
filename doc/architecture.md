@@ -45,6 +45,15 @@ only a bounded specialization. In-process `SpoolBeat` bodies remain trusted
 embedding code; mounting a declaration does not place that code in isolation.
 A general multi-silk spool runtime is not implemented.
 
+## Local execution strategy
+
+Own a lightweight spool execution manager, not a new container implementation.
+Reuse the native backend first, with independently owned concurrent attempts.
+Future container or microVM adapters provide enforcement and lifecycle evidence;
+the host continues to own grants, accepted versions and inter-spool delivery.
+Release identity, business state, live process state and filesystem backups are
+distinct. A restart selects explicit inputs/state and creates a new attempt.
+
 ## Dependency and trust direction
 
 Runtime crates do not depend on Loom or a domain workflow example. Domain

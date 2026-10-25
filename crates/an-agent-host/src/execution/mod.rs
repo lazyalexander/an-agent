@@ -216,7 +216,7 @@ fn run_selected(
     }
     no_links(root)?;
     let root = root.canonicalize()?;
-    let _lock = lock(&root)?;
+    let allocation_lock = lock(&root)?;
     no_links(&root.join("registry"))?;
     let deployment = load(&root.join("releases").join(release))?;
     let spec = deployment.spec;
@@ -261,6 +261,9 @@ fn run_selected(
     }
     directory(&root.join("runs"))?;
     fs::create_dir(&run_dir)?;
+    // Shared metadata is resolved and the attempt directory is exclusively owned.
+    // Do not serialize independent execution, cancellation or settled-run cleanup.
+    drop(allocation_lock);
     write_new(
         &run_dir.join("plan.json"),
         &serde_json::to_vec_pretty(&plan)?,
