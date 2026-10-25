@@ -23,3 +23,13 @@ no version ranges, dependency resolver, binary attestation, or hot-update system
 the existing registry version fields remain unchanged for compatibility.
 
 **Dependencies:** `an-agent-core` (`Tool`, facet vocabulary). Never: `memstream` directly, `principal`.
+
+## Execution boundary terminology
+
+A spool release carries domain behavior and internal callable **silks**. Its
+execution attempt is the isolation and lifecycle unit owned by the host/backend.
+This parser and the existing embedded body APIs do not create that boundary: an
+in-process `SpoolBeat` is trusted embedding code, not an isolated workload.
+See [the implementation audit and migration](../an-agent-host/SPOOL-BOUNDARY.md).
+Historical Silk protocol records and current profile/event tokens remain
+compatibility identities; they are not executable silk declarations.

@@ -5,14 +5,19 @@ stdio/file execution and the optional [OpenShell adapter](OPENSHELL.md) remain
 the implemented profiles. Do not infer general microVM lifecycle support from
 their bounded execution acceptance.
 
+The isolation and lifecycle unit is a spool execution attempt. Internal silks
+run within its effective authority, without one VM per silk. The bounded
+single-entry profiles do not yet implement multi-silk execution. See
+[the spool boundary and migration](SPOOL-BOUNDARY.md).
+
 ## Ownership
 
-- Waver develops, checks and packages workflow inputs. It does not operate VMs.
+- Loom develops, checks and packages workflow inputs. It does not operate VMs.
 - The host approves package/input identities, context disclosure, mounts and
   budgets; it accepts artifacts and retains receipts.
 - A qualified backend enforces isolation and owns actual VM/process state.
   The host requests operations and records their evidence.
-- Kits compute inside approved boundaries. Shuttles mediate separately approved
+- Silks compute inside their owning spool boundary. Shuttles mediate separately approved
   operations in user applications; they are not a way around VM isolation.
 
 Reuse a maintained backend rather than building a hypervisor or adopting a

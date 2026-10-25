@@ -4,6 +4,15 @@ Status: execution and artifact handoff are implemented in the bounded profiles
 linked below. Attention management is a design boundary, not a new runtime
 service, graph schema, scheduler, or GNN dependency.
 
+## Spool execution boundary
+
+The current terminology and incremental migration are defined in
+[SPOOL-BOUNDARY.md](SPOOL-BOUNDARY.md). A spool attempt is the execution isolation
+and lifecycle unit; callable silks run inside it without a default per-silk VM.
+OpenShell remains a replaceable backend. Existing bounded profiles are
+single-entry specializations, not a completed multi-silk runtime. Historical
+`kit` and Silk-protocol wire identities remain compatibility data.
+
 ## Workflow package direction
 
 A spool is a carrier of domain knowledge: workflow decisions, domain rules,
