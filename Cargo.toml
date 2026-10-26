@@ -31,3 +31,8 @@ unwrap_used = "deny"
 expect_used = "deny"
 dbg_macro = "deny"
 todo = "deny"
+
+# Large-file custody tests hash real payloads repeatedly. Keep their host logic
+# debuggable without benchmarking an unoptimized cryptographic compression loop.
+[profile.test.package.sha2]
+opt-level = 3
