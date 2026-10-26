@@ -330,6 +330,7 @@ impl AgentControl {
     }
 
     pub(super) fn review_tool(&self, agent: &Agent, call: &ToolCall) -> Result<bool, ControlError> {
+        crate::act::tool::validate_call(call)?;
         let mut state = self
             .inner
             .supervision

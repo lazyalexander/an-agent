@@ -148,3 +148,25 @@ pub fn resolve_tool_payload_at(
     }
     String::from_utf8(bytes).map_err(|_| StoreError::Corrupt("tool payload is not UTF-8".into()))
 }
+
+/// Context presentation restores tool identity without changing stored blob bytes.
+/// Legacy inline events retain their original rendering.
+pub(crate) fn tool_context(event: &Memevent, text: String) -> String {
+    if event.tags.iter().any(|tag| tag == TOOL_PAYLOAD_TAG)
+        && let Some(tool) = event.act.as_ref().and_then(|act| act.tool.as_deref())
+    {
+        return format!("[tool {}]\n{text}", serde_json::json!(tool));
+    }
+    text
+}
+
+/// Resolve and label a tool event for context assembly or compression.
+pub fn resolve_tool_context_at(
+    directory: &std::path::Path,
+    event: &Memevent,
+) -> Result<String, StoreError> {
+    Ok(tool_context(
+        event,
+        resolve_tool_payload_at(directory, event)?,
+    ))
+}

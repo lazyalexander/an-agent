@@ -333,6 +333,7 @@ impl AgentControl {
         id: Uuid,
         call: &ToolCall,
     ) -> Result<crate::act::ToolActResult, ControlError> {
+        crate::act::tool::validate_call(call)?;
         let turn = self.begin_beat(id)?;
         let agent = turn.agent();
         let signal = self.cancel_receiver(id)?;

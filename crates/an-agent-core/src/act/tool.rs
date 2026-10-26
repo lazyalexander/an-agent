@@ -71,6 +71,14 @@ pub struct ToolActResult {
     pub message: ToolMessage,
 }
 
+/// Bound every caller-controlled field before review, snapshots or execution.
+pub(crate) fn validate_call(call: &ToolCall) -> Result<(), ToolError> {
+    if call.arguments.len() > TOOL_PAYLOAD_LIMIT || call.name.len() > 256 || call.id.len() > 256 {
+        return Err(ToolError::PayloadLimit("arguments or identifier"));
+    }
+    Ok(())
+}
+
 fn parse_args(raw: &str) -> Result<Value, String> {
     let value: Value =
         serde_json::from_str(raw).map_err(|_| "tool arguments are not valid JSON".to_string())?;
@@ -138,9 +146,7 @@ pub(crate) async fn run_tool_act_reviewed(
     ctx: &ToolCtx,
     approved: bool,
 ) -> Result<ToolActResult, ToolError> {
-    if call.arguments.len() > TOOL_PAYLOAD_LIMIT || call.name.len() > 256 {
-        return Err(ToolError::PayloadLimit("arguments or name"));
-    }
+    validate_call(call)?;
     let tool = tools.iter().find(|t| t.name() == call.name);
     let tag = tag_of(tool.map(|t| t.as_ref()));
     if tag.permit == Permit::Ask && !approved {
