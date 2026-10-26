@@ -10,6 +10,7 @@ doc/
 /doc/*
 !/doc/README.md
 !/doc/architecture.md
+!/doc/spool-code.md
 !/doc/execution.md
 !/doc/state-and-artifacts.md
 !/doc/status.md

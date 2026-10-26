@@ -7,7 +7,7 @@ These are different assets with different owners and recovery guarantees.
 | Release | Immutable domain implementation and dependencies; identified and retained as a package |
 | Instance state/checkpoint | Spool-defined business continuation data; host manages identity, versions, commit preconditions and retained references |
 | Artifact | Explicitly accepted product bytes, immutable revision and provenance; host custody makes selected versions available downstream |
-| Internal work files | Disposable scratch by default; optional recovery/debug retention is explicit |
+| Internal work files | Disposable scratch by default, including temporary kits and adapted kit working copies; optional recovery/debug retention is explicit |
 | Tape and boundary receipts | Causal/diagnostic history, authority and outcome evidence; not a complete world backup |
 | Backend disk or memory snapshot | Backend-specific execution state; optional and distinct from portable business state |
 
@@ -15,6 +15,9 @@ A release plus a sufficient committed checkpoint can support a new attempt in a
 fresh environment. The spool defines whether its state is sufficient; the host
 cannot certify business completeness from opaque bytes. This does not recreate
 old process memory, a missing package, an unavailable model or external effects.
+
+See [the spool code contract](spool-code.md) for immutable silk/package bytes,
+editable kit copies, explicit promotion and code-as-data execution limits.
 
 ## Publication and consumption
 

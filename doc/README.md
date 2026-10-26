@@ -45,3 +45,7 @@ Documentation is English. Link to existing contracts instead of duplicating CLI
 reference material. Update status when a slice gains real acceptance evidence.
 Historical profile names and records remain stable unless a separately reviewed
 migration changes them. Do not copy private deployment notes into public docs.
+
+Code-role terminology follows [the spool code contract](spool-code.md).
+Silk is the stable core; kit is adaptable glue. Preserve legacy wire/API names
+and distinguish target contracts from implemented runtime guarantees.
