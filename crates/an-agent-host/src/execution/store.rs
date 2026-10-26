@@ -18,7 +18,10 @@ pub(super) struct Deployment {
 }
 
 pub(crate) fn digest(bytes: &[u8]) -> String {
-    format!("{:x}", Sha256::digest(bytes))
+    let timing = super::metrics::Span::new("sha256", Path::new(""), bytes.len());
+    let result = format!("{:x}", Sha256::digest(bytes));
+    timing.finish("ok");
+    result
 }
 
 pub(crate) fn valid_digest(value: &str) -> bool {
@@ -87,25 +90,52 @@ pub(crate) fn write_new(path: &Path, bytes: &[u8]) -> Result<()> {
         use std::os::unix::fs::OpenOptionsExt;
         options.mode(0o600);
     }
-    let mut file = options.open(path)?;
-    file.write_all(bytes)?;
-    file.sync_all()?;
-    Ok(())
+    let timing = super::metrics::Span::new("write_sync", path, bytes.len());
+    let result = (|| -> Result<()> {
+        let mut file = options.open(path)?;
+        file.write_all(bytes)?;
+        file.sync_all()?;
+        Ok(())
+    })();
+    timing.finish(if result.is_ok() { "ok" } else { "error" });
+    result
 }
 
-pub(crate) struct Lock(PathBuf);
+pub(crate) struct Lock(PathBuf, Option<super::metrics::Span>);
 impl Drop for Lock {
     fn drop(&mut self) {
-        let _ = fs::remove_file(&self.0);
+        let removed = fs::remove_file(&self.0);
+        if let Some(timing) = self.1.take() {
+            timing.finish(if removed.is_ok() {
+                "released"
+            } else {
+                "release_error"
+            });
+        }
     }
 }
 pub(crate) fn lock(root: &Path) -> Result<Lock> {
     let path = root.join("host.lock");
-    write_new(
+    let hold = super::metrics::Span::new("lock_hold", root, 0);
+    let timing = super::metrics::Span::new("lock_acquire", root, 0);
+    let result = write_new(
         &path,
         b"exclusive host operation; inspect before removing stale lock\n",
-    )?;
-    Ok(Lock(path))
+    );
+    let outcome = match &result {
+        Ok(_) => "acquired",
+        Err(error)
+            if error
+                .downcast_ref::<std::io::Error>()
+                .is_some_and(|e| e.kind() == std::io::ErrorKind::AlreadyExists) =>
+        {
+            "conflict"
+        }
+        Err(_) => "error",
+    };
+    timing.finish(outcome);
+    result?;
+    Ok(Lock(path, Some(hold)))
 }
 
 pub(super) fn load(folder: &Path) -> Result<Deployment> {

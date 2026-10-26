@@ -2,6 +2,7 @@
 //! sandbox, and receipts through real AgentControl admission. No Waver imports.
 mod backend;
 mod environment;
+pub(crate) mod metrics;
 pub(crate) mod publication;
 pub(crate) mod sandbox;
 pub(crate) mod store;

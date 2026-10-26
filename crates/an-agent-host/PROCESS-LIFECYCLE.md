@@ -114,3 +114,11 @@ observations. Reaping and empty-group confirmation are distinct; missing/failed
 confirmation prevents acceptance, continuation and scratch reclamation. Numerical
 PIDs are diagnostic evidence, never durable handles for later signaling. See the
 [multi-silk execution plan](MULTI-SILK-PLAN.md) for qualification and limits.
+
+Group cancellation also accounts for forks racing the first signal. Before
+reaping the leader, cleanup confirms its exit and re-observes remaining peers
+while the group identity is still owned. This prevents a missed late child from
+holding inherited pipes until its natural exit. Cleanup observations are bounded
+and do not authorize replay or signaling a subsequently reused group ID.
+The [pressure report](HANDOFF-PRESSURE.md) retains the observed delayed-cancel
+case and the regression/qualification limits.

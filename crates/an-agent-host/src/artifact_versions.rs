@@ -2,7 +2,10 @@
 use crate::execution::{Result, store};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use std::{fs, path::Path};
+use std::{
+    fs,
+    path::{Path, PathBuf},
+};
 
 const LIMIT: usize = 65536;
 pub(crate) const BINARY_LIMIT: usize = 8 * 1024 * 1024;
@@ -134,9 +137,7 @@ fn publish_format(
         std::str::from_utf8(bytes)?;
     }
     store::directory(catalog)?;
-    let _lock = store::lock(catalog)?;
     let revisions = catalog.join("revisions");
-    store::directory(&revisions)?;
     let manifest = Revision {
         schema: schema.into(),
         content_sha256: store::digest(bytes),
@@ -150,6 +151,10 @@ fn publish_format(
     }
     let revision = store::digest(&encoded);
     let target = revisions.join(&revision);
+    // Hash the immutable in-memory payload before taking the shared commit lock.
+    // Keep copying inside: rejected contenders should not write full payloads.
+    let _lock = store::lock(catalog)?;
+    store::directory(&revisions)?;
     if target.exists() {
         read(catalog, &revision)?;
     } else {
@@ -158,9 +163,11 @@ fn publish_format(
             an_agent_core::det_seam::Entropy::os().uuid_v4()
         ));
         store::directory(&pending)?;
+        let mut staged = Pending(Some(pending.clone()));
         store::write_new(&pending.join(content), bytes)?;
         store::write_new(&pending.join("revision.json"), &encoded)?;
         fs::rename(&pending, &target)?;
+        staged.0 = None;
     }
     let mut result = json!({"status":"succeeded","revision":revision,"content_sha256":manifest.content_sha256,
         "bytes":manifest.bytes,"parent":manifest.parent});
@@ -168,6 +175,20 @@ fn publish_format(
         result["encoding"] = json!("bytes");
     }
     Ok(result)
+}
+
+// Only this invocation's exclusively created staging files may be discarded.
+// Abrupt process death can leave unindexed .pending material for inspection.
+struct Pending(Option<PathBuf>);
+impl Drop for Pending {
+    fn drop(&mut self) {
+        if let Some(path) = &self.0 {
+            for name in ["content.bin", "content.txt", "revision.json"] {
+                let _ = fs::remove_file(path.join(name));
+            }
+            let _ = fs::remove_dir(path);
+        }
+    }
 }
 
 /// Read a specific immutable revision; never resolve a mutable latest pointer.
