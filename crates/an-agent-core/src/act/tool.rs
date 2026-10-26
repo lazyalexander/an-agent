@@ -1,3 +1,4 @@
+use crate::memstream::{TOOL_PAYLOAD_LIMIT, TOOL_PAYLOAD_TAG};
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -11,6 +12,10 @@ use crate::memstream::{ActOnEvent, AppendEvent, FromKind, JsonlStore, Kind, Meme
 
 #[derive(Debug, Error)]
 pub enum ToolError {
+    #[error(
+        "tool {0} exceeds the bounded payload profile; execution may already have effects for results"
+    )]
+    PayloadLimit(&'static str),
     #[error("store: {0}")]
     Store(#[from] StoreError),
     #[error("tool requires supervisor approval before execution: {0}")]
@@ -108,8 +113,8 @@ fn remember_clip(
         from_kind: FromKind::Agent,
         kind: Kind::Utterance,
         session: actx.session.into(),
-        content: text.to_string(),
-        tags: vec!["memory".into()],
+        content: store.tool_payload(text)?,
+        tags: vec!["memory".into(), TOOL_PAYLOAD_TAG.into()],
         refs: evidence,
         act: Some(ActOnEvent::intent(&clip_env)),
         card: actx.card.map(str::to_string),
@@ -133,6 +138,9 @@ pub(crate) async fn run_tool_act_reviewed(
     ctx: &ToolCtx,
     approved: bool,
 ) -> Result<ToolActResult, ToolError> {
+    if call.arguments.len() > TOOL_PAYLOAD_LIMIT || call.name.len() > 256 {
+        return Err(ToolError::PayloadLimit("arguments or name"));
+    }
     let tool = tools.iter().find(|t| t.name() == call.name);
     let tag = tag_of(tool.map(|t| t.as_ref()));
     if tag.permit == Permit::Ask && !approved {
@@ -148,12 +156,15 @@ pub(crate) async fn run_tool_act_reviewed(
     let action = admit(
         actx,
         Kind::Action,
-        format!("{} {}", call.name, call.arguments),
+        call.arguments.clone(),
         vec![],
         Some(ActOnEvent::intent(&env)),
     )?;
 
     let fail = |content: String, action: Option<Memevent>| -> Result<ToolActResult, ToolError> {
+        if content.len() > TOOL_PAYLOAD_LIMIT {
+            return Err(ToolError::PayloadLimit("result"));
+        }
         let refs = action
             .as_ref()
             .map(|a| vec![a.id.clone()])
@@ -188,7 +199,19 @@ pub(crate) async fn run_tool_act_reviewed(
     // act is the only writer: a remember-facet tool just returns the fact
     // text; admission emits the clip. A failed execution leaves nothing to
     // remember.
-    let content = match (tool.execute(args, ctx).await, &tag.memory) {
+    let result = tool.execute(args, ctx).await;
+    let size = match &result {
+        Ok(text) | Err(text) => text.len(),
+    };
+    if size > TOOL_PAYLOAD_LIMIT {
+        // Preserve a small terminal observation without storing the rejected body.
+        fail(
+            "tool result rejected: exceeds 1 MiB; effects may have occurred".into(),
+            action,
+        )?;
+        return Err(ToolError::PayloadLimit("result"));
+    }
+    let content = match (result, &tag.memory) {
         (Ok(text), MemoryFacet::Remember { .. }) => match remember_clip(actx, &env, &text)? {
             Some(clip) => format!("remembered as {}", clip.id),
             None => text,
@@ -214,8 +237,8 @@ fn admit(
         from_kind: FromKind::Agent,
         kind,
         session: actx.session.into(),
-        content,
-        tags: vec![],
+        content: store.tool_payload(&content)?,
+        tags: vec![TOOL_PAYLOAD_TAG.into()],
         refs,
         act,
         card: actx.card.map(str::to_string),

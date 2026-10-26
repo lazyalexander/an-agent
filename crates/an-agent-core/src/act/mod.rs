@@ -75,3 +75,6 @@ mod tests {
         assert!(effect_from_tag(&ToolTag::unbounded(), None).unbounded);
     }
 }
+
+#[cfg(test)]
+mod tool_payload_tests;

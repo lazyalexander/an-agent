@@ -192,27 +192,8 @@ fn projection(agent: &Agent, event: &WorkspaceRecord, steps: usize) -> Result<Va
     }))
 }
 
-/// Resolve a thin observation's content address back to its text. A
-/// missing or unreadable blob leaves the thin line as it is — the tape's
-/// hash and size stay truthful, and the gap is visible instead of
-/// invented content.
-fn resolve_payload(agent: &Agent, event: &crate::memstream::Memevent) -> String {
-    if event.kind != Kind::Observation {
-        return event.content.clone();
-    }
-    let Ok(content) = serde_json::from_str::<Value>(&event.content) else {
-        return event.content.clone();
-    };
-    let Some(sha) = content.get("response_sha256").and_then(|s| s.as_str()) else {
-        return event.content.clone();
-    };
-    agent
-        .session()
-        .read_blob(sha)
-        .ok()
-        .and_then(|bytes| String::from_utf8(bytes).ok())
-        .unwrap_or_else(|| event.content.clone())
-}
+mod payload;
+use payload::resolve_payload;
 
 impl AgentControl {
     /// Install the host's model client. A body yielding `InvokeModel`

@@ -132,3 +132,18 @@ The injected publication failure models an interrupted result/acknowledgement
 path; it is not a power-cut durability test or VM checkpoint experiment. Temporary
 execution copies and raw evidence retain their existing, separately documented
 cleanup policy.
+
+## Interrupted product reclamation
+
+Reclamation writes intent before deleting product bytes. A later invocation first
+checks that retained intent against the committed product reference and hashed
+revision manifest, before trying to read the now possibly absent content. This is
+a read-only reconciliation path, not a deletion retry. A complete matching receipt
+with absent content reports success; absent, partial, or unreadable receipts report
+`uncertain` with observed content presence and an operator-reconciliation action.
+Contradictory identities or a success receipt with surviving content fail closed.
+A result-write failure explicitly reports that deletion may already have happened.
+State, manifests, and original evidence remain retained. No automatic receipt repair,
+resurrection, or retry is performed. Tests exercise a real receipt-create failure
+after deletion and retained crash states around partial write and sync acknowledgement;
+they do not claim power-loss durability or prove why missing bytes disappeared.

@@ -341,3 +341,63 @@ fn retained_state_references_block_reclamation_even_after_both_acknowledgements(
     );
     Ok(())
 }
+
+#[test]
+fn reclaim_receipt_failure_is_reconciled_without_redeleting_or_losing_state()
+-> execution::Result<()> {
+    let f = Fixture::with_source(Some(include_str!("../fixtures/delivery_counter.rs")))?;
+    let store = f.root.join("store");
+    let (up, initial) = initialized(&f, "4")?;
+    let publish = manifest(&f, &[], json!([]), "delivery")?;
+    let (run, _) = execute(&f, &up, &initial)?;
+    let event = commit(&f, &up, &initial, &run, &publish)?;
+    let preview = api::reclaim(&store, &up, &event, None)?;
+    let product = preview["plan"]["product"]
+        .as_str()
+        .ok_or("missing product")?;
+    let directory = store.join("products/revisions").join(product);
+    // Deterministic result-create fault after the actual deletion, through the public path.
+    fs::create_dir(directory.join("reclaimed.json"))?;
+    assert!(api::reclaim(&store, &up, &event, preview["approval_sha256"].as_str()).is_err());
+    assert!(!directory.join("content.txt").exists());
+    let intent = fs::read(directory.join("reclaim-intent.json"))?;
+    assert_eq!(
+        api::reclaim(&store, &up, &event, None)?["status"],
+        "uncertain"
+    );
+    fs::remove_dir(directory.join("reclaimed.json"))?;
+    // Crash after delete, partial result write, and complete write before sync acknowledgement.
+    for receipt in [
+        None,
+        Some(b"{".to_vec()),
+        Some(serde_json::to_vec(&json!({
+            "status":"succeeded","product":product,"approval_sha256":preview["approval_sha256"]
+        }))?),
+    ] {
+        if let Some(bytes) = &receipt {
+            fs::write(directory.join("reclaimed.json"), bytes)?;
+        }
+        let result = api::reclaim(&store, &up, &event, preview["approval_sha256"].as_str())?;
+        assert_eq!(result["executed"], false);
+        assert_eq!(
+            result["status"],
+            if receipt.as_ref().is_some_and(|b| b.len() > 1) {
+                "succeeded"
+            } else {
+                "uncertain"
+            }
+        );
+        assert_eq!(fs::read(directory.join("reclaim-intent.json"))?, intent);
+        assert!(!directory.join("content.txt").exists());
+    }
+    assert_eq!(instances::inspect(&store, &up, None)?["head"], event);
+    // Wrong retained identities cannot be interpreted as successful reclamation.
+    let mut wrong: Value = serde_json::from_slice(&intent)?;
+    wrong["sha256"] = json!("0".repeat(64));
+    fs::write(
+        directory.join("reclaim-intent.json"),
+        serde_json::to_vec(&wrong)?,
+    )?;
+    assert!(api::reclaim(&store, &up, &event, None).is_err());
+    Ok(())
+}

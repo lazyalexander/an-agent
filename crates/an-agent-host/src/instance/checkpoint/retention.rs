@@ -1,5 +1,6 @@
 //! Product reclamation is distinct from delivery acknowledgement and work cleanup.
 use super::*;
+mod reconcile;
 
 /// Reclaim only a delivery-policy product with complete consumption and no state roots.
 /// Raw accepted output and audit evidence remain under their existing retention policy.
@@ -49,6 +50,10 @@ pub fn reclaim(
             }
         }
     }
+    let directory = root.join("products/revisions").join(&checkpoint.product);
+    if let Some(result) = reconcile::inspect(&directory, &root, &reference, &checkpoint.product)? {
+        return Ok(result);
+    }
     let bytes = product(&root, &checkpoint)?;
     let plan = json!({"schema":"an-product-reclaim-v1","store":root,"event":reference,
         "product":checkpoint.product,"sha256":store::digest(&bytes),"consumers":consumers});
@@ -56,18 +61,21 @@ pub fn reclaim(
     if !execute {
         return Ok(json!({"plan":plan,"approval_sha256":digest,"executed":false}));
     }
-    let directory = root.join("products/revisions").join(&checkpoint.product);
     // Intent survives partial cleanup. There is no implicit retry or resurrection.
     store::write_new(
         &directory.join("reclaim-intent.json"),
         &serde_json::to_vec(&plan)?,
     )?;
-    fs::remove_file(directory.join("content.txt"))?;
+    if let Err(error) = fs::remove_file(directory.join("content.txt")) {
+        return Err(format!("product reclaim interrupted: {error}; retained intent requires read-only reconciliation").into());
+    }
     let result = json!({"status":"succeeded","product":checkpoint.product,"approval_sha256":digest,
         "preserved":"checkpoint state, revision manifest and execution evidence"});
-    store::write_new(
+    if let Err(error) = store::write_new(
         &directory.join("reclaimed.json"),
         &serde_json::to_vec(&result)?,
-    )?;
+    ) {
+        return Err(format!("product removed but receipt not confirmed: {error}; retained intent requires read-only reconciliation").into());
+    }
     Ok(result)
 }

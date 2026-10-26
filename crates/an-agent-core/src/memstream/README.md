@@ -11,3 +11,9 @@ The tape: append-only JSONL event log, the system's single source of truth. Hot 
 **Durability:** one write lock spans seq reservation, a single `write`, and `fsync`; `seq` advances only after the durable write. Corrupt bytes are never served as events: a crash-torn final line is quarantined to `<tape>.corrupt` (evidence kept) and truncated — the only permitted rewrite; corruption anywhere else fails the whole store.
 
 **Known structural debt:** `act` and `memstream` import each other (fine as modules, blocks splitting them into crates). Fix direction: sink the envelope types below the tape, or make `ActOnEvent` carry a generic payload. A future slice.
+
+Writer ownership ends with an explicit unlock on store drop. Closing the file
+alone is insufficient when a concurrently forked child still holds the inherited
+open file description before exec. Inherited descriptors are not independent
+writer grants; a new store must acquire its own lock. The host regression holds
+such a child alive while the parent drops and immediately reacquires the tape.

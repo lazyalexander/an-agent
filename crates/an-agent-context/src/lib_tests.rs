@@ -437,3 +437,47 @@ fn thread_cut_is_written_by_the_host_and_a_hit_does_not_rewrite() {
     );
     assert_ne!(moved.context, cited.context);
 }
+
+#[test]
+fn tool_references_restore_context_and_cuts_without_putting_bodies_on_tape() {
+    let dir = TempDir::new("tool-context");
+    let store = JsonlStore::open(dir.path().join("memory.jsonl")).unwrap();
+    let reference = store.tool_payload("private tool memory").unwrap();
+    let event = store
+        .append(AppendEvent {
+            from: "a".into(),
+            from_kind: FromKind::Agent,
+            kind: Kind::Utterance,
+            session: "s".into(),
+            content: reference,
+            tags: vec![
+                "memory".into(),
+                an_agent_core::memstream::TOOL_PAYLOAD_TAG.into(),
+            ],
+            refs: vec![],
+            act: None,
+            card: None,
+        })
+        .unwrap();
+    let events = vec![event];
+    let assembly = assemble(dir.path(), &events, AssembleMode::Continue, 10000).unwrap();
+    assert!(
+        assembly
+            .context
+            .iter()
+            .any(|p| p.text == "private tool memory")
+    );
+    let cut = cut_if_long(dir.path(), &events, 0).unwrap().unwrap();
+    assert!(
+        fs::read_to_string(cut.path)
+            .unwrap()
+            .contains("private tool memory")
+    );
+    assert!(
+        !fs::read_to_string(dir.path().join("memory.jsonl"))
+            .unwrap()
+            .contains("private tool memory")
+    );
+    fs::remove_dir_all(dir.path().join("blobs")).unwrap();
+    assert!(assemble(dir.path(), &events, AssembleMode::Continue, 10000).is_err());
+}

@@ -66,7 +66,7 @@ bind a host executable update or authenticate source labels.
 It is an approved host transport deadline, not a provider generation parameter.
 The resolved value appears in the plan; changing the profile invalidates approval.
 The deadline covers sending, waiting for headers, and reading the complete body.
-It does not bound local admission, evidence writes, DNS worker teardown, or remote
+It does not bound local admission, evidence writes, or remote
 generation time. The separate 10-second connect limit remains a transport failure.
 
 On Unix, SIGINT/SIGTERM request cooperative cancellation. The host drops the HTTP
@@ -116,3 +116,12 @@ CI uses a local HTTP fixture, real host CLI/admission and (on macOS) the actual
 native sandbox. It tests preview, changed approval inputs, failure evidence,
 non-overwrite and preservation of a response larger than the projection window.
 See [Linux acceptance](LINUX-VALIDATION.md) for the separate platform evidence.
+
+DNS uses reqwest's Hickory asynchronous resolver, scoped to the per-call runtime.
+Cancellation/deadline selection drops the lookup and runtime rather than waiting
+for a blocking system `getaddrinfo` worker. No detached resolver worker or automatic
+retry is introduced. Resolver configuration comes from the local system; special
+platform resolver behavior (for example mDNS or split DNS) is not promised by this
+profile. Tests hold resolution pending, repeatedly cancel/expire real synchronous
+calls, and verify that pending lookup futures are released before return. Existing
+HTTP-header/body and CLI interruption tests continue to cover retained evidence.

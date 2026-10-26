@@ -188,7 +188,7 @@ mod tests {
         assert_eq!(result.message.content, "deny");
         let events = store.read_all().unwrap();
         let obs = events.iter().find(|e| e.kind == Kind::Observation).unwrap();
-        assert_eq!(obs.content, "deny");
+        assert_eq!(store.resolve_tool_payload(obs).unwrap(), "deny");
         assert_eq!(obs.card.as_deref(), Some("hash-x"));
     }
 }
