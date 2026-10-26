@@ -68,7 +68,8 @@ impl ModelCallControl {
 /// (`POST {base_url}/chat/completions`). Bearer auth is the host's to
 /// give — the key never lives on a card, so the tape never records it.
 pub struct HttpModelClient {
-    client: reqwest::Client,
+    #[cfg(test)]
+    resolver: Option<Arc<dns_tests::PendingDns>>,
     auth: Option<String>,
     control: Option<ModelCallControl>,
 }
@@ -86,16 +87,9 @@ impl HttpModelClient {
     }
 
     fn build(auth: Option<String>) -> Result<Self, String> {
-        let client = reqwest::Client::builder()
-            .connect_timeout(CONNECT_TIMEOUT)
-            .retry(reqwest::retry::never())
-            .pool_max_idle_per_host(0)
-            .redirect(reqwest::redirect::Policy::none())
-            .no_proxy()
-            .build()
-            .map_err(|e| format!("model client build: {e}"))?;
         Ok(Self {
-            client,
+            #[cfg(test)]
+            resolver: None,
             auth,
             control: None,
         })
@@ -161,6 +155,24 @@ impl HttpModelClient {
         spec: &ModelSpec,
         messages: Vec<ModelMessage>,
     ) -> Result<Completion, String> {
+        // Resolver and connection state belong to this runtime/attempt. Reusing
+        // them across destroyed runtimes can retain unusable DNS connections.
+        // Async DNS avoids Tokio's non-cancellable blocking getaddrinfo workers.
+        let builder = reqwest::Client::builder()
+            .hickory_dns(true)
+            .connect_timeout(CONNECT_TIMEOUT)
+            .retry(reqwest::retry::never())
+            .pool_max_idle_per_host(0)
+            .redirect(reqwest::redirect::Policy::none())
+            .no_proxy();
+        #[cfg(test)]
+        let builder = match &self.resolver {
+            Some(resolver) => builder.dns_resolver(resolver.clone()),
+            None => builder,
+        };
+        let client = builder
+            .build()
+            .map_err(|_| "model client unavailable".to_string())?;
         let url = format!("{}/chat/completions", spec.base_url.trim_end_matches('/'));
         // extra_body first: provider knobs may join, never shadow identity.
         let mut body = match &spec.extra_body {
@@ -178,7 +190,7 @@ impl HttpModelClient {
                     .collect(),
             ),
         );
-        let mut request = self.client.post(url).json(&Value::Object(body));
+        let mut request = client.post(url).json(&Value::Object(body));
         if let Some(key) = &self.auth {
             request = request.bearer_auth(key);
         }
@@ -226,3 +238,7 @@ impl HttpModelClient {
         })
     }
 }
+
+#[cfg(test)]
+#[path = "model_dns_tests.rs"]
+mod dns_tests;
