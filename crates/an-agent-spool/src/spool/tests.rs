@@ -254,3 +254,6 @@ fn consumes_and_produces_are_the_mount_time_claim() {
     let missing = read_yaml().replace("consumes: []\n", "");
     assert!(parse(&missing).is_err());
 }
+
+#[path = "registry_tests.rs"]
+mod registry_tests;

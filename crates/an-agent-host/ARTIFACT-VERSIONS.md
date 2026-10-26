@@ -7,7 +7,7 @@ correctness of an edit. No core, Waver or VM lifecycle change is required.
 
 ## Operator workflow
 
-Start with a successful existing file-kit run. `RUN` denotes its retained run
+Start with a settled successful native file-kit run. `RUN` denotes its retained run
 directory, not the guest working directory. `CATALOG` is a separate private
 host-owned directory; its parent must exist. `STORE` remains the execution store.
 
@@ -33,9 +33,18 @@ catalog, never overwrite an existing file or lock the editor working copy.
 `run-version` currently selects the native backend and uses the existing
 registration, AgentControl admission, sandbox and artifact acceptance path.
 It previews unless `--execute` is given; cancellation uses existing CLI signal
-handling. Existing `run` and `run-openshell` commands are unchanged. Accepted
-OpenShell file outputs may be imported by the same receipt-checking command;
-this slice does not add a VM-specific revision execution command.
+handling. Existing `run` and `run-openshell` commands are unchanged. Import
+requires a native `STORE/runs/RUN` directory and the shared `settled_run` gate,
+while holding the source store lock. A successful receipt alone is insufficient:
+receipt, operation, termination observation, plan and final settlement/audit
+bindings must agree. Missing or inconsistent evidence is refused before any
+catalog publication. No missing evidence is synthesized and no run is retried.
+
+OpenShell and unknown backends are refused by this import command until they
+have an explicit host settlement contract. OpenShell's remote termination
+observation does not substitute for completed host bookkeeping. Its retained
+output remains available for inspection; native marker files are not imposed on
+that backend or inferred from its receipt.
 
 ## Identity and settlement
 
@@ -45,8 +54,11 @@ identity and revision identity are distinct: identical bytes with different
 lineage may have different revisions. Re-importing an identical checkpoint is
 idempotent; execution is not automatically deduplicated or retried.
 
-An accepted-run source records the run ID, release, receipt digest and a bounded
-reference to the selected upstream revision. An edit records its parent and an
+A newly imported accepted-run source records the run ID, release, receipt digest,
+verified settlement marker and a bounded reference to the selected upstream
+revision. Existing catalog revisions remain readable with their original IDs;
+re-import under the stronger source-evidence contract may produce a new revision
+for identical content. Legacy runs without settlement evidence cannot be imported. An edit records its parent and an
 operator-checkpoint declaration, not authenticated human authorship. References
 do not recursively embed the entire history or make data trusted instructions.
 
@@ -140,3 +152,13 @@ The existing trusted-local-ownership and nontransactional multi-output acceptanc
 limitations apply. A content digest is neither a publisher signature nor an
 independent backup. Tests exercise native byte execution and tampering, saved
 edits, fixed downstream consumption, cancellation and late-output rejection.
+
+## Publication gate regression coverage
+
+`tests/file_runtime/settlement.rs` starts with real sandboxed file executions,
+then reconstructs persisted crash-window snapshots: receipt without audit or
+settlement, and complete audit without settlement. Neither the library nor CLI
+may publish. Tests also cover a held source lock, malformed evidence, resealed
+receipts with invalid termination/operation/backend facts, legacy receipts, and
+restoration of complete evidence followed by idempotent import. These are
+controlled disk-state tests, not power-loss or filesystem durability proofs.

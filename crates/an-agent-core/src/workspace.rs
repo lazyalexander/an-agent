@@ -2,8 +2,8 @@
 //! the CAS store.
 //!
 //! `events` append. `config` is a JSON document the host injects, stored
-//! as a new blob whenever the bytes change. `env` is markdown, one file
-//! replaced wholesale, with a generation event left on the log.
+//! as a new blob whenever the bytes change. `env` is verified markdown addressed
+//! by its committed log generation; `env.md` is a rebuildable projection.
 //! `register` is one content-addressed snapshot of the names a plugin
 //! declared. Parsing of config stays on the host face.
 
@@ -18,6 +18,8 @@ use thiserror::Error;
 
 use crate::det_seam::{Clock, Entropy};
 
+mod env;
+
 #[derive(Debug, Error)]
 pub enum WorkspaceError {
     #[error("io: {0}")]
@@ -26,6 +28,16 @@ pub enum WorkspaceError {
     Json(#[from] serde_json::Error),
     #[error("unknown config snapshot: {0}")]
     UnknownConfig(String),
+    #[error("invalid environment snapshot: {0}")]
+    InvalidEnv(String),
+    #[error("incomplete workspace log record; inspect before continuing")]
+    IncompleteLog,
+    #[error("environment projection refresh failed for generation {generation:?}: {source}")]
+    EnvProjection {
+        generation: Option<String>,
+        #[source]
+        source: std::io::Error,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -57,24 +69,40 @@ pub struct WorkspaceCite {
 pub struct Workspace {
     root: PathBuf,
     lock: Mutex<()>,
+    #[cfg(test)]
+    fail_env_at: Mutex<Option<&'static str>>,
 }
 
 impl Workspace {
     pub fn open(root: impl AsRef<Path>) -> Result<Self, WorkspaceError> {
         let root = root.as_ref().to_path_buf();
+        fs::create_dir_all(&root)?;
+        let initialized = fs::read_dir(&root)?.next().transpose()?.is_some();
+        if initialized {
+            // A lost ledger is not an empty workspace. Never recreate its history.
+            OpenOptions::new()
+                .read(true)
+                .open(root.join("log.jsonl"))?
+                .sync_data()?;
+        } else {
+            OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(root.join("log.jsonl"))?
+                .sync_all()?;
+            env::sync_directory(&root)?;
+        }
         fs::create_dir_all(root.join("config"))?;
         fs::create_dir_all(root.join("env"))?;
         fs::create_dir_all(root.join("register"))?;
-        if !root.join("env.md").exists() {
-            fs::write(root.join("env.md"), b"")?;
-        }
-        if !root.join("log.jsonl").exists() {
-            fs::write(root.join("log.jsonl"), b"")?;
-        }
-        Ok(Self {
+        let space = Self {
             root,
             lock: Mutex::new(()),
-        })
+            #[cfg(test)]
+            fail_env_at: Mutex::new(None),
+        };
+        space.refresh_env_projection()?;
+        Ok(space)
     }
 
     pub fn push_event(&self, name: &str, body: &str) -> Result<WorkspaceRecord, WorkspaceError> {
@@ -115,21 +143,26 @@ impl Workspace {
         Ok(record)
     }
 
+    /// Publish a verified blob, commit its generation, then refresh the projection.
+    /// An error after log write may have committed; inspect the log before retrying.
     pub fn put_env(&self, name: &str, markdown: &str) -> Result<WorkspaceRecord, WorkspaceError> {
         let _guard = self.lock.lock().unwrap_or_else(|err| err.into_inner());
         let sha = sha256(markdown.as_bytes());
         if let Some(existing) = self.last_named("env", name)?
             && existing.sha256.as_deref() == Some(sha.as_str())
         {
+            self.env_bytes(&sha)?;
+            // A previous append may have returned a sync error with a full record.
+            #[cfg(test)]
+            self.env_checkpoint("log_sync")?;
+            OpenOptions::new()
+                .read(true)
+                .open(self.root.join("log.jsonl"))?
+                .sync_data()?;
+            self.refresh_env_projection()?;
             return Ok(existing);
         }
-        let blob = self.env_path(&sha)?;
-        if !blob.exists() {
-            fs::write(&blob, markdown.as_bytes())?;
-        }
-        let tmp = self.root.join("env.md.tmp");
-        fs::write(&tmp, markdown.as_bytes())?;
-        fs::rename(&tmp, self.root.join("env.md"))?;
+        self.publish_env_blob(&sha, markdown.as_bytes())?;
         let record = WorkspaceRecord {
             id: Entropy::os().uuid_v4().to_string(),
             kind: "env".into(),
@@ -139,6 +172,7 @@ impl Workspace {
             name: Some(name.to_string()),
         };
         self.append(&record)?;
+        self.refresh_env_projection()?;
         Ok(record)
     }
 
@@ -178,9 +212,8 @@ impl Workspace {
     pub fn cite(&self) -> Result<WorkspaceCite, WorkspaceError> {
         let _guard = self.lock.lock().unwrap_or_else(|err| err.into_inner());
         let config = self.last_kind("config")?;
-        let env = self.last_kind("env")?;
+        let (env, env_markdown) = self.committed_env()?;
         let register = self.last_kind("register")?;
-        let env_markdown = fs::read_to_string(self.root.join("env.md")).unwrap_or_default();
         Ok(WorkspaceCite {
             config_id: config.as_ref().map(|record| record.id.clone()),
             config_sha256: config.and_then(|record| record.sha256),
@@ -199,10 +232,13 @@ impl Workspace {
 
     pub fn env_bytes(&self, sha256_hex: &str) -> Result<Vec<u8>, WorkspaceError> {
         let path = self.env_path(sha256_hex)?;
-        if !path.exists() {
-            return Err(WorkspaceError::UnknownConfig(sha256_hex.to_string()));
+        let bytes = fs::read(path)?;
+        if sha256(&bytes) != sha256_hex {
+            return Err(WorkspaceError::InvalidEnv(format!(
+                "digest mismatch: {sha256_hex}"
+            )));
         }
-        Ok(fs::read(path)?)
+        Ok(bytes)
     }
 
     pub fn config_bytes(&self, sha256_hex: &str) -> Result<Vec<u8>, WorkspaceError> {
@@ -214,11 +250,22 @@ impl Workspace {
     }
 
     fn append(&self, record: &WorkspaceRecord) -> Result<(), WorkspaceError> {
+        #[cfg(test)]
+        if record.kind == "env" {
+            self.env_checkpoint("log_open")?;
+        }
         let mut file = OpenOptions::new()
-            .create(true)
             .append(true)
             .open(self.root.join("log.jsonl"))?;
+        #[cfg(test)]
+        if record.kind == "env" {
+            self.env_checkpoint("log_write")?;
+        }
         writeln!(file, "{}", serde_json::to_string(record)?)?;
+        #[cfg(test)]
+        if record.kind == "env" {
+            self.env_checkpoint("log_sync")?;
+        }
         file.sync_data()?;
         Ok(())
     }
@@ -236,12 +283,16 @@ impl Workspace {
             .read(true)
             .open(self.root.join("log.jsonl"))?;
         let mut out = Vec::new();
-        for line in BufReader::new(file).lines() {
-            let line = line?;
-            if line.is_empty() {
-                continue;
+        let mut reader = BufReader::new(file);
+        let mut line = Vec::new();
+        while reader.read_until(b'\n', &mut line)? != 0 {
+            if line.last() != Some(&b'\n') {
+                return Err(WorkspaceError::IncompleteLog);
             }
-            out.push(serde_json::from_str(&line)?);
+            if !line.iter().all(u8::is_ascii_whitespace) {
+                out.push(serde_json::from_slice(&line)?);
+            }
+            line.clear();
         }
         Ok(out)
     }
@@ -343,3 +394,7 @@ mod tests {
         assert_eq!(record.body.as_deref(), Some("saved"));
     }
 }
+
+#[cfg(test)]
+#[path = "workspace/env_tests.rs"]
+mod env_tests;

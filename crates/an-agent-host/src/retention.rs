@@ -8,12 +8,12 @@ use serde_json::{Value, json};
 use std::{fs, path::Path};
 
 /// Preview by default. Approval binds evidence and exact work bytes. No recursive
-/// deletion, failed-run cleanup, VM cleanup, stale-lock removal or automatic retry.
+/// deletion, arbitrary failed-run cleanup, VM cleanup, stale-lock removal or automatic retry.
 pub fn reclaim(root: &Path, run: &str, approved: Option<&str>) -> Result<Value> {
     store::no_links(root)?;
     let root = root.canonicalize()?;
     let _lock = store::lock(&root)?;
-    let accepted = settled_run::accepted(&root, run)?;
+    let accepted = settled_run::reclaimable(&root, run)?;
     let directory = &accepted.directory;
     let work = directory.join("work");
     store::no_links(&work)?;

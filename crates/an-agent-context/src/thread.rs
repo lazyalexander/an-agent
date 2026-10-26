@@ -194,7 +194,7 @@ fn cache_hit(
             if is_audit(event) {
                 return Ok(None);
             }
-            event.content.clone()
+            an_agent_core::memstream::resolve_tool_context_at(dir, event)?
         } else if let Some(id) = &segment {
             let Some(seg) = load_segments(dir)?.into_iter().find(|seg| seg.id == *id) else {
                 return Ok(None);

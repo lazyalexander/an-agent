@@ -16,11 +16,11 @@ profile as authority from a spool, model output or writable project configuratio
 
 ```json
 {
-  "schema": "an-workspace-job-v1",
+  "schema": "an-workspace-job-v2",
   "executable": "/bin/bash",
-  "args": ["/operator/selected/runner", "--output", "{work}/result.txt"],
+  "args": ["{input:0}", "--output", "{work}/result.txt"],
   "environment": {},
-  "readonly": ["/operator/selected"],
+  "readonly": [],
   "inputs": ["/operator/selected/runner"],
   "outputs": ["result.txt"],
   "wall_seconds": 60,
@@ -28,13 +28,46 @@ profile as authority from a spool, model output or writable project configuratio
 }
 ```
 
-`{work}` expands literally in argv and environment values; the host adds no shell
-interpretation. Selecting `/bin/bash` explicitly is selecting a shell. The plan
+`{work}`, `{input:N}` (zero-based selected input) and `{inputs}` (the snapshot
+directory) expand literally in argv and environment values; the host adds no shell
+interpretation. Selected files require unique UTF-8 basenames without braces.
+Use placeholders rather than original selected paths in arguments or environment.
+V1 profiles are refused; update their schema, input arguments and runtime roots
+explicitly rather than silently changing their execution semantics. Selecting `/bin/bash` explicitly is selecting a shell. The plan
 shows exact commands, environment, selected input hashes and effective Seatbelt
 policy. Environment inheritance is cleared; PATH, TMPDIR and LANG are fixed.
-Runtime roots must exclude the host job and its ancestors. Selected inputs are
-digest-bound and checked again before output admission; directory dependencies
-must remain operator-controlled and are not transitively hashed.
+Runtime roots must exclude the host job and its ancestors and must not contain
+selected inputs. After approval, the host copies selected bytes to a fresh private
+snapshot, checks their approved hashes and records the resolved execution manifest.
+Selected original paths are denied data reads and execution in the workload policy;
+snapshots are read-only and outside writable scratch. Pinned artifacts are copied
+from their immutable catalog revision, not the editable checkout. A changed ordinary
+input before snapshot verification refuses preparation; no workload is launched.
+
+On macOS, ordinary selected files first use descriptor-based filesystem cloning.
+Supported same-volume filesystems share blocks using copy-on-write, with a new
+private inode rather than a hard link or a live source mount. The destination is
+still checked against the approved digest before launch. Only unsupported-volume
+or cross-device errors select the existing full-copy path; permission, size,
+existing-destination and other errors refuse preparation. Artifact catalog inputs
+keep their existing validated copy path. Input limits and CLI schemas are unchanged.
+See [external input clone qualification](INPUT-CLONES.md) for measurements and limits.
+
+Output acceptance verifies the receipt-bound execution manifest, its exact mapping
+from the approved plan, and the snapshot hashes. Source files may subsequently
+change or disappear without invalidating those persisted input bytes. Missing or
+substituted snapshot evidence refuses acceptance, including old attempts without
+that evidence. This does not change the existing termination gates for continuation
+or collection. Preparation failures and cancellations record explicit no-spawn evidence when
+that evidence can be durably written. They never automatically retry or promote
+partial snapshots; see the prelaunch lifecycle below.
+
+The runtime executable and directory dependencies remain operator-controlled and
+are **not snapshotted**. The executable still has before/after hash checks; these do
+not close a replace-and-restore race. Copying an Apple platform executable failed
+native qualification, so this slice does not relocate, re-sign or silently replace
+interpreters. This is selected-input custody, not a hermetic runtime closure or
+protection against a hostile same-user process modifying host evidence.
 
 The macOS policy permits standard system tools and selected runtime roots to be
 read/executed, and permits writes only under `work/` plus `/dev/null`. Network
@@ -54,12 +87,58 @@ an-agent-host workspace-resume PROFILE JOB PREVIOUS_ATTEMPT
 an-agent-host workspace-resume PROFILE JOB PREVIOUS_ATTEMPT --approve REVIEWED_DIGEST
 ```
 
-Each attempt has a fresh UUID and records its plan and intent before spawn. The
+An already-cancelled approved call returns `status=cancelled`, `executed=false`
+and `process_started=false` without creating a workspace, attempt or successor.
+A preview remains a read-only preview. No attempt ID is returned in this case.
+
+Each allocated attempt has a fresh UUID and records its plan, intent and a
+provisional `an-workspace-not-started-v1` receipt (`stage=prepared`) before
+publishing its predecessor's successor pointer. The pointer is published atomically
+from complete bytes. An unpublished continuation cannot authorize reclamation of
+the shared workspace. After publication, subsequent decisions address the successor.
+The provisional receipt is positive evidence of the ordered prelaunch protocol,
+not an inference from a missing PID. It is usable only while `launch.json` is absent
+and its predecessor pointer, when present, binds this attempt and approval.
+Immediately before entering the supervisor, the host persists `launch.json`.
+That marker invalidates provisional no-spawn authority even if the process never
+actually starts. Final receipts atomically replace only the provisional receipt;
+a failed replacement leaves the launch fence in force.
+Cancellation or failure during preparation, and cancellation explicitly returned
+by the supervisor before spawn, produce `an-workspace-not-started-v1` receipts.
+These bind the plan and intent, record the stage (`preparation` or `supervisor`),
+and contain `process_started=false`, `pid=null`, `exit_code=null`, `reaped=false`,
+`group_cleanup_required=false` and `termination_confirmed=true`. Here termination
+means no process was started, not that a fictitious child was reaped. Preparation
+errors retain refusal evidence. Neither case invents an empty process-group
+observation.
+
+A valid not-started receipt permits explicitly approved continuation or scratch
+abandonment through the existing APIs. It can never publish outputs, even when
+scratch contains a previous attempt's successful output. Accepted artifact
+revisions remain outside reclamation. Missing/contradictory fields, a changed or
+missing intent, or an unsuccessful receipt write confer no lifecycle authority.
+A spawn/pre-exec error is still uncertain; a missing PID alone is never no-spawn
+proof. A crash before the launch fence can leave usable committed prelaunch
+evidence. A crash after the fence, a missing/corrupt receipt, or an incomplete
+legacy attempt still requires investigation.
+There is no automatic retry, receipt repair or speculative process cleanup. The
 host retains bounded stdout/stderr and a receipt even when post-run inventory
 cannot be collected. A missing receipt, unconfirmed termination, active host lock
 or already-selected successor fences further continuation and collection. The
 predecessor and scratch inventory are bound into approval. No stale lock is
 removed and there is no automatic retry after an uncertain outcome.
+
+Acceptance, continuation and reclamation share the same receipt gate. For launched
+attempts, the existing `an-workspace-receipt-v1` path requires
+explicit `termination_confirmed=true`, `reaped=true`, a positive process ID, and
+an empty process-group observation bound to that ID without an observation error.
+`group_cleanup_required` must be a boolean; successful attempts must explicitly
+record `false`. Missing/null whole-round fields in older v1 receipts are not
+termination authority, including failed or cancelled receipts. They remain
+retained for inspection; these operations refuse rather than infer safe defaults,
+rewrite history or start a successor. The new not-started schema is explicit host
+evidence, not a reinterpretation of incomplete legacy receipts. Tests in `tests/workspace_job/settlement.rs`
+remove fields and exercise both previews and previously approved requests.
 
 Continuation preserves engine work files and cache at the same paths. The caller
 supplies the engine's own resume argument; the host does not reconstruct its
@@ -90,11 +169,12 @@ Scratch is retained until explicit collection approval. Collection means
 accepted, still-valid artifact revisions. A confirmed failed/cancelled attempt
 may also be explicitly abandoned; its partial work is not a formal artifact.
 The approved no-follow inventory covers the whole work tree, including native
-cache and undeclared temporary files. Symlinks are unlinked, never traversed.
+cache and undeclared temporary files. Attempt input snapshots are retained evidence,
+not scratch; this slice does not add a retention/GC policy for them. Symlinks are unlinked, never traversed.
 Regular hardlinks and special files cause refusal. A changed inventory requires
 fresh approval; a partial deletion is fenced by a durable intent without retry.
 
-Accepted revisions, receipts, plans and bounded diagnostic streams stay outside
+Accepted revisions, input snapshots, receipts, plans and bounded diagnostic streams stay outside
 the writable/reclaimed tree. Existing consumers can keep selecting the same
 revision after collection. Formal artifact GC, delivery subscriptions and domain
 checkpoint completeness are not reimplemented here.
@@ -103,7 +183,8 @@ checkpoint completeness are not reimplemented here.
 
 ```text
 JOB/
-  attempts/UUID/   plan.json, intent.json, stdout.txt, stderr.txt, receipt.json
+  attempts/UUID/   plan.json, execution.json, intent.json, stdout.txt, stderr.txt, receipt.json
+                  snapshot/inputs/ (approved selected bytes, retained evidence)
                   successor.json, accept-intent.json, accepted.json (when applicable)
   work/           engine-owned private workspace and recovery data
   artifacts/      existing immutable artifact revision catalog
@@ -117,11 +198,21 @@ limit is checked during inventory, not an enforced disk quota. Runtime dependenc
 are read-only capabilities, not a hermetic or reproducible build attestation.
 
 The supervisor owns a process group, reaps its direct child and requires an empty
-group observation before declaring termination confirmed. Reviewed workers must
+group observation before declaring termination confirmed. After reaping, it makes
+bounded read-only observations for up to one second; this is not an execution
+retry and it never signals a reused numeric group during that observation window.
+Receipts retain group identity, emptiness, sample count, elapsed observation time
+and errors. If the coordinator exits while peers remain, required forced cleanup
+is recorded and the round cannot become successful, even with leader exit code 0.
+Reviewed workers must
 not daemonize, change process groups or launch remote work. Group emptiness cannot
 prove that an escaped/remote worker stopped. This boundary does not support such
 workloads or hostile agent-generated code; a stronger qualified backend is needed.
-Host crash, SIGKILL, stale locks, hostile same-user renames and power loss retain
+Host crash and SIGKILL retain a stale lock: the operator must establish that its
+owner and any workers are gone before clearing it. The host does not clear stale
+locks or infer ownership from PID absence. Once that independent step is complete,
+committed prelaunch receipts can authorize explicit continuation or collection.
+Launched/unconfirmed attempts, hostile same-user renames and power loss retain
 the existing manual-investigation limitations. No VM framework or automatic GC
 service is introduced.
 
@@ -145,3 +236,30 @@ mounted or passed to the workload. Missing revisions, substituted snapshots,
 duplicate bindings and changed approval inputs are refused.
 See [artifact version semantics](ARTIFACT-VERSIONS.md). These are generic file
 capabilities; workbook parsing and presentation composition belong to the kit.
+
+### Two internal silks and stress qualification
+
+The [multi-silk plan](MULTI-SILK-PLAN.md) defines invariants, custody transfer,
+lock scope and staged stress tests. The real macOS fixture uses one coordinator,
+a producer and a consumer in the same native group, with no per-silk host run.
+It covers cancellation before/after handoff, early leader exit, silk failure,
+timeout, uncertain observations and pinned downstream consumption after copying.
+The explicit ignored soak runs four independent jobs for ten mixed rounds each.
+This is reviewed spool-body qualification through the existing workspace profile;
+it does not create a registered production multi-silk package ABI.
+
+### Bounded recovery regressions
+
+`cargo test -p an-agent-host --lib workspace_job::recovery_tests` runs a real host
+child that exits without unwinding at four persistence boundaries. Each child has
+a 15-second outer deadline and uses tiny inputs. Tests qualify child exit before
+explicitly removing its stale lock, then check current-attempt authority,
+continuation, collection previews, refusal to publish, and retained formal outputs.
+They do not claim automatic stale-lock recovery or power-loss durability.
+
+Large-file custody remains a separate 64 MiB test with the same readiness and
+execution deadlines. The test profile optimizes only SHA-256, preserving normal
+Rust host debug checks while avoiding unoptimized hashing as a CI speed requirement.
+Python or TypeScript may drive external acceptance scenarios; moving assertions
+out of Rust does not accelerate the host's snapshot or hashing path. Persistence
+ordering and fault windows remain tested against the Rust implementation.

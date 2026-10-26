@@ -192,7 +192,7 @@ Linux has per-process address-space and CPU limits; macOS does not yet have
 equivalent quotas. There are no arbitrary native dependency mounts, multi-user
 service protection, syscall-denial event telemetry, or guaranteed crash recovery.
 The store must be private and trusted; static symlink checks are not protection
-from hostile same-user concurrent renames. A lock serializes cooperating commands;
+from hostile same-user concurrent renames. A lock serializes shared metadata operations, not independent child lifetimes;
 after a crash, investigate before manually removing a stale lock.
 
 Retention is manual. Failed and partial runs remain inspectable. Do not delete
@@ -252,3 +252,12 @@ proposals and explicitly granted kit handles over the official MCP SDK. It uses
 the existing native file executor and artifact custody. It is not a sandbox for
 the third-party coding client, and grants no shell or arbitrary filesystem tool.
 See [the platform boundaries](PLATFORMS.md) before claiming cross-platform support.
+
+## Release-bound native spool
+
+The bounded [native spool facade](NATIVE-SPOOL.md) loads verified silk/kit releases,
+edits scoped kit copies between runs, executes fixed snapshots and retains
+instance-bound custody evidence. It reuses the native supervisor and workspace
+engine. Pause, suspension and arbitrary harness containment remain unsupported.
+
+The native spool facade also provides an optional [weaver proposal slot](NATIVE-SPOOL.md#optional-weaver-proposal-slot): scoped file requests and separately approved kit changes, without launching a model or granting the adapter host authority.

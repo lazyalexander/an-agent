@@ -254,7 +254,9 @@ fn cancel_propagates_down_and_restore_skips_broken_chains() {
     assert!(child_lease.is_cancelled());
     assert!(!kept_lease.is_cancelled());
     assert!(tagged(&child, "cancel"));
-    let restored = restore_seats(recorder.agent().session().root()).unwrap();
+    let dir = recorder.agent().session().root().to_path_buf();
+    drop(recorder);
+    let restored = restore_seats(&dir).unwrap();
     assert!(restored.iter().any(|seat| seat.id == kept.id()));
     assert!(
         restored

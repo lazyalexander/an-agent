@@ -11,8 +11,9 @@ binds a release and committed business state. A spool execution attempt is the
 host-owned unit of execution isolation, resource ownership and lifecycle.
 Several silks can run inside that one attempt's granted environment.
 
-A silk is an internal callable computation, implemented by a script, binary,
-existing tool or agent. It does not independently acquire a host identity, grant,
+A silk is release-bound core domain implementation and pipeline skeleton,
+implemented by a script, binary, existing tool or agent. It is read-only during
+an attempt; changing its development source requires a new validated release. It does not independently acquire a host identity, grant,
 VM, credential or artifact catalog. A reusable silk may be shared in development,
 but managed execution must bind its selected bytes to the owning spool release.
 Independent CLI use remains possible outside an-agent and carries no host guarantee.
@@ -31,7 +32,8 @@ flowchart TB
     Adapter --> Boundary[Spool attempt: one granted execution environment]
     Boundary --> A[Internal silk: CLI]
     Boundary --> B[Internal silk: agent or existing tool]
-    A --> B
+    A --> K[Kit working copy: bounded glue]
+    K --> B
     Boundary --> Candidate[Candidate state and declared outputs]
     Candidate --> Accept[Host reconciliation and acceptance]
     Accept --> Store[Committed state and immutable artifacts]
@@ -79,6 +81,10 @@ preconditions and actual-effect evidence.
 | Reviewed workspace jobs | Operator-selected trusted workflow, scratch and binary output custody | Separate acceptance/development surface; not a production spool authority or hostile-agent boundary |
 | Model and application services | Separate host-controlled services and shuttle responsibilities | Do not inherit authority from an environment label or an internal silk request |
 
+The [native spool slice](NATIVE-SPOOL.md) now binds a verified code release and
+instance to the reviewed workspace engine. Its fixed shell profile and between-run
+kit edits do not establish general agent containment or a multi-backend spool ABI.
+
 ## Incremental migration
 
 1. Adopt spool/silk terminology in architecture and new authoring output. Preserve
@@ -99,7 +105,11 @@ preconditions and actual-effect evidence.
 
 ## Naming compatibility
 
-The former callable `kit` is now a `silk`. Existing `file-kit-v1`, `build-kit`,
+The [spool code contract](../../doc/spool-code.md) assigns `kit` a distinct role:
+adaptable glue inside a spool. A packaged kit baseline remains immutable; only
+an explicitly editable working copy may change. Temporary copies are scratch
+unless explicitly retained. No mutable-kit runtime is added by this contract.
+Existing `file-kit-v1`, `build-kit`,
 `kit.request`/`kit.execute`/completion events, source paths and Rust API spellings
 are compatibility tokens until separately migrated with versioned acceptance.
 They do not define an independent execution boundary.

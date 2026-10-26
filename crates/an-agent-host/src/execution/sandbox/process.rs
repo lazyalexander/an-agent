@@ -8,6 +8,7 @@ use std::{
 pub(super) struct OwnedChild {
     pub child: Child,
     reaped: Option<ExitStatus>,
+    pub group_cleanup_required: bool,
     #[cfg(target_os = "macos")]
     group: bool,
 }
@@ -17,6 +18,7 @@ impl OwnedChild {
         Self {
             child,
             reaped: None,
+            group_cleanup_required: false,
             #[cfg(target_os = "macos")]
             group: false,
         }
@@ -27,6 +29,7 @@ impl OwnedChild {
         Self {
             child,
             reaped: None,
+            group_cleanup_required: false,
             group: true,
         }
     }
@@ -50,6 +53,9 @@ impl OwnedChild {
             }
             let info = unsafe { info.assume_init() };
             if info.si_pid != 0 {
+                // A zero leader exit is not success if a silk is still owned by
+                // the group. Killing leftover workers must not bless partial output.
+                self.group_cleanup_required = group_has_peers(self.child.id())?;
                 return self.terminate_group().map(Some);
             }
             return Ok(None);
@@ -90,6 +96,10 @@ impl OwnedChild {
     }
 
     #[cfg(target_os = "macos")]
+    #[allow(
+        clippy::disallowed_methods,
+        reason = "bounded owned-group cleanup observations"
+    )]
     fn terminate_group(&mut self) -> io::Result<ExitStatus> {
         // Confirm child ownership before using a numeric group identity.
         let mut info = std::mem::MaybeUninit::<libc::siginfo_t>::zeroed();
@@ -104,11 +114,58 @@ impl OwnedChild {
         {
             return Err(io::Error::last_os_error());
         }
+        let timing =
+            crate::execution::metrics::Span::new("group_cleanup", std::path::Path::new(""), 0);
         kill_owned_group(self.child.id() as i32)?;
+        // A fork may race the first group signal or its per-member fallback.
+        // First stop the leader without releasing its numeric group identity.
+        if unsafe {
+            libc::waitid(
+                libc::P_PID,
+                self.child.id(),
+                info.as_mut_ptr(),
+                libc::WEXITED | libc::WNOWAIT,
+            )
+        } != 0
+        {
+            return Err(io::Error::last_os_error());
+        }
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(1);
+        while group_has_peers(self.child.id())? {
+            if std::time::Instant::now() >= deadline {
+                timing.finish("unconfirmed");
+                return Err(io::Error::other(
+                    "owned group still has members after cleanup",
+                ));
+            }
+            // Leader remains unreaped. Re-observe and signal only this owned
+            // group; do not let a missed writer keep inherited pipes open.
+            kill_owned_group(self.child.id() as i32)?;
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        timing.finish("settled");
         let status = self.child.wait()?;
         self.reaped = Some(status);
         Ok(status)
     }
+}
+
+#[cfg(target_os = "macos")]
+fn group_has_peers(leader: u32) -> io::Result<bool> {
+    // The unreaped leader pins the group identity. Two entries suffice to detect
+    // another member; zombies are conservatively considered unfinished cleanup.
+    let mut members = [0i32; 2];
+    let count = unsafe {
+        libc::proc_listpgrppids(
+            leader as i32,
+            members.as_mut_ptr().cast(),
+            size_of_val(&members) as i32,
+        )
+    };
+    if count < 0 {
+        return Err(io::Error::last_os_error());
+    }
+    Ok(members.iter().any(|pid| *pid > 0 && *pid != leader as i32))
 }
 
 #[cfg(target_os = "macos")]

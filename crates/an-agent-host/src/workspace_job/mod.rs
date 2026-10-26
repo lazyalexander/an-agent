@@ -2,17 +2,22 @@
 mod custody;
 mod inputs;
 mod inventory;
+mod not_started;
 mod profile;
+mod publication;
+mod snapshot;
+mod snapshot_clone;
 
 use crate::{
     execution::{Result, sandbox, store},
     file_job::regular,
 };
 pub use custody::{accept, reclaim};
+pub(crate) use custody::{accept_managed, reclaim_managed};
 use serde_json::{Value, json};
 use std::{
     path::{Path, PathBuf},
-    sync::atomic::AtomicBool,
+    sync::atomic::{AtomicBool, Ordering},
 };
 
 pub(super) fn root(path: &Path) -> Result<PathBuf> {
@@ -35,19 +40,56 @@ pub(super) fn attempt(root: &Path, id: &str) -> Result<PathBuf> {
 }
 
 pub(super) fn record(root: &Path, id: &str) -> Result<(PathBuf, Value)> {
+    record_inner(root, id, false)
+}
+
+/// Read settlement after explicit collection; never authorizes another execution.
+pub(crate) fn archived_record(root: &Path, id: &str) -> Result<(PathBuf, Value)> {
+    let intent = regular(&root.join("reclaim-intent.json"), 2 * 1024 * 1024)?;
+    let plan: Value = serde_json::from_slice(&intent)?;
+    let marker: Value = serde_json::from_slice(&regular(&root.join("reclaimed.json"), 65536)?)?;
+    if marker["status"] != "succeeded"
+        || marker["resume_available"] != false
+        || marker["approval_sha256"] != store::digest(&intent)
+        || plan["attempt"] != id
+        || plan["receipt_sha256"]
+            != store::digest(&regular(
+                &attempt(root, id)?.join("receipt.json"),
+                2 * 1024 * 1024,
+            )?)
+    {
+        return Err("invalid workspace collection evidence".into());
+    }
+    record_inner(root, id, true)
+}
+
+fn record_inner(root: &Path, id: &str, archived: bool) -> Result<(PathBuf, Value)> {
     let dir = attempt(root, id)?;
     let bytes = regular(&dir.join("receipt.json"), 2 * 1024 * 1024)?;
     let receipt: Value = serde_json::from_slice(&bytes)?;
     let plan_bytes = regular(&dir.join("plan.json"), 2 * 1024 * 1024)?;
     let plan: Value = serde_json::from_slice(&plan_bytes)?;
-    if receipt["schema"] != "an-workspace-receipt-v1"
+    let settled = if receipt["schema"] == "an-workspace-not-started-v1" {
+        not_started::verified(&dir, &receipt)?
+    } else {
+        receipt["schema"] == "an-workspace-receipt-v1"
+            && receipt["termination_confirmed"] == true
+            && receipt["reaped"] == true
+            && receipt["pid"]
+                .as_i64()
+                .is_some_and(|id| id > 0 && id <= i32::MAX as i64)
+            && receipt["group_observation"]["empty"] == true
+            && receipt["group_observation"]["group"] == receipt["pid"]
+            && receipt["group_observation"].get("error").is_none()
+            && receipt["group_cleanup_required"].as_bool().is_some()
+            && (receipt["status"] != "succeeded" || receipt["group_cleanup_required"] == false)
+    };
+    if !settled
         || receipt["attempt"] != id
         || receipt["plan_sha256"] != store::digest(&plan_bytes)
         || plan["root"] != json!(root)
-        || receipt["termination_confirmed"] != true
-        || receipt["reaped"] != true
         || dir.join("successor.json").exists()
-        || root.join("reclaim-intent.json").exists()
+        || (!archived && root.join("reclaim-intent.json").exists())
     {
         return Err(
             "operation requires the current, termination-confirmed workspace attempt".into(),
@@ -71,6 +113,41 @@ pub fn run(
     previous: Option<&str>,
     approved: Option<&str>,
     cancelled: &AtomicBool,
+) -> Result<Value> {
+    standalone(path)?;
+    run_managed(profile_path, path, previous, approved, cancelled)
+}
+
+/// The enclosing spool facade has already acquired instance ownership.
+pub(crate) fn run_managed(
+    profile_path: &Path,
+    path: &Path,
+    previous: Option<&str>,
+    approved: Option<&str>,
+    cancelled: &AtomicBool,
+) -> Result<Value> {
+    run_inner(profile_path, path, previous, approved, cancelled, |_, _| {})
+}
+
+fn standalone(path: &Path) -> Result<()> {
+    let root = root(path)?;
+    if root
+        .parent()
+        .is_some_and(|p| p.join("spool-owner.json").exists())
+    {
+        return Err("spool-owned job requires the owning spool lifecycle command".into());
+    }
+    Ok(())
+}
+
+// Private deterministic fault seam; callers cannot alter launch ordering.
+fn run_inner(
+    profile_path: &Path,
+    path: &Path,
+    previous: Option<&str>,
+    approved: Option<&str>,
+    cancelled: &AtomicBool,
+    mut boundary: impl FnMut(not_started::Boundary, &Path),
 ) -> Result<Value> {
     let root = root(path)?;
     let _guard = if root.exists() {
@@ -99,6 +176,12 @@ pub fn run(
     if !cfg!(target_os = "macos") {
         return Err("workspace execution is macOS-only; no fallback".into());
     }
+    if cancelled.load(Ordering::Acquire) {
+        return Ok(
+            json!({"status":"cancelled","executed":false,"process_started":false,
+            "termination_confirmed":true,"automatic_retries":0}),
+        );
+    }
     if !root.exists() {
         store::directory(&root)?;
     }
@@ -118,26 +201,56 @@ pub fn run(
     store::directory(&dir)?;
     let plan_bytes = serde_json::to_vec_pretty(&plan)?;
     store::write_new(&dir.join("plan.json"), &plan_bytes)?;
-    if let Some(prior) = previous {
-        store::write_new(
-            &attempt(&root, prior)?.join("successor.json"),
-            &serde_json::to_vec(&json!({"attempt":id,"approval_sha256":digest}))?,
-        )?;
-    }
-    // Intent precedes spawn. Missing/unconfirmed receipt fences resume and cleanup.
     store::write_new(
         &dir.join("intent.json"),
         &serde_json::to_vec(&json!({"attempt":id,"approval_sha256":digest}))?,
     )?;
-    let execution = sandbox::workspace::execute(&plan, cancelled);
+    not_started::finish(&dir, &id, &plan_bytes, "prepared", false, None)?;
+    boundary(not_started::Boundary::Prepared, &dir);
+    if let Some(prior) = previous {
+        publication::publish(
+            &attempt(&root, prior)?.join("successor.json"),
+            &serde_json::to_vec(&json!({"attempt":id,"approval_sha256":digest}))?,
+            false,
+        )?;
+    }
+    boundary(not_started::Boundary::IntentPersisted, &dir);
+    let prepared = snapshot::prepare(&plan, &dir, cancelled).and_then(|execution| {
+        let bytes = regular(&dir.join("execution.json"), 2 * 1024 * 1024)?;
+        Ok((execution, bytes))
+    });
+    let (execution_plan, execution_bytes) = match prepared {
+        Ok(prepared) => prepared,
+        Err(error) => {
+            return not_started::finish(
+                &dir,
+                &id,
+                &plan_bytes,
+                "preparation",
+                cancelled.load(Ordering::Acquire),
+                Some(error.as_ref()),
+            );
+        }
+    };
+    boundary(not_started::Boundary::ReadyToLaunch, &dir);
+    publication::publish(
+        &dir.join("launch.json"),
+        b"launch may have started\n",
+        false,
+    )?;
+    boundary(not_started::Boundary::LaunchFenced, &dir);
+    let execution = sandbox::workspace::execute(&execution_plan, cancelled);
     let mut receipt = json!({"schema":"an-workspace-receipt-v1","attempt":id,"plan_sha256":store::digest(&plan_bytes),
-        "status":"refused","reaped":false,"termination_confirmed":false,"automatic_retries":0});
+        "execution_sha256":store::digest(&execution_bytes),"status":"refused","reaped":false,"termination_confirmed":false,"automatic_retries":0});
     match execution {
+        Ok(result) if not_started::cancelled_before_spawn(&result) => {
+            return not_started::finish(&dir, &id, &plan_bytes, "supervisor", true, None);
+        }
         Ok(result) => {
-            let confirmed = result.reaped
-                && result
-                    .pid
-                    .is_some_and(|pid| sandbox::workspace::group_empty(pid).unwrap_or(false));
+            let group_observation = sandbox::workspace::settlement(result.pid, result.reaped);
+            let confirmed = result.reaped && group_observation["empty"] == true;
+            receipt["group_observation"] = group_observation;
+            receipt["group_cleanup_required"] = json!(result.group_cleanup_required);
             receipt["execution_status"] = json!(result.status);
             receipt["status"] = json!(if confirmed {
                 result.status
@@ -163,9 +276,13 @@ pub fn run(
             receipt["error"] = sandbox::refusal_evidence(error.as_ref());
         }
     }
-    store::write_new(
-        &dir.join("receipt.json"),
-        &serde_json::to_vec_pretty(&receipt)?,
-    )?;
+    publication::receipt(&dir, &serde_json::to_vec_pretty(&receipt)?)?;
     Ok(receipt)
 }
+
+#[cfg(all(test, target_os = "macos"))]
+#[path = "prelaunch_tests.rs"]
+mod prelaunch_tests;
+
+#[cfg(all(test, target_os = "macos"))]
+mod recovery_tests;

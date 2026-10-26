@@ -2,7 +2,10 @@
 use crate::execution::{Result, store};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use std::{fs, path::Path};
+use std::{
+    fs,
+    path::{Path, PathBuf},
+};
 
 const LIMIT: usize = 65536;
 pub(crate) const BINARY_LIMIT: usize = 8 * 1024 * 1024;
@@ -25,8 +28,8 @@ struct Revision {
     source: Value,
 }
 
-/// Import only an accepted file output. Receipt integrity is not authorship or
-/// domain correctness; the source run and catalog must be host-owned and private.
+/// Import a settled native file output under the source store lock. Evidence
+/// integrity is not authorship or domain correctness; host storage stays private.
 pub fn import(catalog: &Path, run: &Path) -> Result<Value> {
     store::no_links(run)?;
     store::no_links(catalog)?;
@@ -43,37 +46,34 @@ pub fn import(catalog: &Path, run: &Path) -> Result<Value> {
     if catalog_path.starts_with(run.canonicalize()?) {
         return Err("artifact catalog must be outside the source run".into());
     }
+    let run = run.canonicalize()?;
+    let runs = run.parent().ok_or("missing source runs directory")?;
+    if runs.file_name().and_then(|s| s.to_str()) != Some("runs") {
+        return Err("import requires a retained host STORE/runs/RUN directory".into());
+    }
+    let root = runs.parent().ok_or("missing source store")?;
+    let id = run
+        .file_name()
+        .and_then(|s| s.to_str())
+        .ok_or("missing run identity")?;
+    // Share the source execution/retention lock, then use their evidence gate.
+    // Unsupported backends cannot fall back to receipt-only publication.
+    let _source_lock = store::lock(root)?;
+    let accepted = crate::settled_run::accepted(root, id)?;
     let receipt_bytes = crate::file_job::regular(&run.join("receipt.json"), LIMIT)?;
     let receipt: Value = serde_json::from_slice(&receipt_bytes)?;
-    let run_id = receipt["run_id"]
-        .as_str()
-        .ok_or("missing source run identity")?;
-    uuid::Uuid::parse_str(run_id)?;
     let release = receipt["release"]
         .as_str()
         .filter(|s| store::valid_digest(s))
         .ok_or("missing source release identity")?;
-    if receipt["schema_version"] != 1
-        || receipt["status"] != "succeeded"
-        || receipt["exit_code"] != 0
-        || receipt["process"]["reaped"] != true
-        || receipt["artifact"]["path"] != "artifact.txt"
-    {
-        return Err("only a host-accepted successful file artifact can be imported".into());
-    }
-    let bytes = crate::file_job::regular(&run.join("artifact.txt"), LIMIT)?;
-    if receipt["artifact"]["sha256"] != store::digest(&bytes)
-        || receipt["artifact"]["bytes"].as_u64() != Some(bytes.len() as u64)
-    {
-        return Err("accepted artifact identity mismatch".into());
-    }
     publish(
         catalog,
-        &bytes,
+        &accepted.artifact,
         None,
         json!({"kind":"accepted-run",
-        "run_id":run_id,"release":release,
-        "receipt_sha256":store::digest(&receipt_bytes),"input_revision":{
+        "run_id":id,"release":release,
+        "receipt_sha256":store::digest(&receipt_bytes),
+        "settlement":accepted.evidence["settlement"],"input_revision":{
             "revision":receipt["input_revision"]["revision"],
             "content_sha256":receipt["input_revision"]["content_sha256"]}}),
     )
@@ -134,9 +134,7 @@ fn publish_format(
         std::str::from_utf8(bytes)?;
     }
     store::directory(catalog)?;
-    let _lock = store::lock(catalog)?;
     let revisions = catalog.join("revisions");
-    store::directory(&revisions)?;
     let manifest = Revision {
         schema: schema.into(),
         content_sha256: store::digest(bytes),
@@ -150,6 +148,10 @@ fn publish_format(
     }
     let revision = store::digest(&encoded);
     let target = revisions.join(&revision);
+    // Hash the immutable in-memory payload before taking the shared commit lock.
+    // Keep copying inside: rejected contenders should not write full payloads.
+    let _lock = store::lock(catalog)?;
+    store::directory(&revisions)?;
     if target.exists() {
         read(catalog, &revision)?;
     } else {
@@ -158,9 +160,11 @@ fn publish_format(
             an_agent_core::det_seam::Entropy::os().uuid_v4()
         ));
         store::directory(&pending)?;
+        let mut staged = Pending(Some(pending.clone()));
         store::write_new(&pending.join(content), bytes)?;
         store::write_new(&pending.join("revision.json"), &encoded)?;
         fs::rename(&pending, &target)?;
+        staged.0 = None;
     }
     let mut result = json!({"status":"succeeded","revision":revision,"content_sha256":manifest.content_sha256,
         "bytes":manifest.bytes,"parent":manifest.parent});
@@ -168,6 +172,20 @@ fn publish_format(
         result["encoding"] = json!("bytes");
     }
     Ok(result)
+}
+
+// Only this invocation's exclusively created staging files may be discarded.
+// Abrupt process death can leave unindexed .pending material for inspection.
+struct Pending(Option<PathBuf>);
+impl Drop for Pending {
+    fn drop(&mut self) {
+        if let Some(path) = &self.0 {
+            for name in ["content.bin", "content.txt", "revision.json"] {
+                let _ = fs::remove_file(path.join(name));
+            }
+            let _ = fs::remove_dir(path);
+        }
+    }
 }
 
 /// Read a specific immutable revision; never resolve a mutable latest pointer.

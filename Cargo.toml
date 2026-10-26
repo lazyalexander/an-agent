@@ -11,7 +11,7 @@ license = "MIT"
 async-trait = "0.1"
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 rand = { version = "0.8", features = ["std"] }
-reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls", "hickory-dns"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 serde-saphyr = { version = "1", default-features = false, features = ["deserialize"] }
@@ -31,3 +31,8 @@ unwrap_used = "deny"
 expect_used = "deny"
 dbg_macro = "deny"
 todo = "deny"
+
+# Large-file custody tests hash real payloads repeatedly. Keep their host logic
+# debuggable without benchmarking an unoptimized cryptographic compression loop.
+[profile.test.package.sha2]
+opt-level = 3

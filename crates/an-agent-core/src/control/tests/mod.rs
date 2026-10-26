@@ -190,3 +190,7 @@ mod supervision;
 mod thread;
 mod tool_contract;
 mod workspace;
+
+mod delivery_registration;
+
+mod tool_payload_boundary;

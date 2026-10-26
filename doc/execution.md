@@ -65,3 +65,60 @@ Detailed contracts: [host execution](../crates/an-agent-host/README.md),
 [security layers](../crates/an-agent-host/SECURITY-LAYERS.md),
 [process ownership](../crates/an-agent-host/PROCESS-LIFECYCLE.md),
 [OpenShell](../crates/an-agent-host/OPENSHELL.md).
+
+## Concurrent native attempts
+
+The host owns lightweight attempt coordination; it does not implement a new
+container runtime. Native execution is the first local backend. Container or
+microVM support remains an independently qualified backend choice, not a reason
+to move artifact custody or domain sequencing into that backend.
+
+The fixed native file profile now allows independent attempts in the same host
+store. The store lock protects release resolution, input snapshots and exclusive
+run-directory allocation, then is released before admission and process launch.
+Each attempt owns its directory, AgentControl thread, operation identity, child
+and cancellation flag. Short shared metadata operations still fail closed on
+lock contention; there is no new queue, stale-lock repair or automatic retry.
+A running child no longer holds that lock for its entire lifetime.
+
+Settlement evidence, not absence of the store lock, gates cleanup. A new attempt
+is an explicit invocation with a new identity, not resumption of cancelled memory.
+Business state is selected explicitly. OS threads and process memory belong to
+the backend; no portable thread snapshot is promised. Accepted file revisions
+carry data between attempts, with small control notifications remaining separate.
+
+The real CLI regression in `tests/file_runtime/concurrent.rs` starts two named
+spool releases in one store, cancels one through SIGTERM, reclaims its confirmed
+cancelled work and starts a fresh attempt while its peer continues. The peer pins
+v1, finishes after v2 publication, and retains v1 output after scratch collection.
+This qualifies the existing single-entry file ABI, not arbitrary multi-silk
+process trees, hostile same-user processes, persistent environments or VM backup.
+Loom still authors, checks and packages releases; it owns none of these runtime
+locks, grants, cancellation or retention decisions.
+
+For reproducible local evidence:
+
+```sh
+AN_AGENT_ACCEPTANCE_DIR=/absolute/path/to/evidence \
+  cargo test -p an-agent-host --test file_runtime concurrent -- --nocapture
+```
+
+The report includes relative event times, full plans, operation IDs, child PIDs,
+receipts, settlement/audit records, revision bindings and reclamation results.
+These synthetic test records can contain local paths: inspect before sharing.
+CI retains the report per OS; timing is diagnostic evidence, not a benchmark.
+
+## One reviewed body with two silks
+
+The next slice qualifies one coordinator and two internal silk processes through
+the existing macOS reviewed workspace profile. One process group, attempt and
+cancellation owner cover the whole round. A producer hands off an internal file;
+a consumer offers a candidate, and only whole-round settlement can authorize host
+copy/verification and publication. A zero-exit leader with abandoned members is
+failed, not successful after forced cleanup.
+
+The [implementation and stress plan](../crates/an-agent-host/MULTI-SILK-PLAN.md)
+separates current regression/soak evidence from future saturation and crash-fault
+tests. This is not a general registered multi-silk deployment or a hostile-code
+sandbox. Reuse the current authority boundary before designing another package
+ABI; Loom remains responsible for development and packaging only.

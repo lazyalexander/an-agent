@@ -94,6 +94,13 @@ watch, it belongs to the lab.
 4. `cargo arch` — green against the target branch. Do not reset or raise the
    baseline to make a feature pass. See `ARCHITECTURE-GATES.md`.
 
+The architecture checker is a separate Cargo workspace. Product workspace
+checks and `cargo arch` do not run its own tests. Before every PR push, also run:
+
+- `cargo fmt --manifest-path tools/archcheck/Cargo.toml -- --check`
+- `cargo test --manifest-path tools/archcheck/Cargo.toml --locked`
+- `cargo clippy --manifest-path tools/archcheck/Cargo.toml --all-targets --locked -- -D warnings`
+
 Plus the discipline-specific checks:
 
 - Does this change belong to the product, a case asset, or the lab? Put
@@ -102,3 +109,7 @@ Plus the discipline-specific checks:
 - Module splits follow the split discipline (see the `split-modules`
   skill): a split commit is a pure move, public paths stay, tests are
   moved not lost.
+
+Code-role terminology follows [the spool code contract](doc/spool-code.md).
+Silk is the stable core; kit is adaptable glue. Preserve legacy wire/API names
+and distinguish target contracts from implemented runtime guarantees.

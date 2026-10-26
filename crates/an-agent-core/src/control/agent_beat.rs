@@ -33,7 +33,7 @@ use serde_json::{Value, json};
 
 use super::model_boundary::{ModelPublication, ModelRecord};
 use super::semantic::{Admission, AuthorizedAttempt};
-use super::{AgentControl, ControlError, DeliveryOutcome, SpoolDeclaration, SpoolReply};
+use super::{AgentControl, ControlError, DeliveryOutcome, SpoolDeclaration};
 use crate::agent::Agent;
 use crate::agent::context::{self, Clip, Envelope, SystemFacts};
 use crate::memstream::Kind;
@@ -181,7 +181,7 @@ fn projection(agent: &Agent, event: &WorkspaceRecord, steps: usize) -> Result<Va
             json!({
                 "id": e.id,
                 "tag": e.tags.first().cloned().unwrap_or_default(),
-                "content": fuse_clip(&resolve_payload(agent, e)),
+                "content": fuse_clip(&preview_payload(agent, e)),
             })
         })
         .collect();
@@ -192,27 +192,8 @@ fn projection(agent: &Agent, event: &WorkspaceRecord, steps: usize) -> Result<Va
     }))
 }
 
-/// Resolve a thin observation's content address back to its text. A
-/// missing or unreadable blob leaves the thin line as it is — the tape's
-/// hash and size stay truthful, and the gap is visible instead of
-/// invented content.
-fn resolve_payload(agent: &Agent, event: &crate::memstream::Memevent) -> String {
-    if event.kind != Kind::Observation {
-        return event.content.clone();
-    }
-    let Ok(content) = serde_json::from_str::<Value>(&event.content) else {
-        return event.content.clone();
-    };
-    let Some(sha) = content.get("response_sha256").and_then(|s| s.as_str()) else {
-        return event.content.clone();
-    };
-    agent
-        .session()
-        .read_blob(sha)
-        .ok()
-        .and_then(|bytes| String::from_utf8(bytes).ok())
-        .unwrap_or_else(|| event.content.clone())
-}
+mod payload;
+use payload::{preview_payload, resolve_payload};
 
 impl AgentControl {
     /// Install the host's model client. A body yielding `InvokeModel`
@@ -270,24 +251,21 @@ impl AgentControl {
             match step {
                 BeatStep::Utter { text } => {
                     let text = fuse_utter(&text);
-                    let tape_id = self.note_spool(agent, name, &event.id, Ok(text.as_str()))?;
-                    let intents = self.admit_intents(
+                    return Ok(Ok(self.publish_reply(
                         agent,
                         name,
                         &event.id,
                         declaration,
-                        super::spool::parse_intents(&text),
-                    )?;
-                    return Ok(Ok(DeliveryOutcome::Reply(SpoolReply {
-                        spool: name.to_string(),
-                        event_id: event.id.clone(),
-                        reply: text,
-                        tape_id,
-                        intents,
-                    })));
+                        text,
+                        &delivery.grant.facts,
+                    )?));
                 }
+
                 BeatStep::Halt => {
-                    let tape_id = self.note_spool(agent, name, &event.id, Ok(""))?;
+                    let tape_id =
+                        self.with_delivery_current(agent, &delivery.grant.facts, || {
+                            self.note_spool(agent, name, &event.id, Ok(""))
+                        })?;
                     return Ok(Ok(DeliveryOutcome::Halt {
                         spool: name.to_string(),
                         event_id: event.id.clone(),
@@ -450,7 +428,7 @@ impl AgentControl {
                 }
                 Some(e) => resolved.push((
                     e.tags.first().cloned().unwrap_or_else(|| "event".into()),
-                    fuse_clip(&resolve_payload(agent, e)),
+                    fuse_clip(&resolve_payload(agent, e)?),
                 )),
                 None => return Err(ControlError::UnknownClip(clip.clone())),
             }

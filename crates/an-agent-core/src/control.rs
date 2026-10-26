@@ -36,6 +36,7 @@ use crate::seat::{Pool, PoolError, Seat, TreeError};
 use crate::workspace::Workspace;
 
 mod agent_beat;
+mod delivery;
 mod hooks;
 mod model_boundary;
 mod semantic;
@@ -332,6 +333,7 @@ impl AgentControl {
         id: Uuid,
         call: &ToolCall,
     ) -> Result<crate::act::ToolActResult, ControlError> {
+        crate::act::tool::validate_call(call)?;
         let turn = self.begin_beat(id)?;
         let agent = turn.agent();
         let signal = self.cancel_receiver(id)?;

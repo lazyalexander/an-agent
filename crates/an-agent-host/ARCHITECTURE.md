@@ -227,9 +227,12 @@ intent file does not promise power-loss durability or crash reconciliation.
 This borrows [SPACE's separation of intent, runtime evidence and guarded completion](https://github.com/perplexityai/SPACE/blob/57c7c0c47a73373a974c5b542d180599795465da/crates/libs/placement/machine/README.md),
 not its control plane or placement machinery. Operation IDs correlate trusted
 adapter returns; they are not cryptographic remote execution attestations. There is no
-distributed fence or compare-and-swap claim: execution is synchronous and the
-existing whole-store lock remains held. A future concurrent/remote scheduler
-would need persistent claims and guarded commits before relaxing that lock.
+distributed fence or remote scheduler. Each invocation is synchronous, while
+independent attempts can execute concurrently. The store lock protects metadata
+resolution and exclusive directory allocation, then is released before launch.
+Attempt-owned paths and verified terminal settlement fence publication/cleanup;
+instance state commits retain their existing head checks under the store lock.
+Persistent scheduling or adoption after a crash still needs separate qualification.
 Pause, suspension, backup and another VM backend are outside this contract's
 current supported operations. Adding one must not turn unsupported capabilities
 into native fallbacks or equate disk restart with memory resume.

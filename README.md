@@ -20,6 +20,11 @@ backend, and application shuttles remain host-authorized external bridges.
 See the [implementation audit and staged migration](crates/an-agent-host/SPOOL-BOUNDARY.md).
 Existing bounded execution profiles do not yet provide a multi-silk runtime.
 
+The [spool code contract](doc/spool-code.md) distinguishes **silks**, the stable pipeline
+skeleton and core domain code, from **kits**, adaptable internal glue. Published
+packages remain immutable; agent edits apply only to authorized working copies.
+This vocabulary does not add runtime enforcement or change legacy CLI/API tokens.
+
 ## Current demonstration
 
 ![Mechanical ink animation](assets/demos/mechanical-ink.gif)
@@ -85,3 +90,5 @@ The toolchain is pinned via `rust-toolchain.toml`. Experiments stay outside the 
 
 See [architecture gates](ARCHITECTURE-GATES.md) for the TOML rules, existing-debt
 baseline, dependency boundaries and the separately locked SPACE-based checker.
+
+The [implementation boundary audit](doc/architecture.md#implementation-boundary-audit) maps current modules to developer, host, and backend responsibilities and records the remaining limits.

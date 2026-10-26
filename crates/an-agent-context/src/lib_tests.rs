@@ -437,3 +437,86 @@ fn thread_cut_is_written_by_the_host_and_a_hit_does_not_rewrite() {
     );
     assert_ne!(moved.context, cited.context);
 }
+
+#[test]
+fn tool_references_restore_context_and_cuts_without_putting_bodies_on_tape() {
+    let dir = TempDir::new("tool-context");
+    let store = JsonlStore::open(dir.path().join("memory.jsonl")).unwrap();
+    let reference = store.tool_payload("private tool memory").unwrap();
+    let event = store
+        .append(AppendEvent {
+            from: "a".into(),
+            from_kind: FromKind::Agent,
+            kind: Kind::Utterance,
+            session: "s".into(),
+            content: reference,
+            tags: vec![
+                "memory".into(),
+                an_agent_core::memstream::TOOL_PAYLOAD_TAG.into(),
+            ],
+            refs: vec![],
+            act: None,
+            card: None,
+        })
+        .unwrap();
+    let events = vec![event];
+    let assembly = assemble(dir.path(), &events, AssembleMode::Continue, 10000).unwrap();
+    assert!(
+        assembly
+            .context
+            .iter()
+            .any(|p| p.text == "private tool memory")
+    );
+    let cut = cut_if_long(dir.path(), &events, 0).unwrap().unwrap();
+    assert!(
+        fs::read_to_string(cut.path)
+            .unwrap()
+            .contains("private tool memory")
+    );
+    assert!(
+        !fs::read_to_string(dir.path().join("memory.jsonl"))
+            .unwrap()
+            .contains("private tool memory")
+    );
+    fs::remove_dir_all(dir.path().join("blobs")).unwrap();
+    assert!(assemble(dir.path(), &events, AssembleMode::Continue, 10000).is_err());
+}
+
+#[test]
+fn thin_tool_context_keeps_identity_in_assembly_and_cuts() {
+    let dir = TempDir::new("tool-identity");
+    let store = JsonlStore::open(dir.path().join("memory.jsonl")).unwrap();
+    let reference = store.tool_payload("{}").unwrap();
+    let events: Vec<_> = ["left", "right"]
+        .into_iter()
+        .map(|name| {
+            store
+                .append(AppendEvent {
+                    from: "a".into(),
+                    from_kind: FromKind::Agent,
+                    kind: Kind::Action,
+                    session: "s".into(),
+                    content: reference.clone(),
+                    tags: vec![an_agent_core::memstream::TOOL_PAYLOAD_TAG.into()],
+                    refs: vec![],
+                    card: None,
+                    act: Some(an_agent_core::memstream::ActOnEvent {
+                        kind: "invoke".into(),
+                        permit: Permit::Go,
+                        tool: Some(name.into()),
+                        effect: None,
+                    }),
+                })
+                .unwrap()
+        })
+        .collect();
+    let assembly = assemble(dir.path(), &events, AssembleMode::Continue, 10000).unwrap();
+    let cut = cut_if_long(dir.path(), &events, 0).unwrap().unwrap();
+    let text = fs::read_to_string(cut.path).unwrap();
+    for name in ["left", "right"] {
+        let expected = format!("[tool \"{name}\"]\n{{}}");
+        assert!(assembly.context.iter().any(|piece| piece.text == expected));
+        assert!(text.contains(&expected));
+    }
+    assert_eq!(store.resolve_tool_payload(&events[0]).unwrap(), "{}");
+}

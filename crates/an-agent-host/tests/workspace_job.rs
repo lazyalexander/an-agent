@@ -20,9 +20,9 @@ fn fixture(temp: &TempDir, script: &str, deadline: u64) -> Result<(PathBuf, Path
     let profile = root.join("profile.json");
     fs::write(
         &profile,
-        serde_json::to_vec(&json!({"schema":"an-workspace-job-v1",
+        serde_json::to_vec(&json!({"schema":"an-workspace-job-v2",
         "executable":"/bin/bash","args":["-c",script,"fixture",root.join("forbidden.txt")],
-        "readonly":[input],"inputs":[input.join("input.txt")],"environment":{},
+        "readonly":[],"inputs":[input.join("input.txt")],"environment":{},
         "outputs":["output.txt"],"wall_seconds":deadline,"trusted_process_group":true}))?,
     )?;
     Ok((profile, root.join("job")))
@@ -173,3 +173,18 @@ fn deadline_and_linked_or_failed_outputs_are_not_promoted() -> Result<()> {
 
 #[path = "workspace_job/binary.rs"]
 mod binary;
+
+#[path = "workspace_job/multi_silk.rs"]
+mod multi_silk;
+
+#[path = "workspace_job/large_handoff.rs"]
+mod large_handoff;
+
+#[path = "workspace_job/settlement.rs"]
+mod settlement;
+
+#[path = "workspace_job/snapshot.rs"]
+mod snapshot;
+
+#[path = "workspace_job/clone_handoff.rs"]
+mod clone_handoff;

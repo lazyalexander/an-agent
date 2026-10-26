@@ -14,12 +14,16 @@ use std::{
 mod agent_tools;
 #[path = "file_runtime/checkpoint.rs"]
 mod checkpoint;
+#[path = "file_runtime/concurrent.rs"]
+mod concurrent;
 #[path = "file_runtime/instance.rs"]
 mod instance;
 #[path = "file_runtime/lifecycle.rs"]
 mod lifecycle;
 #[path = "file_runtime/revisions.rs"]
 mod revisions;
+#[path = "file_runtime/settlement.rs"]
+mod settlement;
 #[cfg(target_os = "macos")]
 #[path = "file_runtime/workspaces.rs"]
 mod workspaces;
@@ -290,7 +294,7 @@ fn cancelling_a_written_but_unfinished_output_never_accepts_it() -> execution::R
             run.file_name().unwrap().to_str().unwrap(),
             None,
         )
-        .is_err()
+        .is_ok()
     );
     assert!(!run.join("artifact.txt").exists());
     assert!(!fs::read_to_string(run.join("audit.json"))?.contains("applied"));

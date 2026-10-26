@@ -6,6 +6,7 @@ mod host;
 mod instance;
 mod model;
 mod retention;
+mod spool;
 mod workspace;
 
 use an_agent_host::execution::Result;
@@ -55,6 +56,16 @@ pub(super) fn run(args: Vec<String>) -> Result<()> {
         "workspace-run" | "workspace-resume" | "workspace-accept" | "workspace-reclaim" => {
             workspace::dispatch(command, args)?
         }
+        "spool-load"
+        | "spool-show"
+        | "spool-kit-update"
+        | "spool-start"
+        | "spool-accept"
+        | "spool-reclaim"
+        | "spool-unload"
+        | "spool-weaver-request"
+        | "spool-weaver-apply"
+        | "spool-weaver-revoke" => spool::dispatch(command, args)?,
         "context-check" | "context-export" => context::dispatch(command, args)?,
         "model" => model::dispatch(command, args)?,
         "check" | "register" | "run" | "run-version" | "run-openshell" | "build-kit"

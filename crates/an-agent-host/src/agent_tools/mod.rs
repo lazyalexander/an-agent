@@ -1,9 +1,11 @@
 //! Finite model-facing capabilities; not a sandbox for a third-party executable.
+mod publication;
 mod transport;
 use crate::{
     execution::{Result, store},
     file_job::regular,
 };
+use publication::Call;
 use serde::Deserialize;
 use serde_json::{Value, json};
 use std::{
@@ -30,7 +32,7 @@ pub struct Bridge {
     grant: Grant,
     source: Vec<u8>,
     closing: AtomicBool,
-    active: Mutex<Option<Arc<AtomicBool>>>,
+    active: Mutex<Option<Arc<Call>>>,
 }
 
 pub fn preview(path: &Path) -> Result<Value> {
@@ -122,7 +124,7 @@ impl Bridge {
         if let Ok(active) = self.active.lock()
             && let Some(stop) = active.as_ref()
         {
-            stop.store(true, Ordering::SeqCst);
+            stop.cancel();
         }
     }
 
@@ -130,12 +132,7 @@ impl Bridge {
         transport::serve(self).await
     }
 
-    pub(super) fn invoke(
-        &self,
-        name: &str,
-        arguments: Value,
-        stop: Arc<AtomicBool>,
-    ) -> Result<Value> {
+    fn invoke(&self, name: &str, arguments: Value, stop: Arc<Call>) -> Result<Value> {
         let encoded = serde_json::to_vec(&arguments)?;
         if name.len() > 64 || encoded.len() > 512 * 1024 {
             return Err("capability envelope exceeds limit".into());
@@ -156,7 +153,7 @@ impl Bridge {
         result
     }
 
-    fn dispatch(&self, name: &str, arguments: Value, stop: Arc<AtomicBool>) -> Result<Value> {
+    fn dispatch(&self, name: &str, arguments: Value, stop: Arc<Call>) -> Result<Value> {
         let mut active = self
             .active
             .try_lock()
@@ -192,7 +189,7 @@ impl Bridge {
             &serde_json::to_vec(&json!({"tool":name,"request":request}))?,
         )?;
         let result = (|| -> Result<Value> {
-            if stop.load(Ordering::SeqCst) {
+            if stop.stop().load(Ordering::SeqCst) {
                 return Err("request cancelled before dispatch".into());
             }
             match name {
@@ -224,7 +221,7 @@ impl Bridge {
                         &self.grant.store,
                         release,
                         &dir.join("input.txt"),
-                        &stop,
+                        stop.stop(),
                     )?;
                     let receipt =
                         Path::new(result["receipt"].as_str().ok_or("missing run receipt")?)
@@ -232,29 +229,36 @@ impl Bridge {
                             .ok_or("missing run directory")?;
                     let bytes = regular(&receipt.join("receipt.json"), 65536)?;
                     let observed: Value = serde_json::from_slice(&bytes)?;
-                    let mut response = json!({"status":observed["status"],"run_id":observed["run_id"],"receipt_sha256":store::digest(&bytes),"reaped":observed["process"]["reaped"]});
-                    if observed["status"] == "succeeded" && !stop.load(Ordering::SeqCst) {
-                        let revision = crate::artifact_versions::import(
-                            &self.grant.session.join("artifacts"),
-                            receipt,
-                        )?;
-                        response["artifact"] = revision;
-                        response["text"] = json!(std::str::from_utf8(&regular(
-                            &receipt.join("artifact.txt"),
-                            65536
-                        )?)?);
+                    let mut response = json!({"status":observed["status"],"execution_status":observed["status"],"run_id":observed["run_id"],"receipt_sha256":store::digest(&bytes),"reaped":observed["process"]["reaped"],"publication":{"status":"not-attempted"}});
+                    if observed["status"] == "succeeded" {
+                        let text = regular(&receipt.join("artifact.txt"), 65536)?;
+                        let text = std::str::from_utf8(&text)?;
+                        stop.publish(&dir, &mut response, || {
+                            crate::artifact_versions::import(
+                                &self.grant.session.join("artifacts"),
+                                receipt,
+                            )
+                        })?;
+                        if response.get("artifact").is_some() {
+                            response["text"] = json!(text);
+                        }
                     }
                     Ok(response)
                 }
                 _ => Err("capability or request fields are not allowed".into()),
             }
         })();
-        let value = match result {
+        let mut value = match result {
             Ok(value) => value,
             Err(error) => {
                 json!({"status":"refused-or-uncertain","error":error.to_string(),"automatic_retries":0})
             }
         };
+        if value["status"] == "refused-or-uncertain" && dir.join("publication-intent.json").exists()
+        {
+            value["publication"] =
+                json!({"status":"uncertain", "intent":"publication-intent.json"});
+        }
         store::write_new(
             &dir.join("result.pending"),
             &serde_json::to_vec_pretty(&value)?,

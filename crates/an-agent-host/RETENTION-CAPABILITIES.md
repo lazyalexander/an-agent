@@ -2,13 +2,13 @@
 
 The host owns authorization, accepted artifact identity and retention. A spool
 owns domain computation and output meaning. A backend enforces execution limits
-and reports termination. Waver remains development and packaging tooling; neither
-Waver nor core needs a new API for this profile.
+and reports termination. Loom remains development and packaging tooling; neither
+Loom nor core needs a new API for this profile.
 
 Internal material is disposable by default, but that is not permission to delete
 a running or uncertain environment. This first implementation is deliberately
 limited to the two work files of a native `file-kit-v1` run. It does not reclaim
-VM disks, arbitrary scratch trees, failed runs, logs or artifact catalogs.
+VM disks, arbitrary scratch trees, arbitrary failed runs, logs or artifact catalogs.
 
 ## Evidence before reclamation
 
@@ -19,9 +19,12 @@ successful execution. Reclamation independently requires all of:
 
 - Matching run and operation identities, a valid plan digest, and a matching
   settlement marker and audit digest.
-- A supported native file backend, successful exit, reaped direct child and
-  explicit `termination_confirmed: true`, with no reconciliation error.
-- A separately accepted `artifact.txt` matching its receipt digest and length.
+- A supported native file backend, reaped direct child and explicit
+  `termination_confirmed: true`, with no reconciliation error.
+- Either a successful exit with a separately accepted `artifact.txt` matching its
+  receipt digest and length, or matching cancelled receipt/observation with a
+  recorded cancellation request and no accepted artifact. The latter grants only
+  scratch reclamation, never artifact import or external capability execution.
 - Exactly `work/input.txt` and `work/output.txt`, both bounded regular files with
   no symlinks or hardlinks. Unknown entries cause refusal, not recursive deletion.
 - An operator-approved digest binding those exact work bytes and evidence.
@@ -32,7 +35,9 @@ an-agent-host work-reclaim HOST_STORE RUN_ID
 an-agent-host work-reclaim HOST_STORE RUN_ID --approve PLAN_SHA256
 ```
 
-The existing whole-store lock excludes active execution. After validation, an
+The store lock serializes metadata/cleanup operations, not child lifetimes.
+Active attempts have no valid terminal settlement and cannot be reclaimed. After
+validation, an
 exclusive `reclaim-intent.json` is recorded, the two files and empty directory
 are removed, and `reclaim.json` records the result. A partial deletion or missing
 result requires inspection, not an automatic retry. No stale lock is removed.
@@ -40,8 +45,8 @@ Input evidence, accepted artifact, executable, plan, receipt, settlement marker,
 diagnostic streams and kernel audit remain unchanged. Existing artifact import,
 checkout and pinned-version execution still work after reclamation.
 
-Old runs without a settlement marker are ineligible. Failed, cancelled and
-timed-out runs retain their work, even if the process was reaped. Unknown
+Old runs without a settlement marker are ineligible. Failed and timed-out runs
+retain their work, even if the process was reaped. Unknown
 termination is never upgraded by elapsed time, an exit claim or a cancellation
 request. Future policies may separately qualify these cases; no background GC
 or retention scheduler is introduced here.
@@ -114,6 +119,8 @@ Tests check that preview/wrong approval/unsupported requests/cancellation and
 uncertain duplicate submissions do not start a continuation. Reclamation tests
 compare retained bytes before and after deletion, import products again, reject
 altered approvals, extra entries, links, missing settlement and mismatched or
-unconfirmed observations. A concurrent attempt while a real kit is still
+unconfirmed observations. A reclamation attempt while a real silk is still
 writing is refused before cancellation; its partial output remains present.
+The concurrent native regression also reclaims a confirmed cancelled attempt
+without affecting its live peer or retained formal revisions.
 Only isolated test-owned work copies are removed by these tests.

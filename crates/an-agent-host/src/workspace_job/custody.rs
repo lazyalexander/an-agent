@@ -8,6 +8,11 @@ use serde_json::{Value, json};
 use std::path::Path;
 
 pub fn accept(path: &Path, id: &str, approved: Option<&str>) -> Result<Value> {
+    super::standalone(path)?;
+    accept_managed(path, id, approved)
+}
+
+pub(crate) fn accept_managed(path: &Path, id: &str, approved: Option<&str>) -> Result<Value> {
     let root = root(path)?;
     let _lock = store::lock(&root)?;
     let (dir, receipt) = record(&root, id)?;
@@ -16,7 +21,7 @@ pub fn accept(path: &Path, id: &str, approved: Option<&str>) -> Result<Value> {
     }
     let execution: Value =
         serde_json::from_slice(&regular(&dir.join("plan.json"), 2 * 1024 * 1024)?)?;
-    super::profile::verify_inputs(&execution)?;
+    let _snapshot = super::snapshot::verified(&dir, &execution, &receipt)?;
     let mut candidates = Vec::new();
     let mut payloads = Vec::new();
     let mut total = 0usize;
@@ -85,6 +90,11 @@ pub fn accept(path: &Path, id: &str, approved: Option<&str>) -> Result<Value> {
 
 /// Explicitly abandons resume rights; never selects formal artifacts for deletion.
 pub fn reclaim(path: &Path, id: &str, approved: Option<&str>) -> Result<Value> {
+    super::standalone(path)?;
+    reclaim_managed(path, id, approved)
+}
+
+pub(crate) fn reclaim_managed(path: &Path, id: &str, approved: Option<&str>) -> Result<Value> {
     let root = root(path)?;
     let _lock = store::lock(&root)?;
     let (dir, receipt) = record(&root, id)?;

@@ -78,3 +78,27 @@ fn seal_records_the_workspace_generation_and_resume_reopens_the_tape() {
             .any(|event| { event.content.contains("remember this") })
     );
 }
+
+#[test]
+fn independent_control_cannot_resume_an_owned_session() {
+    let tmp = TempDir::new("exclusive-resume");
+    let owner = AgentControl::open(tmp.path(), &bash_registry()).unwrap();
+    let spec = card("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", "bash", Permit::Deny);
+    let id = owner.open_thread(&spec).unwrap();
+    let manifest = owner.seal_session(id).unwrap();
+    let other = AgentControl::open(tmp.path(), &bash_registry()).unwrap();
+    let before = owner.events(id).unwrap();
+    assert!(matches!(
+        other.resume_session(&spec, manifest.id),
+        Err(ControlError::Spawn(crate::agent::SpawnError::Session(
+            crate::agent::SessionError::Store(crate::memstream::StoreError::WriterBusy(_))
+        )))
+    ));
+    assert_eq!(owner.events(id).unwrap().len(), before.len());
+    owner.advance(id, "still owned").unwrap();
+    drop(owner);
+    other.resume_session(&spec, manifest.id).unwrap();
+    let events = other.events(id).unwrap();
+    assert!(events.iter().any(|e| e.content.contains("still owned")));
+    assert!(events.windows(2).all(|w| w[0].seq < w[1].seq));
+}

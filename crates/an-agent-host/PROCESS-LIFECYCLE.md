@@ -59,8 +59,8 @@ bytes; the diagnostic is not a claim of complete output retention.
 
 SIGINT/SIGTERM registration ownership belongs to the CLI, not the host library.
 Registration guards remove successfully installed handlers on partial failure,
-normal return and unwind. Cancellation settles through normal receipt/audit and
-store-lock release. A later cancellation does not undo an already settled run.
+normal return and unwind. Cancellation settles through normal receipt/audit;
+the shared allocation lock has already been released before process launch. A later cancellation does not undo an already settled run.
 This covers the kit run command. For cancellation of the separate HTTP
 model command, see [model cancellation and deadlines](MODEL-CLI.md#cancellation-and-deadlines).
 
@@ -99,3 +99,26 @@ artifacts/stale locks after abrupt host death require inspection, not auto-repla
 Signal acceptance uses the standard pgrep utility available on native macOS and
 Ubuntu runners, only to identify children of the test's own CLI. Production does
 not depend on pgrep or shell-based process discovery.
+
+## Reviewed group completion
+
+A coordinator that exits zero with remaining group members is not a completed
+workflow. The supervisor observes peers while retaining the unreaped leader,
+records `group_cleanup_required`, terminates the owned group and reports failure
+unless a cancellation/timeout already supplies the stop reason. This avoids
+promoting partial output merely because forced cleanup succeeded. Single-child
+profiles and OpenShell retain their own existing completion contracts.
+
+The reviewed workspace adapter additionally records bounded post-reap group
+observations. Reaping and empty-group confirmation are distinct; missing/failed
+confirmation prevents acceptance, continuation and scratch reclamation. Numerical
+PIDs are diagnostic evidence, never durable handles for later signaling. See the
+[multi-silk execution plan](MULTI-SILK-PLAN.md) for qualification and limits.
+
+Group cancellation also accounts for forks racing the first signal. Before
+reaping the leader, cleanup confirms its exit and re-observes remaining peers
+while the group identity is still owned. This prevents a missed late child from
+holding inherited pipes until its natural exit. Cleanup observations are bounded
+and do not authorize replay or signaling a subsequently reused group ID.
+The [pressure report](HANDOFF-PRESSURE.md) retains the observed delayed-cancel
+case and the regression/qualification limits.
