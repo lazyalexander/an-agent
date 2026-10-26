@@ -39,6 +39,7 @@ impl JsonlStore {
     /// Store bounded bytes before admitting the reference. Blobs are private,
     /// sensitive data, not sanitized text; backup must include this directory.
     pub fn tool_payload(&self, text: &str) -> Result<String, StoreError> {
+        self.check_owner()?;
         if text.len() > TOOL_PAYLOAD_LIMIT {
             return Err(StoreError::Corrupt("tool payload exceeds 1 MiB".into()));
         }
@@ -103,6 +104,7 @@ impl JsonlStore {
     /// Legacy inline records remain literal. Explicit new references fail closed
     /// on missing, corrupt or oversized bodies rather than inventing content.
     pub fn resolve_tool_payload(&self, event: &Memevent) -> Result<String, StoreError> {
+        self.check_owner()?;
         resolve_tool_payload_at(
             self.path.parent().unwrap_or(std::path::Path::new(".")),
             event,

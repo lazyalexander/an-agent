@@ -185,3 +185,6 @@ fn dropping_owner_unlocks_even_while_a_fork_inherits_the_descriptor() {
         assert_eq!(resumed.unwrap().append(event()).unwrap().seq, 2);
     }
 }
+
+#[cfg(unix)]
+mod fork_owner;

@@ -10,6 +10,8 @@ use crate::det_seam::{Clock, Entropy};
 
 #[derive(Debug, Error)]
 pub enum StoreError {
+    #[error("tape belongs to process {owner}; inherited handle is invalid in process {current}")]
+    InheritedProcess { owner: u32, current: u32 },
     #[error("io: {0}")]
     Io(#[from] std::io::Error),
     #[error("tape already has a writer: {0}")]
@@ -37,6 +39,7 @@ struct State {
 }
 
 pub struct JsonlStore {
+    owner_pid: u32,
     pub(super) path: PathBuf,
     state: Mutex<State>,
     clock: Clock,
@@ -45,6 +48,11 @@ pub struct JsonlStore {
 
 impl Drop for JsonlStore {
     fn drop(&mut self) {
+        // An inherited open file description shares its lock with the parent.
+        // Child destruction must close its descriptor without unlocking that lock.
+        if self.owner_pid != std::process::id() {
+            return;
+        }
         // A concurrent fork may briefly inherit the open file description before
         // exec closes it. Close alone would keep the parent's lock alive there.
         // Only this store owns writing; inherited descriptors confer no ownership.
@@ -57,6 +65,18 @@ impl Drop for JsonlStore {
 }
 
 impl JsonlStore {
+    /// Reject inherited handles before touching potentially inherited mutexes or I/O.
+    pub(super) fn check_owner(&self) -> Result<(), StoreError> {
+        let current = std::process::id();
+        if self.owner_pid != current {
+            return Err(StoreError::InheritedProcess {
+                owner: self.owner_pid,
+                current,
+            });
+        }
+        Ok(())
+    }
+
     pub fn open(path: impl AsRef<Path>) -> Result<Self, StoreError> {
         Self::open_with(path, Clock::wall(), Entropy::os())
     }
@@ -88,6 +108,7 @@ impl JsonlStore {
         }
         sync_parent_dir(path.parent())?;
         Ok(Self {
+            owner_pid: std::process::id(),
             path,
             state: Mutex::new(State {
                 #[cfg(test)]
@@ -107,6 +128,7 @@ impl JsonlStore {
     /// crash-torn final line is quarantined (see `quarantine_tail`);
     /// corruption anywhere else fails the whole store.
     pub fn read_all(&self) -> Result<Vec<Memevent>, StoreError> {
+        self.check_owner()?;
         let mut st = self.state.lock().map_err(|_| StoreError::Poisoned)?;
         // Failed repair can leave a tail in place. Never retain a cached
         // sequence that would let the next append bypass reconciliation.
@@ -119,6 +141,7 @@ impl JsonlStore {
     /// a seq. A write/sync error invalidates the cached sequence; a retained
     /// complete event is consumed on rescan, not silently appended again.
     pub fn append(&self, input: AppendEvent) -> Result<Memevent, StoreError> {
+        self.check_owner()?;
         let mut st = self.state.lock().map_err(|_| StoreError::Poisoned)?;
         #[cfg(test)]
         if let Some(remaining) = st.fail_append_after {
@@ -206,6 +229,7 @@ impl JsonlStore {
     }
 
     fn scan_and_heal(&self, st: &mut State) -> Result<Vec<Memevent>, StoreError> {
+        self.check_owner()?;
         st.needs_newline = false;
         st.file.rewind()?;
         let mut bytes = Vec::new();
@@ -248,6 +272,7 @@ impl JsonlStore {
     /// the tape. The side file is written before the truncation, so a
     /// crash in between duplicates the bytes rather than losing them.
     fn quarantine_tail(&self, st: &mut State, offset: u64, torn: &[u8]) -> Result<(), StoreError> {
+        self.check_owner()?;
         let mut side = self.path.clone().into_os_string();
         side.push(".corrupt");
         let side = PathBuf::from(side);
@@ -465,3 +490,7 @@ fn io_checkpoint(st: &mut State, stage: &'static str) -> std::io::Result<()> {
 #[cfg(test)]
 #[path = "writer_tests.rs"]
 mod writer_tests;
+
+#[cfg(test)]
+#[path = "fork_owner_tests.rs"]
+mod fork_owner_tests;
