@@ -14,8 +14,8 @@ fn accepted_workspace_version_feeds_existing_kit_before_and_after_collection()
     let profile = f.root.join("workspace.json");
     fs::write(
         &profile,
-        serde_json::to_vec(&json!({"schema":"an-workspace-job-v1",
-        "executable":"/bin/bash","args":[script],"environment":{},"readonly":[selected],
+        serde_json::to_vec(&json!({"schema":"an-workspace-job-v2",
+        "executable":"/bin/bash","args":["{input:0}"],"environment":{},"readonly":[],
         "inputs":[script],"outputs":["result.txt"],"wall_seconds":10,"trusted_process_group":true}))?,
     )?;
     let job = f.root.join("workspace");

@@ -16,7 +16,7 @@ pub fn accept(path: &Path, id: &str, approved: Option<&str>) -> Result<Value> {
     }
     let execution: Value =
         serde_json::from_slice(&regular(&dir.join("plan.json"), 2 * 1024 * 1024)?)?;
-    super::profile::verify_inputs(&execution)?;
+    let _snapshot = super::snapshot::verified(&dir, &execution, &receipt)?;
     let mut candidates = Vec::new();
     let mut payloads = Vec::new();
     let mut total = 0usize;

@@ -20,9 +20,9 @@ fn fixture(temp: &TempDir, script: &str, deadline: u64) -> Result<(PathBuf, Path
     let profile = root.join("profile.json");
     fs::write(
         &profile,
-        serde_json::to_vec(&json!({"schema":"an-workspace-job-v1",
+        serde_json::to_vec(&json!({"schema":"an-workspace-job-v2",
         "executable":"/bin/bash","args":["-c",script,"fixture",root.join("forbidden.txt")],
-        "readonly":[input],"inputs":[input.join("input.txt")],"environment":{},
+        "readonly":[],"inputs":[input.join("input.txt")],"environment":{},
         "outputs":["output.txt"],"wall_seconds":deadline,"trusted_process_group":true}))?,
     )?;
     Ok((profile, root.join("job")))
@@ -182,3 +182,6 @@ mod large_handoff;
 
 #[path = "workspace_job/settlement.rs"]
 mod settlement;
+
+#[path = "workspace_job/snapshot.rs"]
+mod snapshot;

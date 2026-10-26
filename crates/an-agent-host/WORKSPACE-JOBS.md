@@ -16,11 +16,11 @@ profile as authority from a spool, model output or writable project configuratio
 
 ```json
 {
-  "schema": "an-workspace-job-v1",
+  "schema": "an-workspace-job-v2",
   "executable": "/bin/bash",
-  "args": ["/operator/selected/runner", "--output", "{work}/result.txt"],
+  "args": ["{input:0}", "--output", "{work}/result.txt"],
   "environment": {},
-  "readonly": ["/operator/selected"],
+  "readonly": [],
   "inputs": ["/operator/selected/runner"],
   "outputs": ["result.txt"],
   "wall_seconds": 60,
@@ -28,13 +28,36 @@ profile as authority from a spool, model output or writable project configuratio
 }
 ```
 
-`{work}` expands literally in argv and environment values; the host adds no shell
-interpretation. Selecting `/bin/bash` explicitly is selecting a shell. The plan
+`{work}`, `{input:N}` (zero-based selected input) and `{inputs}` (the snapshot
+directory) expand literally in argv and environment values; the host adds no shell
+interpretation. Selected files require unique UTF-8 basenames without braces.
+Use placeholders rather than original selected paths in arguments or environment.
+V1 profiles are refused; update their schema, input arguments and runtime roots
+explicitly rather than silently changing their execution semantics. Selecting `/bin/bash` explicitly is selecting a shell. The plan
 shows exact commands, environment, selected input hashes and effective Seatbelt
 policy. Environment inheritance is cleared; PATH, TMPDIR and LANG are fixed.
-Runtime roots must exclude the host job and its ancestors. Selected inputs are
-digest-bound and checked again before output admission; directory dependencies
-must remain operator-controlled and are not transitively hashed.
+Runtime roots must exclude the host job and its ancestors and must not contain
+selected inputs. After approval, the host copies selected bytes to a fresh private
+snapshot, checks their approved hashes and records the resolved execution manifest.
+Selected original paths are denied data reads and execution in the workload policy;
+snapshots are read-only and outside writable scratch. Pinned artifacts are copied
+from their immutable catalog revision, not the editable checkout. A changed ordinary
+input before copying refuses preparation; no workload is launched.
+
+Output acceptance verifies the receipt-bound execution manifest, its exact mapping
+from the approved plan, and the snapshot hashes. Source files may subsequently
+change or disappear without invalidating those persisted input bytes. Missing or
+substituted snapshot evidence refuses acceptance, including old attempts without
+that evidence. This does not change the existing termination gates for continuation
+or collection. Interrupted preparation leaves evidence for investigation and never
+automatically retries or promotes partial snapshots.
+
+The runtime executable and directory dependencies remain operator-controlled and
+are **not snapshotted**. The executable still has before/after hash checks; these do
+not close a replace-and-restore race. Copying an Apple platform executable failed
+native qualification, so this slice does not relocate, re-sign or silently replace
+interpreters. This is selected-input custody, not a hermetic runtime closure or
+protection against a hostile same-user process modifying host evidence.
 
 The macOS policy permits standard system tools and selected runtime roots to be
 read/executed, and permits writes only under `work/` plus `/dev/null`. Network
@@ -100,11 +123,12 @@ Scratch is retained until explicit collection approval. Collection means
 accepted, still-valid artifact revisions. A confirmed failed/cancelled attempt
 may also be explicitly abandoned; its partial work is not a formal artifact.
 The approved no-follow inventory covers the whole work tree, including native
-cache and undeclared temporary files. Symlinks are unlinked, never traversed.
+cache and undeclared temporary files. Attempt input snapshots are retained evidence,
+not scratch; this slice does not add a retention/GC policy for them. Symlinks are unlinked, never traversed.
 Regular hardlinks and special files cause refusal. A changed inventory requires
 fresh approval; a partial deletion is fenced by a durable intent without retry.
 
-Accepted revisions, receipts, plans and bounded diagnostic streams stay outside
+Accepted revisions, input snapshots, receipts, plans and bounded diagnostic streams stay outside
 the writable/reclaimed tree. Existing consumers can keep selecting the same
 revision after collection. Formal artifact GC, delivery subscriptions and domain
 checkpoint completeness are not reimplemented here.
@@ -113,7 +137,8 @@ checkpoint completeness are not reimplemented here.
 
 ```text
 JOB/
-  attempts/UUID/   plan.json, intent.json, stdout.txt, stderr.txt, receipt.json
+  attempts/UUID/   plan.json, execution.json, intent.json, stdout.txt, stderr.txt, receipt.json
+                  snapshot/inputs/ (approved selected bytes, retained evidence)
                   successor.json, accept-intent.json, accepted.json (when applicable)
   work/           engine-owned private workspace and recovery data
   artifacts/      existing immutable artifact revision catalog
