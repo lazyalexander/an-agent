@@ -33,3 +33,22 @@ in-process `SpoolBeat` is trusted embedding code, not an isolated workload.
 See [the implementation audit and migration](../an-agent-host/SPOOL-BOUNDARY.md).
 Historical Silk protocol records and current profile/event tokens remain
 compatibility identities; they are not executable silk declarations.
+
+## Registry publication and recovery
+
+`Registry` serializes dependency checks, immutable name/version checks and index
+commit with an OS advisory lock on the append-only index file. Independently opened
+instances and cooperating local processes use the same lock; published reads take
+it too, so they do not interpret a writer's partial append. This reuses the standard
+library file-lock facility and introduces no lockfile lease or stale-lock deletion.
+Registry paths and index inodes must remain operator-owned; this is not protection
+against hostile replacement or a distributed/network-filesystem locking contract.
+
+Blob staging uses unique, exclusively created files. Bytes are synced before rename,
+the blob directory is synced on Unix, and the index is synced before publish reports
+success. A failed append/sync is an uncertain publication, not rollback. A complete
+entry may be recovered idempotently; an incomplete tail, conflicting historical
+name/version hashes or mismatched blob identity is refused for inspection. The
+registry never silently truncates history or chooses the first conflicting entry.
+Unindexed blobs or staging debris from a crash are not automatically reclaimed.
+Unlike tape repair, registry history has no automatic tail-repair policy.
