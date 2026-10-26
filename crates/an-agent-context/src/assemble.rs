@@ -24,7 +24,7 @@ pub fn cut_if_long(
 ) -> Result<Option<Cut>, ContextError> {
     let span = uncompressed(events);
     let n = span.iter().try_fold(0usize, |total, event| {
-        an_agent_core::memstream::resolve_tool_payload_at(session_dir, event)
+        an_agent_core::memstream::resolve_tool_context_at(session_dir, event)
             .map(|text| total.saturating_add(text.len()))
     })?;
     if n < max_chars || span.is_empty() {
@@ -72,7 +72,7 @@ pub fn assemble(
                 event_id: Some(event.id.clone()),
                 segment: None,
                 outside: None,
-                text: an_agent_core::memstream::resolve_tool_payload_at(session_dir, event)?,
+                text: an_agent_core::memstream::resolve_tool_context_at(session_dir, event)?,
             },
         ) {
             break;
@@ -161,7 +161,7 @@ pub(super) fn write_cut(session_dir: &Path, span: &[&Memevent]) -> Result<Cut, C
         let sources = json!([{ "event_id": event.id, "contribution": 1.0 }]);
         body.push_str(&format!(
             "## s{i}\n<!-- {sources} -->\n{}\n\n",
-            an_agent_core::memstream::resolve_tool_payload_at(session_dir, event)?
+            an_agent_core::memstream::resolve_tool_context_at(session_dir, event)?
         ));
     }
     let bytes = body.into_bytes();
