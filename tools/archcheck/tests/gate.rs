@@ -70,6 +70,25 @@ fn gate(root: &Path, base: &str) -> (bool, String) {
         ),
     )
 }
+/// Mutate a parsed integer and verify the fixture really changed on disk.
+fn change_integer(path: &Path, keys: &[&str], value: i64) {
+    let original = fs::read_to_string(path).unwrap();
+    let mut document: toml::Value = toml::from_str(&original).unwrap();
+    let mut target = &mut document;
+    for key in keys {
+        target = target.get_mut(*key).expect("fixture key must exist");
+    }
+    let previous = target
+        .as_integer()
+        .expect("fixture value must be an integer");
+    assert_ne!(previous, value, "negative fixture must change a value");
+    *target = toml::Value::Integer(value);
+    fs::write(path, toml::to_string(&document).unwrap()).unwrap();
+    let written: toml::Value = toml::from_str(&fs::read_to_string(path).unwrap()).unwrap();
+    let observed = keys.iter().fold(&written, |node, key| &node[*key]);
+    assert_eq!(observed.as_integer(), Some(value));
+}
+
 #[test]
 fn unchanged_tree_passes_and_missing_base_fails() {
     let (dir, base) = fixture();
@@ -113,17 +132,38 @@ fn first_main_promotion_keeps_committed_policy_and_debt_caps() {
 
     let rules = root.join("ARCHITECTURE.toml");
     let original = fs::read_to_string(&rules).unwrap();
-    fs::write(&rules, original.replace("limit = 500", "limit = 5000")).unwrap();
+    let parsed: toml::Value = toml::from_str(&original).unwrap();
+    let limit = parsed["rules"]["file_size"]["limit"].as_integer().unwrap();
+    change_integer(
+        &rules,
+        &["rules", "file_size", "limit"],
+        limit.checked_add(1).unwrap(),
+    );
     let (ok, log) = gate(&root, base);
     assert!(!ok && log.contains("policy changed"), "{log}");
     fs::write(&rules, original).unwrap();
 
     let baseline = root.join("architecture-baseline.toml");
     let original = fs::read_to_string(&baseline).unwrap();
-    fs::write(&baseline, original.replace("= 624", "= 625")).unwrap();
-    let (ok, log) = gate(&root, base);
-    assert!(!ok && log.contains("no_raised_caps"), "{log}");
-    fs::write(&baseline, original).unwrap();
+    let current: toml::Value = toml::from_str(&original).unwrap();
+    let historical: toml::Value = toml::from_str(&git(
+        &root,
+        &[
+            "show",
+            "8c89829b9de7506925a5d1d107d04df500ddd54f:architecture-baseline.toml",
+        ],
+    ))
+    .unwrap();
+    let file = "crates/an-agent-core/src/control/spool.rs";
+    // Normal PRs must not rebound above the current lowered cap. The special
+    // first-main migration independently retains its historical reviewed cap.
+    for (comparison, caps) in [(&head[..], &current), (base, &historical)] {
+        let cap = caps["file_size"][file].as_integer().unwrap();
+        change_integer(&baseline, &["file_size", file], cap.checked_add(1).unwrap());
+        let (ok, log) = gate(&root, comparison);
+        assert!(!ok && log.contains("no_raised_caps"), "{comparison}: {log}");
+        fs::write(&baseline, &original).unwrap();
+    }
 
     fs::write(
         root.join("crates/an-agent-host/src/oversized.rs"),
