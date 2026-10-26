@@ -4,6 +4,7 @@ mod inputs;
 mod inventory;
 mod not_started;
 mod profile;
+mod publication;
 mod snapshot;
 mod snapshot_clone;
 
@@ -200,17 +201,19 @@ fn run_inner(
     store::directory(&dir)?;
     let plan_bytes = serde_json::to_vec_pretty(&plan)?;
     store::write_new(&dir.join("plan.json"), &plan_bytes)?;
-    if let Some(prior) = previous {
-        store::write_new(
-            &attempt(&root, prior)?.join("successor.json"),
-            &serde_json::to_vec(&json!({"attempt":id,"approval_sha256":digest}))?,
-        )?;
-    }
-    // Intent precedes spawn. Missing/unconfirmed receipt fences resume and cleanup.
     store::write_new(
         &dir.join("intent.json"),
         &serde_json::to_vec(&json!({"attempt":id,"approval_sha256":digest}))?,
     )?;
+    not_started::finish(&dir, &id, &plan_bytes, "prepared", false, None)?;
+    boundary(not_started::Boundary::Prepared, &dir);
+    if let Some(prior) = previous {
+        publication::publish(
+            &attempt(&root, prior)?.join("successor.json"),
+            &serde_json::to_vec(&json!({"attempt":id,"approval_sha256":digest}))?,
+            false,
+        )?;
+    }
     boundary(not_started::Boundary::IntentPersisted, &dir);
     let prepared = snapshot::prepare(&plan, &dir, cancelled).and_then(|execution| {
         let bytes = regular(&dir.join("execution.json"), 2 * 1024 * 1024)?;
@@ -230,6 +233,12 @@ fn run_inner(
         }
     };
     boundary(not_started::Boundary::ReadyToLaunch, &dir);
+    publication::publish(
+        &dir.join("launch.json"),
+        b"launch may have started\n",
+        false,
+    )?;
+    boundary(not_started::Boundary::LaunchFenced, &dir);
     let execution = sandbox::workspace::execute(&execution_plan, cancelled);
     let mut receipt = json!({"schema":"an-workspace-receipt-v1","attempt":id,"plan_sha256":store::digest(&plan_bytes),
         "execution_sha256":store::digest(&execution_bytes),"status":"refused","reaped":false,"termination_confirmed":false,"automatic_retries":0});
@@ -267,13 +276,13 @@ fn run_inner(
             receipt["error"] = sandbox::refusal_evidence(error.as_ref());
         }
     }
-    store::write_new(
-        &dir.join("receipt.json"),
-        &serde_json::to_vec_pretty(&receipt)?,
-    )?;
+    publication::receipt(&dir, &serde_json::to_vec_pretty(&receipt)?)?;
     Ok(receipt)
 }
 
 #[cfg(all(test, target_os = "macos"))]
 #[path = "prelaunch_tests.rs"]
 mod prelaunch_tests;
+
+#[cfg(all(test, target_os = "macos"))]
+mod recovery_tests;

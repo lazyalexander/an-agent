@@ -65,7 +65,10 @@ fn cancellation_at_both_durable_boundaries_can_resume_or_reclaim_but_never_publi
                 preview["approval_sha256"].as_str(),
                 &stop,
                 |boundary, _| {
-                    if matches!(boundary, not_started::Boundary::IntentPersisted) == before_snapshot
+                    if (before_snapshot
+                        && matches!(boundary, not_started::Boundary::IntentPersisted))
+                        || (!before_snapshot
+                            && matches!(boundary, not_started::Boundary::ReadyToLaunch))
                     {
                         stop.store(true, Ordering::Release);
                     }
@@ -221,6 +224,7 @@ fn launch_error_or_receipt_write_failure_does_not_authorize_cleanup() -> Result<
                 if matches!(boundary, not_started::Boundary::ReadyToLaunch) {
                     id = dir.file_name().unwrap().to_str().unwrap().to_owned();
                     if receipt_failure {
+                        fs::remove_file(dir.join("receipt.json")).unwrap();
                         fs::create_dir(dir.join("receipt.json")).unwrap();
                         stop.store(true, Ordering::Release);
                     } else {
