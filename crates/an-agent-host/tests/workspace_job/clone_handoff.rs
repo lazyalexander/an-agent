@@ -42,10 +42,25 @@ fn large_snapshot_survives_source_mutation_cancel_and_collection() -> Result<()>
                 scope.spawn(|| run(&profile, &root, None, &stop).map_err(|e| e.to_string()));
             let start = Instant::now();
             while !root.join("work/ready").exists() {
-                assert!(!running.is_finished(), "execution ended before ready");
-                assert!(start.elapsed() < Duration::from_secs(20));
+                // Admission hashes and snapshot preparation precede the workload's
+                // independent 30-second execution deadline. Keep a bounded CI
+                // preparation budget without treating it as a launch SLA.
+                if running.is_finished() || start.elapsed() >= Duration::from_secs(120) {
+                    stop.store(true, Ordering::Release);
+                    let result = running.join().map_err(|_| "host worker panicked")?;
+                    return Err(format!(
+                        "case {mode} never became ready after {:?}; host result: {result:?}",
+                        start.elapsed()
+                    )
+                    .into());
+                }
                 thread::sleep(Duration::from_millis(10));
             }
+            eprintln!(
+                "CLONE_HANDOFF_READY={}",
+                json!({"case":mode,
+                "bytes":64*1024*1024,"admission_and_snapshot_ms":start.elapsed().as_millis()})
+            );
             let attempt = fs::read_dir(root.join("attempts"))?.next().unwrap()?.path();
             let snapshot = attempt.join("snapshot/inputs/input.txt");
             assert_ne!(fs::metadata(&source)?.ino(), fs::metadata(&snapshot)?.ino());
