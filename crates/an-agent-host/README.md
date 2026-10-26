@@ -252,3 +252,10 @@ proposals and explicitly granted kit handles over the official MCP SDK. It uses
 the existing native file executor and artifact custody. It is not a sandbox for
 the third-party coding client, and grants no shell or arbitrary filesystem tool.
 See [the platform boundaries](PLATFORMS.md) before claiming cross-platform support.
+
+## Release-bound native spool
+
+The bounded [native spool facade](NATIVE-SPOOL.md) loads verified silk/kit releases,
+edits scoped kit copies between runs, executes fixed snapshots and retains
+instance-bound custody evidence. It reuses the native supervisor and workspace
+engine. Pause, suspension and arbitrary harness containment remain unsupported.

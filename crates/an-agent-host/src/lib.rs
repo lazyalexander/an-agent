@@ -40,6 +40,7 @@ mod hooks;
 pub mod instance;
 mod model;
 pub mod model_run;
+pub mod native_spool;
 pub mod openshell;
 pub mod retention;
 mod settled_run;

@@ -81,6 +81,10 @@ preconditions and actual-effect evidence.
 | Reviewed workspace jobs | Operator-selected trusted workflow, scratch and binary output custody | Separate acceptance/development surface; not a production spool authority or hostile-agent boundary |
 | Model and application services | Separate host-controlled services and shuttle responsibilities | Do not inherit authority from an environment label or an internal silk request |
 
+The [native spool slice](NATIVE-SPOOL.md) now binds a verified code release and
+instance to the reviewed workspace engine. Its fixed shell profile and between-run
+kit edits do not establish general agent containment or a multi-backend spool ABI.
+
 ## Incremental migration
 
 1. Adopt spool/silk terminology in architecture and new authoring output. Preserve

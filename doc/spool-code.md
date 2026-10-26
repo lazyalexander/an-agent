@@ -72,6 +72,10 @@ not decide domain algorithms or automatically rewrite a failing kit. Mature codi
 tools may perform the edits; their own context/tape remains theirs unless a separate
 integration explicitly provides host tracing. Domain glue never belongs in core.
 
+The first [native spool implementation](../crates/an-agent-host/NATIVE-SPOOL.md)
+qualifies between-run kit edits and fixed snapshot execution. Runtime self-editing,
+weaver integration and checkpoint continuation of adapted kits remain future work.
+
 ## Compatibility and next validation
 
 Legacy `[kit]` authoring, `Kit` aliases, `kit/` paths, `file-kit-v1`, `build-kit` and
