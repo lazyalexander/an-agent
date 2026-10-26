@@ -31,6 +31,8 @@ use thiserror::Error;
 
 use crate::spool::Inverse;
 
+mod unmount;
+
 /// Handle to a mounted scope. Operations on a disposed scope are hard
 /// errors, never silent no-ops.
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
@@ -305,28 +307,20 @@ impl ScopeTree {
 
     /// Cascade-unmount: children first (newest first — the tree is a
     /// stack), then this scope's disposables in reverse registration
-    /// order. Returns every disposed node in disposal order.
+    /// order. Checks the entire planned wrapper topology before any disposable
+    /// runs. Returns every disposed node in disposal order. Arbitrary reentrant
+    /// disposables and panics do not have rollback semantics.
     pub fn unmount(&mut self, id: ScopeId) -> Result<Vec<Unmounted>, ScopeError> {
-        self.node(id)?;
+        let order = self.unmount_order(id)?;
         let mut report = Vec::new();
-        self.dispose_subtree(id, &mut report)?;
+        for scope in order {
+            self.dispose_node(scope, &mut report)?;
+        }
         Ok(report)
     }
 
-    fn dispose_subtree(
-        &mut self,
-        id: ScopeId,
-        report: &mut Vec<Unmounted>,
-    ) -> Result<(), ScopeError> {
-        let children = self.node(id)?.children.clone();
-        for child in children.into_iter().rev() {
-            self.dispose_subtree(child, report)?;
-        }
-        self.dispose_node(id, report)
-    }
-
     fn dispose_node(&mut self, id: ScopeId, report: &mut Vec<Unmounted>) -> Result<(), ScopeError> {
-        self.check_unpinned(id)?;
+        self.check_unpinned_in(id, &self.wrappers)?;
         let Some(mut node) = self.nodes.get_mut(id.0 as usize).and_then(Option::take) else {
             return Err(ScopeError::Dead(id));
         };
@@ -352,8 +346,12 @@ impl ScopeTree {
     /// cannot leave while a live wrapper pins it as a target, and a
     /// wrapper leaves only from the top of its chain. Instance siblings
     /// are additive and leave in any order.
-    fn check_unpinned(&self, id: ScopeId) -> Result<(), ScopeError> {
-        for (name, chain) in &self.wrappers {
+    fn check_unpinned_in(
+        &self,
+        id: ScopeId,
+        wrappers: &HashMap<String, EffectStack>,
+    ) -> Result<(), ScopeError> {
+        for (name, chain) in wrappers {
             if chain.is_empty() {
                 continue;
             }

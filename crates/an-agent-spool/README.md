@@ -52,3 +52,18 @@ name/version hashes or mismatched blob identity is refused for inspection. The
 registry never silently truncates history or chooses the first conflicting entry.
 Unindexed blobs or staging debris from a crash are not automatically reclaimed.
 Unlike tape repair, registry history has no automatic tail-repair policy.
+
+## Cascade withdrawal
+
+Scope removal first plans the existing newest-child-first order and simulates
+wrapper removal for the whole subtree. A pinned parent, pinned descendant or
+incompatible sibling wrapper order refuses the plan before any disposable runs.
+Internal wrappers scheduled before their target are allowed; this is not a blanket
+ban on wrapped subtrees. Successful removal keeps the existing children-first
+report and reverse-registration disposal order. `update` uses the same preflight.
+
+Planning lives in `scope/unmount.rs`; live effect withdrawal remains in `ScopeTree`.
+The live pin checks remain defensive during execution. User-supplied disposables
+are trusted inverses: arbitrary topology mutation, reentrancy or panic during an
+inverse is not made transactional and can still produce partial effects. This
+change prevents predictable topology failures, not arbitrary callback rollback.
