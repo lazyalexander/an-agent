@@ -91,9 +91,18 @@ An already-cancelled approved call returns `status=cancelled`, `executed=false`
 and `process_started=false` without creating a workspace, attempt or successor.
 A preview remains a read-only preview. No attempt ID is returned in this case.
 
-Each allocated attempt has a fresh UUID and records its plan and intent before
-snapshot preparation and spawn. A continuation first binds its predecessor to
-that successor, so all later lifecycle decisions address the new attempt.
+Each allocated attempt has a fresh UUID and records its plan, intent and a
+provisional `an-workspace-not-started-v1` receipt (`stage=prepared`) before
+publishing its predecessor's successor pointer. The pointer is published atomically
+from complete bytes. An unpublished continuation cannot authorize reclamation of
+the shared workspace. After publication, subsequent decisions address the successor.
+The provisional receipt is positive evidence of the ordered prelaunch protocol,
+not an inference from a missing PID. It is usable only while `launch.json` is absent
+and its predecessor pointer, when present, binds this attempt and approval.
+Immediately before entering the supervisor, the host persists `launch.json`.
+That marker invalidates provisional no-spawn authority even if the process never
+actually starts. Final receipts atomically replace only the provisional receipt;
+a failed replacement leaves the launch fence in force.
 Cancellation or failure during preparation, and cancellation explicitly returned
 by the supervisor before spawn, produce `an-workspace-not-started-v1` receipts.
 These bind the plan and intent, record the stage (`preparation` or `supervisor`),
@@ -109,7 +118,9 @@ scratch contains a previous attempt's successful output. Accepted artifact
 revisions remain outside reclamation. Missing/contradictory fields, a changed or
 missing intent, or an unsuccessful receipt write confer no lifecycle authority.
 A spawn/pre-exec error is still uncertain; a missing PID alone is never no-spawn
-proof. Host crash and other incomplete evidence still require investigation.
+proof. A crash before the launch fence can leave usable committed prelaunch
+evidence. A crash after the fence, a missing/corrupt receipt, or an incomplete
+legacy attempt still requires investigation.
 There is no automatic retry, receipt repair or speculative process cleanup. The
 host retains bounded stdout/stderr and a receipt even when post-run inventory
 cannot be collected. A missing receipt, unconfirmed termination, active host lock
@@ -197,7 +208,11 @@ Reviewed workers must
 not daemonize, change process groups or launch remote work. Group emptiness cannot
 prove that an escaped/remote worker stopped. This boundary does not support such
 workloads or hostile agent-generated code; a stronger qualified backend is needed.
-Host crash, SIGKILL, stale locks, hostile same-user renames and power loss retain
+Host crash and SIGKILL retain a stale lock: the operator must establish that its
+owner and any workers are gone before clearing it. The host does not clear stale
+locks or infer ownership from PID absence. Once that independent step is complete,
+committed prelaunch receipts can authorize explicit continuation or collection.
+Launched/unconfirmed attempts, hostile same-user renames and power loss retain
 the existing manual-investigation limitations. No VM framework or automatic GC
 service is introduced.
 
@@ -232,3 +247,19 @@ timeout, uncertain observations and pinned downstream consumption after copying.
 The explicit ignored soak runs four independent jobs for ten mixed rounds each.
 This is reviewed spool-body qualification through the existing workspace profile;
 it does not create a registered production multi-silk package ABI.
+
+### Bounded recovery regressions
+
+`cargo test -p an-agent-host --lib workspace_job::recovery_tests` runs a real host
+child that exits without unwinding at four persistence boundaries. Each child has
+a 15-second outer deadline and uses tiny inputs. Tests qualify child exit before
+explicitly removing its stale lock, then check current-attempt authority,
+continuation, collection previews, refusal to publish, and retained formal outputs.
+They do not claim automatic stale-lock recovery or power-loss durability.
+
+Large-file custody remains a separate 64 MiB test with the same readiness and
+execution deadlines. The test profile optimizes only SHA-256, preserving normal
+Rust host debug checks while avoiding unoptimized hashing as a CI speed requirement.
+Python or TypeScript may drive external acceptance scenarios; moving assertions
+out of Rust does not accelerate the host's snapshot or hashing path. Persistence
+ordering and fault windows remain tested against the Rust implementation.

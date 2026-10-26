@@ -7,8 +7,10 @@ use serde_json::{Value, json};
 use std::path::Path;
 
 pub(super) enum Boundary {
+    Prepared,
     IntentPersisted,
     ReadyToLaunch,
+    LaunchFenced,
 }
 
 pub(super) fn cancelled_before_spawn(result: &sandbox::Execution) -> bool {
@@ -38,15 +40,18 @@ pub(super) fn finish(
     if let Some(error) = error {
         receipt["error"] = sandbox::refusal_evidence(error);
     }
-    store::write_new(
-        &dir.join("receipt.json"),
-        &serde_json::to_vec_pretty(&receipt)?,
-    )?;
+    super::publication::receipt(dir, &serde_json::to_vec_pretty(&receipt)?)?;
     Ok(receipt)
 }
 
 pub(super) fn verified(dir: &Path, receipt: &Value) -> Result<bool> {
     let stage_valid = match receipt["stage"].as_str() {
+        Some("prepared") => {
+            receipt["status"] == "failed"
+                && receipt.get("error").is_none()
+                && !dir.join("launch.json").try_exists()?
+                && committed_predecessor(dir, receipt)?
+        }
         Some("preparation") => receipt["error"].is_object(),
         Some("supervisor") => receipt["status"] == "cancelled" && receipt.get("error").is_none(),
         _ => false,
@@ -69,6 +74,26 @@ pub(super) fn verified(dir: &Path, receipt: &Value) -> Result<bool> {
         receipt["intent_sha256"] == store::digest(&bytes)
             && intent["attempt"] == receipt["attempt"],
     )
+}
+
+// An unpublished continuation cannot authorize cleanup of the shared workspace.
+fn committed_predecessor(dir: &Path, receipt: &Value) -> Result<bool> {
+    let plan: Value = serde_json::from_slice(&regular(&dir.join("plan.json"), 2 * 1024 * 1024)?)?;
+    let Some(prior) = plan["predecessor"]["attempt"].as_str() else {
+        return Ok(plan["predecessor"].is_null());
+    };
+    let root = dir
+        .parent()
+        .and_then(Path::parent)
+        .ok_or("missing workspace root")?;
+    let path = super::attempt(root, prior)?.join("successor.json");
+    if !path.try_exists()? {
+        return Ok(false);
+    }
+    let successor: Value = serde_json::from_slice(&regular(&path, 65536)?)?;
+    let intent: Value = serde_json::from_slice(&regular(&dir.join("intent.json"), 65536)?)?;
+    Ok(successor["attempt"] == receipt["attempt"]
+        && successor["approval_sha256"] == intent["approval_sha256"])
 }
 
 #[cfg(test)]
