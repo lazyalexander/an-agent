@@ -12,6 +12,7 @@ use crate::{
     file_job::regular,
 };
 pub use custody::{accept, reclaim};
+pub(crate) use custody::{accept_managed, reclaim_managed};
 use serde_json::{Value, json};
 use std::{
     path::{Path, PathBuf},
@@ -38,6 +39,30 @@ pub(super) fn attempt(root: &Path, id: &str) -> Result<PathBuf> {
 }
 
 pub(super) fn record(root: &Path, id: &str) -> Result<(PathBuf, Value)> {
+    record_inner(root, id, false)
+}
+
+/// Read settlement after explicit collection; never authorizes another execution.
+pub(crate) fn archived_record(root: &Path, id: &str) -> Result<(PathBuf, Value)> {
+    let intent = regular(&root.join("reclaim-intent.json"), 2 * 1024 * 1024)?;
+    let plan: Value = serde_json::from_slice(&intent)?;
+    let marker: Value = serde_json::from_slice(&regular(&root.join("reclaimed.json"), 65536)?)?;
+    if marker["status"] != "succeeded"
+        || marker["resume_available"] != false
+        || marker["approval_sha256"] != store::digest(&intent)
+        || plan["attempt"] != id
+        || plan["receipt_sha256"]
+            != store::digest(&regular(
+                &attempt(root, id)?.join("receipt.json"),
+                2 * 1024 * 1024,
+            )?)
+    {
+        return Err("invalid workspace collection evidence".into());
+    }
+    record_inner(root, id, true)
+}
+
+fn record_inner(root: &Path, id: &str, archived: bool) -> Result<(PathBuf, Value)> {
     let dir = attempt(root, id)?;
     let bytes = regular(&dir.join("receipt.json"), 2 * 1024 * 1024)?;
     let receipt: Value = serde_json::from_slice(&bytes)?;
@@ -63,7 +88,7 @@ pub(super) fn record(root: &Path, id: &str) -> Result<(PathBuf, Value)> {
         || receipt["plan_sha256"] != store::digest(&plan_bytes)
         || plan["root"] != json!(root)
         || dir.join("successor.json").exists()
-        || root.join("reclaim-intent.json").exists()
+        || (!archived && root.join("reclaim-intent.json").exists())
     {
         return Err(
             "operation requires the current, termination-confirmed workspace attempt".into(),
@@ -88,7 +113,30 @@ pub fn run(
     approved: Option<&str>,
     cancelled: &AtomicBool,
 ) -> Result<Value> {
+    standalone(path)?;
+    run_managed(profile_path, path, previous, approved, cancelled)
+}
+
+/// The enclosing spool facade has already acquired instance ownership.
+pub(crate) fn run_managed(
+    profile_path: &Path,
+    path: &Path,
+    previous: Option<&str>,
+    approved: Option<&str>,
+    cancelled: &AtomicBool,
+) -> Result<Value> {
     run_inner(profile_path, path, previous, approved, cancelled, |_, _| {})
+}
+
+fn standalone(path: &Path) -> Result<()> {
+    let root = root(path)?;
+    if root
+        .parent()
+        .is_some_and(|p| p.join("spool-owner.json").exists())
+    {
+        return Err("spool-owned job requires the owning spool lifecycle command".into());
+    }
+    Ok(())
 }
 
 // Private deterministic fault seam; callers cannot alter launch ordering.

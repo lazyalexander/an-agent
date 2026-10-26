@@ -8,6 +8,11 @@ use serde_json::{Value, json};
 use std::path::Path;
 
 pub fn accept(path: &Path, id: &str, approved: Option<&str>) -> Result<Value> {
+    super::standalone(path)?;
+    accept_managed(path, id, approved)
+}
+
+pub(crate) fn accept_managed(path: &Path, id: &str, approved: Option<&str>) -> Result<Value> {
     let root = root(path)?;
     let _lock = store::lock(&root)?;
     let (dir, receipt) = record(&root, id)?;
@@ -85,6 +90,11 @@ pub fn accept(path: &Path, id: &str, approved: Option<&str>) -> Result<Value> {
 
 /// Explicitly abandons resume rights; never selects formal artifacts for deletion.
 pub fn reclaim(path: &Path, id: &str, approved: Option<&str>) -> Result<Value> {
+    super::standalone(path)?;
+    reclaim_managed(path, id, approved)
+}
+
+pub(crate) fn reclaim_managed(path: &Path, id: &str, approved: Option<&str>) -> Result<Value> {
     let root = root(path)?;
     let _lock = store::lock(&root)?;
     let (dir, receipt) = record(&root, id)?;

@@ -30,6 +30,7 @@ them or turn a design requirement into an implemented guarantee.
 | Multi-silk implementation and stress plan | [Native round lifecycle and custody](../crates/an-agent-host/MULTI-SILK-PLAN.md) |
 | Native process ownership | [Process lifecycle](../crates/an-agent-host/PROCESS-LIFECYCLE.md) |
 | Optional OpenShell backend | [Adapter contract](../crates/an-agent-host/OPENSHELL.md), [recovery limits](../crates/an-agent-host/OPENSHELL-RECOVERY.md) |
+| Release-bound native spool | [First macOS package lifecycle](../crates/an-agent-host/NATIVE-SPOOL.md) |
 | Reviewed operator workflows | [Workspace jobs](../crates/an-agent-host/WORKSPACE-JOBS.md) |
 | CLI handoff pressure and input references | [Measurements and bounded decision](../crates/an-agent-host/HANDOFF-PRESSURE.md) |
 | Fixed external inputs without full copying | [Filesystem clone qualification](../crates/an-agent-host/INPUT-CLONES.md) |
