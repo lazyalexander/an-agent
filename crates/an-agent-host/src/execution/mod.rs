@@ -7,6 +7,7 @@ pub(crate) mod publication;
 pub(crate) mod sandbox;
 pub(crate) mod store;
 
+mod admission;
 mod attempt;
 mod deployment;
 
