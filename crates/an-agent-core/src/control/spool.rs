@@ -101,6 +101,7 @@ pub struct SpoolReply {
     pub reply: String,
     pub tape_id: String,
     pub intents: Vec<ReplyIntent>,
+    pub(super) delivery_facts: Vec<FactRef>,
 }
 
 /// What one delivered event settled as for one body. A halt is a taped,
@@ -385,6 +386,7 @@ impl AgentControl {
             Ok(outcome) => {
                 if let DeliveryOutcome::Reply(reply) = &outcome {
                     self.hooks_after(turn.agent(), reply)?;
+                    self.validate_reply(id, reply)?;
                 }
                 Ok(outcome)
             }
@@ -422,7 +424,10 @@ impl AgentControl {
             match self.invoke(turn.agent(), &spool, &event, &registration) {
                 Ok(Ok(outcome)) => match &outcome {
                     DeliveryOutcome::Reply(reply) => match self.hooks_after(turn.agent(), reply) {
-                        Ok(()) => outcomes.push(outcome),
+                        Ok(()) => {
+                            self.validate_reply(id, reply)?;
+                            outcomes.push(outcome);
+                        }
                         Err(ControlError::HookDenied { .. }) => {}
                         Err(err) => return Err(err),
                     },
@@ -439,37 +444,6 @@ impl AgentControl {
         }
         drop(turn);
         Ok(outcomes)
-    }
-
-    /// The host landed `reply` in software. Core writes that claim on the
-    /// thread tape and cites the spool note. It does not mutate the host.
-    /// Does not take the beat slot.
-    pub fn applied(
-        &self,
-        id: Uuid,
-        reply: &SpoolReply,
-        note: &str,
-    ) -> Result<String, ControlError> {
-        let agent = self.live(id)?;
-        let content = json!({
-            "spool": reply.spool,
-            "event": reply.event_id,
-            "reply": reply.reply,
-            "note": note,
-        })
-        .to_string();
-        let refs = if reply.tape_id.is_empty() {
-            Vec::new()
-        } else {
-            vec![reply.tape_id.clone()]
-        };
-        self.append_event(
-            &agent,
-            crate::memstream::Kind::Action,
-            "applied",
-            content,
-            refs,
-        )
     }
 
     /// Deliver one event to one mounted body. A body failure unmounts the
@@ -525,24 +499,14 @@ impl AgentControl {
                 }
             }
             MountedBody::Beat(body) => match body.receive(event) {
-                Ok(reply) => {
-                    self.ensure_delivery_current(agent, &delivery.grant.facts)?;
-                    let tape_id = self.note_spool(agent, name, &event.id, Ok(reply.as_str()))?;
-                    let intents = self.admit_intents(
-                        agent,
-                        name,
-                        &event.id,
-                        &declaration,
-                        parse_intents(&reply),
-                    )?;
-                    Ok(Ok(DeliveryOutcome::Reply(SpoolReply {
-                        spool: name.to_string(),
-                        event_id: event.id.clone(),
-                        reply,
-                        tape_id,
-                        intents,
-                    })))
-                }
+                Ok(reply) => Ok(Ok(self.publish_reply(
+                    agent,
+                    name,
+                    &event.id,
+                    &declaration,
+                    reply,
+                    &delivery.grant.facts,
+                )?)),
                 Err(reason) => {
                     self.drop_body(instance)?;
                     self.note_spool(agent, name, &event.id, Err(reason.as_str()))?;

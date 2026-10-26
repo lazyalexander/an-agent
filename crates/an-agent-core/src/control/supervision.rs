@@ -429,34 +429,6 @@ impl AgentControl {
         self.record_tool_gate(agent, call, &scope, Some(&request.id), None, false)?;
         Err(ControlError::ReviewRequired(Box::new(request)))
     }
-
-    pub(super) fn ensure_delivery_current(
-        &self,
-        agent: &Agent,
-        facts: &[FactRef],
-    ) -> Result<(), ControlError> {
-        let state = self
-            .inner
-            .supervision
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-        let current = state.instance(agent.id())?;
-        let instance = current.incarnation.to_string();
-        if !facts
-            .iter()
-            .any(|fact| fact.kind == "agent.instance" && fact.revision == instance)
-        {
-            return Err(ControlError::ReviewStale(instance));
-        }
-        let mount = facts
-            .iter()
-            .find(|fact| fact.kind == "spool.instance")
-            .and_then(|fact| Uuid::parse_str(&fact.revision).ok());
-        if !mount.is_some_and(|id| state.mounted(id)) {
-            return Err(ControlError::ReviewStale("retired mount".into()));
-        }
-        Ok(())
-    }
 }
 
 fn call_binding(call: &ToolCall) -> Result<CallBinding, ControlError> {

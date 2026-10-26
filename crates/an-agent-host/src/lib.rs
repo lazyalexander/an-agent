@@ -310,13 +310,37 @@ impl Host {
             let DeliveryOutcome::Reply(reply) = outcome else {
                 continue;
             };
-            for intent in &reply.intents {
-                match intent {
-                    ReplyIntent::Utter { text } => sink(text),
-                    ReplyIntent::Raise { event, body } => {
-                        self.control.push_event(event, body)?;
+            let mut completed = 0usize;
+            let result = (|| -> Result<(), HostError> {
+                for intent in &reply.intents {
+                    self.control.validate_reply(id, reply)?;
+                    match intent {
+                        ReplyIntent::Utter { text } => sink(text),
+                        ReplyIntent::Raise { event, body } => {
+                            self.control.push_event(event, body)?;
+                        }
+                    }
+                    completed += 1;
+                }
+                Ok(())
+            })();
+            if let Err(error) = result {
+                if completed > 0 {
+                    let claim = self.control.applied(
+                        id,
+                        reply,
+                        &format!("host pump partial landing: {completed} intents completed"),
+                    );
+                    if let Err(audit_error) = claim
+                        && !matches!(
+                            audit_error,
+                            an_agent_core::control::ControlError::ReviewStale(_)
+                        )
+                    {
+                        return Err(audit_error.into());
                     }
                 }
+                return Err(error);
             }
             self.control.applied(id, reply, "host pump")?;
         }

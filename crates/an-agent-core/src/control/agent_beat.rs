@@ -33,7 +33,7 @@ use serde_json::{Value, json};
 
 use super::model_boundary::{ModelPublication, ModelRecord};
 use super::semantic::{Admission, AuthorizedAttempt};
-use super::{AgentControl, ControlError, DeliveryOutcome, SpoolDeclaration, SpoolReply};
+use super::{AgentControl, ControlError, DeliveryOutcome, SpoolDeclaration};
 use crate::agent::Agent;
 use crate::agent::context::{self, Clip, Envelope, SystemFacts};
 use crate::memstream::Kind;
@@ -270,24 +270,21 @@ impl AgentControl {
             match step {
                 BeatStep::Utter { text } => {
                     let text = fuse_utter(&text);
-                    let tape_id = self.note_spool(agent, name, &event.id, Ok(text.as_str()))?;
-                    let intents = self.admit_intents(
+                    return Ok(Ok(self.publish_reply(
                         agent,
                         name,
                         &event.id,
                         declaration,
-                        super::spool::parse_intents(&text),
-                    )?;
-                    return Ok(Ok(DeliveryOutcome::Reply(SpoolReply {
-                        spool: name.to_string(),
-                        event_id: event.id.clone(),
-                        reply: text,
-                        tape_id,
-                        intents,
-                    })));
+                        text,
+                        &delivery.grant.facts,
+                    )?));
                 }
+
                 BeatStep::Halt => {
-                    let tape_id = self.note_spool(agent, name, &event.id, Ok(""))?;
+                    let tape_id =
+                        self.with_delivery_current(agent, &delivery.grant.facts, || {
+                            self.note_spool(agent, name, &event.id, Ok(""))
+                        })?;
                     return Ok(Ok(DeliveryOutcome::Halt {
                         spool: name.to_string(),
                         event_id: event.id.clone(),

@@ -208,6 +208,7 @@ pub fn build(
         {
             return Err("unexpected build intent".into());
         }
+        control.validate_reply(thread, reply)?;
         control.push_event("build.execute", &hash)?;
         stages(&output, &tools, toolchain_root, &commands, cancelled)
     })();

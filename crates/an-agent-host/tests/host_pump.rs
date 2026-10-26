@@ -255,3 +255,67 @@ version = "1.0.0"
         );
     }
 }
+
+#[test]
+fn revocation_during_sink_stops_remaining_raise_and_preserves_partial_claim() {
+    use an_agent_core::control::SpoolDeclaration;
+    struct Mixed;
+    impl SpoolBeat for Mixed {
+        fn receive(&self, _: &WorkspaceRecord) -> Result<String, String> {
+            Ok(
+                r#"{"utter":"already visible","raise":[{"event":"next","body":"must not land"}]}"#
+                    .into(),
+            )
+        }
+    }
+    let tmp = TempDir::new("host-revocation");
+    let control = AgentControl::open(tmp.path(), &bash_registry()).unwrap();
+    let registration = Registration {
+        events: vec![
+            EventRoute {
+                name: "start".into(),
+                spools: vec!["body".into()],
+            },
+            EventRoute {
+                name: "next".into(),
+                spools: vec![],
+            },
+        ],
+        config: vec![],
+        env: vec![],
+    };
+    control.register(&registration).unwrap();
+    let id = control.open_thread(&card()).unwrap();
+    control
+        .mount_spool(
+            "body",
+            Arc::new(Mixed),
+            &SpoolDeclaration {
+                consumes: vec!["start".into()],
+                produces: vec!["next".into()],
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    let event = control.push_event("start", "go").unwrap();
+    let registry = Registry::open(tmp.path().join("registry")).unwrap();
+    let host = Host::new(control.clone(), registry, HostBodies::default());
+    let mut seen = vec![];
+    let result = host.pump_on(id, &event.id, &mut |text| {
+        seen.push(text.to_string());
+        let mut revoked = registration.clone();
+        revoked.events[0].spools.clear();
+        control.register(&revoked).unwrap();
+    });
+    assert!(result.is_err());
+    assert_eq!(seen, vec!["already visible"]);
+    let workspace = std::fs::read_to_string(tmp.path().join("workspace/log.jsonl")).unwrap();
+    assert!(!workspace.contains("must not land"));
+    let events = control.events(id).unwrap();
+    assert!(!events.iter().any(|e| e.tags.iter().any(|t| t == "applied")));
+    let claim = events
+        .iter()
+        .find(|e| e.tags.iter().any(|t| t == "applied_stale"))
+        .unwrap();
+    assert!(claim.content.contains("1 intents completed"));
+}
