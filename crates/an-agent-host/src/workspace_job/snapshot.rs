@@ -88,6 +88,9 @@ pub(super) fn launch(plan: &Value, attempt: &Path) -> Result<Value> {
 }
 
 pub(super) fn prepare(plan: &Value, attempt: &Path, cancelled: &AtomicBool) -> Result<Value> {
+    if cancelled.load(std::sync::atomic::Ordering::Acquire) {
+        return Err("snapshot preparation cancelled; no workload started".into());
+    }
     let execution = launch(plan, attempt)?;
     let snapshot = attempt.join("snapshot");
     store::directory(&snapshot)?;
@@ -98,6 +101,9 @@ pub(super) fn prepare(plan: &Value, attempt: &Path, cancelled: &AtomicBool) -> R
         .iter()
         .zip(execution["inputs"].as_array().ok_or("snapshot inputs")?)
     {
+        if cancelled.load(std::sync::atomic::Ordering::Acquire) {
+            return Err("snapshot preparation cancelled; no workload started".into());
+        }
         let pinned = plan["artifact_inputs"]
             .as_array()
             .and_then(|items| items.iter().find(|i| i["path"] == source["path"]));

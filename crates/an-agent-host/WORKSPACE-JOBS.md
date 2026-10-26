@@ -49,8 +49,9 @@ from the approved plan, and the snapshot hashes. Source files may subsequently
 change or disappear without invalidating those persisted input bytes. Missing or
 substituted snapshot evidence refuses acceptance, including old attempts without
 that evidence. This does not change the existing termination gates for continuation
-or collection. Interrupted preparation leaves evidence for investigation and never
-automatically retries or promotes partial snapshots.
+or collection. Preparation failures and cancellations record explicit no-spawn evidence when
+that evidence can be durably written. They never automatically retry or promote
+partial snapshots; see the prelaunch lifecycle below.
 
 The runtime executable and directory dependencies remain operator-controlled and
 are **not snapshotted**. The executable still has before/after hash checks; these do
@@ -77,21 +78,46 @@ an-agent-host workspace-resume PROFILE JOB PREVIOUS_ATTEMPT
 an-agent-host workspace-resume PROFILE JOB PREVIOUS_ATTEMPT --approve REVIEWED_DIGEST
 ```
 
-Each attempt has a fresh UUID and records its plan and intent before spawn. The
+An already-cancelled approved call returns `status=cancelled`, `executed=false`
+and `process_started=false` without creating a workspace, attempt or successor.
+A preview remains a read-only preview. No attempt ID is returned in this case.
+
+Each allocated attempt has a fresh UUID and records its plan and intent before
+snapshot preparation and spawn. A continuation first binds its predecessor to
+that successor, so all later lifecycle decisions address the new attempt.
+Cancellation or failure during preparation, and cancellation explicitly returned
+by the supervisor before spawn, produce `an-workspace-not-started-v1` receipts.
+These bind the plan and intent, record the stage (`preparation` or `supervisor`),
+and contain `process_started=false`, `pid=null`, `exit_code=null`, `reaped=false`,
+`group_cleanup_required=false` and `termination_confirmed=true`. Here termination
+means no process was started, not that a fictitious child was reaped. Preparation
+errors retain refusal evidence. Neither case invents an empty process-group
+observation.
+
+A valid not-started receipt permits explicitly approved continuation or scratch
+abandonment through the existing APIs. It can never publish outputs, even when
+scratch contains a previous attempt's successful output. Accepted artifact
+revisions remain outside reclamation. Missing/contradictory fields, a changed or
+missing intent, or an unsuccessful receipt write confer no lifecycle authority.
+A spawn/pre-exec error is still uncertain; a missing PID alone is never no-spawn
+proof. Host crash and other incomplete evidence still require investigation.
+There is no automatic retry, receipt repair or speculative process cleanup. The
 host retains bounded stdout/stderr and a receipt even when post-run inventory
 cannot be collected. A missing receipt, unconfirmed termination, active host lock
 or already-selected successor fences further continuation and collection. The
 predecessor and scratch inventory are bound into approval. No stale lock is
 removed and there is no automatic retry after an uncertain outcome.
 
-Acceptance, continuation and reclamation share the same receipt gate. It requires
+Acceptance, continuation and reclamation share the same receipt gate. For launched
+attempts, the existing `an-workspace-receipt-v1` path requires
 explicit `termination_confirmed=true`, `reaped=true`, a positive process ID, and
 an empty process-group observation bound to that ID without an observation error.
 `group_cleanup_required` must be a boolean; successful attempts must explicitly
 record `false`. Missing/null whole-round fields in older v1 receipts are not
 termination authority, including failed or cancelled receipts. They remain
 retained for inspection; these operations refuse rather than infer safe defaults,
-rewrite history or start a successor. Tests in `tests/workspace_job/settlement.rs`
+rewrite history or start a successor. The new not-started schema is explicit host
+evidence, not a reinterpretation of incomplete legacy receipts. Tests in `tests/workspace_job/settlement.rs`
 remove fields and exercise both previews and previously approved requests.
 
 Continuation preserves engine work files and cache at the same paths. The caller
