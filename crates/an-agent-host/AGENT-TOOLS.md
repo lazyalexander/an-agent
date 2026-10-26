@@ -57,7 +57,7 @@ Only three tools exist:
 | --- | --- | --- |
 | `read_source` | Invocation identity | Selected UTF-8 source and digest |
 | `propose_source` | Identity and text | Candidate reference/digest; accepted=false, executed=false |
-| `run_kit` | Identity, granted handle, text | Native status, termination evidence, receipt digest; accepted artifact reference and text only on success |
+| `run_kit` | Identity, granted handle, text | Native status, termination evidence, receipt digest and publication outcome; artifact reference and text only after commit |
 
 Closed request schemas reject extra paths, commands and capability fields.
 There are at most eight handles and 32 submitted calls, 64 KiB source/proposal,
@@ -75,9 +75,36 @@ it does not equate a client disappearing with a terminated kit. EOF is observed
 before the SDK drains active handlers. A cancelled MCP request may have no tool
 response: inspect the durable native receipt and `calls/IDENTITY/result.json`.
 
-Only a successful, uncancelled result enters the existing immutable artifact
-store. Partial output from a cancelled or timed-out kit is not accepted. Result
-publication happens after capability ownership is released. If the host itself
+Native success is necessary but not sufficient for artifact admission. Each call
+has one atomic decision shared by MCP cancellation, transport-drop cancellation,
+EOF/shutdown and the publisher:
+
+- Cancellation wins the transition from open: import never starts. A native run
+  that already succeeded retains `execution_status=succeeded`, while the tool
+  result reports `status=cancelled` and `publication.status=cancelled-before-commit`.
+  No artifact or output text is delivered by that call.
+- Publication wins the transition from open to committing: subsequent cancellation
+  is too late to prevent this import. Before import, the host writes
+  `calls/IDENTITY/publication-intent.json`, binding the native run ID and receipt
+  digest. Successful import reports `publication.status=committed`, the immutable
+  revision and text. The `cancellation=too-late-after-commit-start` field describes
+  this policy; it does not claim a late cancellation actually occurred.
+
+A cancelled or timed-out native run never reaches the publication decision and
+reports `publication.status=not-attempted`. Existing termination and integrity
+checks inside artifact import remain mandatory. The atomic transition orders
+host-observed cancellation against admission; a notification still in transit
+cannot undo an admitted commit. It is not a transaction across a client response
+and filesystem writes.
+
+An import/result failure after admission remains `refused-or-uncertain`; a retained
+publication intent is reported as `publication.status=uncertain`. The intent proves
+admission, not successful commit. Inspect the native evidence and immutable catalog;
+never retry automatically or delete a published revision to simulate rollback.
+The same decision cannot reopen after failure. A failed intent write prevents import.
+A disconnected client may miss the response even after commit: the durable call
+result is authoritative when present. Result publication happens after capability
+ownership is released. If the host itself
 is forcibly killed, evidence may remain uncertain; this is not an exactly-once
 remote execution protocol or recovery service. A remote/GPU adapter must provide
 its own actual termination and late-result fencing before claiming equivalence.
@@ -88,5 +115,9 @@ its own actual termination and late-result fencing before claiming equivalence.
 kernel path. It verifies tool discovery, source proposals without execution,
 forbidden paths/handles, successful artifact checkout, duplicate refusal,
 cancellation and disconnect cleanup. It runs in the macOS/Linux native CI suite.
+Deterministic publication tests also force each side of the race to win using
+channels and real catalog writes, including cancellation after the old flag-check
+window and a lost result after commit. They check no publication on cancellation,
+retained revisions after late cancellation, intent write failures and no retries.
 The paid Kimi development/cancellation acceptance is maintained in Loom; native
 agent tape stays client-managed. No provider credential is required in CI.
