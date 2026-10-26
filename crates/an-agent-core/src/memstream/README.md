@@ -17,3 +17,19 @@ alone is insufficient when a concurrently forked child still holds the inherited
 open file description before exec. Inherited descriptors are not independent
 writer grants; a new store must acquire its own lock. The host regression holds
 such a child alive while the parent drops and immediately reacquires the tape.
+
+A store is bound to the PID that opened it. After `fork`, inherited store methods
+reject with `InheritedProcess` before acquiring a mutex, reserving a sequence,
+reading or repairing the tape, or accessing a tool payload. Child destruction
+closes its inherited descriptor without unlocking the parent's open file
+description. Parent destruction still explicitly unlocks, so a fresh writer can
+acquire ownership even while an inert inherited descriptor remains open. The
+child must open a new store and acquire its own writer lock before using the tape;
+inherited objects never become valid merely because the original owner exited.
+
+Regression coverage includes child-side destruction while the parent retains
+ownership, stale inherited reads/appends/payload calls after a new writer takes
+over, refusal to repair a torn tail owned by that writer, and owner checks before
+a locked state mutex. PID checking is an object-lifecycle rule, not a sandbox or
+a guarantee for arbitrary application code after a multithreaded fork. The
+standalone read-only payload resolver does not own a tape or perform repairs.
