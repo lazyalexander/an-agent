@@ -40,7 +40,7 @@ pub(super) struct ArtifactInput {
 impl Profile {
     pub fn plan(bytes: &[u8], root: &Path, predecessor: &Value) -> Result<(Self, Value)> {
         let p: Self = serde_json::from_slice(bytes)?;
-        if p.schema != "an-workspace-job-v1"
+        if p.schema != "an-workspace-job-v2"
             || !p.trusted_process_group
             || !(1..=300).contains(&p.wall_seconds)
             || p.args.len() > 64
@@ -64,19 +64,31 @@ impl Profile {
             }
             roots.push(path);
         }
+        if exe.starts_with(root) {
+            return Err("selected executable must be outside the job".into());
+        }
         let mut inputs = Vec::new();
         let mut total = 0usize;
         for file in &p.inputs {
             let path = file.canonicalize()?;
-            if !roots.iter().any(|r| path.starts_with(r)) {
-                return Err("input outside selected read roots".into());
+            if path == exe || path.starts_with(root) || roots.iter().any(|r| path.starts_with(r)) {
+                return Err(
+                    "selected inputs must be separate from the runtime executable, job and runtime read roots".into(),
+                );
+            }
+            let name = path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .ok_or("input requires a UTF-8 basename")?;
+            if name.contains(['{', '}']) || inputs.iter().any(|i: &Value| i["name"] == name) {
+                return Err("selected inputs require unique basenames".into());
             }
             let bytes = regular(&path, 64 * 1024 * 1024)?;
             total += bytes.len();
             if total > 100 * 1024 * 1024 {
                 return Err("selected inputs exceed 100 MiB".into());
             }
-            inputs.push(json!({"path":path,"sha256":store::digest(&bytes)}));
+            inputs.push(json!({"path":path,"name":name,"sha256":store::digest(&bytes)}));
         }
         let mut outputs = p.outputs.clone();
         outputs.sort();
@@ -120,11 +132,24 @@ impl Profile {
         {
             return Err("argument or environment exceeds limits".into());
         }
-        let policy = crate::execution::sandbox::workspace::policy(&exe, &work, &roots)?;
-        let mut plan = json!({"schema":"an-workspace-plan-v1","backend":"macos-trusted-workspace-v1",
+        for text in args.iter().chain(env.values()) {
+            if p.inputs
+                .iter()
+                .any(|path| text.contains(&*path.to_string_lossy()))
+                || inputs
+                    .iter()
+                    .any(|i| text.contains(i["path"].as_str().unwrap_or_default()))
+            {
+                return Err(
+                    "selected source paths in arguments/environment require input placeholders"
+                        .into(),
+                );
+            }
+        }
+        let mut plan = json!({"schema":"an-workspace-plan-v2","backend":"macos-trusted-workspace-v1",
             "supported":cfg!(target_os="macos"),"profile_sha256":store::digest(bytes),
             "executable":exe,"executable_sha256":executable_hash,"args":args,"environment":env,
-            "inputs":inputs,"readonly":roots,"outputs":outputs,"policy":policy,"root":root,
+            "inputs":inputs,"readonly":roots,"outputs":outputs,"root":root,
             "predecessor":predecessor,"scratch_before":if work.exists(){inventory::scan(&work)?}else{json!({})},
             "wall_seconds":p.wall_seconds,"network":false,"automatic_retries":0,
             "scope":"reviewed local tools without daemonization; not hostile process-tree containment"});
@@ -134,6 +159,8 @@ impl Profile {
         if !artifacts.is_empty() {
             plan["artifact_inputs"] = json!(artifacts);
         }
+        plan["policy"] =
+            super::snapshot::launch(&plan, &root.join("attempts/{attempt}"))?["policy"].clone();
         Ok((p, plan))
     }
 }
@@ -150,6 +177,5 @@ pub(super) fn verify_inputs(plan: &Value) -> Result<()> {
             return Err("selected workflow input changed during execution".into());
         }
     }
-    super::inputs::verify(plan)?;
     Ok(())
 }

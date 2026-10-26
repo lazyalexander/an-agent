@@ -19,7 +19,12 @@ fn large_binary_custody_keeps_limits_and_timing_cannot_grant_a_lock() -> Result<
     let source = t.path().canonicalize()?.join("selected/large.bin");
     fs::write(&source, vec![0u8; 8 * 1024 * 1024])?;
     let mut spec: Value = serde_json::from_slice(&fs::read(&profile)?)?;
-    spec["args"] = json!(["-c", "cp \"$1\" a.bin; cp \"$1\" b.bin", "fixture", source]);
+    spec["args"] = json!([
+        "-c",
+        "cp \"$1\" a.bin; cp \"$1\" b.bin",
+        "fixture",
+        "{input:0}"
+    ]);
     spec["inputs"] = json!([source]);
     spec["outputs"] = json!(["a.bin", "b.bin"]);
     spec["binary_outputs"] = spec["outputs"].clone();

@@ -23,7 +23,7 @@ fn setup(temp: &TempDir, mode: &str) -> Result<(PathBuf, PathBuf)> {
         fs::write(selected.join(name), source)?;
     }
     let mut p: Value = serde_json::from_slice(&fs::read(&profile)?)?;
-    p["args"] = json!([selected.join("coordinator.sh"), selected, mode]);
+    p["args"] = json!(["{input:0}", "{inputs}", mode]);
     p["inputs"] = json!([
         selected.join("coordinator.sh"),
         selected.join("producer.sh"),
@@ -238,7 +238,7 @@ fn scenario(mode: &str) -> Result<()> {
         artifact_versions::checkout(&root.join("artifacts"), revision, &snapshot)?;
         assert_eq!(fs::read(&snapshot)?, b"PRECISE INTERNAL HANDOFF\n");
         let mut downstream: Value = serde_json::from_slice(&fs::read(&profile)?)?;
-        downstream["args"] = json!(["-c", "cat \"$1\" > output.txt", "downstream", snapshot]);
+        downstream["args"] = json!(["-c", "cat \"$1\" > output.txt", "downstream", "{input:0}"]);
         downstream["inputs"] = json!([snapshot]);
         downstream["artifact_inputs"] =
             json!([{"path":snapshot,"catalog":root.join("artifacts"),"revision":revision}]);

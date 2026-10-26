@@ -48,7 +48,7 @@ fn binary_edits_create_revisions_and_downstream_pins_one_even_after_later_edits(
     let v3 = artifacts::edit(&catalog, second, &edit, &sha(&fs::read(&edit)?))?;
     assert_eq!(v3["parent"], second);
     let mut p: Value = serde_json::from_slice(&fs::read(&profile)?)?;
-    p["args"] = json!(["-c", "cat \"$1\" > output.txt", "fixture", pinned]);
+    p["args"] = json!(["-c", "cat \"$1\" > output.txt", "fixture", "{input:0}"]);
     p["inputs"] = json!([pinned]);
     p["artifact_inputs"] = json!([{"path":pinned,"catalog":catalog,"revision":second}]);
     let mut exposed = p.clone();

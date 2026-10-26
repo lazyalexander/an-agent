@@ -7,7 +7,12 @@ use std::{
 };
 
 #[cfg(target_os = "macos")]
-pub(crate) fn policy(executable: &Path, work: &Path, roots: &[PathBuf]) -> Result<String> {
+pub(crate) fn policy(
+    executable: &Path,
+    work: &Path,
+    roots: &[PathBuf],
+    sources: &[PathBuf],
+) -> Result<String> {
     use super::macos::quoted;
     let mut policy = format!(
         r#"(version 1)
@@ -32,11 +37,17 @@ pub(crate) fn policy(executable: &Path, work: &Path, roots: &[PathBuf]) -> Resul
             quoted(root)?
         ));
     }
+    for source in sources {
+        policy.push_str(&format!(
+            "(deny file-read-data process-exec (literal {}))\n",
+            quoted(source)?
+        ));
+    }
     Ok(policy)
 }
 
 #[cfg(not(target_os = "macos"))]
-pub(crate) fn policy(_: &Path, _: &Path, _: &[PathBuf]) -> Result<String> {
+pub(crate) fn policy(_: &Path, _: &Path, _: &[PathBuf], _: &[PathBuf]) -> Result<String> {
     Ok(String::new())
 }
 

@@ -3,6 +3,7 @@ mod custody;
 mod inputs;
 mod inventory;
 mod profile;
+mod snapshot;
 
 use crate::{
     execution::{Result, sandbox, store},
@@ -126,6 +127,7 @@ pub fn run(
     store::directory(&dir)?;
     let plan_bytes = serde_json::to_vec_pretty(&plan)?;
     store::write_new(&dir.join("plan.json"), &plan_bytes)?;
+    let execution_plan = snapshot::prepare(&plan, &dir, cancelled)?;
     if let Some(prior) = previous {
         store::write_new(
             &attempt(&root, prior)?.join("successor.json"),
@@ -137,9 +139,10 @@ pub fn run(
         &dir.join("intent.json"),
         &serde_json::to_vec(&json!({"attempt":id,"approval_sha256":digest}))?,
     )?;
-    let execution = sandbox::workspace::execute(&plan, cancelled);
+    let execution_bytes = regular(&dir.join("execution.json"), 2 * 1024 * 1024)?;
+    let execution = sandbox::workspace::execute(&execution_plan, cancelled);
     let mut receipt = json!({"schema":"an-workspace-receipt-v1","attempt":id,"plan_sha256":store::digest(&plan_bytes),
-        "status":"refused","reaped":false,"termination_confirmed":false,"automatic_retries":0});
+        "execution_sha256":store::digest(&execution_bytes),"status":"refused","reaped":false,"termination_confirmed":false,"automatic_retries":0});
     match execution {
         Ok(result) => {
             let group_observation = sandbox::workspace::settlement(result.pid, result.reaped);

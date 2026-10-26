@@ -46,20 +46,3 @@ pub(super) fn bind(
     }
     Ok(result)
 }
-
-pub(super) fn verify(plan: &Value) -> Result<()> {
-    if let Some(inputs) = plan["artifact_inputs"].as_array() {
-        for item in inputs {
-            let (_, observed) = artifact_versions::read(
-                Path::new(item["catalog"].as_str().ok_or("missing catalog")?),
-                item["binding"]["revision"]
-                    .as_str()
-                    .ok_or("missing pinned revision")?,
-            )?;
-            if observed != item["binding"] {
-                return Err("pinned artifact binding changed".into());
-            }
-        }
-    }
-    Ok(())
-}
