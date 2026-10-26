@@ -22,6 +22,19 @@ fn large_source(path: &Path) -> Result<String> {
     Ok(format!("{:x}", digest.finalize()))
 }
 
+fn observe(mode: &str, phase: &str, value: &Value) -> Result<()> {
+    eprintln!("CLONE_HANDOFF_{phase}={value}");
+    if let Some(folder) = std::env::var_os("AN_AGENT_ACCEPTANCE_DIR") {
+        let dir = PathBuf::from(folder).join("clone-handoff");
+        fs::create_dir_all(&dir)?;
+        fs::write(
+            dir.join(format!("{mode}-{phase}.json")),
+            serde_json::to_vec_pretty(value)?,
+        )?;
+    }
+    Ok(())
+}
+
 #[test]
 fn large_snapshot_survives_source_mutation_cancel_and_collection() -> Result<()> {
     for mode in ["overwrite", "truncate", "replace", "unlink", "cancel"] {
@@ -48,6 +61,12 @@ fn large_snapshot_survives_source_mutation_cancel_and_collection() -> Result<()>
                 if running.is_finished() || start.elapsed() >= Duration::from_secs(120) {
                     stop.store(true, Ordering::Release);
                     let result = running.join().map_err(|_| "host worker panicked")?;
+                    observe(
+                        mode,
+                        "readiness-failed",
+                        &json!({"case":mode,
+                        "elapsed_ms":start.elapsed().as_millis(),"result":format!("{result:?}")}),
+                    )?;
                     return Err(format!(
                         "case {mode} never became ready after {:?}; host result: {result:?}",
                         start.elapsed()
@@ -56,11 +75,12 @@ fn large_snapshot_survives_source_mutation_cancel_and_collection() -> Result<()>
                 }
                 thread::sleep(Duration::from_millis(10));
             }
-            eprintln!(
-                "CLONE_HANDOFF_READY={}",
-                json!({"case":mode,
-                "bytes":64*1024*1024,"admission_and_snapshot_ms":start.elapsed().as_millis()})
-            );
+            observe(
+                mode,
+                "ready",
+                &json!({"case":mode,"bytes":64*1024*1024,
+                "admission_and_snapshot_ms":start.elapsed().as_millis()}),
+            )?;
             let attempt = fs::read_dir(root.join("attempts"))?.next().unwrap()?.path();
             let snapshot = attempt.join("snapshot/inputs/input.txt");
             assert_ne!(fs::metadata(&source)?.ino(), fs::metadata(&snapshot)?.ino());
@@ -149,10 +169,12 @@ fn large_snapshot_survives_source_mutation_cancel_and_collection() -> Result<()>
             )?;
             assert_eq!(fs::read_to_string(checkout)?.trim(), expected);
         }
-        eprintln!(
-            "CLONE_HANDOFF_CASE={}",
-            json!({"case":mode,"bytes":64*1024*1024,"receipt":receipt,"reclaim":true,"snapshot_retained":true})
-        );
+        observe(
+            mode,
+            "settled",
+            &json!({"case":mode,"bytes":64*1024*1024,
+            "receipt":receipt,"reclaim":true,"snapshot_retained":true}),
+        )?;
     }
     Ok(())
 }
