@@ -213,3 +213,6 @@ async fn update_remounts_in_place_and_reports_the_old_subtree() {
     assert_eq!(say(tree.resolve("b").unwrap(), "hi").await, "a:hi");
     assert_eq!(tree.status(new), Some(Status::Active));
 }
+
+#[path = "unmount_tests.rs"]
+mod unmount_tests;
