@@ -109,3 +109,7 @@ Plus the discipline-specific checks:
 - Module splits follow the split discipline (see the `split-modules`
   skill): a split commit is a pure move, public paths stay, tests are
   moved not lost.
+
+Code-role terminology follows [the spool code contract](doc/spool-code.md).
+Silk is the stable core; kit is adaptable glue. Preserve legacy wire/API names
+and distinguish target contracts from implemented runtime guarantees.

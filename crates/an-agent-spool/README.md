@@ -26,7 +26,9 @@ the existing registry version fields remain unchanged for compatibility.
 
 ## Execution boundary terminology
 
-A spool release carries domain behavior and internal callable **silks**. Its
+A spool release carries core domain **silks** and may include **kit** glue. Silks
+are read-only during an attempt; kit edits use separately editable working copies.
+See [the code contract](../../doc/spool-code.md); this is not a new parser or runtime guarantee. Its
 execution attempt is the isolation and lifecycle unit owned by the host/backend.
 This parser and the existing embedded body APIs do not create that boundary: an
 in-process `SpoolBeat` is trusted embedding code, not an isolated workload.
