@@ -259,3 +259,5 @@ The bounded [native spool facade](NATIVE-SPOOL.md) loads verified silk/kit relea
 edits scoped kit copies between runs, executes fixed snapshots and retains
 instance-bound custody evidence. It reuses the native supervisor and workspace
 engine. Pause, suspension and arbitrary harness containment remain unsupported.
+
+The native spool facade also provides an optional [weaver proposal slot](NATIVE-SPOOL.md#optional-weaver-proposal-slot): scoped file requests and separately approved kit changes, without launching a model or granting the adapter host authority.

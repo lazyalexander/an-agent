@@ -225,3 +225,6 @@ fn cancelling_one_instance_cannot_unload_edit_or_claim_another() -> Result<()> {
     assert!(spool::start(&b, "two", &input, 30, None, &AtomicBool::new(false)).is_err());
     Ok(())
 }
+
+#[path = "native_spool/weaver.rs"]
+mod weaver;

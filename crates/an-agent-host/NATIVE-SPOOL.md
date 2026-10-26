@@ -135,3 +135,60 @@ unloads and loads a fresh instance. Neither repository links the other's runtime
    workload. Do not promote the reviewed-process profile into an adversarial guarantee.
 
 Managed runs carry a `spool-owner.json` marker. Public standalone workspace run, acceptance, and reclamation commands reject these jobs; callers must use the owning spool commands so the instance operation lock and ownership checks remain in force. This is an API lifecycle fence, not protection against a host user modifying the control store.
+
+
+## Optional weaver proposal slot
+
+The host now exposes a file exchange slot, not a model loop or plugin launcher:
+
+```text
+spool-weaver-request INSTANCE KIT_BASENAME
+spool-weaver-apply INSTANCE PROPOSAL_JSON [--approve HASH]
+spool-weaver-revoke INSTANCE REQUEST_UUID
+```
+
+A request returns `request` and `request_sha256`. The selected request carries the
+instance, release, kit path, original content hash and source, plus an epoch derived
+from run and edit identities. Only declared kit basenames are accepted. An external
+CLI adapter or authorized shuttle can read that exported data and return:
+
+```json
+{
+  "schema": "an-weaver-proposal-v1",
+  "request": "REQUEST_UUID",
+  "request_sha256": "HASH_FROM_REQUEST",
+  "kit": "kit/transform.sh",
+  "content": "printf 'adapted:'; cat \"$1\"\n"
+}
+```
+
+The operator imports the response. The host checks its scope, generation and bytes
+under the instance lock, then previews a separate approval. A proposal is not a
+capability token. Do not expose the unrestricted host CLI or its private control
+store to an agent. A transport adapter is responsible for transferring only the
+selected data; shuttle transport cannot grant authority.
+
+Any run preparation or recorded kit edit invalidates previous requests, even if
+an edit restores identical bytes. Revocation closes result admission, but explicitly
+does not claim the external agent terminated. Unload/reload changes instance
+identity. Requests are one-use, bounded to 128 directory entries; application closes
+the request with a commit intent before editing. An interrupted import fails closed
+and requires inspection rather than replay. No automatic cleanup is introduced.
+
+`weaver_proposal_slot` is true in capabilities; `weaver` remains false because no
+harness is launched or supervised. The real cross-repository test uses a deterministic
+file proposal, not a model. Host tests also cover revoked/stale/foreign requests,
+protected silk, changed proposal approval, duplicate application and fixed-version
+artifact checkout into a second spool. This adds no new domain or model dependency.
+
+## Readiness timing and CI
+
+CI shows test compilation and execution as separate steps, without excluding any
+workspace tests. The 64 MiB clone-handoff regression runs five mutation/cancellation cases. Its
+readiness clock includes admission hashing and snapshot preparation; it is distinct
+from the workload's 30-second execution deadline. The 120-second readiness watchdog
+is a bounded test budget, not a product latency guarantee. Failure cancels and joins
+the worker and reports its result. When `AN_AGENT_ACCEPTANCE_DIR` is set, per-case
+ready/settled evidence is retained under `clone-handoff/` by the existing CI artifact
+step. File size, fixed-version assertions, cancellation checks, and production
+deadlines are unchanged. Preparation performance remains measurable follow-up work.

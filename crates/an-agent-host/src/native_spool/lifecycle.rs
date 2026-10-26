@@ -49,7 +49,7 @@ pub fn show(path: &Path) -> Result<Value> {
     let (mut record, bundle) = state(&root)?;
     record["loaded"] = json!(!root.join("unloaded.json").exists());
     record["operation_locked"] = json!(root.join("host.lock").exists());
-    record["capabilities"] = json!({"start":cfg!(target_os="macos"),"cancel":"running CLI SIGINT/SIGTERM", "pause":false,"suspend":false,"weaver":false});
+    record["capabilities"] = json!({"start":cfg!(target_os="macos"),"cancel":"running CLI SIGINT/SIGTERM", "pause":false,"suspend":false,"weaver":false,"weaver_proposal_slot":true});
     let mut kits = serde_json::Map::new();
     for path in bundle.payload.keys().filter(|p| p.starts_with("kit/")) {
         kits.insert(
@@ -100,20 +100,26 @@ pub fn update_kit(path: &Path, name: &str, source: &Path, approved: Option<&str>
     if !execute {
         return Ok(json!({"plan":plan,"approval_sha256":hash,"executed":false}));
     }
+    commit_kit(&root, &selected, &bytes, &plan)?;
+    Ok(json!({"status":"succeeded","edit":plan}))
+}
+
+pub(super) fn commit_kit(root: &Path, selected: &str, bytes: &[u8], plan: &Value) -> Result<()> {
+    let target = root.join(selected);
     let pending = root.join(format!(
         "{}.pending",
         an_agent_core::det_seam::Entropy::os().uuid_v4()
     ));
-    store::write_new(&pending, &bytes)?;
+    store::write_new(&pending, bytes)?;
     fs::rename(&pending, &target)?;
     write_json(
         &root.join(format!(
             "edit-{}.json",
             an_agent_core::det_seam::Entropy::os().uuid_v4()
         )),
-        &plan,
+        plan,
     )?;
-    Ok(json!({"status":"succeeded","edit":plan}))
+    Ok(())
 }
 
 pub fn unload(path: &Path, approved: Option<&str>) -> Result<Value> {
