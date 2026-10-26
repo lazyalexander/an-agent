@@ -37,7 +37,7 @@ struct State {
 }
 
 pub struct JsonlStore {
-    path: PathBuf,
+    pub(super) path: PathBuf,
     state: Mutex<State>,
     clock: Clock,
     entropy: Mutex<Entropy>,
