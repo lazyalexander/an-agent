@@ -72,6 +72,10 @@ not decide domain algorithms or automatically rewrite a failing kit. Mature codi
 tools may perform the edits; their own context/tape remains theirs unless a separate
 integration explicitly provides host tracing. Domain glue never belongs in core.
 
+The first [native spool implementation](../crates/an-agent-host/NATIVE-SPOOL.md)
+qualifies between-run kit edits and fixed snapshot execution. Runtime self-editing,
+weaver integration and checkpoint continuation of adapted kits remain future work.
+
 ## Compatibility and next validation
 
 Legacy `[kit]` authoring, `Kit` aliases, `kit/` paths, `file-kit-v1`, `build-kit` and
@@ -87,3 +91,30 @@ only declared outputs, and reclaim unretained copies after confirmed settlement.
 It must also reject attempted silk/policy edits and preserve immutable release
 bytes. Reuse existing host and Loom contracts; do not introduce a generic pipeline
 engine, a new backend or blanket code-execution authority to make the example pass.
+
+## Weaver ownership (planned)
+
+A weaver is a replaceable agent-harness adapter managed by the an-agent host,
+not an embedded domain policy engine in Loom or core. Spools supply domain
+instructions, kit interfaces, protected silk, and acceptance checks. Loom prepares
+and validates those declarations at development and packaging time.
+
+The host selects an adapter and grants an invocation scoped to an instance,
+release, selected inputs, editable kit paths, and a deadline. The adapter translates
+that task to a mature coding tool and returns proposed changes and evidence.
+Permission requests, external effects, cancellation, and artifact acceptance still
+pass through host authority; neither model text nor plugin output grants access.
+Prefer an out-of-process CLI adapter over loading third-party executable code into
+the trusted host process. A host-managed plugin is not inherently host-trusted.
+
+A proposal must bind its original kit digest. The host rejects stale edits,
+protected-path changes, late results from cancelled generations, and publication
+before confirmed termination. Weaver context may remain harness-owned; the host
+records invocation identity, grants, selected versions, termination and accepted
+changes rather than claiming to reproduce the harness's internal tape.
+
+This is a design boundary, not implemented plugin loading or hostile-agent
+containment. The current reviewed-native profile must not be used to claim those
+guarantees. First validate one bounded between-run edit adapter, reusing existing
+execution and custody controls; do not introduce a plugin marketplace or a second
+agent loop.
