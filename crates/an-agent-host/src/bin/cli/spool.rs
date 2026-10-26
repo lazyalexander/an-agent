@@ -4,6 +4,14 @@ use an_agent_host::native_spool as spool;
 
 pub(super) fn dispatch(command: &str, args: &[String]) -> Result<Value> {
     match (command, args) {
+        ("spool-weaver-request", [root, name]) => spool::weaver::request(Path::new(root), name),
+        ("spool-weaver-revoke", [root, id]) => spool::weaver::revoke(Path::new(root), id),
+        ("spool-weaver-apply", [root, response]) => {
+            spool::weaver::apply(Path::new(root), Path::new(response), None)
+        }
+        ("spool-weaver-apply", [root, response, flag, hash]) if flag == "--approve" => {
+            spool::weaver::apply(Path::new(root), Path::new(response), Some(hash))
+        }
         ("spool-load", [package, root]) => spool::load(Path::new(package), Path::new(root)),
         ("spool-show", [root]) => spool::show(Path::new(root)),
         ("spool-kit-update", [root, name, source]) => {

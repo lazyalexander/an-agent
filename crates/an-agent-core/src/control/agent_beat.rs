@@ -181,7 +181,7 @@ fn projection(agent: &Agent, event: &WorkspaceRecord, steps: usize) -> Result<Va
             json!({
                 "id": e.id,
                 "tag": e.tags.first().cloned().unwrap_or_default(),
-                "content": fuse_clip(&resolve_payload(agent, e)),
+                "content": fuse_clip(&preview_payload(agent, e)),
             })
         })
         .collect();
@@ -193,7 +193,7 @@ fn projection(agent: &Agent, event: &WorkspaceRecord, steps: usize) -> Result<Va
 }
 
 mod payload;
-use payload::resolve_payload;
+use payload::{preview_payload, resolve_payload};
 
 impl AgentControl {
     /// Install the host's model client. A body yielding `InvokeModel`
@@ -428,7 +428,7 @@ impl AgentControl {
                 }
                 Some(e) => resolved.push((
                     e.tags.first().cloned().unwrap_or_else(|| "event".into()),
-                    fuse_clip(&resolve_payload(agent, e)),
+                    fuse_clip(&resolve_payload(agent, e)?),
                 )),
                 None => return Err(ControlError::UnknownClip(clip.clone())),
             }

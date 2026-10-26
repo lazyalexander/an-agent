@@ -3,6 +3,7 @@
 mod bundle;
 mod lifecycle;
 mod run;
+pub mod weaver;
 use crate::{
     execution::{Result, store},
     file_job::regular,

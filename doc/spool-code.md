@@ -92,7 +92,7 @@ It must also reject attempted silk/policy edits and preserve immutable release
 bytes. Reuse existing host and Loom contracts; do not introduce a generic pipeline
 engine, a new backend or blanket code-execution authority to make the example pass.
 
-## Weaver ownership (planned)
+## Weaver ownership and the initial proposal slot
 
 A weaver is a replaceable agent-harness adapter managed by the an-agent host,
 not an embedded domain policy engine in Loom or core. Spools supply domain
@@ -113,8 +113,9 @@ before confirmed termination. Weaver context may remain harness-owned; the host
 records invocation identity, grants, selected versions, termination and accepted
 changes rather than claiming to reproduce the harness's internal tape.
 
-This is a design boundary, not implemented plugin loading or hostile-agent
-containment. The current reviewed-native profile must not be used to claim those
+The native host implements a bounded file proposal slot, documented in
+[NATIVE-SPOOL.md](../crates/an-agent-host/NATIVE-SPOOL.md). This is not plugin
+loading or hostile-agent containment. The current reviewed-native profile must not be used to claim those
 guarantees. First validate one bounded between-run edit adapter, reusing existing
 execution and custody controls; do not introduce a plugin marketplace or a second
 agent loop.
