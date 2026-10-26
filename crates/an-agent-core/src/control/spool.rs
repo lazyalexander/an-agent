@@ -441,37 +441,6 @@ impl AgentControl {
         Ok(outcomes)
     }
 
-    /// The host landed `reply` in software. Core writes that claim on the
-    /// thread tape and cites the spool note. It does not mutate the host.
-    /// Does not take the beat slot.
-    pub fn applied(
-        &self,
-        id: Uuid,
-        reply: &SpoolReply,
-        note: &str,
-    ) -> Result<String, ControlError> {
-        let agent = self.live(id)?;
-        let content = json!({
-            "spool": reply.spool,
-            "event": reply.event_id,
-            "reply": reply.reply,
-            "note": note,
-        })
-        .to_string();
-        let refs = if reply.tape_id.is_empty() {
-            Vec::new()
-        } else {
-            vec![reply.tape_id.clone()]
-        };
-        self.append_event(
-            &agent,
-            crate::memstream::Kind::Action,
-            "applied",
-            content,
-            refs,
-        )
-    }
-
     /// Deliver one event to one mounted body. A body failure unmounts the
     /// body and is returned as `Err(reason)`, never as a `ControlError`.
     fn invoke(

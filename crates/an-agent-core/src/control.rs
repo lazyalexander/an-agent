@@ -36,6 +36,7 @@ use crate::seat::{Pool, PoolError, Seat, TreeError};
 use crate::workspace::Workspace;
 
 mod agent_beat;
+mod delivery;
 mod hooks;
 mod model_boundary;
 mod semantic;
