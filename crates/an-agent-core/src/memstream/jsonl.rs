@@ -1,5 +1,5 @@
 use std::fs::{self, File, OpenOptions};
-use std::io::Write;
+use std::io::{Read, Seek, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
@@ -12,6 +12,8 @@ use crate::det_seam::{Clock, Entropy};
 pub enum StoreError {
     #[error("io: {0}")]
     Io(#[from] std::io::Error),
+    #[error("tape already has a writer: {0}")]
+    WriterBusy(PathBuf),
     #[error("store lock poisoned")]
     Poisoned,
     #[error("json: {0}")]
@@ -25,7 +27,9 @@ pub enum StoreError {
 struct State {
     #[cfg(test)]
     fail_append_after: Option<usize>,
-    file: Option<File>,
+    #[cfg(test)]
+    fail_io_at: Option<&'static str>,
+    file: File,
     next_seq: Option<u64>,
     /// The tape's last line is valid but lacks a trailing newline; the next
     /// append must start with one or the two lines fuse.
@@ -57,12 +61,27 @@ impl JsonlStore {
         if let Some(dir) = path.parent() {
             fs::create_dir_all(dir)?;
         }
+        // Lifetime ownership precedes every scan, repair and sequence reservation.
+        // Lock the tape itself so symlink/hard-link aliases share the same lock.
+        let file = OpenOptions::new()
+            .create(true)
+            .read(true)
+            .append(true)
+            .open(&path)?;
+        match file.try_lock() {
+            Ok(()) => (),
+            Err(fs::TryLockError::WouldBlock) => return Err(StoreError::WriterBusy(path)),
+            Err(fs::TryLockError::Error(error)) => return Err(error.into()),
+        }
+        sync_parent_dir(path.parent())?;
         Ok(Self {
             path,
             state: Mutex::new(State {
                 #[cfg(test)]
                 fail_append_after: None,
-                file: None,
+                #[cfg(test)]
+                fail_io_at: None,
+                file,
                 next_seq: None,
                 needs_newline: false,
             }),
@@ -76,12 +95,16 @@ impl JsonlStore {
     /// corruption anywhere else fails the whole store.
     pub fn read_all(&self) -> Result<Vec<Memevent>, StoreError> {
         let mut st = self.state.lock().map_err(|_| StoreError::Poisoned)?;
+        // Failed repair can leave a tail in place. Never retain a cached
+        // sequence that would let the next append bypass reconciliation.
+        st.next_seq = None;
         self.scan_and_heal(&mut st)
     }
 
     /// Appends one event. The write lock spans seq reservation, the single
     /// write, and fsync: concurrent appends can neither duplicate nor skip
-    /// a seq, and seq advances only after the durable write succeeds.
+    /// a seq. A write/sync error invalidates the cached sequence; a retained
+    /// complete event is consumed on rescan, not silently appended again.
     pub fn append(&self, input: AppendEvent) -> Result<Memevent, StoreError> {
         let mut st = self.state.lock().map_err(|_| StoreError::Poisoned)?;
         #[cfg(test)]
@@ -131,16 +154,22 @@ impl JsonlStore {
             line.insert(0, '\n');
         }
         line.push('\n');
-        let written = match self.append_file(&mut st) {
-            Ok(file) => file
-                .write_all(line.as_bytes())
-                .and_then(|()| file.sync_data())
-                .map_err(StoreError::Io),
-            Err(e) => Err(e),
-        };
+        let written = (|| -> std::io::Result<()> {
+            #[cfg(test)]
+            if st.fail_io_at == Some("partial_write") {
+                st.file.write_all(&line.as_bytes()[..line.len() / 2])?;
+                io_checkpoint(&mut st, "partial_write")?;
+            }
+            st.file.write_all(line.as_bytes())?;
+            #[cfg(test)]
+            io_checkpoint(&mut st, "append_sync")?;
+            st.file.sync_data()
+        })()
+        .map_err(StoreError::Io);
         if let Err(e) = written {
             // The tape may hold a torn line now. Force the next append to
-            // rescan (and heal) instead of piling onto it; seq is unconsumed.
+            // rescan (and heal) instead of piling onto it. A complete retained
+            // line consumes its seq even when its sync reported an error.
             st.next_seq = None;
             return Err(e);
         }
@@ -165,10 +194,9 @@ impl JsonlStore {
 
     fn scan_and_heal(&self, st: &mut State) -> Result<Vec<Memevent>, StoreError> {
         st.needs_newline = false;
-        if !self.path.exists() {
-            return Ok(Vec::new());
-        }
-        let bytes = fs::read(&self.path)?;
+        st.file.rewind()?;
+        let mut bytes = Vec::new();
+        st.file.read_to_end(&mut bytes)?;
         let mut events = Vec::new();
         let mut start = 0usize;
         let mut line_no = 0usize;
@@ -226,30 +254,13 @@ impl JsonlStore {
         if !existed {
             sync_parent_dir(side.parent())?;
         }
-        let file = self.append_file(st)?;
-        file.set_len(offset)?;
-        file.sync_data()?;
+        #[cfg(test)]
+        io_checkpoint(st, "before_truncate")?;
+        st.file.set_len(offset)?;
+        #[cfg(test)]
+        io_checkpoint(st, "truncate_sync")?;
+        st.file.sync_data()?;
         Ok(())
-    }
-
-    fn append_file<'a>(&self, st: &'a mut State) -> Result<&'a mut File, StoreError> {
-        if st.file.is_none() {
-            let existed = self.path.exists();
-            let file = OpenOptions::new()
-                .create(true)
-                .append(true)
-                .open(&self.path)?;
-            if !existed {
-                sync_parent_dir(self.path.parent())?;
-            }
-            st.file = Some(file);
-        }
-        match st.file.as_mut() {
-            Some(file) => Ok(file),
-            None => Err(StoreError::Io(std::io::Error::other(
-                "append fd unexpectedly closed",
-            ))),
-        }
     }
 }
 
@@ -275,13 +286,13 @@ mod tests {
     use crate::memstream::{FromKind, Kind};
     use crate::testkit::TempDir;
 
-    fn tmp() -> (TempDir, PathBuf) {
+    pub(super) fn tmp() -> (TempDir, PathBuf) {
         let dir = TempDir::new("mem");
         let path = dir.path().join("memory.jsonl");
         (dir, path)
     }
 
-    fn base(content: &str) -> AppendEvent {
+    pub(super) fn base(content: &str) -> AppendEvent {
         AppendEvent {
             from: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa".into(),
             from_kind: FromKind::Unknown,
@@ -426,3 +437,18 @@ mod tests {
         PathBuf::from(side)
     }
 }
+
+#[cfg(test)]
+fn io_checkpoint(st: &mut State, stage: &'static str) -> std::io::Result<()> {
+    if st.fail_io_at == Some(stage) {
+        st.fail_io_at = None;
+        return Err(std::io::Error::other(format!(
+            "injected tape failure: {stage}"
+        )));
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+#[path = "writer_tests.rs"]
+mod writer_tests;

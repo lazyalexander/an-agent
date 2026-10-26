@@ -298,3 +298,6 @@ pub(crate) fn execute_command(
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod tape_ownership;
