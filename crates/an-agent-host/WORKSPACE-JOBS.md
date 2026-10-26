@@ -42,7 +42,16 @@ snapshot, checks their approved hashes and records the resolved execution manife
 Selected original paths are denied data reads and execution in the workload policy;
 snapshots are read-only and outside writable scratch. Pinned artifacts are copied
 from their immutable catalog revision, not the editable checkout. A changed ordinary
-input before copying refuses preparation; no workload is launched.
+input before snapshot verification refuses preparation; no workload is launched.
+
+On macOS, ordinary selected files first use descriptor-based filesystem cloning.
+Supported same-volume filesystems share blocks using copy-on-write, with a new
+private inode rather than a hard link or a live source mount. The destination is
+still checked against the approved digest before launch. Only unsupported-volume
+or cross-device errors select the existing full-copy path; permission, size,
+existing-destination and other errors refuse preparation. Artifact catalog inputs
+keep their existing validated copy path. Input limits and CLI schemas are unchanged.
+See [external input clone qualification](INPUT-CLONES.md) for measurements and limits.
 
 Output acceptance verifies the receipt-bound execution manifest, its exact mapping
 from the approved plan, and the snapshot hashes. Source files may subsequently

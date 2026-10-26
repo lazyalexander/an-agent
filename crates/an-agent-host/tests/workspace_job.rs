@@ -185,3 +185,6 @@ mod settlement;
 
 #[path = "workspace_job/snapshot.rs"]
 mod snapshot;
+
+#[path = "workspace_job/clone_handoff.rs"]
+mod clone_handoff;
