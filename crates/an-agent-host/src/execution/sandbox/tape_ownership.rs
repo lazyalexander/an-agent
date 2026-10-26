@@ -153,3 +153,35 @@ fn process_worker() {
         _ => panic!("unknown child mode"),
     }
 }
+
+#[test]
+#[cfg(unix)]
+fn dropping_owner_unlocks_even_while_a_fork_inherits_the_descriptor() {
+    let dir = an_agent_core::testkit::TempDir::new("inherited-tape-lock");
+    let path = dir.path().join("memory.jsonl");
+    let owner = JsonlStore::open(&path).unwrap();
+    owner.append(event()).unwrap();
+    let mut pipe = [0; 2];
+    // The child only invokes async-signal-safe functions, retains inherited file
+    // descriptions, and waits until the parent has checked immediate reacquisition.
+    unsafe {
+        assert_eq!(libc::pipe(pipe.as_mut_ptr()), 0);
+        let pid = libc::fork();
+        assert!(pid >= 0);
+        if pid == 0 {
+            libc::close(pipe[1]);
+            let mut byte = 0u8;
+            libc::read(pipe[0], (&mut byte as *mut u8).cast(), 1);
+            libc::_exit(0);
+        }
+        libc::close(pipe[0]);
+        drop(owner);
+        let resumed = JsonlStore::open(&path);
+        // Reap even on an assertion failure so the regression cannot strand a child.
+        libc::close(pipe[1]);
+        let mut status = 0;
+        assert_eq!(libc::waitpid(pid, &mut status, 0), pid);
+        assert_eq!(status, 0);
+        assert_eq!(resumed.unwrap().append(event()).unwrap().seq, 2);
+    }
+}

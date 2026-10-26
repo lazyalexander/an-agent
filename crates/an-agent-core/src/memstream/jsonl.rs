@@ -43,6 +43,19 @@ pub struct JsonlStore {
     entropy: Mutex<Entropy>,
 }
 
+impl Drop for JsonlStore {
+    fn drop(&mut self) {
+        // A concurrent fork may briefly inherit the open file description before
+        // exec closes it. Close alone would keep the parent's lock alive there.
+        // Only this store owns writing; inherited descriptors confer no ownership.
+        let state = self
+            .state
+            .get_mut()
+            .unwrap_or_else(|error| error.into_inner());
+        let _ = state.file.unlock();
+    }
+}
+
 impl JsonlStore {
     pub fn open(path: impl AsRef<Path>) -> Result<Self, StoreError> {
         Self::open_with(path, Clock::wall(), Entropy::os())
