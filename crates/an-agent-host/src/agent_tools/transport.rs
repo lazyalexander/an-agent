@@ -1,11 +1,8 @@
 //! MCP transport reuses the official SDK; authority remains in the host bridge.
-use super::Bridge;
+use super::{Bridge, publication::Call};
 use rmcp::{ErrorData, RoleServer, ServerHandler, ServiceExt, model::*, service::RequestContext};
 use serde_json::{Value, json};
-use std::sync::{
-    Arc,
-    atomic::{AtomicBool, Ordering},
-};
+use std::sync::Arc;
 use std::{
     pin::Pin,
     task::{Context, Poll},
@@ -97,11 +94,11 @@ impl ServerHandler for Server {
         request: CallToolRequestParams,
         context: RequestContext<RoleServer>,
     ) -> Result<CallToolResponse, ErrorData> {
-        let stop = Arc::new(AtomicBool::new(false));
-        struct Cancel(Arc<AtomicBool>);
+        let stop = Arc::new(Call::default());
+        struct Cancel(Arc<Call>);
         impl Drop for Cancel {
             fn drop(&mut self) {
-                self.0.store(true, Ordering::SeqCst);
+                self.0.cancel();
             }
         }
         let _cancel = Cancel(stop.clone());
@@ -116,7 +113,7 @@ impl ServerHandler for Server {
         });
         let result = tokio::select! {
             result=&mut worker=>result,
-            _=context.ct.cancelled()=>{stop.store(true,Ordering::SeqCst);worker.await}
+            _=context.ct.cancelled()=>{stop.cancel();worker.await}
         }
         .map_err(|e| ErrorData::internal_error(e.to_string(), None))?;
         let value = result.unwrap_or_else(|e| json!({"status":"refused-or-uncertain","error":e}));

@@ -192,6 +192,16 @@ fn mcp_permissions_artifact_handoff_cancellation_and_disconnect() -> execution::
     )?;
     assert_eq!(result["status"], "succeeded");
     assert_eq!(result["text"], "ALPHA\n");
+    assert_eq!(result["publication"]["status"], "committed");
+    assert_eq!(result["execution_status"], "succeeded");
+    let persisted: Value =
+        serde_json::from_slice(&fs::read(session.join("calls/sort-1/result.json"))?)?;
+    assert_eq!(persisted, result);
+    let intent: Value = serde_json::from_slice(&fs::read(
+        session.join("calls/sort-1/publication-intent.json"),
+    )?)?;
+    assert_eq!(intent["run_id"], result["run_id"]);
+    assert_eq!(intent["receipt_sha256"], result["receipt_sha256"]);
     let revision = result["artifact"]["revision"].as_str().unwrap();
     an_agent_host::artifact_versions::checkout(
         &session.join("artifacts"),
@@ -225,6 +235,10 @@ fn mcp_permissions_artifact_handoff_cancellation_and_disconnect() -> execution::
         assert_eq!(receipt["status"], "cancelled");
         assert_eq!(receipt["process"]["reaped"], true);
         assert!(!run.join("artifact.txt").exists());
+        let dir = session.join("calls").join(invocation);
+        assert!(!dir.join("publication-intent.json").exists());
+        let result: Value = serde_json::from_slice(&fs::read(dir.join("result.json"))?)?;
+        assert_eq!(result["publication"]["status"], "not-attempted");
     }
     assert_eq!(
         fs::read_dir(session.join("artifacts/revisions"))?.count(),
