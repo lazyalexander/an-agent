@@ -76,3 +76,46 @@ Historical Silk communication protocol/Silksong records are a different schema,
 not executable silks; no history is rewritten by the naming change.
 
 For the detailed audit and migration, see [the spool boundary](../crates/an-agent-host/SPOOL-BOUNDARY.md).
+
+## Implementation boundary audit
+
+The runtime dependency direction matches the intended ownership: runtime Cargo
+manifests do not depend on Loom, and Loom does not link runtime crates. Domain
+algorithms remain in release payloads/examples. A generated declaration requests
+capabilities; it cannot grant them. Registration publishes selected bytes without
+activating an execution.
+
+The host execution facade keeps its existing public functions and CLI:
+
+| Module | Owns | Must not own |
+| --- | --- | --- |
+| `execution/deployment.rs` | Deployment validation and immutable registration | Execution authorization or domain compilation |
+| `execution/mod.rs` | Public entrypoints and explicit backend selection | Inline backend implementation or packaging policy |
+| `execution/attempt.rs` | Input selection, allocation lock, operation identity, backend result reconciliation, output acceptance and receipt | Domain algorithms or backend isolation mechanisms |
+| `execution/admission.rs` | Kernel request/reply validation and final tape/audit settlement for the same attempt | Process spawning or artifact acceptance |
+| `execution/backend/` | Native/OpenShell translation to the existing execution contract | Release assembly or independent grants |
+| `settled_run`, `instance`, `artifact_versions`, `retention` | Evidence gates, committed state, product custody and collection | Interpretation of domain state or automatic recovery of external effects |
+
+The attempt carries its admitted identity through receipt production into audit
+settlement. Ordering is unchanged: selected input and plan, kernel admission,
+operation intent, executable publication, backend result reconciliation, candidate
+acceptance, receipt, audit and final settlement seal. A partial finish is not a
+settled run. Shared allocation locking still ends before independent execution;
+this refactor adds no global lifecycle lock, retries or weaker fallback.
+
+Loom's host adapter is deliberately coupled to qualified CLI/receipt formats.
+That is a development client dependency, not runtime ownership. Offline source
+inspection and build-receipt validation are not sandbox enforcement. The host
+still decides whether the received release and requested execution are admissible.
+
+### Limits retained by this refactor
+
+- Trusted in-process `SpoolBeat` embedding and isolated CLI attempts remain distinct
+  paths. A declaration does not sandbox an in-process body.
+- Deployment still supports bounded profiles, not arbitrary multi-silk releases or
+  a general mutable-kit execution contract.
+- Loom's host CLI transport is trusted operator tooling, not a sandbox for a
+  model-selected executable. Its response-size check occurs after capture.
+- No wire format, legacy name, CLI, permission scope or domain acceptance rule is
+  migrated here. A new profile must earn integration evidence before broadening
+  the interfaces; a generic plugin/control-plane framework is not a prerequisite.
