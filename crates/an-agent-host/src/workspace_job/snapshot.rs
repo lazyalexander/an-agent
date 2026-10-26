@@ -107,6 +107,16 @@ pub(super) fn prepare(plan: &Value, attempt: &Path, cancelled: &AtomicBool) -> R
         let pinned = plan["artifact_inputs"]
             .as_array()
             .and_then(|items| items.iter().find(|i| i["path"] == source["path"]));
+        let path = Path::new(target["path"].as_str().ok_or("snapshot path")?);
+        let cloned = pinned.is_none()
+            && super::snapshot_clone::create(
+                Path::new(source["path"].as_str().ok_or("source")?),
+                path,
+                64 * 1024 * 1024,
+            )?;
+        if cancelled.load(std::sync::atomic::Ordering::Acquire) {
+            return Err("snapshot preparation cancelled; no workload started".into());
+        }
         let bytes = if let Some(item) = pinned {
             let (bytes, binding) = crate::artifact_versions::read(
                 Path::new(item["catalog"].as_str().ok_or("catalog")?),
@@ -116,6 +126,8 @@ pub(super) fn prepare(plan: &Value, attempt: &Path, cancelled: &AtomicBool) -> R
                 return Err("pinned artifact binding changed".into());
             }
             bytes
+        } else if cloned {
+            regular(path, 64 * 1024 * 1024)?
         } else {
             regular(
                 Path::new(source["path"].as_str().ok_or("source")?),
@@ -125,8 +137,9 @@ pub(super) fn prepare(plan: &Value, attempt: &Path, cancelled: &AtomicBool) -> R
         if store::digest(&bytes) != source["sha256"] {
             return Err("approved input changed before snapshot".into());
         }
-        let path = Path::new(target["path"].as_str().ok_or("snapshot path")?);
-        store::write_new(path, &bytes)?;
+        if !cloned {
+            store::write_new(path, &bytes)?;
+        }
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;

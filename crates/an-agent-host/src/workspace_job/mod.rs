@@ -5,6 +5,7 @@ mod inventory;
 mod not_started;
 mod profile;
 mod snapshot;
+mod snapshot_clone;
 
 use crate::{
     execution::{Result, sandbox, store},
