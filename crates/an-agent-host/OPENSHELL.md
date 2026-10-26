@@ -90,7 +90,10 @@ The accepted file is a bounded untrusted snapshot, not proof of domain validity
 or a quiescent whole-filesystem snapshot. A background process may change guest
 bytes during capture; it cannot cause extra files to be imported. A late file
 never upgrades an already failed run. Receipt `artifact_accepted` records host
-publication; adapter `candidate_eligible` records the earlier lifecycle decision.
+publication into the retained run directory; adapter `candidate_eligible` records
+the earlier lifecycle decision. This is not immutable catalog acceptance:
+`artifact-import` currently requires native host settlement evidence and refuses
+OpenShell runs until a backend-specific host settlement contract is available.
 
 ## Evidence and recovery limits
 

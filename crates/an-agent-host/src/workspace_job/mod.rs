@@ -46,12 +46,14 @@ pub(super) fn record(root: &Path, id: &str) -> Result<(PathBuf, Value)> {
         || plan["root"] != json!(root)
         || receipt["termination_confirmed"] != true
         || receipt["reaped"] != true
-        || receipt.get("group_observation").is_some_and(|group| {
-            group["empty"] != true
-                || group["group"] != receipt["pid"]
-                || group.get("error").is_some()
-        })
-        || (receipt["status"] == "succeeded" && receipt["group_cleanup_required"] == true)
+        || !receipt["pid"]
+            .as_i64()
+            .is_some_and(|id| id > 0 && id <= i32::MAX as i64)
+        || receipt["group_observation"]["empty"] != true
+        || receipt["group_observation"]["group"] != receipt["pid"]
+        || receipt["group_observation"].get("error").is_some()
+        || receipt["group_cleanup_required"].as_bool().is_none()
+        || (receipt["status"] == "succeeded" && receipt["group_cleanup_required"] != false)
         || dir.join("successor.json").exists()
         || root.join("reclaim-intent.json").exists()
     {
