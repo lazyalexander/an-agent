@@ -325,6 +325,7 @@ fn run_selected(
     {
         return Err("unexpected admitted intent; no process started".into());
     }
+    control.validate_reply(thread, &reply)?;
     let intent = control.push_event("kit.execute", text)?;
     let operation = backend::Operation {
         run_id: run_id.to_string(),

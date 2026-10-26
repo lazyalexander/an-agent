@@ -34,6 +34,7 @@ them or turn a design requirement into an implemented guarantee.
 | CLI handoff pressure and input references | [Measurements and bounded decision](../crates/an-agent-host/HANDOFF-PRESSURE.md) |
 | Artifact revisions and human edits | [Artifact versions](../crates/an-agent-host/ARTIFACT-VERSIONS.md) |
 | Instance state and delivery | [Instance commits](../crates/an-agent-host/INSTANCE-STATE.md), [checkpoint/delivery](../crates/an-agent-host/CHECKPOINT-DELIVERY.md) |
+| Delivery authority | [Registration currentness and host landing](../crates/an-agent-core/DELIVERY-CURRENTNESS.md) |
 | Tape writer ownership | [Exclusive ownership and recovery](../crates/an-agent-core/TAPE-OWNERSHIP.md) |
 | Environment input identity | [Committed environment generations](../crates/an-agent-core/ENVIRONMENT.md) |
 | Model/context services | [Model/context](../crates/an-agent-host/MODEL-CONTEXT.md), [model CLI](../crates/an-agent-host/MODEL-CLI.md) |

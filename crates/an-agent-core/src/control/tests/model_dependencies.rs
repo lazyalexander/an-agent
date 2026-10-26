@@ -444,11 +444,24 @@ fn stale_delivery_is_rejected_before_any_external_model_call() {
         )
         .unwrap();
     let calls = install(&control, || {}, false);
-    review(control.offer(child, "npc").unwrap());
-    let (_, record) = quarantined(&control, child);
-    assert_eq!(record["phase"], "before_call");
-    assert!(record.get("receipt").is_none());
+    // Delivery now fences this mutation before model admission is reached.
+    assert!(matches!(
+        control.offer(child, "npc"),
+        Err(ControlError::ReviewStale(_))
+    ));
+    let events = control.events(child).unwrap();
+    assert!(
+        events
+            .iter()
+            .any(|e| e.tags.iter().any(|t| t == "delivery_stale"))
+    );
+    assert!(!events.iter().any(|e| {
+        e.tags
+            .iter()
+            .any(|t| t == "model_completion" || t == "applied")
+    }));
     assert_eq!(calls.load(Ordering::SeqCst), 0);
+    control.unmount_spool("npc").unwrap();
 }
 
 #[test]

@@ -261,6 +261,7 @@ fn invoke(
         return Err("model response hash mismatch".into());
     }
     std::str::from_utf8(&bytes)?;
+    control.validate_reply(thread, &reply)?;
     store::write_new(&output.join("output.txt"), &bytes)?;
     control.applied(thread, &reply, "Model response artifact persisted")?;
     Ok(observation)
