@@ -90,3 +90,5 @@ The toolchain is pinned via `rust-toolchain.toml`. Experiments stay outside the 
 
 See [architecture gates](ARCHITECTURE-GATES.md) for the TOML rules, existing-debt
 baseline, dependency boundaries and the separately locked SPACE-based checker.
+
+The [implementation boundary audit](doc/architecture.md#implementation-boundary-audit) maps current modules to developer, host, and backend responsibilities and records the remaining limits.
