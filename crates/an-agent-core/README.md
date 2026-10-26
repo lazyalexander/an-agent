@@ -13,7 +13,7 @@ The kernel. Spool constructors live in `an-agent-spool`. Bash registration and s
 | `control` | Host face. Opens a thread, advances, cancels, finishes, sends, and runs a granted tool. Adapts the independent `an-agent-supervision` state machine to trusted principals, permission ceilings, and tape evidence. Responses never schedule work automatically. |
 | `seat` | Who is mounted, and the one beat that may run. Shared by the host face and the recorder. |
 | `recorder` | File-workspace steward: `Wp`, sub-workspace log, and projection recovery. Not the host face. |
-| `workspace` | The host software's events, precise config snapshots, and replaceable env markdown. Not `Wp` and not the CAS crate. |
+| `workspace` | The host software's events, precise config snapshots, and [verified environment generations](ENVIRONMENT.md). Not `Wp` and not the CAS crate. |
 | `det_seam` | The determinism seam — the only place allowed to touch OS time and entropy. Enforced by `clippy.toml` disallowed-methods, not by reviewer vigilance. |
 
 ## Invariants (what a review should police)

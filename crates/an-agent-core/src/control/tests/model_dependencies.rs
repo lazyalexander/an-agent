@@ -450,3 +450,23 @@ fn stale_delivery_is_rejected_before_any_external_model_call() {
     assert!(record.get("receipt").is_none());
     assert_eq!(calls.load(Ordering::SeqCst), 0);
 }
+
+#[test]
+fn corrupt_environment_refuses_before_any_model_call() {
+    let (tmp, control, child, _) = setup();
+    let cite = control.workspace_cite().unwrap();
+    let blob = tmp
+        .path()
+        .join("workspace/env")
+        .join(cite.env_sha256.unwrap());
+    std::fs::write(&blob, b"uncommitted bytes").unwrap();
+    let calls = install(&control, || {}, false);
+    assert!(control.offer(child, "npc").is_err());
+    assert_eq!(calls.load(Ordering::SeqCst), 0);
+    assert!(!control.events(child).unwrap().iter().any(|event| {
+        event
+            .tags
+            .iter()
+            .any(|tag| tag == "applied" || tag == "model_completion")
+    }));
+}
