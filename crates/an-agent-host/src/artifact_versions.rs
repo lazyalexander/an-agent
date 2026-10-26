@@ -28,8 +28,8 @@ struct Revision {
     source: Value,
 }
 
-/// Import only an accepted file output. Receipt integrity is not authorship or
-/// domain correctness; the source run and catalog must be host-owned and private.
+/// Import a settled native file output under the source store lock. Evidence
+/// integrity is not authorship or domain correctness; host storage stays private.
 pub fn import(catalog: &Path, run: &Path) -> Result<Value> {
     store::no_links(run)?;
     store::no_links(catalog)?;
@@ -46,37 +46,34 @@ pub fn import(catalog: &Path, run: &Path) -> Result<Value> {
     if catalog_path.starts_with(run.canonicalize()?) {
         return Err("artifact catalog must be outside the source run".into());
     }
+    let run = run.canonicalize()?;
+    let runs = run.parent().ok_or("missing source runs directory")?;
+    if runs.file_name().and_then(|s| s.to_str()) != Some("runs") {
+        return Err("import requires a retained host STORE/runs/RUN directory".into());
+    }
+    let root = runs.parent().ok_or("missing source store")?;
+    let id = run
+        .file_name()
+        .and_then(|s| s.to_str())
+        .ok_or("missing run identity")?;
+    // Share the source execution/retention lock, then use their evidence gate.
+    // Unsupported backends cannot fall back to receipt-only publication.
+    let _source_lock = store::lock(root)?;
+    let accepted = crate::settled_run::accepted(root, id)?;
     let receipt_bytes = crate::file_job::regular(&run.join("receipt.json"), LIMIT)?;
     let receipt: Value = serde_json::from_slice(&receipt_bytes)?;
-    let run_id = receipt["run_id"]
-        .as_str()
-        .ok_or("missing source run identity")?;
-    uuid::Uuid::parse_str(run_id)?;
     let release = receipt["release"]
         .as_str()
         .filter(|s| store::valid_digest(s))
         .ok_or("missing source release identity")?;
-    if receipt["schema_version"] != 1
-        || receipt["status"] != "succeeded"
-        || receipt["exit_code"] != 0
-        || receipt["process"]["reaped"] != true
-        || receipt["artifact"]["path"] != "artifact.txt"
-    {
-        return Err("only a host-accepted successful file artifact can be imported".into());
-    }
-    let bytes = crate::file_job::regular(&run.join("artifact.txt"), LIMIT)?;
-    if receipt["artifact"]["sha256"] != store::digest(&bytes)
-        || receipt["artifact"]["bytes"].as_u64() != Some(bytes.len() as u64)
-    {
-        return Err("accepted artifact identity mismatch".into());
-    }
     publish(
         catalog,
-        &bytes,
+        &accepted.artifact,
         None,
         json!({"kind":"accepted-run",
-        "run_id":run_id,"release":release,
-        "receipt_sha256":store::digest(&receipt_bytes),"input_revision":{
+        "run_id":id,"release":release,
+        "receipt_sha256":store::digest(&receipt_bytes),
+        "settlement":accepted.evidence["settlement"],"input_revision":{
             "revision":receipt["input_revision"]["revision"],
             "content_sha256":receipt["input_revision"]["content_sha256"]}}),
     )

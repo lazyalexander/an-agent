@@ -61,6 +61,16 @@ or already-selected successor fences further continuation and collection. The
 predecessor and scratch inventory are bound into approval. No stale lock is
 removed and there is no automatic retry after an uncertain outcome.
 
+Acceptance, continuation and reclamation share the same receipt gate. It requires
+explicit `termination_confirmed=true`, `reaped=true`, a positive process ID, and
+an empty process-group observation bound to that ID without an observation error.
+`group_cleanup_required` must be a boolean; successful attempts must explicitly
+record `false`. Missing/null whole-round fields in older v1 receipts are not
+termination authority, including failed or cancelled receipts. They remain
+retained for inspection; these operations refuse rather than infer safe defaults,
+rewrite history or start a successor. Tests in `tests/workspace_job/settlement.rs`
+remove fields and exercise both previews and previously approved requests.
+
 Continuation preserves engine work files and cache at the same paths. The caller
 supplies the engine's own resume argument; the host does not reconstruct its
 internal task graph or infer which tasks should rerun. A resumed engine may

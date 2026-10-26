@@ -179,3 +179,6 @@ mod multi_silk;
 
 #[path = "workspace_job/large_handoff.rs"]
 mod large_handoff;
+
+#[path = "workspace_job/settlement.rs"]
+mod settlement;

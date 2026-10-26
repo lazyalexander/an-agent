@@ -22,6 +22,8 @@ mod instance;
 mod lifecycle;
 #[path = "file_runtime/revisions.rs"]
 mod revisions;
+#[path = "file_runtime/settlement.rs"]
+mod settlement;
 #[cfg(target_os = "macos")]
 #[path = "file_runtime/workspaces.rs"]
 mod workspaces;
