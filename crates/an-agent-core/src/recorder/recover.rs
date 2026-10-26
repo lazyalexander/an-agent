@@ -104,6 +104,7 @@ mod tests {
         fs::remove_file(dir.join("prompt")).unwrap();
         fs::remove_file(dir.join("config")).unwrap();
         fs::remove_file(dir.join("context")).unwrap();
+        drop(recorder);
         recover(&dir).unwrap();
         assert_eq!(fs::read_to_string(dir.join("prompt")).unwrap(), hash);
         assert_eq!(fs::read_to_string(dir.join("config")).unwrap(), "{\"a\":1}");
@@ -120,7 +121,9 @@ mod tests {
         let tmp = TempDir::new("recover-miss");
         let agent_id = Uuid::parse_str("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa").unwrap();
         let session = crate::agent::Session::create(tmp.path(), agent_id).unwrap();
-        let err = recover(session.root()).unwrap_err();
+        let dir = session.root().to_path_buf();
+        drop(session);
+        let err = recover(&dir).unwrap_err();
         assert!(matches!(err, RecoverError::Missing("prompt")));
     }
 }

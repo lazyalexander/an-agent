@@ -186,7 +186,13 @@ mod tests {
             })
             .unwrap();
         assert_eq!(session.tape().read_all().unwrap().len(), 1);
-        let reopened = Session::open(tmp.path(), agent, session.id()).unwrap();
+        let id = session.id();
+        assert!(matches!(
+            Session::open(tmp.path(), agent, id),
+            Err(SessionError::Store(StoreError::WriterBusy(_)))
+        ));
+        drop(session);
+        let reopened = Session::open(tmp.path(), agent, id).unwrap();
         assert_eq!(reopened.tape().read_all().unwrap().len(), 1);
     }
 
