@@ -13,7 +13,7 @@ fn proposal(base: &Path, request: &Value, code: &str) -> Result<PathBuf> {
     Ok(path)
 }
 fn apply(root: &Path, path: &Path) -> Result<Value> {
-    let p = spool::weaver::apply(root, path, None)?;
+    let p = spool::kit_proposal::apply(root, path, None)?;
     spool::weaver::apply(root, path, p["approval_sha256"].as_str())
 }
 
@@ -28,7 +28,7 @@ fn proposal_slot_rejects_stale_revoked_foreign_and_protected_edits() -> Result<(
     spool::load(&bundle, &b)?;
     assert!(spool::weaver::request(&a, "../silk/main.sh").is_err());
     assert!(spool::weaver::request(&a, "report.sh").is_err());
-    let r = spool::weaver::request(&a, "transform.sh")?;
+    let r = spool::kit_proposal::request(&a, "transform.sh")?;
     let p = proposal(&base, &r, "printf adapted\n")?;
     assert!(apply(&b, &p).is_err());
     let mut invalid: Value = serde_json::from_slice(&fs::read(&p)?)?;

@@ -1,13 +1,15 @@
 //! Release-bound native spool facade over qualified workspace execution.
 //! This reviewed-tool profile is not hostile process-tree containment.
 mod bundle;
+pub mod kit_proposal;
 mod lifecycle;
 mod run;
-pub mod weaver;
 use crate::{
     execution::{Result, store},
     file_job::regular,
 };
+/// Legacy module alias; wire schemas and stored tickets retain their identities.
+pub use kit_proposal as weaver;
 pub use lifecycle::{load, show, unload, update_kit};
 pub use run::{accept, reclaim, start};
 use serde_json::{Value, json};
