@@ -263,3 +263,25 @@ Rust host debug checks while avoiding unoptimized hashing as a CI speed requirem
 Python or TypeScript may drive external acceptance scenarios; moving assertions
 out of Rust does not accelerate the host's snapshot or hashing path. Persistence
 ordering and fault windows remain tested against the Rust implementation.
+
+## Preserving a reviewed input tree
+
+`an-workspace-job-v2` accepts an optional `input_layout` array parallel to
+`inputs`. Omission or an empty array retains the existing basename layout and
+CLI behavior. A nonempty array must name every input with a unique portable
+relative path. For example, two sources can map to `project/silk/main.sh` and
+`project/kit/main.sh`, even when their source basenames match.
+
+The host checks traversal, duplicate destinations, file/directory prefix
+collisions and a 16-component depth limit. Existing file-count and byte limits
+are unchanged. The mapping participates in preview approval, immutable input
+snapshots, execution identity and acceptance reconciliation. Parent directories
+are created only under the host-owned snapshot with existing no-link checks.
+`{input:N}` resolves the selected leaf; `{inputs}` remains the snapshot root.
+The workload cannot edit this tree. Writable results belong under `{work}`.
+
+Loom uses this general file mapping to check a frozen candidate project. The
+host does not parse Loom tasks, select domain tests, package releases or evaluate
+business correctness. An operator still reviews the generated profile and
+approves execution and formal output acceptance separately. The existing native
+trusted-process-group scope is unchanged; this is not hostile-agent containment.

@@ -20,6 +20,9 @@ pub(super) struct Profile {
     pub environment: BTreeMap<String, String>,
     pub readonly: Vec<PathBuf>,
     pub inputs: Vec<PathBuf>,
+    /// Optional relative snapshot paths, in input order. Empty preserves basenames.
+    #[serde(default)]
+    input_layout: Vec<String>,
     pub outputs: Vec<String>,
     #[serde(default)]
     binary_outputs: Vec<String>,
@@ -67,9 +70,12 @@ impl Profile {
         if exe.starts_with(root) {
             return Err("selected executable must be outside the job".into());
         }
+        if !p.input_layout.is_empty() && p.input_layout.len() != p.inputs.len() {
+            return Err("input layout must name every selected input".into());
+        }
         let mut inputs = Vec::new();
         let mut total = 0usize;
-        for file in &p.inputs {
+        for (index, file) in p.inputs.iter().enumerate() {
             let path = file.canonicalize()?;
             if path == exe || path.starts_with(root) || roots.iter().any(|r| path.starts_with(r)) {
                 return Err(
@@ -80,9 +86,12 @@ impl Profile {
                 .file_name()
                 .and_then(|n| n.to_str())
                 .ok_or("input requires a UTF-8 basename")?;
-            if name.contains(['{', '}']) || inputs.iter().any(|i: &Value| i["name"] == name) {
-                return Err("selected inputs require unique basenames".into());
-            }
+            let name = p
+                .input_layout
+                .get(index)
+                .map(String::as_str)
+                .unwrap_or(name);
+            super::snapshot::validate_name(name, &inputs)?;
             let bytes = regular(&path, 64 * 1024 * 1024)?;
             total += bytes.len();
             if total > 100 * 1024 * 1024 {
@@ -179,3 +188,7 @@ pub(super) fn verify_inputs(plan: &Value) -> Result<()> {
     }
     Ok(())
 }
+
+#[cfg(all(test, unix))]
+#[path = "profile_tests.rs"]
+mod tests;

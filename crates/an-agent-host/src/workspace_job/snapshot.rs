@@ -20,10 +20,7 @@ pub(super) fn launch(plan: &Value, attempt: &Path) -> Result<Value> {
     let mut inputs = Vec::new();
     for input in plan["inputs"].as_array().ok_or("missing selected inputs")? {
         let name = input["name"].as_str().ok_or("missing snapshot name")?;
-        super::inventory::relative(name)?;
-        if Path::new(name).components().count() != 1 {
-            return Err("snapshot name must be a basename".into());
-        }
+        validate_name(name, &inputs)?;
         inputs.push(json!({"path":input_root.join(name),"sha256":input["sha256"],"name":name}));
     }
     let resolve = |text: &str| -> Result<String> {
@@ -108,6 +105,7 @@ pub(super) fn prepare(plan: &Value, attempt: &Path, cancelled: &AtomicBool) -> R
             .as_array()
             .and_then(|items| items.iter().find(|i| i["path"] == source["path"]));
         let path = Path::new(target["path"].as_str().ok_or("snapshot path")?);
+        create_parents(&input_root(attempt), path)?;
         let cloned = pinned.is_none()
             && super::snapshot_clone::create(
                 Path::new(source["path"].as_str().ok_or("source")?),
@@ -179,3 +177,35 @@ pub(super) fn verified(attempt: &Path, plan: &Value, receipt: &Value) -> Result<
 #[cfg(test)]
 #[path = "snapshot_tests.rs"]
 mod tests;
+
+/// Layout is data, never authority; reject aliasing and file/directory collisions.
+pub(super) fn validate_name(name: &str, prior: &[Value]) -> Result<()> {
+    super::inventory::relative(name)?;
+    if name.contains(['{', '}'])
+        || name.split('/').count() > 16
+        || prior.iter().any(|i| {
+            i["name"].as_str().is_some_and(|old| {
+                name == old
+                    || name.starts_with(&format!("{old}/"))
+                    || old.starts_with(&format!("{name}/"))
+            })
+        })
+    {
+        return Err("snapshot paths must be unique and non-overlapping".into());
+    }
+    Ok(())
+}
+
+fn input_root(attempt: &Path) -> PathBuf {
+    attempt.join("snapshot/inputs")
+}
+
+fn create_parents(root: &Path, file: &Path) -> Result<()> {
+    let parent = file.parent().ok_or("snapshot parent")?;
+    let mut path = root.to_path_buf();
+    for part in parent.strip_prefix(root)?.components() {
+        path.push(part);
+        store::directory(&path)?;
+    }
+    Ok(())
+}
