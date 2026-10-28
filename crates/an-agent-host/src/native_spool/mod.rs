@@ -3,6 +3,7 @@
 mod bundle;
 pub mod kit_proposal;
 mod lifecycle;
+mod requirements;
 mod run;
 use crate::{
     execution::{Result, store},

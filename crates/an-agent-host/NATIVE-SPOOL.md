@@ -198,3 +198,22 @@ The canonical module is `native_spool::kit_proposal`. The old `weaver` module,
 tickets and v1 schemas remain compatible. `kit_proposal_slot` advertises the
 canonical name. This slot receives edits; it does not prepare harness tasks,
 review generated code or launch an agent. Those future roles use the Weaver name.
+
+## Explicit native v2 requirements
+
+The host also accepts `an-native-spool-v2`, with the v1 fields plus a required
+`requirements` object. V1 with requirements and v2 without requirements refuse.
+The initial admitted values are runtime `macos-native-process-v1`, OS `macos`,
+architecture `portable-source`, interaction `headless`, GPU `none`, one portable
+text input-slot name, no additional dependencies, and exactly the capability
+requests `read-input` and `write-declared-outputs`. Editable paths must be unique
+selected kit paths; unlike legacy v1, a kit payload is not implicitly editable.
+
+Admission happens before instance creation and is checked again when the release
+is read for execution. Unsupported target/GPU/application requirements, unknown
+capabilities and unresolved dependencies refuse; they never select a weaker
+backend. Show reports requested requirements, while start approval binds the
+actual fixed workspace policy. Capability labels do not grant authority.
+V2 is currently macOS-only. Linux packaging and future backend contracts must
+not be confused with qualified execution. GPU CLI execution and shuttle-mediated
+application interaction are separate capabilities; neither is implemented here.

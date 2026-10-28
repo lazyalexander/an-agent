@@ -47,6 +47,7 @@ pub fn load(package: &Path, destination: &Path) -> Result<Value> {
 pub fn show(path: &Path) -> Result<Value> {
     let root = location(path)?;
     let (mut record, bundle) = state(&root)?;
+    record["requested_requirements"] = json!(bundle.manifest.requirements);
     record["loaded"] = json!(!root.join("unloaded.json").exists());
     record["operation_locked"] = json!(root.join("host.lock").exists());
     record["capabilities"] = json!({"start":cfg!(target_os="macos"),"cancel":"running CLI SIGINT/SIGTERM", "pause":false,"suspend":false,"weaver":false,"weaver_proposal_slot":true,"kit_proposal_slot":true});
@@ -88,6 +89,7 @@ pub fn update_kit(path: &Path, name: &str, source: &Path, approved: Option<&str>
     let _lock = store::lock(&root)?;
     let (instance, bundle) = active(&root)?;
     let selected = format!("kit/{name}");
+    super::requirements::editable(&bundle.manifest, &selected)?;
     if !bundle.payload.contains_key(&selected) {
         return Err("not a declared kit working copy".into());
     }
@@ -105,6 +107,8 @@ pub fn update_kit(path: &Path, name: &str, source: &Path, approved: Option<&str>
 }
 
 pub(super) fn commit_kit(root: &Path, selected: &str, bytes: &[u8], plan: &Value) -> Result<()> {
+    let (_, bundle) = active(root)?;
+    super::requirements::editable(&bundle.manifest, selected)?;
     let target = root.join(selected);
     let pending = root.join(format!(
         "{}.pending",

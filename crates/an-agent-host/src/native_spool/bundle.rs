@@ -20,6 +20,8 @@ pub(super) struct Manifest {
     pub entry: String,
     pub files: BTreeMap<String, String>,
     pub outputs: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub requirements: Option<super::requirements::Requirements>,
 }
 
 pub(super) fn identifier(text: &str) -> Result<()> {
@@ -48,8 +50,11 @@ pub(super) fn read(root: &Path) -> Result<Bundle> {
     let m: Manifest = serde_json::from_slice(&bytes)?;
     identifier(&m.name)?;
     identifier(&m.version)?;
-    if m.schema != "an-native-spool-v1"
-        || m.files.is_empty()
+    super::requirements::validate(&m)?;
+    if !matches!(
+        m.schema.as_str(),
+        "an-native-spool-v1" | "an-native-spool-v2"
+    ) || m.files.is_empty()
         || m.files.len() > 12
         || m.outputs.is_empty()
         || m.outputs.len() > 16
