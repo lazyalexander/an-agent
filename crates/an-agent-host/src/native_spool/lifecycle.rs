@@ -49,7 +49,7 @@ pub fn show(path: &Path) -> Result<Value> {
     let (mut record, bundle) = state(&root)?;
     record["loaded"] = json!(!root.join("unloaded.json").exists());
     record["operation_locked"] = json!(root.join("host.lock").exists());
-    record["capabilities"] = json!({"start":cfg!(target_os="macos"),"cancel":"running CLI SIGINT/SIGTERM", "pause":false,"suspend":false,"weaver":false,"weaver_proposal_slot":true});
+    record["capabilities"] = json!({"start":cfg!(target_os="macos"),"cancel":"running CLI SIGINT/SIGTERM", "pause":false,"suspend":false,"weaver":false,"weaver_proposal_slot":true,"kit_proposal_slot":true});
     let mut kits = serde_json::Map::new();
     for path in bundle.payload.keys().filter(|p| p.starts_with("kit/")) {
         kits.insert(

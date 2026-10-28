@@ -137,14 +137,14 @@ unloads and loads a fresh instance. Neither repository links the other's runtime
 Managed runs carry a `spool-owner.json` marker. Public standalone workspace run, acceptance, and reclamation commands reject these jobs; callers must use the owning spool commands so the instance operation lock and ownership checks remain in force. This is an API lifecycle fence, not protection against a host user modifying the control store.
 
 
-## Optional weaver proposal slot
+## Optional kit proposal slot
 
 The host now exposes a file exchange slot, not a model loop or plugin launcher:
 
 ```text
-spool-weaver-request INSTANCE KIT_BASENAME
-spool-weaver-apply INSTANCE PROPOSAL_JSON [--approve HASH]
-spool-weaver-revoke INSTANCE REQUEST_UUID
+spool-kit-proposal-request INSTANCE KIT_BASENAME
+spool-kit-proposal-apply INSTANCE PROPOSAL_JSON [--approve HASH]
+spool-kit-proposal-revoke INSTANCE REQUEST_UUID
 ```
 
 A request returns `request` and `request_sha256`. The selected request carries the
@@ -192,3 +192,9 @@ the worker and reports its result. When `AN_AGENT_ACCEPTANCE_DIR` is set, per-ca
 ready/settled evidence is retained under `clone-handoff/` by the existing CI artifact
 step. File size, fixed-version assertions, cancellation checks, and production
 deadlines are unchanged. Preparation performance remains measurable follow-up work.
+
+The canonical module is `native_spool::kit_proposal`. The old `weaver` module,
+`spool-weaver-*` commands, `weaver_proposal_slot` capability, on-disk `weaver/`
+tickets and v1 schemas remain compatible. `kit_proposal_slot` advertises the
+canonical name. This slot receives edits; it does not prepare harness tasks,
+review generated code or launch an agent. Those future roles use the Weaver name.

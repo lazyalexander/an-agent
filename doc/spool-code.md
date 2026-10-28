@@ -92,30 +92,25 @@ It must also reject attempted silk/policy edits and preserve immutable release
 bytes. Reuse existing host and Loom contracts; do not introduce a generic pipeline
 engine, a new backend or blanket code-execution authority to make the example pass.
 
-## Weaver ownership and the initial proposal slot
+## Implementation order: spool, then Weaver
 
-A weaver is a replaceable agent-harness adapter managed by the an-agent host,
-not an embedded domain policy engine in Loom or core. Spools supply domain
-instructions, kit interfaces, protected silk, and acceptance checks. Loom prepares
-and validates those declarations at development and packaging time.
+First qualify the spool product boundary: immutable release, independent loaded
+instances, stable silk, scoped kit working copies, selected inputs, fixed-version
+outputs, cancellation/termination fencing, safe collection and baseline reload.
+Use the existing host and Loom contracts. Record unsupported lifecycle features
+such as pause/suspend explicitly; choose later work from real product needs.
 
-The host selects an adapter and grants an invocation scoped to an instance,
-release, selected inputs, editable kit paths, and a deadline. The adapter translates
-that task to a mature coding tool and returns proposed changes and evidence.
-Permission requests, external effects, cancellation, and artifact acceptance still
-pass through host authority; neither model text nor plugin output grants access.
-Prefer an out-of-process CLI adapter over loading third-party executable code into
-the trusted host process. A host-managed plugin is not inherently host-trusted.
+Then qualify Weaver as task preparation for a mature harness and candidate review.
+Loom supplies development contracts and packaging checks; the host authorizes and
+supervises execution; the spool supplies domain instructions and acceptance rules.
+An adapter may reuse a mature external harness, whose native context remains its
+own. Do not infer code authorship from submission identity. Review exact candidate
+bytes regardless of whether a human, model or transformation produced them.
 
-A proposal must bind its original kit digest. The host rejects stale edits,
-protected-path changes, late results from cancelled generations, and publication
-before confirmed termination. Weaver context may remain harness-owned; the host
-records invocation identity, grants, selected versions, termination and accepted
-changes rather than claiming to reproduce the harness's internal tape.
-
-The native host implements a bounded file proposal slot, documented in
-[NATIVE-SPOOL.md](../crates/an-agent-host/NATIVE-SPOOL.md). This is not plugin
-loading or hostile-agent containment. The current reviewed-native profile must not be used to claim those
-guarantees. First validate one bounded between-run edit adapter, reusing existing
-execution and custody controls; do not introduce a plugin marketplace or a second
-agent loop.
+The current host mechanism is named **kit proposal slot**, exposed through
+`native_spool::kit_proposal` and `spool-kit-proposal-*`. It admits a bounded edit
+against instance, release, generation and original-content preconditions. It is
+not the future Weaver task preparer or reviewer. Existing `weaver` module/CLI,
+schemas, capability and stored-ticket names remain compatibility identities.
+Revocation closes result admission without proving an external agent stopped.
+See [the native contract](../crates/an-agent-host/NATIVE-SPOOL.md).

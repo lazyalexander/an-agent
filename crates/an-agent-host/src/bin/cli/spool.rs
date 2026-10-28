@@ -4,13 +4,19 @@ use an_agent_host::native_spool as spool;
 
 pub(super) fn dispatch(command: &str, args: &[String]) -> Result<Value> {
     match (command, args) {
-        ("spool-weaver-request", [root, name]) => spool::weaver::request(Path::new(root), name),
-        ("spool-weaver-revoke", [root, id]) => spool::weaver::revoke(Path::new(root), id),
-        ("spool-weaver-apply", [root, response]) => {
-            spool::weaver::apply(Path::new(root), Path::new(response), None)
+        ("spool-kit-proposal-request" | "spool-weaver-request", [root, name]) => {
+            spool::kit_proposal::request(Path::new(root), name)
         }
-        ("spool-weaver-apply", [root, response, flag, hash]) if flag == "--approve" => {
-            spool::weaver::apply(Path::new(root), Path::new(response), Some(hash))
+        ("spool-kit-proposal-revoke" | "spool-weaver-revoke", [root, id]) => {
+            spool::kit_proposal::revoke(Path::new(root), id)
+        }
+        ("spool-kit-proposal-apply" | "spool-weaver-apply", [root, response]) => {
+            spool::kit_proposal::apply(Path::new(root), Path::new(response), None)
+        }
+        ("spool-kit-proposal-apply" | "spool-weaver-apply", [root, response, flag, hash])
+            if flag == "--approve" =>
+        {
+            spool::kit_proposal::apply(Path::new(root), Path::new(response), Some(hash))
         }
         ("spool-load", [package, root]) => spool::load(Path::new(package), Path::new(root)),
         ("spool-show", [root]) => spool::show(Path::new(root)),

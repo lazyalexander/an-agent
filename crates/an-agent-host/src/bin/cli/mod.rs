@@ -63,6 +63,9 @@ pub(super) fn run(args: Vec<String>) -> Result<()> {
         | "spool-accept"
         | "spool-reclaim"
         | "spool-unload"
+        | "spool-kit-proposal-request"
+        | "spool-kit-proposal-apply"
+        | "spool-kit-proposal-revoke"
         | "spool-weaver-request"
         | "spool-weaver-apply"
         | "spool-weaver-revoke" => spool::dispatch(command, args)?,
