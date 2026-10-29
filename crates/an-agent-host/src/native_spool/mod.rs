@@ -7,6 +7,7 @@ pub mod kit_proposal;
 mod lifecycle;
 mod requirements;
 mod run;
+mod status;
 use crate::{
     execution::{Result, store},
     file_job::regular,
@@ -16,6 +17,7 @@ pub use kit_proposal as weaver;
 pub use lifecycle::{load, show, unload, update_kit};
 pub use run::{accept, reclaim, start};
 use serde_json::{Value, json};
+pub use status::status;
 use std::{
     fs,
     path::{Path, PathBuf},

@@ -231,3 +231,6 @@ mod weaver;
 
 #[path = "native_spool/artifacts.rs"]
 mod artifacts;
+
+#[path = "native_spool/status.rs"]
+mod status;
