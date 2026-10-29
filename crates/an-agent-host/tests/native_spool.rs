@@ -228,3 +228,6 @@ fn cancelling_one_instance_cannot_unload_edit_or_claim_another() -> Result<()> {
 
 #[path = "native_spool/weaver.rs"]
 mod weaver;
+
+#[path = "native_spool/artifacts.rs"]
+mod artifacts;

@@ -1,5 +1,7 @@
 //! Release-bound native spool facade over qualified workspace execution.
 //! This reviewed-tool profile is not hostile process-tree containment.
+mod artifacts;
+pub use artifacts::artifacts;
 mod bundle;
 pub mod kit_proposal;
 mod lifecycle;
