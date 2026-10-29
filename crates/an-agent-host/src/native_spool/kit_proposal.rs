@@ -51,6 +51,7 @@ pub fn request(path: &Path, name: &str) -> Result<Value> {
     let _lock = store::lock(&root)?;
     let (instance, bundle) = active(&root)?;
     let kit = format!("kit/{name}");
+    super::requirements::editable(&bundle.manifest, &kit)?;
     if !bundle.payload.contains_key(&kit) {
         return Err("weaver requires a declared editable kit".into());
     }
@@ -106,6 +107,7 @@ pub fn apply(path: &Path, proposal: &Path, approved: Option<&str>) -> Result<Val
     let root = location(path)?;
     let _lock = store::lock(&root)?;
     let (instance, bundle) = active(&root)?;
+    super::requirements::editable(&bundle.manifest, &p.kit)?;
     let (request, request_bytes, done) = ticket(&root, &p.request)?;
     if request["instance"] != instance["instance"]
         || request["release"] != instance["release"]

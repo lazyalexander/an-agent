@@ -1,0 +1,69 @@
+//! Strict admission for the first explicit runtime-requirements contract.
+use super::{Result, bundle};
+use serde::{Deserialize, Serialize};
+use std::collections::BTreeSet;
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct Requirements {
+    runtime: String,
+    os: String,
+    arch: String,
+    interaction: String,
+    gpu: String,
+    inputs: Vec<String>,
+    pub editable: Vec<String>,
+    capabilities: Vec<String>,
+    dependencies: Vec<String>,
+}
+pub(super) fn validate(m: &bundle::Manifest) -> Result<()> {
+    let r = match (m.schema.as_str(), &m.requirements) {
+        ("an-native-spool-v1", None) => return Ok(()),
+        ("an-native-spool-v2", Some(r)) => r,
+        _ => return Err("native schema and requirements must agree".into()),
+    };
+    if r.runtime != "macos-native-process-v1"
+        || r.os != "macos"
+        || !cfg!(target_os = "macos")
+        || r.arch != "portable-source"
+        || r.interaction != "headless"
+        || r.gpu != "none"
+    {
+        return Err(
+            "unsupported native runtime, OS, architecture, interaction or GPU requirement".into(),
+        );
+    }
+    if !r.dependencies.is_empty() {
+        return Err("unresolved native dependencies".into());
+    }
+    if r.inputs.len() != 1 {
+        return Err("native v2 requires one text input slot".into());
+    }
+    bundle::identifier(&r.inputs[0])?;
+    let requested: BTreeSet<_> = r.capabilities.iter().map(String::as_str).collect();
+    if requested.len() != r.capabilities.len()
+        || requested != BTreeSet::from(["read-input", "write-declared-outputs"])
+    {
+        return Err("unsupported capability set for fixed native profile".into());
+    }
+    let mut seen = BTreeSet::new();
+    for path in &r.editable {
+        if !path.starts_with("kit/") || !m.files.contains_key(path) || !seen.insert(path) {
+            return Err("editable path must be a unique selected kit file".into());
+        }
+    }
+    Ok(())
+}
+
+pub(super) fn editable(m: &bundle::Manifest, path: &str) -> Result<()> {
+    if m.requirements
+        .as_ref()
+        .is_some_and(|r| !r.editable.iter().any(|p| p == path))
+    {
+        return Err("kit path is not editable in this release".into());
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+#[path = "requirements_tests.rs"]
+mod tests;
