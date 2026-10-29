@@ -4,6 +4,7 @@ use an_agent_host::native_spool as spool;
 
 pub(super) fn dispatch(command: &str, args: &[String]) -> Result<Value> {
     match (command, args) {
+        ("spool-artifacts", [root, run]) => spool::artifacts(Path::new(root), run),
         ("spool-kit-proposal-request" | "spool-weaver-request", [root, name]) => {
             spool::kit_proposal::request(Path::new(root), name)
         }

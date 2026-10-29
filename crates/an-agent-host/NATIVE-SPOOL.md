@@ -217,3 +217,18 @@ actual fixed workspace policy. Capability labels do not grant authority.
 V2 is currently macOS-only. Linux packaging and future backend contracts must
 not be confused with qualified execution. GPU CLI execution and shuttle-mediated
 application interaction are separate capabilities; neither is implemented here.
+
+## Discovering accepted artifact versions
+
+`spool-artifacts INSTANCE RUN` is a read-only host query returning instance,
+release, run, artifact catalog and fixed output revision bindings. It requires
+confirmed settlement and matching native/workspace acceptance records, validates
+the accepted inventory and each retained revision's bytes and provenance, and
+never promotes scratch files. It remains available after scratch reclamation
+and instance unload. Use existing artifact-checkout to materialize a selected
+version for a downstream input. No mutable latest pointer is introduced.
+
+Loom continues to declare outputs in the release and owns no runtime catalog.
+The command works for both native v1 and v2. Missing acceptance, uncertain
+termination, foreign records and changed content refuse. An existing filename or
+a successful exit alone does not establish a formal artifact.

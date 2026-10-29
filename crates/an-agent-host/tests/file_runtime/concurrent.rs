@@ -153,7 +153,7 @@ fn main() {
     let input = fs::read_to_string("input.txt").unwrap();
     fs::write("output.txt", "started").unwrap();
     if input == "cancel-me" { loop { thread::sleep(Duration::from_millis(10)); } }
-    if input == "peer-v1" { thread::sleep(Duration::from_millis(4000)); }
+    if input == "peer-v1" { while fs::read_to_string("output.txt").unwrap_or_default() != "release-peer" { thread::sleep(Duration::from_millis(10)); } }
     fs::write("output.txt", input).unwrap();
 }
 "#,
@@ -264,6 +264,8 @@ fn main() {
     let v2 = artifact_versions::edit(&catalog, revision, &edit, &revisions::digest(b"peer-v2"))?;
     assert_ne!(v2["revision"], revision);
     record("new_input_revision_published");
+    // Release only after cancellation, collection, restart and input-version change.
+    fs::write(b_run.join("work/output.txt"), b"release-peer")?;
     assert_eq!(finish(b, "succeeded")?, b_run);
     record("peer_completed");
     assert_eq!(fs::read(b_run.join("artifact.txt"))?, b"peer-v1");
