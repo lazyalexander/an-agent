@@ -285,3 +285,6 @@ mod status;
 
 #[path = "native_spool/reconcile.rs"]
 mod reconcile;
+
+#[path = "native_spool/run_reconcile.rs"]
+mod run_reconcile;

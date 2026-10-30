@@ -43,6 +43,17 @@ pub(super) fn record(root: &Path, id: &str) -> Result<(PathBuf, Value)> {
     record_inner(root, id, false)
 }
 
+/// Reconcile a completed native execution without launching or changing custody.
+pub(crate) fn verified_execution_record(root: &Path, id: &str) -> Result<(Value, Value)> {
+    let (dir, receipt) = record(root, id)?;
+    if receipt["schema"] != "an-workspace-receipt-v1" {
+        return Err("execution reconciliation requires a completed process receipt".into());
+    }
+    let plan: Value = serde_json::from_slice(&regular(&dir.join("plan.json"), 2 * 1024 * 1024)?)?;
+    snapshot::verified(&dir, &plan, &receipt)?;
+    Ok((plan, receipt))
+}
+
 /// Read settlement after explicit collection; never authorizes another execution.
 pub(crate) fn archived_record(root: &Path, id: &str) -> Result<(PathBuf, Value)> {
     let intent = regular(&root.join("reclaim-intent.json"), 2 * 1024 * 1024)?;

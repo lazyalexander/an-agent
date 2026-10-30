@@ -4,6 +4,10 @@ use an_agent_host::native_spool as spool;
 
 pub(super) fn dispatch(command: &str, args: &[String]) -> Result<Value> {
     match (command, args) {
+        ("spool-reconcile-run", [root, run]) => spool::reconcile_run(Path::new(root), run, None),
+        ("spool-reconcile-run", [root, run, flag, hash]) if flag == "--approve" => {
+            spool::reconcile_run(Path::new(root), run, Some(hash))
+        }
         ("spool-reconcile-accept", [root, run]) => {
             spool::reconcile_accept(Path::new(root), run, None)
         }
