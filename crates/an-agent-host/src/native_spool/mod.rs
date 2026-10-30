@@ -9,6 +9,8 @@ mod reconcile;
 mod requirements;
 pub use reconcile::reconcile_accept;
 mod run;
+mod run_reconcile;
+pub use run_reconcile::reconcile_run;
 mod status;
 use crate::{
     execution::{Result, store},

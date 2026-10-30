@@ -51,6 +51,7 @@ per instance. A used run name is never automatically retried.
 ```text
 an-agent-host spool-load PACKAGE NEW_INSTANCE
 an-agent-host spool-show INSTANCE
+an-agent-host spool-reconcile-run INSTANCE RUN [--approve DIGEST]
 an-agent-host spool-kit-update INSTANCE BASENAME SOURCE [--approve DIGEST]
 an-agent-host spool-kit-reset INSTANCE BASENAME [--approve DIGEST]
 an-agent-host spool-start INSTANCE RUN INPUT SECONDS [--approve DIGEST]
@@ -286,3 +287,25 @@ When reset changes kit bytes, earlier start approvals for different bytes are
 invalid. Every approved reset records an edit generation, so old proposals stay
 stale even after an edit-away/edit-back cycle. It grants no execution. Inspect and separately approve the
 next start. Existing load/unload/fresh-directory baseline restoration still works.
+
+
+## Reconciling a missing execution result
+
+`spool-reconcile-run INSTANCE RUN [--approve DIGEST]` explicitly repairs a missing
+outer result.json when one intact workspace attempt already confirms process
+termination. It verifies instance/release/run ownership, the original start plan,
+profile identity, workspace intent, receipt, execution mapping and snapshot bytes.
+It writes only the derived result record after approval. Matching existing records
+are a verified no-op; conflicting records are never overwritten.
+
+This does not launch, retry, accept output, clear locks or infer termination from
+a PID. Missing/uncertain receipts, unstarted attempts, multiple attempts, changed
+snapshots, foreign bindings and reclaimed workspaces refuse. Preserve those
+states for investigation. A repaired successful run still requires explicit
+spool-accept; a failed/cancelled run remains ineligible for acceptance. Normal
+reclamation/unload become available only under their existing evidence checks.
+
+Real filesystem-failure tests complete successful and failed workloads while a
+directory blocks the final result write. They then verify explicit repair, no
+additional attempt or publication, negative evidence cases and normal custody.
+This is not arbitrary crash recovery or a power-loss durability claim.
