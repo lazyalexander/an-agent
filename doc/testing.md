@@ -67,3 +67,35 @@ separately where tooling permits. Record runner/platform, revisions, toolchain,
 cache state and repeated measurements; distinguish cold from warm runs. Python
 can remove Rust test compilation but cannot remove product compilation. Do not
 claim a speedup from a single combined CI duration or a changed runner.
+
+
+## CI dependency caching
+
+Host CI installs the toolchain selected by the repository's `rust-toolchain.toml`
+through rustup, including its declared components. Do not install a separate
+moving `stable` version before selecting the pinned version.
+
+The pinned [rust-cache action](https://github.com/Swatinem/rust-cache) covers both
+`. -> target` and `tools/archcheck -> target` in one cache operation. These remain
+independent Cargo workspaces and build directories. The action keys dependencies
+by compiler and Cargo configuration/lockfiles; our additional key separates
+runner OS and architecture. The `host-deps-v1` prefix provides an explicit cache
+namespace. Default dependency-only caching keeps project compilation and all
+checks active; cached binaries are never treated as passed acceptance evidence.
+The action disables Cargo incremental compilation for this CI cache strategy.
+
+Registry/git dependencies and dependency build outputs are cached, not lifecycle
+receipts, workspace products, credentials or test results. Installed Cargo
+binaries are excluded. Cache restoration cannot skip formatting, compilation,
+workspace tests, Clippy, architecture-tool tests/lint or the architecture gate.
+Existing job names, OS matrix, timeout and evidence upload remain unchanged.
+GitHub's normal cache scope applies; a PR cache is not a new runtime trust grant.
+
+To measure a cache change, first run the PR in a fresh namespace and confirm a
+miss in its cache logs. After that run finishes successfully and saves the cache,
+rerun the same commit and record the exact-hit observation. Compare per-OS job
+and step durations including cache restore/save, not only compilation. A completed
+CI rerun is a fresh test run, not a retry of an unknown product operation. Do not
+flush unrelated caches or increase timeouts to improve the comparison. Preserve
+run/attempt links in the PR and distinguish runner variance from established
+improvements. Cache misses remain fully supported and must pass the same gates.
