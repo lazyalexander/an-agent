@@ -232,3 +232,23 @@ Loom continues to declare outputs in the release and owns no runtime catalog.
 The command works for both native v1 and v2. Missing acceptance, uncertain
 termination, foreign records and changed content refuse. An existing filename or
 a successful exit alone does not establish a formal artifact.
+
+## Run monitoring
+
+`spool-status INSTANCE RUN` is an observation-only query. It returns a stable
+phase (`prepared`, `unconfirmed`, `running-or-unconfirmed`, `settled`, `accepted`,
+`reclaimed`), execution outcome, termination confirmation and separate artifact
+status. Missing, inconsistent or racing settlement remains uncertain. Collection
+requires verified workspace evidence; an outer marker alone cannot establish it.
+Accepted output bindings are verified through spool-artifacts and survive unload.
+Partial acceptance is reported as unconfirmed rather than a clean pending state.
+
+The query does not acquire the execution lock merely to observe a running job;
+it never infers liveness from a PID or a lock file. A missing receipt cannot
+distinguish running work from interrupted bookkeeping. All mutation/custody
+commands independently revalidate and retain their existing locks and approvals.
+The response is a bounded observation, not an atomic scheduling decision.
+Headless CPU is qualified first. Common scheduling/monitoring identities may be
+reused for future GPU/application backends, whose actual supported lifecycle and
+external settlement must be separately qualified. No pause or suspend support is
+implied by these state names.
