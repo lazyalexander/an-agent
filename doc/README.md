@@ -41,6 +41,7 @@ them or turn a design requirement into an implemented guarantee.
 | Environment input identity | [Committed environment generations](../crates/an-agent-core/ENVIRONMENT.md) |
 | Model/context services | [Model/context](../crates/an-agent-host/MODEL-CONTEXT.md), [model CLI](../crates/an-agent-host/MODEL-CLI.md) |
 | Semantic assessment | [Semantic crate](../crates/an-agent-semantic/README.md) |
+| Test ownership and paired verification | [Testing contract](testing.md) |
 | Repository gates | [Architecture gates](../ARCHITECTURE-GATES.md) |
 
 Documentation is English. Link to existing contracts instead of duplicating CLI

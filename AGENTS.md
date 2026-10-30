@@ -113,3 +113,22 @@ Plus the discipline-specific checks:
 Code-role terminology follows [the spool code contract](doc/spool-code.md).
 Silk is the stable core; kit is adaptable glue. Preserve legacy wire/API names
 and distinguish target contracts from implemented runtime guarantees.
+
+## Test ownership and language
+
+Follow [the testing contract](doc/testing.md). Keep Rust tests for internal
+invariants and fault windows; prefer Python for new black-box CLI/process/file
+acceptance, and TS only where browser integration benefits from it. Existing
+Rust acceptance is valid; migrate selectively with equivalent coverage.
+
+The host owns lifecycle, authorization and artifact-custody guarantees. Loom
+owns authoring, packaging and evidence reception, with narrow paired host smoke
+tests. Build binaries once per selected revision/target/configuration and pass
+explicit paths to external suites; do not rebuild inside each scenario.
+
+The verification commands above remain required. Also run affected non-Rust
+suites and documented real-host acceptance before claiming their guarantees.
+Cargo success alone is not full acceptance. Migration must preserve assertions,
+cancellation/cleanup evidence and CI gates, and must not add production debug
+APIs just to expose private test seams. Measure build and execution separately;
+unknown execution outcomes must not be automatically retried.
