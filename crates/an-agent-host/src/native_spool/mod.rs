@@ -5,7 +5,9 @@ pub use artifacts::artifacts;
 mod bundle;
 pub mod kit_proposal;
 mod lifecycle;
+mod reconcile;
 mod requirements;
+pub use reconcile::reconcile_accept;
 mod run;
 mod status;
 use crate::{

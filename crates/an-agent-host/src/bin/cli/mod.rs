@@ -63,6 +63,7 @@ pub(super) fn run(args: Vec<String>) -> Result<()> {
         | "spool-kit-update"
         | "spool-start"
         | "spool-accept"
+        | "spool-reconcile-accept"
         | "spool-reclaim"
         | "spool-unload"
         | "spool-kit-proposal-request"
