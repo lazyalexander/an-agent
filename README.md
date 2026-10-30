@@ -92,3 +92,6 @@ See [architecture gates](ARCHITECTURE-GATES.md) for the TOML rules, existing-deb
 baseline, dependency boundaries and the separately locked SPACE-based checker.
 
 The [implementation boundary audit](doc/architecture.md#implementation-boundary-audit) maps current modules to developer, host, and backend responsibilities and records the remaining limits.
+
+See [Weaver and independent spool development](doc/weaver.md) for the separation
+between standalone iteration and platform-managed execution.
