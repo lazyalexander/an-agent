@@ -48,6 +48,10 @@ termination. Retain evidence and refuse destructive cleanup when termination is
 unknown; do not retry the operation automatically. Exercise real enforcement
 before claiming it, and label simulated receipts or faults explicitly.
 
+The first migrated macOS suite and assertion map are documented in
+[CLI acceptance](../crates/an-agent-host/tests/cli/README.md). It runs in the
+existing required macOS CI job using the compiled host binary.
+
 ## Migration acceptance
 
 For each selected suite, document old and new entrypoints and map its assertions

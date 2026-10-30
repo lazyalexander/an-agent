@@ -128,7 +128,9 @@ explicit paths to external suites; do not rebuild inside each scenario.
 
 The verification commands above remain required. Also run affected non-Rust
 suites and documented real-host acceptance before claiming their guarantees.
-Cargo success alone is not full acceptance. Migration must preserve assertions,
+Cargo success alone is not full acceptance. On macOS, run the CLI suite documented
+in `crates/an-agent-host/tests/cli/README.md` after building the host binary.
+Migration must preserve assertions,
 cancellation/cleanup evidence and CI gates, and must not add production debug
 APIs just to expose private test seams. Measure build and execution separately;
 unknown execution outcomes must not be automatically retried.

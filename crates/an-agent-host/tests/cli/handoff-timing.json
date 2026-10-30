@@ -1,0 +1,85 @@
+{
+  "baseline": "87131cd",
+  "platform": "Darwin",
+  "architecture": "arm64",
+  "python": "3.9.6",
+  "rustc": "rustc 1.98.0 (88d9e12ae 2026-08-18)",
+  "cache": "warm dependencies; incremental test-target rebuild",
+  "cold_build_measured": false,
+  "build": [
+    {
+      "phase": "before",
+      "trial": 0,
+      "seconds": 0.51691025,
+      "exit": 0
+    },
+    {
+      "phase": "before",
+      "trial": 1,
+      "seconds": 0.5046476249999999,
+      "exit": 0
+    },
+    {
+      "phase": "before",
+      "trial": 2,
+      "seconds": 0.49570695900000006,
+      "exit": 0
+    },
+    {
+      "phase": "after",
+      "trial": 0,
+      "seconds": 0.609413709,
+      "exit": 0
+    },
+    {
+      "phase": "after",
+      "trial": 1,
+      "seconds": 0.49685875000000035,
+      "exit": 0
+    },
+    {
+      "phase": "after",
+      "trial": 2,
+      "seconds": 0.48217175,
+      "exit": 0
+    }
+  ],
+  "execution": [
+    {
+      "suite": "rust",
+      "trial": 0,
+      "seconds": 4.469021917,
+      "exit": 0
+    },
+    {
+      "suite": "rust",
+      "trial": 1,
+      "seconds": 4.341415624999999,
+      "exit": 0
+    },
+    {
+      "suite": "rust",
+      "trial": 2,
+      "seconds": 4.363636000000001,
+      "exit": 0
+    },
+    {
+      "suite": "python",
+      "trial": 0,
+      "seconds": 5.305277458999999,
+      "exit": 0
+    },
+    {
+      "suite": "python",
+      "trial": 1,
+      "seconds": 5.211604166000001,
+      "exit": 0
+    },
+    {
+      "suite": "python",
+      "trial": 2,
+      "seconds": 5.197671584000002,
+      "exit": 0
+    }
+  ]
+}

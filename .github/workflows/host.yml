@@ -31,6 +31,16 @@ jobs:
         run: cargo test --workspace --locked
         env:
           AN_AGENT_ACCEPTANCE_DIR: ${{ runner.temp }}/native-concurrency
+      - uses: actions/setup-python@v5
+        if: runner.os == 'macOS'
+        with:
+          python-version: '3.12'
+      - name: Execute Python CLI custody and cancellation acceptance
+        if: runner.os == 'macOS'
+        run: python -B -m unittest discover -s crates/an-agent-host/tests/cli -v
+        env:
+          AN_AGENT_HOST_BIN: ${{ github.workspace }}/target/debug/an-agent-host
+          AN_AGENT_ACCEPTANCE_DIR: ${{ runner.temp }}/native-concurrency/python-cli
       - name: Retain native lifecycle evidence
         if: always()
         uses: actions/upload-artifact@v4
