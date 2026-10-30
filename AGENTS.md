@@ -24,8 +24,17 @@ user follows the user's language.
 
 Rules:
 
-- The user clicks merge. Always. Open the PR, state what it carries,
-  stop.
+- Agents may merge PRs into `dev-advance` after reviewing the diff, completing
+  applicable local/real acceptance and passing every CI gate on the selected head.
+  Suspected private data, credentials, transcripts or unclear publication scope
+  require user review before publication or merge. Never bypass a gate.
+- Notify the user after every dev merge with the repository, PR, target branch,
+  resulting commit and a short description. Main promotion still requires the
+  user's decision and merge; dev authorization does not extend to main.
+- Keep each PR scoped. After handoff, add only fixes or review responses, not
+  unrelated features. Independent work branches from current dev; dependent
+  follow-ups may stay local, with their base PR/commit recorded, then be based
+  on verified merged dev before publication. Avoid long stacked chains.
 - PR base is `dev-advance`, not another feature branch. If a follow-up
   depends on an unmerged PR, note "stacks on #N" in the body — and the
   moment #N merges, retarget the base (`gh pr edit M --base
