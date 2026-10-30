@@ -59,6 +59,17 @@ jobs:
           path: ${{ runner.temp }}/native-concurrency
           if-no-files-found: warn
           retention-days: 14
+      - name: Native spool state CLI acceptance
+        if: runner.os == 'macOS'
+        run: python3 crates/an-agent-host/tests/cli/native_state.py --host target/debug/an-agent-host --evidence "$RUNNER_TEMP/native-state"
+      - name: Retain native state evidence
+        if: always() && runner.os == 'macOS'
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-state-${{ matrix.os }}
+          path: ${{ runner.temp }}/native-state
+          if-no-files-found: warn
+          retention-days: 14
       - run: cargo clippy --workspace --all-targets --locked -- -D warnings
       - name: Architecture tool tests and lint
         run: |

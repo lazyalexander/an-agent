@@ -40,6 +40,40 @@ pub fn start(
     approved: Option<&str>,
     cancelled: &AtomicBool,
 ) -> Result<Value> {
+    start_selected(path, name, Input::File(input), seconds, approved, cancelled)
+}
+
+pub fn start_state(
+    path: &Path,
+    name: &str,
+    revision: &str,
+    seconds: u64,
+    approved: Option<&str>,
+    cancelled: &AtomicBool,
+) -> Result<Value> {
+    start_selected(
+        path,
+        name,
+        Input::State(revision),
+        seconds,
+        approved,
+        cancelled,
+    )
+}
+
+enum Input<'a> {
+    File(&'a Path),
+    State(&'a str),
+}
+
+fn start_selected(
+    path: &Path,
+    name: &str,
+    input: Input<'_>,
+    seconds: u64,
+    approved: Option<&str>,
+    cancelled: &AtomicBool,
+) -> Result<Value> {
     bundle::identifier(name)?;
     let root = location(path)?;
     let _lock = store::lock(&root)?;
@@ -51,7 +85,20 @@ pub fn start(
     if dir.join("job").exists() {
         return Err("run identity already used; no implicit retry".into());
     }
-    let profile = profile(&root, &bundle, input, seconds)?;
+    let selected = match input {
+        Input::File(path) => json!({"path":path.canonicalize()?}),
+        Input::State(revision) => checkpoint::selection(&root, revision)?,
+    };
+    let mut profile = profile(
+        &root,
+        &bundle,
+        Path::new(selected["path"].as_str().ok_or("input")?),
+        seconds,
+    )?;
+    if selected.get("binding").is_some() {
+        profile["artifact_inputs"] = json!([{"path":selected["path"],"catalog":selected["catalog"],
+            "revision":selected["binding"]["revision"]}]);
+    }
     let bytes = serde_json::to_vec_pretty(&profile)?;
     // Preview may persist a bounded plan, but never launches or grants execution.
     store::directory(&dir)?;
@@ -75,9 +122,12 @@ pub fn start(
     }
     let preview =
         workspace_job::run_managed(&profile_path, &dir.join("job"), None, None, cancelled)?;
-    let plan = json!({"schema":"an-native-spool-start-v1","instance":instance["instance"],
+    let mut plan = json!({"schema":"an-native-spool-start-v1","instance":instance["instance"],
         "release":bundle.release,"run":name,"workspace":preview["plan"],
         "authority":"reviewed native tools only; no detached workers or network; no hostile-agent claim"});
+    if selected.get("binding").is_some() {
+        plan["state_input"] = selected;
+    }
     let (hash, execute) = approval(&plan, approved)?;
     if !execute {
         return Ok(json!({"plan":plan,"approval_sha256":hash,"executed":false}));

@@ -6,6 +6,10 @@ It is not an arbitrary agent sandbox, general dependency resolver or replacement
 for trusted in-process `SpoolBeat` mounting. No core or Loom runtime dependency is
 introduced. Domain sequencing remains in the entry silk.
 
+Optional [explicit native state](NATIVE-STATE.md) binds a selected checkpoint to a
+run and commits an accepted state output with an expected-version check. It uses
+the same release and one-input execution contract; ordinary runs stay stateless.
+
 ## Contract and layout
 
 Loom's `export-native-spool` exports `native-spool.json` and selected `silk/` and
