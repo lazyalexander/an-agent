@@ -46,11 +46,18 @@ pub(super) struct Bundle {
 }
 
 pub(super) fn read(root: &Path) -> Result<Bundle> {
+    let bundle = inspect(root)?;
+    super::requirements::validate(&bundle.manifest)?;
+    Ok(bundle)
+}
+
+/// Verify release bytes for inspection without admitting their runtime requests.
+pub(super) fn inspect(root: &Path) -> Result<Bundle> {
     let bytes = regular(&root.join(FILE), 65536)?;
     let m: Manifest = serde_json::from_slice(&bytes)?;
     identifier(&m.name)?;
     identifier(&m.version)?;
-    super::requirements::validate(&m)?;
+    super::requirements::schema(&m)?;
     if !matches!(
         m.schema.as_str(),
         "an-native-spool-v1" | "an-native-spool-v2"

@@ -4,6 +4,9 @@ use an_agent_host::native_spool as spool;
 
 pub(super) fn dispatch(command: &str, args: &[String]) -> Result<Value> {
     match (command, args) {
+        ("spool-release-diff", [previous, candidate]) => {
+            spool::compare_releases(Path::new(previous), Path::new(candidate))
+        }
         ("spool-storage", [root]) => spool::storage(Path::new(root)),
         ("spool-reclaim-snapshots", [root, run]) => {
             spool::reclaim_snapshots(Path::new(root), run, None)

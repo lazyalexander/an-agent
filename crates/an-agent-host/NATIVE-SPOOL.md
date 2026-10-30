@@ -18,6 +18,10 @@ It does not pause or restore a running process.
 snapshot collection and formal state/artifact retention. It also adds native
 workspace admission headroom without a runtime filesystem quota.
 
+[Release review](NATIVE-RELEASES.md) compares exact verified package bytes and
+requested contracts without authorizing an update. Candidate continuation uses
+a fresh independently approved instance; old releases and state remain retained.
+
 ## Contract and layout
 
 Loom's `export-native-spool` exports `native-spool.json` and selected `silk/` and

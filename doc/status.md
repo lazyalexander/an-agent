@@ -50,7 +50,12 @@ or an unlimited sequence of examples; each may require several focused PRs.
    retirement and runtime quotas remain outside this slice.
 5. **Release compatibility and final qualification.** Resolve declared dependencies
    to exact supported bindings, show update/permission differences and preserve old
-   releases/state on rejected updates. Reuse the two-instance/two-silk acceptance,
+   releases/state on rejected updates. [Release review](../crates/an-agent-host/NATIVE-RELEASES.md)
+   now verifies package differences, reports unsupported requests and qualifies
+   independent fresh-instance continuation while preserving the old state.
+   Authorized lineage, in-place updates, external dependency resolution and
+   generic migration remain separate, unimplemented capabilities.
+   Reuse the two-instance/two-silk acceptance,
    with explicit supported scope and unsupported cases, as the local completion
    gate. Publisher authentication and a public registry are not prerequisites.
 
