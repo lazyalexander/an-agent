@@ -3,6 +3,7 @@
 mod artifacts;
 pub use artifacts::artifacts;
 mod bundle;
+pub mod checkpoint;
 pub mod kit_proposal;
 mod lifecycle;
 mod reconcile;
@@ -19,7 +20,7 @@ use crate::{
 /// Legacy module alias; wire schemas and stored tickets retain their identities.
 pub use kit_proposal as weaver;
 pub use lifecycle::{load, reset_kit, show, unload, update_kit};
-pub use run::{accept, reclaim, start};
+pub use run::{accept, reclaim, start, start_state};
 use serde_json::{Value, json};
 pub use status::status;
 use std::{

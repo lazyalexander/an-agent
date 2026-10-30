@@ -7,6 +7,7 @@ mod instance;
 mod model;
 mod retention;
 mod spool;
+mod spool_state;
 mod workspace;
 
 use an_agent_host::execution::Result;
@@ -45,6 +46,9 @@ fn with_cancellation(
 pub(super) fn run(args: Vec<String>) -> Result<()> {
     let (command, args) = args.split_first().ok_or("missing command")?;
     let result = match command.as_str() {
+        "spool-state-init" | "spool-state-show" | "spool-state-commit" | "spool-start-state" => {
+            spool_state::dispatch(command, args)?
+        }
         "instance-init" | "instance-show" | "instance-run" | "instance-commit" => {
             instance::dispatch(command, args)?
         }

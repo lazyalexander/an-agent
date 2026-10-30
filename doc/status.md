@@ -32,8 +32,10 @@ or an unlimited sequence of examples; each may require several focused PRs.
    supported; missing termination evidence stays fenced. Close with real write
    failures and refusal cases, not claims of universal crash recovery.
 2. **Explicit state continuation.** Bind the existing state/checkpoint primitives
-   to a release-bound spool attempt. Demonstrate selected state, stale-commit
-   refusal and continuation in a fresh environment without inheriting scratch.
+   to a release-bound spool attempt. Selected state, stale-commit refusal and
+   continuation without inherited scratch are qualified for one opaque text state
+   output. See [native state](../crates/an-agent-host/NATIVE-STATE.md). A fresh load
+   requires an explicit saved-version seed; automatic lineage/migration is separate.
 3. **Pause and suspension.** Qualify cooperative safe points, explicit resume and
    checkpoint/stop suspension for the native backend. Do not equate SIGSTOP or a
    process/VM image with durable business recovery. Unsupported modes stay false.
