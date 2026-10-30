@@ -104,3 +104,10 @@ CI rerun is a fresh test run, not a retry of an unknown product operation. Do no
 flush unrelated caches or increase timeouts to improve the comparison. Preserve
 run/attempt links in the PR and distinguish runner variance from established
 improvements. Cache misses remain fully supported and must pass the same gates.
+
+For cross-repository acceptance, cache each qualification job's selected host
+checkout under that job's identity and retain its pinned revision. Different
+historical host releases are distinct build inputs even when they expose similar
+CLI commands. Do not share one host executable across those jobs to save time.
+A combined dependency cache may cover multiple target directories, but never
+cache accepted products or replace receipt verification with a cache hit.
