@@ -22,6 +22,10 @@ workspace admission headroom without a runtime filesystem quota.
 requested contracts without authorizing an update. Candidate continuation uses
 a fresh independently approved instance; old releases and state remain retained.
 
+[Native workspace events](NATIVE-EVENTS.md) adds explicit v3 event interfaces and
+host-owned artifact delivery. V1/v2 releases remain unchanged and do not acquire
+event rights implicitly. Business sequencing stays inside silk/kit.
+
 ## Contract and layout
 
 Loom's `export-native-spool` exports `native-spool.json` and selected `silk/` and

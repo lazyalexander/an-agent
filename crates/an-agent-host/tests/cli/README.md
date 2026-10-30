@@ -41,6 +41,15 @@ approval refusal, failed candidate output rejection and original-instance
 continuation. It adds no in-place updater or automatic migration. The host owns
 this failure matrix; Loom separately tests its actual exported revisions.
 
+`native_events.py --host HOST --evidence NEW_DIRECTORY` qualifies real v3 artifact
+event publication, separate subscription/start approvals, pinned old-version input,
+explicit accepted-output consumption, duplicate delivery, missing confirmation,
+stale/revoked/foreign identities, concurrent observation, actual cancellation and
+lost facade evidence. Missing-record cases deliberately remove records after
+known execution; they do not claim arbitrary process-crash or power-loss recovery.
+No model, background dispatch or GUI is exercised. The paired Loom suite owns
+actual archive/export handoff; this host suite owns the refusal/fault matrix.
+
 Each command has a bounded wait and records stdout/stderr and its exit status.
 On a client deadline the runner requests host cancellation; unknown termination
 fails the suite and keeps evidence. It never automatically reruns an execution.

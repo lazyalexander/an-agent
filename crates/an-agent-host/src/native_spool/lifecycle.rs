@@ -48,6 +48,7 @@ pub fn show(path: &Path) -> Result<Value> {
     let root = location(path)?;
     let (mut record, bundle) = state(&root)?;
     record["requested_requirements"] = json!(bundle.manifest.requirements);
+    record["event_interface"] = json!(bundle.manifest.events);
     record["loaded"] = json!(!root.join("unloaded.json").exists());
     record["operation_locked"] = json!(root.join("host.lock").exists());
     record["capabilities"] = json!({"start":cfg!(target_os="macos"),"cancel":"running CLI SIGINT/SIGTERM", "pause":false,"suspend":false,

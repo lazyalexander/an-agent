@@ -49,6 +49,16 @@ A general multi-silk spool runtime is not implemented.
 
 ## Local execution strategy
 
+Spool interaction is workspace-event routing, not a host business workflow graph.
+Silk/kit owns domain branches, loops and delegation decisions. The host owns
+subscriptions, admission, attempt supervision and fixed-version delivery evidence.
+The [native event slice](../crates/an-agent-host/NATIVE-EVENTS.md) connects accepted
+artifact facts to separately approved native attempts through explicit foreground
+dispatch. It adds no graph DSL, background scheduler or low-latency channel.
+Subagents use the same authority boundary; shuttles remain external-application
+bridges. Future high-frequency data needs a separately granted channel rather
+than forcing every sample into the durable workspace log or tape.
+
 Own a lightweight spool execution manager, not a new container implementation.
 Reuse the native backend first, with independently owned concurrent attempts.
 Future container or microVM adapters provide enforcement and lifecycle evidence;

@@ -4,6 +4,8 @@ mod artifacts;
 pub use artifacts::artifacts;
 mod bundle;
 pub mod checkpoint;
+mod event_contract;
+pub mod events;
 pub mod kit_proposal;
 mod lifecycle;
 mod reconcile;

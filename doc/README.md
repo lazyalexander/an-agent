@@ -34,6 +34,7 @@ them or turn a design requirement into an implemented guarantee.
 | Native round control | [Pause admission, checkpoint suspension and explicit resume](../crates/an-agent-host/NATIVE-CONTROL.md) |
 | Native storage | [Observation, private snapshot collection and admission pressure](../crates/an-agent-host/NATIVE-STORAGE.md) |
 | Native release review | [Verified changes and independent continuation](../crates/an-agent-host/NATIVE-RELEASES.md) |
+| Native workspace events | [Artifact facts, static subscriptions and explicit delivery](../crates/an-agent-host/NATIVE-EVENTS.md) |
 | Reviewed operator workflows | [Workspace jobs](../crates/an-agent-host/WORKSPACE-JOBS.md) |
 | CLI handoff pressure and input references | [Measurements and bounded decision](../crates/an-agent-host/HANDOFF-PRESSURE.md) |
 | Fixed external inputs without full copying | [Filesystem clone qualification](../crates/an-agent-host/INPUT-CLONES.md) |

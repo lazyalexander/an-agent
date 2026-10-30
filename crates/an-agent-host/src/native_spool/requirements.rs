@@ -17,7 +17,9 @@ pub(super) struct Requirements {
 }
 pub(super) fn schema(m: &bundle::Manifest) -> Result<()> {
     match (m.schema.as_str(), &m.requirements) {
-        ("an-native-spool-v1", None) | ("an-native-spool-v2", Some(_)) => Ok(()),
+        ("an-native-spool-v1", None) | ("an-native-spool-v2" | "an-native-spool-v3", Some(_)) => {
+            Ok(())
+        }
         _ => Err("native schema and requirements must agree".into()),
     }
 }
