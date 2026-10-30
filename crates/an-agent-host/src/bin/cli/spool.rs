@@ -4,6 +4,14 @@ use an_agent_host::native_spool as spool;
 
 pub(super) fn dispatch(command: &str, args: &[String]) -> Result<Value> {
     match (command, args) {
+        ("spool-pause" | "spool-resume", [root]) => control(command, root, None),
+        ("spool-pause" | "spool-resume", [root, flag, hash]) if flag == "--approve" => {
+            control(command, root, Some(hash))
+        }
+        ("spool-suspend", [root, revision]) => spool::suspend(Path::new(root), revision, None),
+        ("spool-suspend", [root, revision, flag, hash]) if flag == "--approve" => {
+            spool::suspend(Path::new(root), revision, Some(hash))
+        }
         ("spool-reconcile-run", [root, run]) => spool::reconcile_run(Path::new(root), run, None),
         ("spool-reconcile-run", [root, run, flag, hash]) if flag == "--approve" => {
             spool::reconcile_run(Path::new(root), run, Some(hash))
@@ -54,7 +62,16 @@ pub(super) fn dispatch(command: &str, args: &[String]) -> Result<Value> {
         ("spool-accept" | "spool-reclaim", [root, name, flag, hash]) if flag == "--approve" => {
             custody(command, root, name, Some(hash))
         }
-        _ => Err("invalid native spool arguments; pause and suspend are not implemented".into()),
+        _ => Err(
+            "invalid native spool arguments; live process pause/suspension is unsupported".into(),
+        ),
+    }
+}
+fn control(command: &str, root: &str, approved: Option<&str>) -> Result<Value> {
+    if command == "spool-pause" {
+        spool::pause(Path::new(root), approved)
+    } else {
+        spool::resume(Path::new(root), approved)
     }
 }
 fn start(

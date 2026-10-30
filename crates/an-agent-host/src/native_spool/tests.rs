@@ -24,6 +24,13 @@ fn load_is_nonexecuting_exclusive_and_checks_all_release_bytes() -> Result<()> {
     let loaded = load(&source, &target)?;
     assert_eq!(loaded["execution_granted"], false);
     assert_eq!(loaded["capabilities"]["pause"], false);
+    assert_eq!(
+        loaded["capabilities"]["pause_between_attempts"],
+        cfg!(target_os = "macos")
+    );
+    assert_eq!(loaded["round_control"]["generation"], 0);
+    assert_eq!(loaded["round_control"]["mode"], "active");
+    assert!(!target.join("round-control.json").exists());
     assert!(!target.join("result.txt").exists());
     assert!(load(&source, &target).is_err());
     fs::write(source.join("silk/main.sh"), b"substituted")?;

@@ -50,15 +50,11 @@ pub fn show(path: &Path) -> Result<Value> {
     record["requested_requirements"] = json!(bundle.manifest.requirements);
     record["loaded"] = json!(!root.join("unloaded.json").exists());
     record["operation_locked"] = json!(root.join("host.lock").exists());
-    record["capabilities"] = json!({"start":cfg!(target_os="macos"),"cancel":"running CLI SIGINT/SIGTERM", "pause":false,"suspend":false,"weaver":false,"weaver_proposal_slot":true,"kit_proposal_slot":true});
-    let mut kits = serde_json::Map::new();
-    for path in bundle.payload.keys().filter(|p| p.starts_with("kit/")) {
-        kits.insert(
-            path.clone(),
-            json!(store::digest(&regular(&root.join(path), 1024 * 1024)?)),
-        );
-    }
-    record["kits"] = json!(kits);
+    record["capabilities"] = json!({"start":cfg!(target_os="macos"),"cancel":"running CLI SIGINT/SIGTERM", "pause":false,"suspend":false,
+        "pause_between_attempts":cfg!(target_os="macos"),"suspend_checkpoint":cfg!(target_os="macos"),
+        "weaver":false,"weaver_proposal_slot":true,"kit_proposal_slot":true});
+    record["round_control"] = round_control::summary(&round_control::current(&root, &record)?);
+    record["kits"] = kit_hashes(&root, &bundle)?;
     let mut runs = Vec::new();
     for entry in fs::read_dir(root.join("runs"))? {
         let path = entry?.path();
@@ -82,6 +78,17 @@ pub fn show(path: &Path) -> Result<Value> {
     Ok(record)
 }
 
+pub(super) fn kit_hashes(root: &Path, bundle: &bundle::Bundle) -> Result<Value> {
+    let mut kits = serde_json::Map::new();
+    for path in bundle.payload.keys().filter(|p| p.starts_with("kit/")) {
+        kits.insert(
+            path.clone(),
+            json!(store::digest(&regular(&root.join(path), 1024 * 1024)?)),
+        );
+    }
+    Ok(json!(kits))
+}
+
 /// Host/operator editing route; never accepts a silk path or executes the edit.
 pub fn update_kit(path: &Path, name: &str, source: &Path, approved: Option<&str>) -> Result<Value> {
     bundle::identifier(name)?;
@@ -96,8 +103,9 @@ pub fn update_kit(path: &Path, name: &str, source: &Path, approved: Option<&str>
     let bytes = regular(source, 1024 * 1024)?;
     let target = root.join(&selected);
     let before = regular(&target, 1024 * 1024)?;
-    let plan = json!({"instance":instance["instance"],"release":bundle.release,"kit":selected,
+    let mut plan = json!({"instance":instance["instance"],"release":bundle.release,"kit":selected,
         "before":store::digest(&before),"after":store::digest(&bytes),"execution_granted":false});
+    round_control::bind(&mut plan, &root, &instance)?;
     let (hash, execute) = approval(&plan, approved)?;
     if !execute {
         return Ok(json!({"plan":plan,"approval_sha256":hash,"executed":false}));
@@ -136,23 +144,11 @@ pub(super) fn commit_kit(root: &Path, selected: &str, bytes: &[u8], plan: &Value
 pub fn unload(path: &Path, approved: Option<&str>) -> Result<Value> {
     let root = location(path)?;
     let _lock = store::lock(&root)?;
-    let (instance, _) = active(&root)?;
-    let mut runs = Vec::new();
-    for entry in fs::read_dir(root.join("runs"))? {
-        let path = entry?.path();
-        if path.join("job").exists() {
-            let result = super::run::settled(
-                &root,
-                path.file_name()
-                    .and_then(|s| s.to_str())
-                    .ok_or("invalid run")?,
-            )?;
-            runs.push(result);
-        }
-    }
-    runs.sort_by_key(|r| r["run"].as_str().unwrap_or_default().to_owned());
-    let plan = json!({"instance":instance["instance"],"release":instance["release"],"runs":runs,
+    let (instance, _) = loaded(&root)?;
+    let runs = run::settled_runs(&root)?;
+    let mut plan = json!({"instance":instance["instance"],"release":instance["release"],"runs":runs,
         "preserve":"products, snapshots and receipts; reclaim each settled run explicitly"});
+    round_control::bind(&mut plan, &root, &instance)?;
     let (hash, execute) = approval(&plan, approved)?;
     if !execute {
         return Ok(json!({"plan":plan,"approval_sha256":hash,"executed":false}));

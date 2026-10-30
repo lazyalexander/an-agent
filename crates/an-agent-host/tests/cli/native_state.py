@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Real native spool state acceptance against one explicitly built host binary."""
+"""Real native spool state and round-control acceptance against one built host."""
 import argparse
 import hashlib
 import json
@@ -15,6 +15,7 @@ import unittest
 PARSER = argparse.ArgumentParser(description=__doc__)
 PARSER.add_argument("--host", required=True, type=Path)
 PARSER.add_argument("--evidence", type=Path)
+PARSER.add_argument("--legacy-host", type=Path, help="Optional pre-control host for format-floor qualification")
 OPTIONS = None
 
 
@@ -49,7 +50,7 @@ class NativeState(unittest.TestCase):
                 ) from error
             self.fail(f"Command deadline exceeded: {args}; {stderr}")
         self.calls.append({"args": list(map(str, args)), "code": process.returncode,
-                           "stdout": stdout, "stderr": stderr})
+                           "executable": process.args[0], "stdout": stdout, "stderr": stderr})
         self.assertEqual(process.returncode == 0, success, stderr or stdout)
         return json.loads(stdout) if stdout else None
 
@@ -97,6 +98,159 @@ class NativeState(unittest.TestCase):
         self.assertEqual(result["status"], "succeeded")
         self.assertTrue(result["workspace"]["termination_confirmed"])
         return result["workspace"]["attempt"]
+
+    @unittest.skipUnless(platform.system() == "Darwin", "real macOS native backend required")
+    def test_round_pause_checkpoint_suspension_and_explicit_resume(self):
+        package = self.package()
+        root = self.base / "instance"
+        self.call("spool-load", package, root)
+        seed = self.base / "seed.txt"
+        seed.write_text("0\n")
+        self.call("spool-suspend", root, "0" * 64, success=False)
+        initial = self.approved("spool-state-init", root, "state.txt", seed)["state"]["revision"]
+        self.run_state(root, "first", initial)
+        self.call("spool-pause", root, success=False)  # No formal acceptance yet.
+        self.approved("spool-accept", root, "first")
+        first = self.approved("spool-state-commit", root, initial, "first")["revision"]
+        stale_start = self.call("spool-start-state", root, "next", first, "10")
+        ticket = self.call("spool-kit-proposal-request", root, "step.sh")
+        revoked = self.call("spool-kit-proposal-request", root, "step.sh")
+        response = self.base / "proposal.json"
+        response.write_text(json.dumps({"schema": "an-weaver-proposal-v1",
+            "request": ticket["request"]["request"], "request_sha256": ticket["request_sha256"],
+            "kit": "kit/step.sh", "content": ticket["request"]["content"]}))
+        pause = self.call("spool-pause", root)
+        self.assertFalse((root / "round-control.json").exists())
+        def legacy(*args, success):
+            if OPTIONS.legacy_host:
+                process = subprocess.Popen([str(OPTIONS.legacy_host.resolve(strict=True)), *map(str, args)],
+                                           text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                self.finish(process, args, success=success)
+        legacy("spool-show", root, success=True)
+        self.call("spool-pause", root, "--approve", "0" * 64, success=False)
+        paused = self.call("spool-pause", root, "--approve", pause["approval_sha256"])
+        self.assertEqual(paused["round_control"]["mode"], "paused")
+        self.assertEqual(paused["round_control"]["generation"], 1)
+        self.assertEqual(json.loads((root / "instance.json").read_text())["schema"],
+                         "an-native-spool-instance-v2")
+        legacy("spool-show", root, success=False)
+        legacy("spool-start-state", root, "next", first, "10", "--approve",
+               stale_start["approval_sha256"], success=False)
+        control_head = root / "round-control.json"
+        saved_head = self.base / "control-head.saved"
+        control_head.rename(saved_head)
+        self.call("spool-show", root, success=False)
+        self.call("spool-start-state", root, "next", first, "10", "--approve",
+                  stale_start["approval_sha256"], success=False)
+        self.assertFalse(control_head.exists())
+        self.assertEqual(self.call("spool-status", root, "first")["artifact_status"], "accepted")
+        saved_head.rename(control_head)
+        self.call("spool-start-state", root, "blocked", first, "10", success=False)
+        self.call("spool-start", root, "blocked-file", seed, "10", success=False)
+        self.call("spool-kit-reset", root, "step.sh", success=False)
+        self.call("spool-kit-proposal-apply", root, response, success=False)
+        self.call("spool-state-commit", root, initial, "first", success=False)
+        self.call("spool-kit-proposal-revoke", root, revoked["request"]["request"])
+        self.assertEqual(self.call("spool-status", root, "first")["artifact_status"], "accepted")
+        self.approved("spool-reclaim", root, "first")
+        self.assertEqual(self.current(root)["head"], first)
+        repeated = self.call("spool-pause", root, "--approve", pause["approval_sha256"])
+        self.assertTrue(repeated["already_recorded"])
+        self.assertEqual(repeated["round_control"]["generation"], 1)
+        unload = self.call("spool-unload", root)
+        # Host-side fault injection: changed working code cannot silently resume.
+        kit = root / "kit/step.sh"
+        original = kit.read_bytes()
+        kit.write_text("exit 9\n")
+        self.call("spool-resume", root, success=False)
+        kit.write_bytes(original)
+        resume = self.call("spool-resume", root)
+        self.call("spool-resume", root, "--approve", "0" * 64, success=False)
+        resumed = self.call("spool-resume", root, "--approve", resume["approval_sha256"])
+        self.assertEqual(resumed["round_control"]["generation"], 2)
+        legacy("spool-show", root, success=False)
+        self.assertFalse((root / "runs/next/job").exists())  # Resume never launches.
+        self.call("spool-start-state", root, "next", first, "10", "--approve",
+                  stale_start["approval_sha256"], success=False)
+        self.call("spool-kit-proposal-apply", root, response, success=False)
+        self.call("spool-unload", root, "--approve", unload["approval_sha256"], success=False)
+        self.run_state(root, "next", first)
+        self.approved("spool-accept", root, "next")
+        second = self.approved("spool-state-commit", root, first, "next")["revision"]
+        self.assertEqual(Path(self.current(root)["selected"]["path"]).read_text(), "2\n")
+
+        # A retained start without workspace evidence is uncertain, never idle.
+        planned = self.call("spool-start-state", root, "interrupted", second, "10")
+        marker = root / "runs/interrupted/start.json"
+        marker.write_text(json.dumps(planned["plan"]))
+        self.call("spool-pause", root, success=False)
+        self.call("spool-suspend", root, second, success=False)
+        self.call("spool-unload", root, success=False)
+        marker.unlink()  # Remove only this test's known, unexecuted fault marker.
+
+        hold = self.base / "hold.sh"
+        hold.write_text('set -eu\nprintf ready > ready\nsleep 30\n')
+        self.approved("spool-kit-update", root, "step.sh", hold)
+        args = ["spool-start-state", root, "holding", second, "30"]
+        preview = self.call(*args)
+        worker = subprocess.Popen([str(self.host), *map(str, args), "--approve",
+                                   preview["approval_sha256"]], text=True,
+                                  stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        try:
+            deadline = time.monotonic() + 8
+            while not (root / "runs/holding/job/work/ready").exists():
+                if worker.poll() is not None or time.monotonic() > deadline:
+                    self.fail("Native control witness never became ready")
+                time.sleep(0.02)
+            self.call("spool-pause", root, success=False)
+            self.call("spool-suspend", root, second, success=False)
+            self.call("spool-reclaim", root, "holding", success=False)
+        finally:
+            if worker.poll() is None:
+                worker.send_signal(signal.SIGTERM)
+            cancelled = self.finish(worker, args, success=False)
+        self.assertEqual(cancelled["status"], "cancelled")
+        self.assertTrue(cancelled["workspace"]["termination_confirmed"])
+        self.approved("spool-kit-reset", root, "step.sh")
+        self.approved("spool-reclaim", root, "holding")
+        self.call("spool-suspend", root, first, success=False)
+        suspension = self.call("spool-suspend", root, second)
+        generation = suspension["plan"]["generation"]
+        staging = root / "round-control" / f'{generation}-{suspension["approval_sha256"]}.pending'
+        staging.write_text("conflicting staging")
+        self.call("spool-suspend", root, second, "--approve",
+                  suspension["approval_sha256"], success=False)
+        self.assertEqual(self.call("spool-show", root)["round_control"]["mode"], "active")
+        staging.unlink()
+        suspended = self.call("spool-suspend", root, second, "--approve", suspension["approval_sha256"])
+        self.assertEqual(suspended["round_control"]["mode"], "suspended")
+        self.assertEqual(suspended["round_control"]["checkpoint"]["binding"]["revision"], second)
+        content = Path(suspended["round_control"]["checkpoint"]["path"])
+        saved = content.read_bytes()
+        content.write_text("changed checkpoint")
+        self.call("spool-resume", root, success=False)
+        content.write_bytes(saved)
+        self.approved("spool-reclaim", root, "next")
+        self.assertFalse((root / "runs/next/job/work").exists())
+        self.call("spool-start-state", root, "blocked-suspended", second, "10", success=False)
+        other = self.base / "other"
+        self.call("spool-load", package, other)
+        selected = self.approved("spool-state-init", other, "state.txt", seed)["state"]["revision"]
+        self.run_state(other, "independent", selected)
+        self.approved("spool-accept", other, "independent")
+        self.assertEqual(self.call("spool-show", root)["round_control"]["mode"], "suspended")
+        resumed = self.approved("spool-resume", root)
+        self.assertEqual(resumed["round_control"]["generation"], 4)
+        self.call("spool-suspend", root, second, "--approve",
+                  suspension["approval_sha256"], success=False)
+        self.run_state(root, "continued", second)
+        self.approved("spool-accept", root, "continued")
+        third = self.approved("spool-state-commit", root, second, "continued")["revision"]
+        self.assertEqual(Path(self.current(root)["selected"]["path"]).read_text(), "3\n")
+        self.approved("spool-pause", root)
+        self.approved("spool-unload", root)
+        self.call("spool-resume", root, success=False)
+        self.assertEqual(self.current(root)["head"], third)
 
     @unittest.skipUnless(platform.system() == "Darwin", "real macOS native backend required")
     def test_explicit_commit_conflict_recovery_and_fresh_environment(self):

@@ -10,6 +10,10 @@ Optional [explicit native state](NATIVE-STATE.md) binds a selected checkpoint to
 run and commits an accepted state output with an expected-version check. It uses
 the same release and one-input execution contract; ordinary runs stay stateless.
 
+[Round-boundary control](NATIVE-CONTROL.md) pauses admission after confirmed
+settlement, pins a checkpoint for suspension and explicitly reopens admission.
+It does not pause or restore a running process.
+
 ## Contract and layout
 
 Loom's `export-native-spool` exports `native-spool.json` and selected `silk/` and
@@ -37,6 +41,8 @@ INSTANCE/
   instance.json
   release/native-spool.json, release/silk/*, release/kit/*
   kit/*                         # edit between runs through host approval
+  round-control.json            # optional admission mode and generation
+  round-control/*               # immutable transition evidence and staging
   runs/RUN/
     profile.json, start.json, result.json
     accepted.json, reclaimed.json   # bound custody results when present
@@ -59,6 +65,9 @@ an-agent-host spool-reconcile-run INSTANCE RUN [--approve DIGEST]
 an-agent-host spool-kit-update INSTANCE BASENAME SOURCE [--approve DIGEST]
 an-agent-host spool-kit-reset INSTANCE BASENAME [--approve DIGEST]
 an-agent-host spool-start INSTANCE RUN INPUT SECONDS [--approve DIGEST]
+an-agent-host spool-pause INSTANCE [--approve DIGEST]
+an-agent-host spool-suspend INSTANCE STATE_REVISION [--approve DIGEST]
+an-agent-host spool-resume INSTANCE [--approve DIGEST]
 an-agent-host spool-accept INSTANCE RUN [--approve DIGEST]
 an-agent-host spool-reclaim INSTANCE RUN [--approve DIGEST]
 an-agent-host spool-unload INSTANCE [--approve DIGEST]

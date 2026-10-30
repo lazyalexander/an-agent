@@ -88,6 +88,12 @@ the existing `catalog/revisions/` layout and commit intents. No automatic versio
 garbage collection is added. The later retention work must account for checkpoint
 parents, selected inputs and downstream references before deleting storage.
 
+[Round-boundary control](NATIVE-CONTROL.md) can fence new starts and state/kit
+mutations after settlement. Resume launches nothing and injects no implicit
+state. Control generations invalidate earlier execution and state-mutation
+previews; request a new preview after resuming. Already accepted artifacts and
+checkpoint inspection remain available while admission is paused or suspended.
+
 Real acceptance: [CLI runner](tests/cli/README.md). It includes actual native
 execution/cancellation, stale competing commits, a filesystem staging failure
 after publication, orphan refusal, explicit commit confirmation, scratch mutation
