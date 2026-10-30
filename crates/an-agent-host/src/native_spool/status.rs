@@ -47,8 +47,8 @@ pub fn status(path: &Path, name: &str) -> Result<Value> {
             );
         }
         if dir.join("accepted.json").exists() {
-            match artifacts::artifacts(&root, name) {
-                Ok(artifacts) => {
+            match artifacts::verified(&root, name, true) {
+                Ok((artifacts, _)) => {
                     value["artifact_status"] = json!("accepted");
                     value["outputs"] = artifacts["outputs"].clone();
                     value["catalog"] = artifacts["catalog"].clone();

@@ -14,15 +14,40 @@ pub fn reconcile_run(path: &Path, name: &str, approved: Option<&str>) -> Result<
     }
     let start_bytes = regular(&dir.join("start.json"), 2 * 1024 * 1024)?;
     let start: Value = serde_json::from_slice(&start_bytes)?;
-    let mut attempts = fs::read_dir(dir.join("job/attempts"))?;
-    let attempt = attempts.next().ok_or("missing execution attempt")??;
-    if attempts.next().is_some() {
-        return Err("run reconciliation requires exactly one attempt".into());
+    let mut selected = None;
+    let mut ignored = Vec::new();
+    for entry in fs::read_dir(dir.join("job/attempts"))? {
+        let entry = entry?;
+        let name = entry.file_name();
+        let kind = entry.file_type()?;
+        // Finder metadata is not an attempt. Do not follow links or silently
+        // ignore other entries that could hide an incomplete/ambiguous attempt.
+        if name == ".DS_Store" && kind.is_file() {
+            ignored.push(".DS_Store");
+            continue;
+        }
+        let id = name
+            .to_str()
+            .ok_or_else(|| format!("unexpected attempt entry: {name:?}"))?;
+        if !kind.is_dir()
+            || uuid::Uuid::parse_str(id)
+                .ok()
+                .is_none_or(|uuid| uuid.to_string() != id)
+        {
+            return Err(format!(
+                "unexpected attempt entry: {name:?}; expected a canonical UUID directory"
+            )
+            .into());
+        }
+        if let Some((prior, _)) = &selected {
+            return Err(format!(
+                "run reconciliation requires exactly one attempt; found {prior} and {id}"
+            )
+            .into());
+        }
+        selected = Some((id.to_owned(), entry.path()));
     }
-    let id = attempt
-        .file_name()
-        .into_string()
-        .map_err(|_| "invalid attempt name")?;
+    let (id, attempt) = selected.ok_or("missing execution attempt")?;
     let (plan, receipt) = crate::workspace_job::verified_execution_record(&dir.join("job"), &id)?;
     if start["schema"] != "an-native-spool-start-v1"
         || start["instance"] != instance["instance"]
@@ -37,8 +62,7 @@ pub fn reconcile_run(path: &Path, name: &str, approved: Option<&str>) -> Result<
     {
         return Err("run reconciliation start/profile binding mismatch".into());
     }
-    let intent: Value =
-        serde_json::from_slice(&regular(&attempt.path().join("intent.json"), 65536)?)?;
+    let intent: Value = serde_json::from_slice(&regular(&attempt.join("intent.json"), 65536)?)?;
     if intent["attempt"] != id
         || intent["approval_sha256"] != store::digest(&serde_json::to_vec(&plan)?)
     {
@@ -59,8 +83,11 @@ pub fn reconcile_run(path: &Path, name: &str, approved: Option<&str>) -> Result<
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => false,
         Err(error) => return Err(error.into()),
     };
-    let plan = json!({"schema":"an-native-spool-reconcile-run-v1","binding":result,
+    let mut plan = json!({"schema":"an-native-spool-reconcile-run-v1","binding":result,
         "start_sha256":store::digest(&start_bytes),"execution_retried":false,"artifacts_published":false});
+    if !ignored.is_empty() {
+        plan["ignored_attempt_entries"] = json!(ignored);
+    }
     let (hash, execute) = approval(&plan, approved)?;
     if !execute {
         return Ok(

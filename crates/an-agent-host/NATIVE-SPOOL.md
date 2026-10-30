@@ -246,11 +246,13 @@ phase (`prepared`, `unconfirmed`, `running-or-unconfirmed`, `settled`, `accepted
 `reclaimed`), execution outcome, termination confirmation and separate artifact
 status. Missing, inconsistent or racing settlement remains uncertain. Collection
 requires verified workspace evidence; an outer marker alone cannot establish it.
-Accepted output bindings are verified through spool-artifacts and survive unload.
+Accepted output bindings use the same evidence checks as spool-artifacts and survive unload.
 Partial acceptance is reported as unconfirmed rather than a clean pending state.
 
-The query does not acquire the execution lock merely to observe a running job;
-it never infers liveness from a PID or a lock file. A missing receipt cannot
+The query never acquires, writes or clears the instance execution lock, including
+when verifying accepted outputs. A busy or stale lock alone does not make valid
+artifact evidence unconfirmed. The query never infers liveness from a PID or a
+lock file. A missing receipt cannot
 distinguish running work from interrupted bookkeeping. All mutation/custody
 commands independently revalidate and retain their existing locks and approvals.
 The response is a bounded observation, not an atomic scheduling decision.
@@ -301,6 +303,13 @@ termination. It verifies instance/release/run ownership, the original start plan
 profile identity, workspace intent, receipt, execution mapping and snapshot bytes.
 It writes only the derived result record after approval. Matching existing records
 are a verified no-op; conflicting records are never overwritten.
+
+Attempt discovery requires exactly one canonical UUID directory. A regular
+`.DS_Store` file is left untouched and listed in the repair approval's
+`ignored_attempt_entries`; it is not an attempt. Other unexpected entries, links,
+noncanonical UUID names and a directory named `.DS_Store` refuse with a diagnostic
+naming the entry. Multiple real attempts remain ambiguous and refuse. No blanket
+metadata or editor-file exclusion is applied.
 
 This does not launch, retry, accept output, clear locks or infer termination from
 a PID. Missing/uncertain receipts, unstarted attempts, multiple attempts, changed

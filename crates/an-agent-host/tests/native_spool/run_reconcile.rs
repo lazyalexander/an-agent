@@ -65,7 +65,58 @@ fn completed_execution_is_reconciled_without_retry_or_implicit_acceptance() -> R
         fs::create_dir(&extra)?;
         assert!(spool::reconcile_run(&root, "run", None).is_err());
         fs::remove_dir(&extra)?;
+        let metadata = attempts.join(".DS_Store");
+        fs::write(&metadata, b"Finder metadata")?;
         let plan = spool::reconcile_run(&root, "run", None)?;
+        assert_eq!(
+            plan["plan"]["ignored_attempt_entries"],
+            json!([".DS_Store"])
+        );
+        for (name, directory) in [
+            ("editor.swap", false),
+            ("unexpected-directory", true),
+            ("11111111-1111-4111-A111-111111111111", true),
+            ("00000000-0000-0000-0000-000000000000", false),
+        ] {
+            let path = attempts.join(name);
+            if directory {
+                fs::create_dir(&path)?;
+            } else {
+                fs::write(&path, b"unexpected")?;
+            }
+            let error = spool::reconcile_run(&root, "run", None).unwrap_err();
+            assert!(error.to_string().contains(name), "{error}");
+            if directory {
+                fs::remove_dir(&path)?;
+            } else {
+                fs::remove_file(&path)?;
+            }
+        }
+        fs::create_dir(&extra)?;
+        assert!(spool::reconcile_run(&root, "run", None).is_err());
+        fs::remove_dir(&extra)?;
+        fs::remove_file(&metadata)?;
+        fs::create_dir(&metadata)?;
+        assert!(
+            spool::reconcile_run(&root, "run", None)
+                .unwrap_err()
+                .to_string()
+                .contains(".DS_Store")
+        );
+        fs::remove_dir(&metadata)?;
+        std::os::unix::fs::symlink(&dir, &metadata)?;
+        assert!(
+            spool::reconcile_run(&root, "run", None)
+                .unwrap_err()
+                .to_string()
+                .contains(".DS_Store")
+        );
+        fs::remove_file(&metadata)?;
+        fs::write(&metadata, b"Finder metadata")?;
+        let withheld = root.join("withheld-attempt");
+        fs::rename(&dir, &withheld)?;
+        assert!(spool::reconcile_run(&root, "run", None).is_err());
+        fs::rename(&withheld, &dir)?;
         assert!(!target.exists());
         assert!(spool::reconcile_run(&root, "run", Some(&"0".repeat(64))).is_err());
         assert!(!target.exists());
@@ -94,7 +145,8 @@ fn completed_execution_is_reconciled_without_retry_or_implicit_acceptance() -> R
             spool::reconcile_run(&root, "run", plan["approval_sha256"].as_str())?["already_recorded"],
             true
         );
-        assert_eq!(fs::read_dir(&attempts)?.count(), 1);
+        assert_eq!(fs::read_dir(&attempts)?.count(), 2);
+        assert_eq!(fs::read(&metadata)?, b"Finder metadata");
         assert_eq!(fs::read(dir.join("execution.json"))?, execution);
         assert_eq!(fs::read(dir.join("receipt.json"))?, receipt);
         assert!(!root.join("runs/run/accepted.json").exists());
