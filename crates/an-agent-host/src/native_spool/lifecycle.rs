@@ -106,6 +106,13 @@ pub fn update_kit(path: &Path, name: &str, source: &Path, approved: Option<&str>
     Ok(json!({"status":"succeeded","edit":plan}))
 }
 
+/// Restore one editable working copy through the existing approved edit boundary.
+pub fn reset_kit(path: &Path, name: &str, approved: Option<&str>) -> Result<Value> {
+    bundle::identifier(name)?;
+    let root = location(path)?;
+    update_kit(&root, name, &root.join("release/kit").join(name), approved)
+}
+
 pub(super) fn commit_kit(root: &Path, selected: &str, bytes: &[u8], plan: &Value) -> Result<()> {
     let (_, bundle) = active(root)?;
     super::requirements::editable(&bundle.manifest, selected)?;

@@ -16,7 +16,7 @@ use crate::{
 };
 /// Legacy module alias; wire schemas and stored tickets retain their identities.
 pub use kit_proposal as weaver;
-pub use lifecycle::{load, show, unload, update_kit};
+pub use lifecycle::{load, reset_kit, show, unload, update_kit};
 pub use run::{accept, reclaim, start};
 use serde_json::{Value, json};
 pub use status::status;

@@ -28,6 +28,10 @@ pub(super) fn dispatch(command: &str, args: &[String]) -> Result<Value> {
         }
         ("spool-load", [package, root]) => spool::load(Path::new(package), Path::new(root)),
         ("spool-show", [root]) => spool::show(Path::new(root)),
+        ("spool-kit-reset", [root, name]) => spool::reset_kit(Path::new(root), name, None),
+        ("spool-kit-reset", [root, name, flag, hash]) if flag == "--approve" => {
+            spool::reset_kit(Path::new(root), name, Some(hash))
+        }
         ("spool-kit-update", [root, name, source]) => {
             spool::update_kit(Path::new(root), name, Path::new(source), None)
         }
