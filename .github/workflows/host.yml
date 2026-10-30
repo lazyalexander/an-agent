@@ -23,7 +23,15 @@ jobs:
           fetch-depth: 0
       - name: Install repository-pinned Rust toolchain
         run: |
-          rustup show active-toolchain
+          active="$(rustup show active-toolchain | awk '{print $1}')"
+          rustup default "$active"
+          # Hosted runners can carry different unused stable versions. rust-cache
+          # keys all installed toolchains; keep only the selected one in this job.
+          while read -r toolchain _; do
+            if [ "$toolchain" != "$active" ]; then
+              rustup toolchain uninstall "$toolchain"
+            fi
+          done < <(rustup toolchain list --quiet)
           rustc --version --verbose
           cargo --version
       - name: Restore Rust dependency caches

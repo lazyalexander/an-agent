@@ -73,7 +73,12 @@ claim a speedup from a single combined CI duration or a changed runner.
 
 Host CI installs the toolchain selected by the repository's `rust-toolchain.toml`
 through rustup, including its declared components. Do not install a separate
-moving `stable` version before selecting the pinned version.
+moving `stable` version before selecting the pinned version. The ephemeral hosted
+runner makes that version its default (including fixtures invoking rustc outside
+the repository) and removes other installed toolchains for this job only. The
+cache action fingerprints all installed compilers; otherwise unused preinstalled
+stable-version differences can invalidate a cache for identical source. This
+workflow does not change developer machines.
 
 The pinned [rust-cache action](https://github.com/Swatinem/rust-cache) covers both
 `. -> target` and `tools/archcheck -> target` in one cache operation. These remain
