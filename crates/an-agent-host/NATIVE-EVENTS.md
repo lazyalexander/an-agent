@@ -23,7 +23,9 @@ Each array may be empty or contain that one supported event name. Unknown names,
 duplicates and unknown fields refuse. V1/v2 cannot carry this object; their bytes
 and ordinary behavior remain compatible. Older hosts reject v3. Roles describe
 interfaces, not peer access, subscriptions, model services or network grants.
-The same reviewed macOS shell policy, output limits and one-input profile apply.
+The reviewed macOS policy and one-input profile apply. Optional v3
+[binary products and operator-selected Python](NATIVE-PYTHON.md) use the same
+delivery/confirmation protocol. V1/v2 and existing text packages are unchanged.
 The local control store remains trusted against same-user tampering. Hashes bind
 bytes and identities, not publisher authentication or a remote trust protocol.
 
@@ -110,7 +112,8 @@ does not enable formal artifact GC or infer references from opaque state.
 
 The first workspace permits 512 log records, 16 static subscriptions and 128
 delivery slots; native
-instance/run and text-artifact limits remain unchanged. This is bounded local
+instance/run and text-artifact limits remain unchanged; explicitly declared byte
+artifacts retain the existing 8 MiB bound. This is bounded local
 backpressure, not a scalable broker or disk quota. Future channels need separate
 grants, lifecycle fencing and measured backpressure; raw high-frequency samples
 must not be forced through this fsync-backed event log or tape.

@@ -48,11 +48,16 @@ fn selected(event: &Value, context: &Value) -> Result<Value> {
     let binding = &artifact["binding"];
     let revision = text(binding, "revision")?;
     let (_, actual) = crate::artifact_versions::read(catalog, revision)?;
-    if actual != *binding || binding.get("encoding").is_some() {
-        return Err("event delivery requires one fixed text artifact".into());
+    if actual != *binding {
+        return Err("event delivery requires one exact artifact binding".into());
     }
+    let file = if binding["encoding"] == "bytes" {
+        "content.bin"
+    } else {
+        "content.txt"
+    };
     Ok(
-        json!({"path":catalog.join("revisions").join(revision).join("content.txt"),
+        json!({"path":catalog.join("revisions").join(revision).join(file),
         "catalog":catalog,"binding":binding,"event_input":context}),
     )
 }

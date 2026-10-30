@@ -30,7 +30,7 @@ pub fn compare_releases(previous: &Path, candidate: &Path) -> Result<Value> {
         "previous":summary(&before)?,"candidate":summary(&after)?,
         "same_release":same,"reused_coordinates":same_labels && !same,
         "changes":{"code":code,
-            "manifest":fields(&a,&b,&["schema","name","version","entry","outputs","events"]),
+            "manifest":fields(&a,&b,&["schema","name","version","entry","outputs","binary_outputs","events"]),
             "requirements":fields(&a["requirements"],&b["requirements"],
                 &["runtime","os","arch","interaction","gpu","inputs","editable","capabilities","dependencies"])},
         "review_required":!same,"execution_granted":false,"successor_authorized":false,
@@ -45,6 +45,7 @@ fn summary(bundle: &bundle::Bundle) -> Result<Value> {
     Ok(
         json!({"release":bundle.release,"manifest":serde_json::to_value(&bundle.manifest)?,
         "legacy_implicit_kit_editability":bundle.manifest.requirements.is_none(),
+        "operator_runtime_required":bundle.manifest.requirements.as_ref().is_some_and(|r| r.runtime == super::runtime::PYTHON),
         "runtime_supported":refusal.is_none(),"runtime_refusal":refusal}),
     )
 }

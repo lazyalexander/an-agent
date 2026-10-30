@@ -11,6 +11,7 @@ mod lifecycle;
 mod reconcile;
 mod release_review;
 mod requirements;
+mod runtime;
 pub use release_review::compare_releases;
 mod round_control;
 pub use reconcile::reconcile_accept;
@@ -26,7 +27,7 @@ use crate::{
 };
 /// Legacy module alias; wire schemas and stored tickets retain their identities.
 pub use kit_proposal as weaver;
-pub use lifecycle::{load, reset_kit, show, unload, update_kit};
+pub use lifecycle::{load, load_runtime, reset_kit, show, unload, update_kit};
 pub use run::{accept, reclaim, start, start_state};
 use serde_json::{Value, json};
 pub use status::status;
@@ -53,6 +54,7 @@ fn state(root: &Path) -> Result<(Value, bundle::Bundle)> {
     {
         return Err("instance release binding mismatch".into());
     }
+    runtime::binding(root, &record, &bundle)?;
     Ok((record, bundle))
 }
 fn active(root: &Path) -> Result<(Value, bundle::Bundle)> {

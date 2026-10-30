@@ -56,6 +56,11 @@ Loom owns development and packaging. The an-agent host owns workflow admission, 
 - **Audit and limited recovery:** append-only tapes retain execution evidence, while session APIs support bounded recovery with required inputs available. Dependency checks can quarantine stale model results rather than treating them as current work.
 - **Bounded CLI hosting:** `an-agent-host` independently registers hash-bound deployments and runs an explicit stdio-only capability through admission, native macOS restrictions, and retained receipts. Development and packaging tools are not runtime dependencies. See [the host execution contract](crates/an-agent-host/README.md).
 
+Release-bound native spools also support explicit workspace-event handoff and
+[operator-selected Python with binary products](crates/an-agent-host/NATIVE-PYTHON.md).
+The headless log-report example produces editable XLSX/PPTX through the same
+supervision and custody boundary; document rules remain in spool code.
+
 Semantic assessment and execution enforcement are distinct. The host or supervising agent decides how to respond to findings; trusted execution boundaries enforce permissions. A declaration or a recorded receipt is not, by itself, an operating-system sandbox.
 
 ## Boundaries

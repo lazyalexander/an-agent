@@ -49,6 +49,9 @@ pub(super) fn dispatch(command: &str, args: &[String]) -> Result<Value> {
             spool::kit_proposal::apply(Path::new(root), Path::new(response), Some(hash))
         }
         ("spool-load", [package, root]) => spool::load(Path::new(package), Path::new(root)),
+        ("spool-load", [package, root, flag, runtime]) if flag == "--runtime" => {
+            spool::load_runtime(Path::new(package), Path::new(root), Path::new(runtime))
+        }
         ("spool-show", [root]) => spool::show(Path::new(root)),
         ("spool-kit-reset", [root, name]) => spool::reset_kit(Path::new(root), name, None),
         ("spool-kit-reset", [root, name, flag, hash]) if flag == "--approve" => {

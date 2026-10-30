@@ -20,6 +20,8 @@ pub(super) struct Manifest {
     pub entry: String,
     pub files: BTreeMap<String, String>,
     pub outputs: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub binary_outputs: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub requirements: Option<super::requirements::Requirements>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -95,6 +97,13 @@ pub(super) fn inspect(root: &Path) -> Result<Bundle> {
         if matches!(output.as_str(), "kit" | "tmp") || !outputs.insert(output) {
             return Err("invalid or duplicate output slot".into());
         }
+    }
+    let binary: BTreeSet<_> = m.binary_outputs.iter().collect();
+    if (!binary.is_empty() && m.schema != "an-native-spool-v3")
+        || binary.len() != m.binary_outputs.len()
+        || binary.iter().any(|name| !outputs.contains(*name))
+    {
+        return Err("binary outputs require unique declared v3 output slots".into());
     }
     // No unregistered files, links or nested directories travel with the release.
     let mut expected: BTreeSet<_> = m.files.keys().cloned().collect();

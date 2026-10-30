@@ -1,6 +1,7 @@
 # Release-bound native spool: first macOS slice
 
-Status: implemented for reviewed local shell tools. This is a bounded spool
+Status: implemented for reviewed local shell tools and explicitly selected
+[native Python environments](NATIVE-PYTHON.md). This is a bounded spool
 facade over the existing workspace supervisor, snapshots and custody machinery.
 It is not an arbitrary agent sandbox, general dependency resolver or replacement
 for trusted in-process `SpoolBeat` mounting. No core or Loom runtime dependency is
@@ -25,6 +26,10 @@ a fresh independently approved instance; old releases and state remain retained.
 [Native workspace events](NATIVE-EVENTS.md) adds explicit v3 event interfaces and
 host-owned artifact delivery. V1/v2 releases remain unchanged and do not acquire
 event rights implicitly. Business sequencing stays inside silk/kit.
+
+[Native Python and binary products](NATIVE-PYTHON.md) adds operator-selected,
+inventory-bound dependencies and explicit byte outputs to v3. V1/v2 and existing
+shell packages retain their behavior; no package performs dependency installation.
 
 ## Contract and layout
 

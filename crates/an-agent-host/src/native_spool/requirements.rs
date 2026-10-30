@@ -5,15 +5,15 @@ use std::collections::BTreeSet;
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub(super) struct Requirements {
-    runtime: String,
+    pub runtime: String,
     os: String,
     arch: String,
     interaction: String,
     gpu: String,
-    inputs: Vec<String>,
+    pub inputs: Vec<String>,
     pub editable: Vec<String>,
     capabilities: Vec<String>,
-    dependencies: Vec<String>,
+    pub dependencies: Vec<String>,
 }
 pub(super) fn schema(m: &bundle::Manifest) -> Result<()> {
     match (m.schema.as_str(), &m.requirements) {
@@ -28,7 +28,8 @@ pub(super) fn validate(m: &bundle::Manifest) -> Result<()> {
     let Some(r) = &m.requirements else {
         return Ok(());
     };
-    if r.runtime != "macos-native-process-v1"
+    let python = r.runtime == super::runtime::PYTHON && m.schema == "an-native-spool-v3";
+    if (!python && r.runtime != "macos-native-process-v1")
         || r.os != "macos"
         || !cfg!(target_os = "macos")
         || r.arch != "portable-source"
@@ -39,11 +40,23 @@ pub(super) fn validate(m: &bundle::Manifest) -> Result<()> {
             "unsupported native runtime, OS, architecture, interaction or GPU requirement".into(),
         );
     }
-    if !r.dependencies.is_empty() {
+    if !python && !r.dependencies.is_empty() {
         return Err("unresolved native dependencies".into());
     }
+    if python {
+        let mut seen = BTreeSet::new();
+        if r.dependencies.len() > 16 {
+            return Err("too many Python dependency labels".into());
+        }
+        for name in &r.dependencies {
+            bundle::identifier(name)?;
+            if !seen.insert(name) {
+                return Err("duplicate Python dependency label".into());
+            }
+        }
+    }
     if r.inputs.len() != 1 {
-        return Err("native v2 requires one text input slot".into());
+        return Err("native profile requires one file input slot".into());
     }
     bundle::identifier(&r.inputs[0])?;
     let requested: BTreeSet<_> = r.capabilities.iter().map(String::as_str).collect();
