@@ -52,6 +52,77 @@ fn preset_cancellation_creates_neither_workspace_nor_successor() -> Result<()> {
 }
 
 #[test]
+fn positively_unstarted_partial_snapshots_can_be_collected_without_retry() -> Result<()> {
+    for interrupted in [false, true] {
+        let (_temp, profile, root) = fixture()?;
+        let stop = AtomicBool::new(false);
+        let selected = profile.parent().unwrap().join("selected.txt");
+        let prior = profile.parent().unwrap().join("prior.txt");
+        fs::write(&prior, b"first copied input")?;
+        let mut spec: Value = serde_json::from_slice(&fs::read(&profile)?)?;
+        spec["inputs"] = json!([prior, selected]);
+        fs::write(&profile, serde_json::to_vec(&spec)?)?;
+        let preview = run(&profile, &root, None, None, &stop)?;
+        let receipt = run_inner(
+            &profile,
+            &root,
+            None,
+            preview["approval_sha256"].as_str(),
+            &stop,
+            |boundary, _| {
+                if matches!(boundary, not_started::Boundary::IntentPersisted) {
+                    fs::write(&selected, b"changed after approval").unwrap();
+                }
+            },
+        )?;
+        assert_eq!(receipt["schema"], "an-workspace-not-started-v1");
+        assert_eq!(receipt["process_started"], false);
+        let id = receipt["attempt"].as_str().unwrap();
+        let dir = attempt(&root, id)?;
+        assert!(!dir.join("launch.json").exists());
+        assert!(reclaim_snapshots_managed(&root, id, None).is_err());
+        let work = reclaim(&root, id, None)?;
+        reclaim(&root, id, work["approval_sha256"].as_str())?;
+        let inputs = dir.join("snapshot/inputs");
+        let held = dir.join("snapshot/held-inputs");
+        let outside = profile.parent().unwrap().join("outside");
+        fs::create_dir(&outside)?;
+        fs::rename(&inputs, &held)?;
+        std::os::unix::fs::symlink(&outside, &inputs)?;
+        assert!(reclaim_snapshots_managed(&root, id, None).is_err());
+        assert!(outside.exists());
+        fs::remove_file(&inputs)?;
+        fs::rename(&held, &inputs)?;
+        let snapshot = reclaim_snapshots_managed(&root, id, None)?;
+        assert!(dir.join("snapshot/inputs/prior.txt").exists());
+        if interrupted {
+            store::write_new(
+                &dir.join("snapshot-reclaim-intent.json"),
+                &serde_json::to_vec(&snapshot["plan"])?,
+            )?;
+            fs::remove_file(dir.join("snapshot/inputs/prior.txt"))?;
+            let before = fs::read_dir(dir.join("snapshot/inputs"))?.count();
+            let observed = reclaim_snapshots_managed(&root, id, None)?;
+            assert_eq!(observed["status"], "uncertain");
+            assert_eq!(observed["executed"], false);
+            assert!(dir.join("snapshot/inputs").exists());
+            assert_eq!(fs::read_dir(dir.join("snapshot/inputs"))?.count(), before);
+            assert!(!dir.join("snapshot-reclaimed.json").exists());
+            continue;
+        }
+        reclaim_snapshots_managed(&root, id, snapshot["approval_sha256"].as_str())?;
+        assert!(!dir.join("snapshot/inputs").exists());
+        assert_eq!(
+            reclaim_snapshots_managed(&root, id, None)?["status"],
+            "succeeded"
+        );
+        assert_eq!(fs::read_dir(root.join("attempts"))?.count(), 1);
+        assert!(dir.join("plan.json").exists());
+    }
+    Ok(())
+}
+
+#[test]
 fn cancellation_at_both_durable_boundaries_can_resume_or_reclaim_but_never_publish() -> Result<()> {
     for before_snapshot in [true, false] {
         for resume in [true, false] {

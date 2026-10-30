@@ -29,6 +29,9 @@ pub(super) struct Profile {
     #[serde(default)]
     artifact_inputs: Vec<ArtifactInput>,
     pub wall_seconds: u64,
+    /// Operator headroom requests may raise, but never lower, the native floor.
+    #[serde(default)]
+    minimum_free_bytes: u64,
     trusted_process_group: bool,
 }
 
@@ -116,6 +119,11 @@ impl Profile {
         {
             return Err("binary outputs must be unique declared outputs".into());
         }
+        let minimum_free = p.minimum_free_bytes.max(
+            super::capacity::RESERVE
+                .checked_add(total as u64)
+                .ok_or("storage estimate overflow")?,
+        );
         let artifacts = super::inputs::bind(&p.artifact_inputs, &inputs, &roots, &work)?;
         let resolve = |s: &str| s.replace("{work}", &work.to_string_lossy());
         let args: Vec<_> = p.args.iter().map(|a| resolve(a)).collect();
@@ -160,7 +168,7 @@ impl Profile {
             "executable":exe,"executable_sha256":executable_hash,"args":args,"environment":env,
             "inputs":inputs,"readonly":roots,"outputs":outputs,"root":root,
             "predecessor":predecessor,"scratch_before":if work.exists(){inventory::scan(&work)?}else{json!({})},
-            "wall_seconds":p.wall_seconds,"network":false,"automatic_retries":0,
+            "wall_seconds":p.wall_seconds,"minimum_free_bytes":minimum_free,"network":false,"automatic_retries":0,
             "scope":"reviewed local tools without daemonization; not hostile process-tree containment"});
         if !binary.is_empty() {
             plan["binary_outputs"] = json!(binary);
@@ -180,6 +188,10 @@ pub(super) fn verify_inputs(plan: &Value) -> Result<()> {
     if store::digest(&regular(exe, 20 * 1024 * 1024)?) != plan["executable_sha256"] {
         return Err("selected runtime executable changed".into());
     }
+    verify_payloads(plan)
+}
+
+pub(super) fn verify_payloads(plan: &Value) -> Result<()> {
     for input in plan["inputs"].as_array().ok_or("missing selected inputs")? {
         let path = Path::new(input["path"].as_str().ok_or("invalid input path")?);
         if store::digest(&regular(path, 64 * 1024 * 1024)?) != input["sha256"] {

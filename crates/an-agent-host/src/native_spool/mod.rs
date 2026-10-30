@@ -15,6 +15,7 @@ mod run;
 mod run_reconcile;
 pub use run_reconcile::reconcile_run;
 mod status;
+mod storage;
 use crate::{
     execution::{Result, store},
     file_job::regular,
@@ -29,6 +30,7 @@ use std::{
     fs,
     path::{Path, PathBuf},
 };
+pub use storage::{reclaim_snapshots, storage};
 
 fn location(path: &Path) -> Result<PathBuf> {
     store::no_links(path)?;

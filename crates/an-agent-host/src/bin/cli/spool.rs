@@ -4,6 +4,13 @@ use an_agent_host::native_spool as spool;
 
 pub(super) fn dispatch(command: &str, args: &[String]) -> Result<Value> {
     match (command, args) {
+        ("spool-storage", [root]) => spool::storage(Path::new(root)),
+        ("spool-reclaim-snapshots", [root, run]) => {
+            spool::reclaim_snapshots(Path::new(root), run, None)
+        }
+        ("spool-reclaim-snapshots", [root, run, flag, hash]) if flag == "--approve" => {
+            spool::reclaim_snapshots(Path::new(root), run, Some(hash))
+        }
         ("spool-pause" | "spool-resume", [root]) => control(command, root, None),
         ("spool-pause" | "spool-resume", [root, flag, hash]) if flag == "--approve" => {
             control(command, root, Some(hash))

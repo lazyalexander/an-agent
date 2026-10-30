@@ -62,6 +62,8 @@ pub(super) fn run(args: Vec<String>) -> Result<()> {
         }
         "spool-load"
         | "spool-show"
+        | "spool-storage"
+        | "spool-reclaim-snapshots"
         | "spool-status"
         | "spool-artifacts"
         | "spool-kit-reset"

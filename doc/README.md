@@ -32,6 +32,7 @@ them or turn a design requirement into an implemented guarantee.
 | Optional OpenShell backend | [Adapter contract](../crates/an-agent-host/OPENSHELL.md), [recovery limits](../crates/an-agent-host/OPENSHELL-RECOVERY.md) |
 | Release-bound native spool | [First macOS package lifecycle](../crates/an-agent-host/NATIVE-SPOOL.md) |
 | Native round control | [Pause admission, checkpoint suspension and explicit resume](../crates/an-agent-host/NATIVE-CONTROL.md) |
+| Native storage | [Observation, private snapshot collection and admission pressure](../crates/an-agent-host/NATIVE-STORAGE.md) |
 | Reviewed operator workflows | [Workspace jobs](../crates/an-agent-host/WORKSPACE-JOBS.md) |
 | CLI handoff pressure and input references | [Measurements and bounded decision](../crates/an-agent-host/HANDOFF-PRESSURE.md) |
 | Fixed external inputs without full copying | [Filesystem clone qualification](../crates/an-agent-host/INPUT-CLONES.md) |

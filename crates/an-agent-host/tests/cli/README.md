@@ -28,6 +28,12 @@ host reads the legacy instance before activation and refuses the upgraded instan
 after pause and resume. Build each selected binary once and use stable copies;
 never rebuild a shared executable while an external suite is invoking it.
 
+Storage coverage uses a real 16 MiB selected input, verifies logical snapshot
+removal with unchanged formal artifacts/state, continues after suspension and
+feeds a fixed report into another instance. Unknown entries/changed inputs and
+lost collection receipts cannot authorize new deletion. A raised operator
+headroom request exercises the real no-spawn denial path without filling disk.
+
 Each command has a bounded wait and records stdout/stderr and its exit status.
 On a client deadline the runner requests host cancellation; unknown termination
 fails the suite and keeps evidence. It never automatically reruns an execution.

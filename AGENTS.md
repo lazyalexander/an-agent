@@ -45,6 +45,10 @@ Rules:
   PR heads only. Delete a head when its PR merges
   (`git push origin --delete <branch>`). Local branches may be kept
   freely.
+- Local cleanup deletes only branches older than seven days, merged into
+  development and not checked out in any worktree. Keep main/dev-advance and
+  unmerged work; verify ancestry and use safe deletion. Do not detach a worktree
+  just to make its branch eligible.
 - After any merge you expected to land on `dev-advance`, verify with
   `git log origin/dev-advance --oneline -5` that it actually did. Do
   not trust the PR page.
