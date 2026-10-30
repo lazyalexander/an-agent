@@ -52,3 +52,6 @@ migration changes them. Do not copy private deployment notes into public docs.
 Code-role terminology follows [the spool code contract](spool-code.md).
 Silk is the stable core; kit is adaptable glue. Preserve legacy wire/API names
 and distinguish target contracts from implemented runtime guarantees.
+
+[Weaver and independent development](weaver.md) describes reviewed domain inputs
+and the boundary between zero-mount iteration and managed execution.
