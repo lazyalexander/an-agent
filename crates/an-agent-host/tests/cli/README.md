@@ -34,6 +34,13 @@ feeds a fixed report into another instance. Unknown entries/changed inputs and
 lost collection receipts cannot authorize new deletion. A raised operator
 headroom request exercises the real no-spawn denial path without filling disk.
 
+`native_release.py --host HOST --evidence NEW_DIRECTORY` uses real macOS execution
+to qualify read-only release comparison, same-label changed content, unsupported
+capability/dependency refusal, separate instance/state initialization, stale
+approval refusal, failed candidate output rejection and original-instance
+continuation. It adds no in-place updater or automatic migration. The host owns
+this failure matrix; Loom separately tests its actual exported revisions.
+
 Each command has a bounded wait and records stdout/stderr and its exit status.
 On a client deadline the runner requests host cancellation; unknown termination
 fails the suite and keeps evidence. It never automatically reruns an execution.

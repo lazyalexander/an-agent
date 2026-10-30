@@ -15,11 +15,16 @@ pub(super) struct Requirements {
     capabilities: Vec<String>,
     dependencies: Vec<String>,
 }
+pub(super) fn schema(m: &bundle::Manifest) -> Result<()> {
+    match (m.schema.as_str(), &m.requirements) {
+        ("an-native-spool-v1", None) | ("an-native-spool-v2", Some(_)) => Ok(()),
+        _ => Err("native schema and requirements must agree".into()),
+    }
+}
 pub(super) fn validate(m: &bundle::Manifest) -> Result<()> {
-    let r = match (m.schema.as_str(), &m.requirements) {
-        ("an-native-spool-v1", None) => return Ok(()),
-        ("an-native-spool-v2", Some(r)) => r,
-        _ => return Err("native schema and requirements must agree".into()),
+    schema(m)?;
+    let Some(r) = &m.requirements else {
+        return Ok(());
     };
     if r.runtime != "macos-native-process-v1"
         || r.os != "macos"
