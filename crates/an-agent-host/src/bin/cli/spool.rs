@@ -4,6 +4,12 @@ use an_agent_host::native_spool as spool;
 
 pub(super) fn dispatch(command: &str, args: &[String]) -> Result<Value> {
     match (command, args) {
+        ("spool-reconcile-accept", [root, run]) => {
+            spool::reconcile_accept(Path::new(root), run, None)
+        }
+        ("spool-reconcile-accept", [root, run, flag, hash]) if flag == "--approve" => {
+            spool::reconcile_accept(Path::new(root), run, Some(hash))
+        }
         ("spool-status", [root, run]) => spool::status(Path::new(root), run),
         ("spool-artifacts", [root, run]) => spool::artifacts(Path::new(root), run),
         ("spool-kit-proposal-request" | "spool-weaver-request", [root, name]) => {

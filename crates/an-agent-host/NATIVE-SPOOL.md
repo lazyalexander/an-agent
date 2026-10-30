@@ -252,3 +252,21 @@ Headless CPU is qualified first. Common scheduling/monitoring identities may be
 reused for future GPU/application backends, whose actual supported lifecycle and
 external settlement must be separately qualified. No pause or suspend support is
 implied by these state names.
+
+## Reconciling an interrupted acceptance handoff
+
+If workspace acceptance completed but recording the instance-bound accepted.json
+failed, status reports unconfirmed custody and ordinary acceptance is not retried.
+`spool-reconcile-accept INSTANCE RUN [--approve HASH]` previews a repair, validates
+confirmed settlement, complete workspace acceptance, exact output inventory and
+all retained versions/provenance, then writes only the missing instance record.
+A matching existing record is an explicitly verified no-op. Conflicting, partial,
+foreign or changed evidence refuses; existing records are never overwritten.
+
+The approval binds the complete recovered acceptance binding. No workload is
+restarted and no artifact is republished. Query and downstream checkout work again
+using the original revisions. This does not recover an incomplete workspace
+acceptance or missing execution result, clear uncertain termination, or infer an
+external worker stopped. Those states remain fenced for later reconciliation.
+The filesystem failure acceptance test exercises actual publication followed by
+a failed facade write; it is not a claim of arbitrary power-loss durability.

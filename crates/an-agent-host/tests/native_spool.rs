@@ -234,3 +234,6 @@ mod artifacts;
 
 #[path = "native_spool/status.rs"]
 mod status;
+
+#[path = "native_spool/reconcile.rs"]
+mod reconcile;

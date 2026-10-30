@@ -4,28 +4,42 @@ use super::*;
 pub fn artifacts(path: &Path, name: &str) -> Result<Value> {
     let root = location(path)?;
     let _lock = store::lock(&root)?;
-    let settled = run::settled(&root, name)?;
+    Ok(verified(&root, name, true)?.0)
+}
+
+pub(super) fn verified(root: &Path, name: &str, require_bound: bool) -> Result<(Value, Value)> {
+    let settled = run::settled(root, name)?;
     if settled["status"] != "succeeded" {
         return Err("only successful accepted runs have formal artifacts".into());
     }
     let dir = root.join("runs").join(name);
-    let bound: Value = serde_json::from_slice(&regular(&dir.join("accepted.json"), 65536)?)?;
+
+    let execution = regular(
+        &dir.join("job/attempts")
+            .join(settled["workspace"]["attempt"].as_str().ok_or("attempt")?)
+            .join("execution.json"),
+        2 * 1024 * 1024,
+    )?;
+    if store::digest(&execution) != settled["workspace"]["execution_sha256"] {
+        return Err("accepted execution evidence changed".into());
+    }
     let accepted: Value = serde_json::from_slice(&regular(
         &dir.join("job/attempts")
             .join(settled["workspace"]["attempt"].as_str().ok_or("attempt")?)
             .join("accepted.json"),
         65536,
     )?)?;
-    if bound["status"] != "succeeded"
-        || bound["operation"] != "accept"
-        || bound["instance"] != settled["instance"]
-        || bound["release"] != settled["release"]
-        || bound["run"] != name
-        || bound["result"] != accepted
-        || accepted["schema"] != "an-workspace-accepted-v1"
-        || accepted["status"] != "succeeded"
-    {
-        return Err("formal artifact ownership mismatch".into());
+    if accepted["schema"] != "an-workspace-accepted-v1" || accepted["status"] != "succeeded" {
+        return Err("formal workspace acceptance missing".into());
+    }
+    if require_bound {
+        let bound: Value = serde_json::from_slice(&regular(&dir.join("accepted.json"), 65536)?)?;
+        if bound
+            != json!({"status":"succeeded","instance":settled["instance"],"release":settled["release"],
+            "run":name,"operation":"accept","result":accepted})
+        {
+            return Err("formal artifact ownership mismatch".into());
+        }
     }
     let intent: Value = serde_json::from_slice(&regular(
         &dir.join("job/attempts")
@@ -46,7 +60,7 @@ pub fn artifacts(path: &Path, name: &str) -> Result<Value> {
     {
         return Err("formal acceptance evidence mismatch".into());
     }
-    let (_, bundle) = state(&root)?;
+    let (_, bundle) = state(root)?;
     let outputs = accepted["outputs"]
         .as_array()
         .ok_or("missing accepted outputs")?;
@@ -83,8 +97,7 @@ pub fn artifacts(path: &Path, name: &str) -> Result<Value> {
             return Err("artifact version or provenance mismatch".into());
         }
     }
-    Ok(
-        json!({"schema":"an-native-spool-artifacts-v1","instance":settled["instance"],
-        "release":settled["release"],"run":name,"catalog":dir.join("job/artifacts"),"outputs":outputs}),
-    )
+    let report = json!({"schema":"an-native-spool-artifacts-v1","instance":settled["instance"],
+        "release":settled["release"],"run":name,"catalog":dir.join("job/artifacts"),"outputs":outputs});
+    Ok((report, accepted))
 }
