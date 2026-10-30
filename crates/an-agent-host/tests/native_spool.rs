@@ -129,7 +129,54 @@ fn editable_kit_is_scoped_and_fresh_load_restores_release_baseline() -> Result<(
     );
     let accepted = accept(&root, "first")?;
     reclaim(&root, "first")?;
+    assert!(spool::reset_kit(&root, "report.sh", None).is_err());
+    assert!(spool::reset_kit(&root, "../silk/report.sh", None).is_err());
+    let before_reset = spool::start(&root, "restored", &input, 30, None, &AtomicBool::new(false))?;
+    let host = env!("CARGO_BIN_EXE_an-agent-host");
+    let preview = std::process::Command::new(host)
+        .args(["spool-kit-reset", root.to_str().unwrap(), "transform.sh"])
+        .output()?;
+    assert!(preview.status.success());
+    assert!(fs::read_to_string(root.join("kit/transform.sh"))?.contains("adapted:"));
+    let preview: Value = serde_json::from_slice(&preview.stdout)?;
+    let reset = std::process::Command::new(host)
+        .args([
+            "spool-kit-reset",
+            root.to_str().unwrap(),
+            "transform.sh",
+            "--approve",
+            preview["approval_sha256"].as_str().unwrap(),
+        ])
+        .output()?;
+    assert!(reset.status.success());
+    assert_eq!(
+        fs::read(root.join("kit/transform.sh"))?,
+        fs::read(bundle.join("kit/transform.sh"))?
+    );
+    assert!(
+        spool::start(
+            &root,
+            "restored",
+            &input,
+            30,
+            before_reset["approval_sha256"].as_str(),
+            &AtomicBool::new(false)
+        )
+        .is_err()
+    );
+    assert_eq!(
+        run(&root, "restored", &input, &AtomicBool::new(false))?["status"],
+        "succeeded"
+    );
+    assert_eq!(
+        fs::read_to_string(root.join("runs/restored/job/work/report.txt"))?,
+        "Report\nHELLO\n"
+    );
+    assert_eq!(spool::show(&root)?["instance"], loaded["instance"]);
+    accept(&root, "restored")?;
+    reclaim(&root, "restored")?;
     unload(&root)?;
+    assert!(spool::reset_kit(&root, "transform.sh", None).is_err());
     assert!(spool::start(&root, "second", &input, 30, None, &AtomicBool::new(false)).is_err());
     let fresh = base.join("fresh");
     let reloaded = spool::load(&bundle, &fresh)?;
@@ -186,6 +233,7 @@ fn cancelling_one_instance_cannot_unload_edit_or_claim_another() -> Result<()> {
             thread::sleep(Duration::from_millis(10));
         }
         assert!(spool::unload(&a, None).is_err());
+        assert!(spool::reset_kit(&a, "transform.sh", None).is_err());
         assert!(spool::reclaim(&a, "one", None).is_err());
         assert!(spool::update_kit(&a, "transform.sh", &input, None).is_err());
         assert_eq!(

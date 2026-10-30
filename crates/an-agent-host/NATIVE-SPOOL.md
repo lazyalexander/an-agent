@@ -52,6 +52,7 @@ per instance. A used run name is never automatically retried.
 an-agent-host spool-load PACKAGE NEW_INSTANCE
 an-agent-host spool-show INSTANCE
 an-agent-host spool-kit-update INSTANCE BASENAME SOURCE [--approve DIGEST]
+an-agent-host spool-kit-reset INSTANCE BASENAME [--approve DIGEST]
 an-agent-host spool-start INSTANCE RUN INPUT SECONDS [--approve DIGEST]
 an-agent-host spool-accept INSTANCE RUN [--approve DIGEST]
 an-agent-host spool-reclaim INSTANCE RUN [--approve DIGEST]
@@ -270,3 +271,18 @@ acceptance or missing execution result, clear uncertain termination, or infer an
 external worker stopped. Those states remain fenced for later reconciliation.
 The filesystem failure acceptance test exercises actual publication followed by
 a failed facade write; it is not a claim of arbitrary power-loss durability.
+
+
+## Restoring an editable kit baseline
+
+`spool-kit-reset` restores one declared editable working copy from the verified
+release baseline without changing instance identity, retained products or other
+kits. Preview and approval use the existing edit plan and its before/after
+digests. It shares the same instance lock, editable-path checks and edit receipt
+as update-kit; active execution and unloaded instances refuse. Protected silk or
+noneditable v2 kit paths remain forbidden. The immutable release is not modified.
+
+When reset changes kit bytes, earlier start approvals for different bytes are
+invalid. Every approved reset records an edit generation, so old proposals stay
+stale even after an edit-away/edit-back cycle. It grants no execution. Inspect and separately approve the
+next start. Existing load/unload/fresh-directory baseline restoration still works.
