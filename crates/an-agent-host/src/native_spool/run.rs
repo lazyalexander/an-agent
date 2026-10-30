@@ -40,7 +40,15 @@ pub fn start(
     approved: Option<&str>,
     cancelled: &AtomicBool,
 ) -> Result<Value> {
-    start_selected(path, name, Input::File(input), seconds, approved, cancelled)
+    start_selected(
+        path,
+        name,
+        Input::File(input),
+        seconds,
+        approved,
+        cancelled,
+        |_| Ok(()),
+    )
 }
 
 pub fn start_state(
@@ -58,12 +66,35 @@ pub fn start_state(
         seconds,
         approved,
         cancelled,
+        |_| Ok(()),
     )
 }
 
 enum Input<'a> {
     File(&'a Path),
     State(&'a str),
+    Event(&'a Value),
+}
+
+/// The host event adapter checks its grant and records intent at start admission.
+pub(super) fn start_event(
+    path: &Path,
+    name: &str,
+    selected: &Value,
+    seconds: u64,
+    approved: Option<&str>,
+    cancelled: &AtomicBool,
+    before_start: impl FnOnce(&Value) -> Result<()>,
+) -> Result<Value> {
+    start_selected(
+        path,
+        name,
+        Input::Event(selected),
+        seconds,
+        approved,
+        cancelled,
+        before_start,
+    )
 }
 
 fn start_selected(
@@ -73,6 +104,7 @@ fn start_selected(
     seconds: u64,
     approved: Option<&str>,
     cancelled: &AtomicBool,
+    before_start: impl FnOnce(&Value) -> Result<()>,
 ) -> Result<Value> {
     bundle::identifier(name)?;
     let root = location(path)?;
@@ -88,6 +120,7 @@ fn start_selected(
     let selected = match input {
         Input::File(path) => json!({"path":path.canonicalize()?}),
         Input::State(revision) => checkpoint::selection(&root, revision)?,
+        Input::Event(selected) => selected.clone(),
     };
     let mut profile = profile(
         &root,
@@ -125,7 +158,9 @@ fn start_selected(
     let mut plan = json!({"schema":"an-native-spool-start-v1","instance":instance["instance"],
         "release":bundle.release,"run":name,"workspace":preview["plan"],
         "authority":"reviewed native tools only; no detached workers or network; no hostile-agent claim"});
-    if selected.get("binding").is_some() {
+    if let Some(event) = selected.get("event_input") {
+        plan["event_input"] = event.clone();
+    } else if selected.get("binding").is_some() {
         plan["state_input"] = selected;
     }
     round_control::bind(&mut plan, &root, &instance)?;
@@ -136,6 +171,7 @@ fn start_selected(
     if cancelled.load(std::sync::atomic::Ordering::Acquire) {
         return Ok(json!({"status":"cancelled","executed":false,"process_started":false}));
     }
+    before_start(&plan)?;
     write_json(&dir.join("start.json"), &plan)?;
     let receipt = workspace_job::run_managed(
         &profile_path,

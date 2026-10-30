@@ -41,3 +41,29 @@ fn editable_subset_is_independent_of_payload_presence() -> Result<()> {
     assert!(editable(&m, "silk/main.sh").is_err());
     Ok(())
 }
+
+#[test]
+fn event_interfaces_require_v3_and_do_not_grant_runtime_support() -> Result<()> {
+    use crate::native_spool::event_contract;
+    let mut value = manifest();
+    value["events"] = json!({"consumes":["artifact.accepted"],"produces":["artifact.accepted"]});
+    let parse = |v: Value| -> Result<()> { event_contract::validate(&serde_json::from_value(v)?) };
+    assert!(parse(value.clone()).is_err());
+    value["schema"] = json!("an-native-spool-v3");
+    assert!(parse(value.clone()).is_ok());
+    assert_eq!(
+        validate(&serde_json::from_value(value.clone())?).is_ok(),
+        cfg!(target_os = "macos")
+    );
+    for names in [
+        json!(["unknown"]),
+        json!(["artifact.accepted", "artifact.accepted"]),
+    ] {
+        let mut invalid = value.clone();
+        invalid["events"]["consumes"] = names;
+        assert!(parse(invalid).is_err());
+    }
+    value.as_object_mut().unwrap().remove("events");
+    assert!(parse(value).is_err());
+    Ok(())
+}

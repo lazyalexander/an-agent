@@ -7,6 +7,7 @@ mod instance;
 mod model;
 mod retention;
 mod spool;
+mod spool_events;
 mod spool_state;
 mod workspace;
 
@@ -46,6 +47,13 @@ fn with_cancellation(
 pub(super) fn run(args: Vec<String>) -> Result<()> {
     let (command, args) = args.split_first().ok_or("missing command")?;
     let result = match command.as_str() {
+        "spool-events-init"
+        | "spool-events-show"
+        | "spool-event-publish"
+        | "spool-event-subscribe"
+        | "spool-event-revoke"
+        | "spool-event-deliver"
+        | "spool-event-complete" => spool_events::dispatch(command, args)?,
         "spool-state-init" | "spool-state-show" | "spool-state-commit" | "spool-start-state" => {
             spool_state::dispatch(command, args)?
         }

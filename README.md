@@ -39,6 +39,10 @@ Start with the [public documentation](doc/README.md) for architecture, spool/sil
 execution boundaries, state/artifact ownership and implementation status. Detailed
 contracts remain beside the crates that implement them.
 
+The [native workspace event contract](crates/an-agent-host/NATIVE-EVENTS.md)
+connects accepted file versions to explicitly approved headless spool deliveries.
+Business workflows stay inside silks/kits; the host adds no business graph DSL.
+
 ## Architecture and current capabilities
 
 The host application owns the workspace, user interaction, and execution of application-specific effects. Today, spools are embedded capability bodies with declared contracts and configuration. The target packaging model is a reusable workflow package containing stages, silks, configuration and documentation; it requests shuttle capabilities rather than necessarily containing a shuttle. A spool carries domain knowledge, business rules, skills and domain acceptance criteria; the host supplies generic execution and artifact management rather than absorbing those rules. Package identity, a workflow run and an individual stage are distinct. The existing descriptor and mounting APIs are not changed by this design direction.
