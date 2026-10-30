@@ -37,8 +37,11 @@ or an unlimited sequence of examples; each may require several focused PRs.
    output. See [native state](../crates/an-agent-host/NATIVE-STATE.md). A fresh load
    requires an explicit saved-version seed; automatic lineage/migration is separate.
 3. **Pause and suspension.** Qualify cooperative safe points, explicit resume and
-   checkpoint/stop suspension for the native backend. Do not equate SIGSTOP or a
-   process/VM image with durable business recovery. Unsupported modes stay false.
+   checkpoint/stop suspension for the native backend. The first
+   [round-boundary control](../crates/an-agent-host/NATIVE-CONTROL.md) slice supports
+   admission pause, fixed-checkpoint suspension and explicit resume after verified
+   settlement/acceptance. In-flight safe-point signaling and process/VM restoration
+   remain unqualified; their generic capability flags stay false.
 4. **Retention and capacity.** Expose retained references and leases, safely retire
    unreferenced products/input snapshots, and apply backpressure before storage
    exhaustion. Confirmed termination and state/downstream references gate cleanup.

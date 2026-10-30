@@ -17,6 +17,17 @@ candidate refusal, interrupted HEAD publication, orphan refusal, idempotent
 commit confirmation, scratch reclamation and a fresh instance seeded explicitly
 from a fixed checkpoint. The counter rules belong to this fixture, not the host.
 
+The round-control scenario also qualifies explicit pause/resume, checkpoint-bound
+suspension, stale approvals/proposals, lost-head fencing, interrupted control
+publication, changed-kit/state refusal, an independent second instance and
+scratch reclamation while suspended. Live execution and unknown start evidence
+refuse control; the live test requires confirmed cancellation before proceeding.
+The safe point is a completed, formally accepted round, not in-process signaling.
+Optional `--legacy-host /path/to/pre-control/an-agent-host` verifies that an older
+host reads the legacy instance before activation and refuses the upgraded instance
+after pause and resume. Build each selected binary once and use stable copies;
+never rebuild a shared executable while an external suite is invoking it.
+
 Each command has a bounded wait and records stdout/stderr and its exit status.
 On a client deadline the runner requests host cancellation; unknown termination
 fails the suite and keeps evidence. It never automatically reruns an execution.

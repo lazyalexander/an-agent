@@ -128,6 +128,7 @@ fn start_selected(
     if selected.get("binding").is_some() {
         plan["state_input"] = selected;
     }
+    round_control::bind(&mut plan, &root, &instance)?;
     let (hash, execute) = approval(&plan, approved)?;
     if !execute {
         return Ok(json!({"plan":plan,"approval_sha256":hash,"executed":false}));
@@ -180,6 +181,27 @@ pub(super) fn settled(root: &Path, name: &str) -> Result<Value> {
         return Err("spool run ownership or receipt mismatch".into());
     }
     Ok(result)
+}
+
+/// A round boundary requires every started job to have confirmed termination.
+pub(super) fn settled_runs(root: &Path) -> Result<Vec<Value>> {
+    let mut runs = Vec::new();
+    for entry in fs::read_dir(root.join("runs"))? {
+        let path = entry?.path();
+        store::no_links(&path)?;
+        if path.join("job").exists() {
+            runs.push(settled(
+                root,
+                path.file_name()
+                    .and_then(|s| s.to_str())
+                    .ok_or("invalid run")?,
+            )?);
+        } else if path.join("start.json").exists() || path.join("result.json").exists() {
+            return Err("started spool run lacks workspace settlement evidence".into());
+        }
+    }
+    runs.sort_by_key(|r| r["run"].as_str().unwrap_or_default().to_owned());
+    Ok(runs)
 }
 
 pub fn accept(path: &Path, name: &str, approved: Option<&str>) -> Result<Value> {

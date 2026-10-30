@@ -8,7 +8,9 @@ pub mod kit_proposal;
 mod lifecycle;
 mod reconcile;
 mod requirements;
+mod round_control;
 pub use reconcile::reconcile_accept;
+pub use round_control::{pause, resume, suspend};
 mod run;
 mod run_reconcile;
 pub use run_reconcile::reconcile_run;
@@ -35,8 +37,10 @@ fn location(path: &Path) -> Result<PathBuf> {
 fn state(root: &Path) -> Result<(Value, bundle::Bundle)> {
     let record: Value = serde_json::from_slice(&regular(&root.join("instance.json"), 65536)?)?;
     let bundle = bundle::read(&root.join("release"))?;
-    if record["schema"] != "an-native-spool-instance-v1"
-        || record["release"] != bundle.release
+    if !matches!(
+        record["schema"].as_str(),
+        Some("an-native-spool-instance-v1" | "an-native-spool-instance-v2")
+    ) || record["release"] != bundle.release
         || record["instance"]
             .as_str()
             .is_none_or(|id| uuid::Uuid::parse_str(id).is_err())
@@ -46,6 +50,11 @@ fn state(root: &Path) -> Result<(Value, bundle::Bundle)> {
     Ok((record, bundle))
 }
 fn active(root: &Path) -> Result<(Value, bundle::Bundle)> {
+    let (instance, bundle) = loaded(root)?;
+    round_control::admitted(root, &instance)?;
+    Ok((instance, bundle))
+}
+fn loaded(root: &Path) -> Result<(Value, bundle::Bundle)> {
     if root.join("unloaded.json").exists() {
         return Err("spool instance is unloaded".into());
     }

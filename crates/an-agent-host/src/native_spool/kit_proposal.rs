@@ -14,6 +14,12 @@ struct Proposal {
 
 fn epoch(root: &Path) -> Result<String> {
     let mut names = Vec::new();
+    if root.join("round-control.json").exists() {
+        names.push(format!(
+            "control/{}",
+            store::digest(&regular(&root.join("round-control.json"), 2 * 1024 * 1024)?)
+        ));
+    }
     for entry in fs::read_dir(root.join("runs"))? {
         let entry = entry?;
         let name = entry
@@ -89,7 +95,7 @@ fn ticket(root: &Path, id: &str) -> Result<(Value, Vec<u8>, PathBuf)> {
 pub fn revoke(path: &Path, id: &str) -> Result<Value> {
     let root = location(path)?;
     let _lock = store::lock(&root)?;
-    active(&root)?;
+    loaded(&root)?;
     let (_, _, done) = ticket(&root, id)?;
     let value = json!({"status":"succeeded","request":id,"result_admission":"revoked",
         "external_termination_confirmed":false});
@@ -120,10 +126,11 @@ pub fn apply(path: &Path, proposal: &Path, approved: Option<&str>) -> Result<Val
     {
         return Err("stale or out-of-scope weaver proposal".into());
     }
-    let plan = json!({"request":p.request,"request_sha256":p.request_sha256,
+    let mut plan = json!({"request":p.request,"request_sha256":p.request_sha256,
         "instance":instance["instance"],"release":instance["release"],"kit":p.kit,
         "before":request["before"],"after":store::digest(p.content.as_bytes()),
         "execution_granted":false});
+    round_control::bind(&mut plan, &root, &instance)?;
     let (hash, execute) = approval(&plan, approved)?;
     if !execute {
         return Ok(json!({"plan":plan,"approval_sha256":hash,"executed":false}));

@@ -25,6 +25,11 @@ fn metadata(root: &Path) -> Result<(Value, String)> {
     Ok((metadata, head))
 }
 
+pub(super) fn head_selection(root: &Path) -> Result<Value> {
+    let (_, head) = metadata(root)?;
+    selection(root, &head)
+}
+
 /// Select only a committed ancestor, never an orphan published before HEAD moved.
 pub(super) fn selection(root: &Path, revision: &str) -> Result<Value> {
     if !store::valid_digest(revision) {
@@ -66,8 +71,9 @@ pub fn init(path: &Path, output: &str, file: &Path, approved: Option<&str>) -> R
     }
     let bytes = regular(file, 65536)?;
     std::str::from_utf8(&bytes)?;
-    let plan = json!({"schema":"an-native-spool-state-init-v1","instance":instance["instance"],
+    let mut plan = json!({"schema":"an-native-spool-state-init-v1","instance":instance["instance"],
         "release":bundle.release,"output":output,"content_sha256":store::digest(&bytes)});
+    round_control::bind(&mut plan, &root, &instance)?;
     let (hash, execute) = approval(&plan, approved)?;
     if !execute {
         return Ok(json!({"plan":plan,"approval_sha256":hash,"executed":false}));
@@ -140,9 +146,10 @@ pub fn commit(path: &Path, expected: &str, name: &str, approved: Option<&str>) -
         Path::new(artifacts["catalog"].as_str().ok_or("artifact catalog")?),
         revision,
     )?;
-    let plan = json!({"schema":"an-native-spool-state-commit-v1","instance":instance["instance"],
+    let mut plan = json!({"schema":"an-native-spool-state-commit-v1","instance":instance["instance"],
         "release":instance["release"],"expected":expected,"run":name,"attempt":attempt,
         "output":selected["output"],"artifact":binding});
+    round_control::bind(&mut plan, &root, &instance)?;
     let (hash, execute) = approval(&plan, approved)?;
     if head != expected {
         let (_, current) = artifact_versions::read(&catalog(&root), &head)?;
