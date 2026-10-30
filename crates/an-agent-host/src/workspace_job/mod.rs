@@ -1,4 +1,5 @@
 //! Host custody for a reviewed local workflow's scratch and selected outputs.
+pub(crate) mod capacity;
 mod custody;
 mod inputs;
 mod inventory;
@@ -7,6 +8,8 @@ mod profile;
 mod publication;
 mod snapshot;
 mod snapshot_clone;
+mod snapshot_retention;
+pub(crate) use snapshot_retention::reclaim as reclaim_snapshots_managed;
 
 use crate::{
     execution::{Result, sandbox, store},

@@ -44,7 +44,10 @@ or an unlimited sequence of examples; each may require several focused PRs.
    remain unqualified; their generic capability flags stay false.
 4. **Retention and capacity.** Expose retained references and leases, safely retire
    unreferenced products/input snapshots, and apply backpressure before storage
-   exhaustion. Confirmed termination and state/downstream references gate cleanup.
+   exhaustion. [Private snapshot collection](../crates/an-agent-host/NATIVE-STORAGE.md),
+   bounded logical storage observation and preparation headroom are qualified.
+   Formal products/state remain retained; general cross-instance reference/lease
+   retirement and runtime quotas remain outside this slice.
 5. **Release compatibility and final qualification.** Resolve declared dependencies
    to exact supported bindings, show update/permission differences and preserve old
    releases/state on rejected updates. Reuse the two-instance/two-silk acceptance,

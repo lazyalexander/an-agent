@@ -14,6 +14,10 @@ the same release and one-input execution contract; ordinary runs stay stateless.
 settlement, pins a checkpoint for suspension and explicitly reopens admission.
 It does not pause or restore a running process.
 
+[Native storage](NATIVE-STORAGE.md) separates work collection from private input
+snapshot collection and formal state/artifact retention. It also adds native
+workspace admission headroom without a runtime filesystem quota.
+
 ## Contract and layout
 
 Loom's `export-native-spool` exports `native-spool.json` and selected `silk/` and

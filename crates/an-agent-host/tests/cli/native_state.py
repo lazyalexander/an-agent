@@ -100,6 +100,122 @@ class NativeState(unittest.TestCase):
         return result["workspace"]["attempt"]
 
     @unittest.skipUnless(platform.system() == "Darwin", "real macOS native backend required")
+    def test_large_snapshot_collection_preserves_products_state_and_continuation(self):
+        package = self.package()
+        kit = package / "kit/step.sh"
+        kit.write_text('set -eu\nwc -c < "$1" > report.txt\nprintf "0\\n" > state.txt\n')
+        manifest = package / "native-spool.json"
+        content = json.loads(manifest.read_text())
+        content["files"]["kit/step.sh"] = hashlib.sha256(kit.read_bytes()).hexdigest()
+        manifest.write_text(json.dumps(content))
+        root = self.base / "instance"
+        self.call("spool-load", package, root)
+        seed = self.base / "seed.txt"
+        seed.write_text("0\n")
+        checkpoint = self.approved("spool-state-init", root, "state.txt", seed)["state"]["revision"]
+        data = self.base / "large.txt"
+        length = 16 * 1024 * 1024
+        data.write_bytes(b"x" * length)
+        result = self.approved("spool-start", root, "large", data, "30")
+        attempt = result["workspace"]["attempt"]
+        directory = root / "runs/large/job/attempts" / attempt
+        inputs = directory / "snapshot/inputs"
+        self.call("spool-reclaim-snapshots", root, "large", success=False)
+        self.approved("spool-accept", root, "large")
+        artifacts = self.call("spool-artifacts", root, "large")
+        self.call("spool-reclaim-snapshots", root, "large", success=False)
+        self.approved("spool-reclaim", root, "large")
+        self.approved("spool-suspend", root, checkpoint)
+        before = self.call("spool-storage", root)
+        source = next(item for item in before["runs"] if item["run"] == "large")
+        self.assertGreaterEqual(source["snapshot_logical_bytes"], length)
+        self.assertTrue(source["snapshot_cleanup_candidate"])
+        self.assertGreater(before["filesystem_available_bytes"], 0)
+        unknown = inputs / "unexpected.txt"
+        unknown.write_text("operator material")
+        self.call("spool-reclaim-snapshots", root, "large", success=False)
+        unknown.unlink()
+        outside = self.base / "outside.txt"
+        outside.write_text("keep")
+        unknown.symlink_to(outside)
+        self.call("spool-reclaim-snapshots", root, "large", success=False)
+        unknown.unlink()
+        self.assertEqual(outside.read_text(), "keep")
+        selected = inputs / data.name
+        selected.chmod(0o600)
+        selected.write_text("changed")
+        self.call("spool-reclaim-snapshots", root, "large", success=False)
+        selected.write_bytes(data.read_bytes())
+        selected.chmod(0o400)
+        plan = self.call("spool-reclaim-snapshots", root, "large")
+        self.call("spool-reclaim-snapshots", root, "large", "--approve", "0" * 64, success=False)
+        self.assertTrue(inputs.exists())
+        collected = self.call("spool-reclaim-snapshots", root, "large", "--approve", plan["approval_sha256"])
+        self.assertGreaterEqual(collected["result"]["removed_logical_bytes"], length)
+        self.assertFalse(inputs.exists())
+        after = self.call("spool-storage", root)
+        target = next(item for item in after["runs"] if item["run"] == "large")
+        self.assertEqual(target["snapshot_logical_bytes"], 0)
+        self.assertEqual(target["artifact_logical_bytes"], source["artifact_logical_bytes"])
+        self.assertEqual(after["state_logical_bytes"], before["state_logical_bytes"])
+        self.assertEqual(self.call("spool-artifacts", root, "large"), artifacts)
+        self.assertEqual(self.call("spool-status", root, "large")["artifact_status"], "accepted")
+        repeated = self.call("spool-reclaim-snapshots", root, "large")
+        self.assertFalse(repeated["executed"])
+        self.assertEqual(repeated["status"], "succeeded")
+        receipt = directory / "snapshot-reclaimed.json"
+        saved = receipt.read_bytes()
+        receipt.unlink()  # Completed deletion with a lost receipt remains uncertain.
+        uncertain = self.call("spool-reclaim-snapshots", root, "large", success=False)
+        self.assertEqual(uncertain["status"], "uncertain")
+        self.assertFalse(receipt.exists())
+        receipt.write_bytes(saved)
+        report = next(item for item in artifacts["outputs"] if item["path"] == "report.txt")
+        handoff = self.base / "handoff.txt"
+        self.call("artifact-checkout", artifacts["catalog"], report["binding"]["revision"], handoff)
+        self.assertEqual(int(handoff.read_text()), length)
+        peer = self.base / "peer"
+        self.call("spool-load", package, peer)
+        self.call("spool-reclaim-snapshots", peer, "large", success=False)
+        self.call("spool-start", peer, "stale-path", selected, "10", success=False)
+        self.approved("spool-start", peer, "fixed", handoff, "10")
+        self.approved("spool-accept", peer, "fixed")
+        self.approved("spool-resume", root)
+        self.run_state(root, "continue", checkpoint)
+        self.approved("spool-accept", root, "continue")
+        self.approved("spool-state-commit", root, checkpoint, "continue")
+        self.assertEqual(Path(self.current(root)["selected"]["path"]).read_text(), "0\n")
+
+    @unittest.skipUnless(platform.system() == "Darwin", "real macOS native backend required")
+    def test_storage_headroom_denial_records_positive_no_spawn_evidence(self):
+        script = self.base / "tool.sh"
+        script.write_text('printf should-not-run > report.txt\n')
+        profile = self.base / "profile.json"
+        value = {"schema": "an-workspace-job-v2", "executable": "/bin/bash",
+                 "args": ["{input:0}"], "environment": {}, "readonly": [],
+                 "inputs": [str(script)], "outputs": ["report.txt"], "wall_seconds": 10,
+                 "trusted_process_group": True, "minimum_free_bytes": (1 << 64) - 1}
+        profile.write_text(json.dumps(value))
+        job = self.base / "job"
+        preview = self.call("workspace-run", profile, job)
+        denied = self.call("workspace-run", profile, job, "--approve",
+                           preview["approval_sha256"], success=False)
+        self.assertEqual(denied["schema"], "an-workspace-not-started-v1")
+        self.assertFalse(denied["process_started"])
+        self.assertTrue(denied["termination_confirmed"])
+        self.assertEqual(denied["automatic_retries"], 0)
+        self.assertIn("insufficient storage headroom", json.dumps(denied["error"]))
+        directory = job / "attempts" / denied["attempt"]
+        self.assertFalse((directory / "launch.json").exists())
+        self.assertFalse((directory / "snapshot/inputs").exists())
+        self.assertFalse((job / "work/report.txt").exists())
+        self.call("workspace-accept", job, denied["attempt"], success=False)
+        value["minimum_free_bytes"] = 0
+        profile.write_text(json.dumps(value))
+        low = self.call("workspace-run", profile, self.base / "low")
+        self.assertGreaterEqual(low["plan"]["minimum_free_bytes"], 128 * 1024 * 1024 + script.stat().st_size)
+
+    @unittest.skipUnless(platform.system() == "Darwin", "real macOS native backend required")
     def test_round_pause_checkpoint_suspension_and_explicit_resume(self):
         package = self.package()
         root = self.base / "instance"
@@ -347,6 +463,7 @@ class NativeState(unittest.TestCase):
         self.call("spool-state-commit", root, third, "cancel", success=False)
         self.call("spool-accept", root, "cancel", success=False)
         self.approved("spool-reclaim", root, "cancel")
+        self.approved("spool-reclaim-snapshots", root, "cancel")
         self.assertEqual(self.current(root)["head"], third)
 
         # New instance, restored kit baseline, explicitly seeded from one fixed checkpoint.

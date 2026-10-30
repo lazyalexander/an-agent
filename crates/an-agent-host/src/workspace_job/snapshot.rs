@@ -88,6 +88,12 @@ pub(super) fn prepare(plan: &Value, attempt: &Path, cancelled: &AtomicBool) -> R
     if cancelled.load(std::sync::atomic::Ordering::Acquire) {
         return Err("snapshot preparation cancelled; no workload started".into());
     }
+    super::capacity::ensure(
+        Path::new(plan["root"].as_str().ok_or("workspace root")?),
+        plan["minimum_free_bytes"]
+            .as_u64()
+            .unwrap_or(super::capacity::RESERVE),
+    )?;
     let execution = launch(plan, attempt)?;
     let snapshot = attempt.join("snapshot");
     store::directory(&snapshot)?;
@@ -162,6 +168,13 @@ pub(super) fn prepare(plan: &Value, attempt: &Path, cancelled: &AtomicBool) -> R
 }
 
 pub(super) fn verified(attempt: &Path, plan: &Value, receipt: &Value) -> Result<Value> {
+    let execution = mapping(attempt, plan, receipt)?;
+    super::profile::verify_inputs(&execution)?;
+    Ok(execution)
+}
+
+/// Retained identity check without requiring an old runtime to remain installed.
+pub(super) fn mapping(attempt: &Path, plan: &Value, receipt: &Value) -> Result<Value> {
     let bytes = regular(&attempt.join("execution.json"), 2 * 1024 * 1024)?;
     if receipt["execution_sha256"] != store::digest(&bytes) {
         return Err("missing or changed snapshot execution binding".into());
@@ -170,7 +183,6 @@ pub(super) fn verified(attempt: &Path, plan: &Value, receipt: &Value) -> Result<
     if execution != launch(plan, attempt)? {
         return Err("execution snapshot differs from approved mapping".into());
     }
-    super::profile::verify_inputs(&execution)?;
     Ok(execution)
 }
 
