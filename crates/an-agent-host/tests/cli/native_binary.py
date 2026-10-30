@@ -115,6 +115,22 @@ def main():
     assert run["status"] == "succeeded" and run["workspace"]["termination_confirmed"] is True
     accepted = approved("spool-accept", a, "first")
     old = accepted["result"]["outputs"][0]["binding"]["revision"]
+    # Bind byte encoding as well as hashes. Change both facade copies so the
+    # earlier facade-equality check cannot mask this annotation mismatch.
+    job = a / "runs/first/job/attempts" / run["workspace"]["attempt"] / "accepted.json"
+    facade = a / "runs/first/accepted.json"
+    originals = {path: path.read_bytes() for path in [job, facade]}
+    altered = json.loads(originals[job])
+    altered["outputs"][0]["binding"]["encoding"] = "text"
+    bound = json.loads(originals[facade])
+    bound["result"] = altered
+    try:
+        job.write_text(json.dumps(altered))
+        facade.write_text(json.dumps(bound))
+        call("spool-artifacts", a, "first", refused=True)
+    finally:
+        for path, data in originals.items():
+            path.write_bytes(data)
     expected = seed.read_bytes() + bytes(range(256))
     ws = root / "workspace"
     call("spool-events-init", ws)
@@ -187,6 +203,7 @@ def main():
                "host_sha256": digest(host.read_bytes()), "source_revision": old,
                "result_revision": revision, "result_bytes": len(expected) + 256,
                "runtime_change_refused": True, "cancel_termination_confirmed": True,
+               "encoding_tampering_refused": True,
                "retained_without_runtime": True, "automatic_retries": 0}
     (root / "acceptance.json").write_text(json.dumps(summary, indent=2))
     print(json.dumps(summary))
