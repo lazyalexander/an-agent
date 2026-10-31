@@ -6,6 +6,7 @@ mod bundle;
 pub mod checkpoint;
 mod event_contract;
 pub mod events;
+pub mod input_references;
 mod inputs;
 pub mod kit_proposal;
 mod lifecycle;

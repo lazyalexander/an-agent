@@ -71,6 +71,17 @@ fails the suite and keeps evidence. It never automatically reruns an execution.
 All fixture directories, receipts and command observations are retained, including
 on failure. Operational evidence contains local paths; do not publish it raw.
 
+`native_input_references.py --host HOST --fixture COMPLETED_DATA_STATE_DIRECTORY
+--evidence NEW_DIRECTORY` consumes a fresh successful `native_data_state.py` case.
+It inspects successful-owner references, starts and cancels an independent real
+consumer, and releases only after confirmed work and snapshot collection. It
+checks unknown settlement, wrong approval, another retained consumer, unchanged
+payload hashes and missing release confirmation without repair. An injected second
+catalog lock proves partial registration cannot execute or silently reacquire.
+These fault probes are deliberate refusal checks, not production retry policy.
+The fixture's producer is retired during the case; do not reuse it for another run.
+This covers new managed inputs, not a complete pin census or formal product GC.
+
 The event suite also qualifies read-only delivery inventory and foreground
 monitoring during actual execution, evidence changes, observation cancellation,
 deadline exit and restart without replaying unknown work. The monitor emits

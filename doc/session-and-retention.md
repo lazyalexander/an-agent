@@ -1,8 +1,9 @@
 # Artifact retention, sessions and logical threads
 
-Status: accepted development direction, not a new runtime guarantee. This slice
-is documentation only. The current qualified boundary remains local macOS,
-reviewed headless CLI spools. GUI/TUI, new backends and process-memory restoration
+Status: accepted development direction, with the first native input-reference
+slice implemented in [native storage](../crates/an-agent-host/NATIVE-STORAGE.md).
+Formal payload deletion and host sessions remain planned. The qualified boundary
+remains local macOS, reviewed headless CLI spools. GUI/TUI, new backends and process-memory restoration
 are deferred. Existing Linux code and CI remain intact.
 
 ## Reuse before adding a manager
@@ -183,6 +184,12 @@ A and B close the remaining P1 storage contract. C and D are the next small
 management milestone, not permission to endlessly expand P1. GUI/TUI, general
 conversation engines, semantic search/GNN routing, provider catalogs, GPU/VM
 suspend and automatic state migration remain out of scope.
+
+Slice A is partial: new native starts register exact artifact/checkpoint inputs;
+confirmed cancelled owners can release after private collection. Successful owners,
+partial registrations and old/unmanaged readers remain retained. Explicit opaque
+checkpoint dependencies, successful-owner release and a mixed-host version fence
+are still required before slice B. No current reference query authorizes deletion.
 
 Use Rust tests for internal transition/race windows and Python for real CLI
 acceptance. Loom keeps one narrow package-to-host compatibility case; it does not

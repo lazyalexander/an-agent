@@ -7,6 +7,7 @@ use std::{
     path::{Path, PathBuf},
 };
 pub(crate) mod admission;
+pub(crate) mod references;
 
 const LIMIT: usize = 65536;
 pub(crate) const BINARY_LIMIT: usize = 8 * 1024 * 1024;

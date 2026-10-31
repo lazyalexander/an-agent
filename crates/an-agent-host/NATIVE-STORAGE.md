@@ -175,6 +175,59 @@ and state commit after closure, and verifies independent checkpoints, unrelated
 outputs, cancellation, retained bytes and torn-record refusal. No formal payload
 is collected and no model is invoked.
 
+## Native input ownership and explicit release
+
+```text
+an-agent-host spool-input-references INSTANCE RUN
+an-agent-host spool-input-release INSTANCE RUN [--approve HASH]
+```
+
+New approved native starts register each managed artifact/checkpoint input at its
+source revision before execution. Preview does not acquire references. A claim
+binds the consumer root, instance, release, unique run, exact start-plan digest,
+input slot and full source binding. Two roles using the same revision have distinct
+claims. Raw-file inputs do not acquire source claims. Historical runs remain
+readable; an `unregistered` observation is not proof that no consumer exists.
+
+The consumer writes a durable registration intent, then acquires each source claim
+under the existing catalog write lock and finally confirms registration. Native
+starts have at most two managed input slots. Acquisition refuses when a revision
+already has 512 history entries, counting claims and release records; existing
+owners can still record releases, so retained history can grow to 1,024 entries.
+No history is pruned to make room. Only one source lock is held at a time, inside the
+consumer's existing instance operation. Read-only inspection takes neither lock;
+it cannot authorize deletion and may fail if it captures incomplete publication.
+Catalog write contention remains an explicit refusal, without retry or queuing.
+
+Registration is not an atomic transaction across catalogs. Partial acquisition
+retains the claims already written and refuses execution/reuse of that run identity.
+It does not automatically complete missing claims or roll back ownership evidence.
+Source admission closure can still refuse preparation after registration; retained
+claims are conservative evidence, not a promise that the process started.
+
+This initial release command supports **confirmed cancelled runs only**, after
+both work collection and private input snapshot collection are positively confirmed.
+It reuses original settlement and collection checks, then binds an explicit approval
+to those records and the complete registration. An exclusive intent precedes
+source-side release markers. A matching complete result can be confirmed without
+rewriting; a missing completion, partial release, changed owner or unknown settlement
+refuses without repair or replay. A source release never releases another run's claim.
+
+Successful runs remain retained even after private collection: state commits, event
+acknowledgements and historical custody can still require original bytes. Unstarted
+or partially registered failures also stay retained pending a separate reconciliation
+contract. The command deletes **no payload** and grants no collection authority.
+Existing artifact/release formats are unchanged. Mixed old/new hosts, unmanaged
+readers, opaque checkpoint dependencies and legacy catalogs prevent treating these
+claims as a complete reference census. Do not infer GC permission from zero claims
+or from release records alone.
+
+Real headless acceptance uses one producer, a successful consumer and a separate
+cancelled consumer. It qualifies live/unknown-owner refusal, work/snapshot ordering,
+explicit release, unrelated retained claims, partial acquisition, lost completion
+and unchanged source payloads. The host owns this fault matrix; Loom only checks
+the packaged producer/consumer handoff. No model or formal payload deletion runs.
+
 ## Remaining formal payload collection contract
 
 The generic instance checkpoint/delivery ledger already has explicit retention,
@@ -185,9 +238,10 @@ apply generic `product-reclaim` to a native catalog or infer deletion consent fr
 observing no current reader or receiving an event acknowledgement.
 
 Closing admission does not prove that existing consumers, state references or
-unmanaged readers have released a version. Native payload collection still needs
-explicit host-owned reference acquisition/release and a defined boundary for
-unmanaged readers. Opaque state references cannot be inferred by scanning text.
+unmanaged readers have released a version. Native input claims now record new
+managed consumers; formal collection still needs successful-owner release, explicit
+checkpoint dependencies and a defined boundary for unmanaged/legacy readers.
+Opaque state references cannot be inferred by scanning text.
 The current operations reduce private-copy accumulation and close selected new
 uses while preserving formal bytes. Loom may describe intended retention, but
 cannot supply runtime deletion authority. General native formal-product/state GC

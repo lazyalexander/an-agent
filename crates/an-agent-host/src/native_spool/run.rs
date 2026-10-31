@@ -176,6 +176,7 @@ fn start_selected(
         return Ok(json!({"status":"cancelled","executed":false,"process_started":false}));
     }
     before_start(&plan)?;
+    super::input_references::acquire(&root, name, &plan)?;
     write_json(&dir.join("start.json"), &plan)?;
     let receipt = workspace_job::run_managed(
         &profile_path,
