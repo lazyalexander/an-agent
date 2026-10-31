@@ -140,9 +140,11 @@ closed version. New event publication refuses it; an existing event can still be
 read back. Unstarted direct/delivery/batch previews cannot bypass the fence with
 an old approval. Pending inventory reports unstarted deliveries as blocked.
 
-Retirement and revision byte acquisition share the existing catalog lock. An
-acquisition ordered before closure may retain its bytes and finish; closure does
-not cancel it. Workspace preparation rechecks while acquiring its private input
+Retirement writes use the existing catalog lock and exclusive marker creation.
+Input readers stay concurrent: immutable bytes are checked with the monotonic
+closure fence before and after acquisition. If closure precedes the final check,
+the acquisition refuses; otherwise its bytes were acquired before closure and
+may finish. Workspace preparation rechecks while acquiring its private input
 snapshot. A concurrent closure can therefore refuse preparation after execution
 intent was written; existing no-spawn/uncertain evidence governs reconciliation,
 without automatic retry. Retirement does not promise that every previously

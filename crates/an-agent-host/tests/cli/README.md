@@ -108,4 +108,4 @@ direct/event/batch approvals, and completes acceptance, state commit and causal
 confirmation after closure. It checks unrelated/new versions, private collection,
 confirmed cancellation, preserved bytes and a torn retirement record without
 retry. This qualifies admission closure, not formal payload deletion or revocation
-of independent copies. Unit tests own catalog-lock ordering and marker faults.
+of independent copies. Unit tests own concurrent-reader and marker-fault checks.

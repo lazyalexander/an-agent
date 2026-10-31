@@ -13,15 +13,18 @@ fn marker(catalog: &Path, revision: &str) -> Result<PathBuf> {
     Ok(path)
 }
 
-/// The catalog lock orders retirement against byte acquisition, not process exit.
+/// Immutable bytes and a monotonic closure fence allow concurrent readers.
 pub(crate) fn read_input(catalog: &Path, revision: &str) -> Result<(Vec<u8>, Value)> {
     store::no_links(catalog)?;
-    let _lock = store::lock(catalog)?;
     ensure_active(catalog, revision)?;
-    read(catalog, revision)
+    let selected = read(catalog, revision)?;
+    // A concurrent exclusive marker creation either precedes this final check
+    // (refuse) or follows it (these bytes were acquired before closure).
+    ensure_active(catalog, revision)?;
+    Ok(selected)
 }
 
-/// Read-only observation; actual input acquisition rechecks under the catalog lock.
+/// Read-only observation; input acquisition checks both sides of its byte read.
 pub(crate) fn ensure_active(catalog: &Path, revision: &str) -> Result<()> {
     if marker(catalog, revision)?.try_exists()? {
         // Even a torn/invalid record closes admission. Never repair it by overwriting.

@@ -64,7 +64,8 @@ operator-checkpoint declaration, not authenticated human authorship. References
 do not recursively embed the entire history or make data trusted instructions.
 
 The host verifies manifest and content hashes on every read. New revision-based
-input acquisition also checks admission under the catalog lock. After selection,
+input acquisition also checks the monotonic closure record before and after its
+read, without excluding other readers. After selection,
 the exact bytes are held for this invocation and copied to its existing
 `input.txt` snapshot. Both plan and receipt record `input_revision`; input hashing
 continues to use the actual byte snapshot. New edits do not change this input,

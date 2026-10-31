@@ -2,7 +2,8 @@ use super::*;
 use an_agent_core::testkit::TempDir;
 
 #[test]
-fn retirement_orders_new_acquisition_without_destroying_evidence() -> Result<()> {
+fn retirement_fences_new_acquisition_without_excluding_readers_or_destroying_evidence() -> Result<()>
+{
     let temp = TempDir::new("artifact-admission");
     let catalog = temp.path().canonicalize()?.join("catalog");
     let artifact = publish(&catalog, b"retained", None, json!({"kind":"fixture"}))?;
@@ -14,7 +15,7 @@ fn retirement_orders_new_acquisition_without_destroying_evidence() -> Result<()>
     let path = marker(&catalog, revision)?;
     assert!(!path.exists());
     let lock = store::lock(&catalog)?;
-    assert!(read_input(&catalog, revision).is_err());
+    assert_eq!(read_input(&catalog, revision)?.0, b"retained");
     assert!(retire(&catalog, revision, authority.clone(), Some(hash)).is_err());
     drop(lock);
     assert!(retire(&catalog, revision, json!({"owner":"other"}), Some(hash)).is_err());
