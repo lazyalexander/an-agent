@@ -250,6 +250,43 @@ lost-receipt refusal after real execution. It uses zero model calls. Session
 closure rechecks native evidence; formal payload GC remains blocked by its separate
 unfinished retention contract.
 
+## Foreground supervisor loss qualification
+
+The native supervisor currently lives inside the initiating host CLI.
+`OwnedChild` keeps the group leader unreaped while observing and terminating
+other group members, then reaps the leader. The original bound workspace receipt
+records that outcome. Ordinary errors and unwinding run its cleanup guard;
+SIGKILL bypasses the guard, cancellation polling and the wall-clock deadline.
+
+`native_supervisor_loss.py` exercises the real CLI with two finite workers.
+
+| Fault | Observed execution | Custody outcome |
+| --- | --- | --- |
+| SIGTERM to the initiating CLI | Original supervisor terminates its group and records cancellation | Confirmed private collection succeeds |
+| SIGKILL to the initiating CLI | Both workers survive, exceed the 3-second deadline and finish writing | Status remains unconfirmed; late output cannot be accepted or collected |
+| Same terminated fixture with stale operation locks removed | No live group remains in external observations | Missing original receipts still refuse reconciliation, collection, unload and same-run admission |
+
+The fixture verifies a separate instance can run and previously accepted products
+remain intact. Finite workers bound the experiment's lifetime. Process samples
+and lock removal are diagnostic fault injection in disposable test directories.
+Neither numeric PIDs, absent processes, absent locks nor completed output files
+establish original supervisor ownership or recover a lost execution result.
+
+The next implementation should give each admitted attempt a supervisor process
+whose lifetime is independent of the interactive CLI. It should reuse native
+execution, owned-group termination and the existing result/custody contracts.
+The supervisor must acquire ownership before launch, persist the attempt and
+activation binding, continue deadlines after client loss, and accept bounded,
+authenticated control for that exact attempt. Unknown launch or completion stays
+fenced. A final receipt requires original child ownership, group settlement and
+durable publication. A supervisor crash remains unknown and blocks collection.
+
+This evidence justifies an attempt-scoped supervisor that exits after settlement.
+A permanently running host-wide service needs a separate scheduling or recovery
+requirement. Loom continues to package the release and receive verified evidence.
+Host supervision owns process lifetime and termination. Backend-specific ownership
+and group observation stay behind the execution boundary.
+
 ## Runtime control and legacy session compatibility
 
 Keep inspectable records and explicit CLI actions. The current foreground adapter
