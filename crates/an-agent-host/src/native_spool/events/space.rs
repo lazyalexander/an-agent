@@ -15,6 +15,7 @@ impl Space {
         let version = match meta["schema"].as_str() {
             Some("an-native-event-workspace-v1") => 1,
             Some("an-native-event-workspace-v2") => 2,
+            Some("an-native-event-workspace-v3") => 3,
             _ => return Err("unsupported native event workspace".into()),
         };
         let id = text(&meta, "workspace")?.to_owned();
@@ -42,6 +43,40 @@ impl Space {
             version,
             facts,
         })
+    }
+    /// Metadata upgrades are monotonic and require the workspace operation lock.
+    pub fn upgrade(&self, version: u8) -> Result<()> {
+        if !(2..=3).contains(&version) {
+            return Err("unsupported workspace upgrade".into());
+        }
+        let metadata = self.root.join("native-events.json");
+        let mut value: Value = serde_json::from_slice(&regular(&metadata, 65536)?)?;
+        let current = match value["schema"].as_str() {
+            Some("an-native-event-workspace-v1") => 1,
+            Some("an-native-event-workspace-v2") => 2,
+            Some("an-native-event-workspace-v3") => 3,
+            _ => return Err("unsupported native event workspace".into()),
+        };
+        if value["workspace"] != self.id {
+            return Err("workspace identity changed before upgrade".into());
+        }
+        if current >= version {
+            return Ok(());
+        }
+        let pending = self.root.join(format!("native-events-v{version}.pending"));
+        store::no_links(&pending)?;
+        value["schema"] = json!(format!("an-native-event-workspace-v{version}"));
+        let bytes = serde_json::to_vec_pretty(&value)?;
+        if pending.exists() {
+            if regular(&pending, 65536)? != bytes {
+                return Err("workspace schema upgrade staging conflicts".into());
+            }
+        } else {
+            store::write_new(&pending, &bytes)?;
+        }
+        fs::rename(pending, metadata)?;
+        fs::File::open(&self.root)?.sync_all()?;
+        Ok(())
     }
     pub fn event(&self, id: &str) -> Result<Value> {
         self.find_event(id)?
@@ -98,6 +133,11 @@ impl Space {
         Ok(event.clone())
     }
     pub fn route(&self, name: &str) -> Result<Value> {
+        let route = self.raw_route(name)?;
+        replacement::validate(self, &route)?;
+        Ok(route)
+    }
+    pub fn raw_route(&self, name: &str) -> Result<Value> {
         native::bundle::identifier(name)?;
         let records: Vec<_> = self
             .facts
@@ -119,7 +159,10 @@ impl Space {
         if store::digest(&bytes) != digest
             || route["workspace"] != self.id
             || route["name"] != name
-            || route["schema"] != "an-native-event-subscription-v1"
+            || !matches!(
+                route["schema"].as_str(),
+                Some("an-native-event-subscription-v1" | "an-native-event-subscription-v2")
+            )
         {
             return Err("subscription binding mismatch".into());
         }
@@ -127,6 +170,7 @@ impl Space {
     }
     pub fn check_active(&self, route: &Value) -> Result<()> {
         self.not_revoked(route)?;
+        replacement::not_retired(self, route)?;
         if control::current(self, route)?["mode"] != "active" {
             return Err("subscription admission is paused".into());
         }
@@ -191,6 +235,7 @@ pub fn inspect(path: &Path) -> Result<Value> {
             let route = space.route(name)?;
             subscriptions.push(json!({"name":name,"subscription":hash(&route)?,
                 "control":control::current(&space,&route)?,
+                "retired_by":replacement::retired_by(&space,&route)?,"cutover":route.get("cutover"),
                 "admission_refusal":space.check_active(&route).err().map(|e|e.to_string())}));
         }
     }
