@@ -309,6 +309,17 @@ a response file or a cancellation request alone grants no custody. A supervisor
 crash leaves unresolved records and blocks collection even after observed process
 exit. A lost client can inspect the original run without restarting it.
 
+A cancellation published before worker admission is checked synchronously. The
+original worker can acknowledge `cancelled-before-launch` without rereading an
+input that is no longer available. Round closure/unload requires its matching
+request, exclusive owner and exact no-launch completion, plus absence of job,
+start, input-reference and custody records. A cancellation request alone or any
+contradictory/partial record remains uncertain. This closes an unused reservation;
+it grants neither artifact acceptance nor collection, and never permits replay.
+`native_spool::prelaunch_cancel` exercises this deterministic boundary using the
+real worker CLI, including removed input, missing/mismatched evidence, duplicate
+worker refusal and preservation of an earlier accepted product.
+
 `native_supervisor.py` qualifies client SIGKILL with continuing deadline and
 cancellation enforcement, handled client SIGTERM, duplicate-worker and stale-control
 refusal, a torn launch reservation, supervisor SIGKILL, an independent instance
@@ -413,7 +424,7 @@ savings from prompt caching or summaries before measuring quality and actual use
 | --- | --- |
 | A: native artifact ownership | New managed outputs acquire/release explicit pins through real producer/two-consumer execution; active and unknown owners, retained checkpoint dependencies and legacy catalogs block deletion; no payload deletion yet |
 | B: formal payload collection | Closed admission plus released pins permits exact approved deletion; retained provenance remains inspectable, content reads fail clearly, unrelated outputs/checkpoints survive; race, cancellation and lost deletion receipt refuse unsafe progress |
-| C: runtime ownership | Foreground dispatch groups and generation-bound peer waits run through explicit host commands. Old/unknown work cannot claim new work. A long-lived supervisor independent of the initiating CLI is not yet qualified |
+| C: runtime ownership | Foreground dispatch groups and generation-bound peer waits run through explicit host commands. Old/unknown work cannot claim new work. Explicit file/state/data-state starts have per-attempt independent supervision; event/session/peer dispatch remains foreground |
 | D: bounded context handoff and combined qualification | Reuse explicit packets/export across authorized participants; unrelated data excluded, incorrect audience refused, oversized input explicit, missing source reported; combine lifecycle, pins, collection and interruption in one real headless run |
 
 A and B close the remaining P1 storage contract. C and D are the next small

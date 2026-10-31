@@ -310,10 +310,14 @@ pub(super) fn settled_runs(root: &Path) -> Result<Vec<Value>> {
                     .and_then(|s| s.to_str())
                     .ok_or("invalid run")?,
             )?);
-        } else if path.join("start.json").exists()
-            || path.join("result.json").exists()
-            || path.join("supervisor").exists()
-        {
+        } else if path.join("supervisor").exists() {
+            runs.push(super::supervisor::settled_prelaunch(
+                root,
+                path.file_name()
+                    .and_then(|s| s.to_str())
+                    .ok_or("invalid run")?,
+            )?);
+        } else if path.join("start.json").exists() || path.join("result.json").exists() {
             return Err("started spool run lacks workspace settlement evidence".into());
         }
     }

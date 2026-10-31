@@ -2,7 +2,9 @@
 //! Host-private records authorize control; process observations grant no custody.
 use super::*;
 use std::sync::atomic::AtomicBool;
+mod prelaunch;
 mod worker;
+pub(super) use prelaunch::settled as settled_prelaunch;
 pub use worker::execute;
 
 const LIMIT: usize = 2 * 1024 * 1024;
@@ -199,8 +201,8 @@ pub fn completion(root: &Path, name: &str, hash: &str) -> Result<Value> {
         if run::settled(root, name)? != result {
             return Err("supervisor result does not match native settlement".into());
         }
-    } else if result != json!({"status":"cancelled","executed":false,"process_started":false}) {
-        return Err("supervisor response lacks execution evidence".into());
+    } else {
+        settled_prelaunch(root, name)?;
     }
     Ok(result)
 }
