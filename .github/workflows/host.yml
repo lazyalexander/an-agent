@@ -91,6 +91,9 @@ jobs:
       - name: Native sessions, scoped cancellation and unknown-result retention
         if: matrix.native_workspace
         run: python3 -B crates/an-agent-host/tests/cli/native_sessions.py --host target/debug/an-agent-host --evidence "$RUNNER_TEMP/native-state/sessions"
+      - name: Native private materials and inert notes
+        if: matrix.native_workspace
+        run: python3 -B crates/an-agent-host/tests/cli/native_material_boundary.py --host target/debug/an-agent-host --evidence "$RUNNER_TEMP/native-state/material-boundary"
       - name: Native receiver cutover and preserved historical custody
         if: matrix.native_workspace
         run: python3 -B crates/an-agent-host/tests/cli/native_route_successor.py --host target/debug/an-agent-host --evidence "$RUNNER_TEMP/native-state/route-successor"
