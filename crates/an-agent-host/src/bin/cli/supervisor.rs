@@ -9,16 +9,19 @@ pub(super) fn dispatch(args: &[String]) -> Result<Value> {
     };
     match args {
         [operation, root, name, input, seconds]
-            if matches!(operation.as_str(), "start" | "start-state") =>
+            if matches!(
+                operation.as_str(),
+                "start" | "start-state" | "start-data-state"
+            ) =>
         {
             super::with_cancellation(|cancelled| {
                 start(
                     Path::new(root),
                     name,
-                    if operation == "start-state" {
-                        supervisor::Input::State(input)
-                    } else {
-                        supervisor::Input::File(Path::new(input))
+                    match operation.as_str() {
+                        "start-state" => supervisor::Input::State(input),
+                        "start-data-state" => supervisor::Input::DataState(Path::new(input)),
+                        _ => supervisor::Input::File(Path::new(input)),
                     },
                     seconds.parse()?,
                     approved,

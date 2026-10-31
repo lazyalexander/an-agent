@@ -176,5 +176,5 @@ caller-independent supervisor. Local process samples carry no cleanup authority.
 --evidence NEW_DIRECTORY`. They qualify file-input and fixed-checkpoint supervision:
 client exit, continuing timeout/cancellation, supervisor loss, no replay and
 confirmed-only collection. The state suite advances HEAD before selecting the
-old revision and verifies retained checkpoints. PIDs serve fault injection and
-observation only; accepted products and independent instances remain unaffected.
+old revision and verifies retained checkpoints; `--combined` also pins business
+data and rejects changed selectors. PIDs serve fault injection and observation only; accepted products and independent instances remain unaffected.

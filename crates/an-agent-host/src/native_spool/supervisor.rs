@@ -46,6 +46,7 @@ fn request(root: &Path, name: &str) -> Result<(PathBuf, Value)> {
 pub enum Input<'a> {
     File(&'a Path),
     State(&'a str),
+    DataState(&'a Path),
 }
 pub fn prepare(
     root: &Path,
@@ -56,6 +57,7 @@ pub fn prepare(
     approved: Option<&str>,
 ) -> Result<Value> {
     let root = location(root)?;
+    let combined = matches!(&input, Input::DataState(_));
     let (input, revision, preview) = match input {
         Input::File(path) => {
             let path = location(path)?;
@@ -76,6 +78,19 @@ pub fn prepare(
             )?;
             (Value::Null, Some(revision), preview)
         }
+        Input::DataState(selection) => {
+            let preview = run::start_data_state(
+                &root,
+                name,
+                selection,
+                seconds,
+                None,
+                &AtomicBool::new(false),
+            )?;
+            // Persist the approved bindings, never a mutable selector to reread
+            // after submission. The worker revalidates their exact versions.
+            (Value::Null, None, preview)
+        }
     };
     let executable = location(executable)?;
 
@@ -83,6 +98,9 @@ pub fn prepare(
         "input":input,"seconds":seconds,"executable":executable,"start":preview["plan"]});
     if let Some(revision) = revision {
         plan["state_revision"] = json!(revision);
+    }
+    if combined {
+        plan["input_kind"] = json!("data-state");
     }
     let (hash, execute) = approval(&plan, approved)?;
     if !execute {

@@ -63,6 +63,7 @@ explicitly, never inherited or guessed from HEAD.
 
 ```text
 spool-start-data-state INSTANCE RUN SELECTION_JSON SECONDS [--approve HASH]
+spool-supervisor start-data-state INSTANCE RUN SELECTION_JSON SECONDS [--approve HASH]
 spool-event-deliver WORKSPACE EVENT SUBSCRIPTION --state REVISION [--approve HASH]
 ```
 
@@ -85,6 +86,12 @@ refused; omitting --state can only observe an existing delivery, never start a
 stateful one. Before admission, a prepared event run also freezes its selection;
 changing it needs a new explicitly authorized subscription, not overwriting
 the prepared profile. Unknown results remain fenced with zero automatic retries.
+
+The explicit supervised entry uses the same selection and grants while retaining
+process ownership after client loss. Its durable request stores both resolved
+bindings; the worker does not reread the selection JSON. It rechecks admission and
+the exact native plan before execution, so retired/unavailable inputs refuse
+rather than selecting replacements. See [attempt supervision](session-and-retention.md#independent-attempt-supervisor).
 
 State commit verifies the exact ordered pair of business/state input bindings,
 the accepted state output and the expected checkpoint HEAD. A later business

@@ -274,13 +274,14 @@ establish original supervisor ownership or recover a lost execution result.
 
 ## Independent attempt supervisor
 
-The explicit `spool-supervisor` entry owns one native file-input or explicit-state run in a
-separate process. It uses the same reviewed spool release, approved start plan,
+The explicit `spool-supervisor` entry owns one native file, checkpoint or combined
+business-data/state run in a separate process. It uses the same reviewed spool release, approved start plan,
 execution boundary, process-group settlement and formal artifact commands.
 
 ```text
 spool-supervisor start INSTANCE RUN INPUT SECONDS [--approve HASH]
 spool-supervisor start-state INSTANCE RUN REVISION SECONDS [--approve HASH]
+spool-supervisor start-data-state INSTANCE RUN SELECTION_JSON SECONDS [--approve HASH]
 spool-supervisor show INSTANCE RUN
 spool-supervisor cancel INSTANCE RUN [--approve HASH]
 spool-status INSTANCE RUN
@@ -319,12 +320,20 @@ The revision and native start plan are bound into the durable approval, and the
 worker selects that revision again through the existing state-input path.
 Advancing HEAD never selects a different checkpoint. The real state fault suite
 advances HEAD before launching the old revision and tests client loss, timeout,
-cancellation and unknown-owner retention. Combined business-data/state requests
-and session/peer migration retain their separate qualification scope.
+cancellation and unknown-owner retention. Its `--combined` mode repeats the fault
+matrix with separate business data and state, including stale selector refusal
+and preserved exact input references.
 
-This slice covers supervised native file inputs and exact checkpoint inputs.
-Existing foreground starts, combined data/state starts, session dispatch and peer
-phases retain their existing lifecycle.
+Combined supervision uses `start-data-state` with the existing selection JSON.
+Approval retains the resolved native plan and both exact bindings, not the mutable
+selector path. The worker revalidates those revisions and admission before starting;
+selector replacement/removal after reservation cannot retarget it. A retired input
+fails closed, with no fallback or new attempt. A deterministic real-execution test
+covers selector removal and retirement between reservation and worker claim.
+
+This slice covers explicit supervised file, checkpoint and combined input starts.
+Existing foreground starts, event/session dispatch and peer phases retain their
+existing lifecycle.
 Their migration needs ownership-specific qualification. Before-launch uncertain
 reservations remain retained; no automatic lock repair or process adoption is
 implemented. Local host records and the installed supervisor binary are trusted.
