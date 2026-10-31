@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Real macOS Python runtime, binary events, cancellation and retained custody."""
+"""Real native Python runtime, binary events, cancellation and retained custody."""
 import argparse
 import hashlib
 import json
 from pathlib import Path
-import platform
+from host_qualification import require_native_workspace
 import signal
 import subprocess
 import sys
@@ -20,8 +20,7 @@ def main():
     parser.add_argument("--host", type=Path, required=True)
     parser.add_argument("--evidence", type=Path, required=True)
     options = parser.parse_args()
-    if platform.system() != "Darwin":
-        raise SystemExit("Real macOS execution required; no fallback")
+    require_native_workspace()
     host, root = options.host.resolve(strict=True), options.evidence.resolve()
     root.mkdir(mode=0o700)
     calls = []

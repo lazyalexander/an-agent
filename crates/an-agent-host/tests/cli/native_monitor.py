@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """Real concurrent observers and exact revocations; no retries or timing workaround."""
-import argparse, hashlib, json, os, platform, signal, subprocess, time
+import argparse, hashlib, json, os, signal, subprocess, time
 from pathlib import Path
+from host_qualification import require_native_workspace
 parser = argparse.ArgumentParser(description='Concurrent observation/control; each mutation submitted once.')
 parser.add_argument('--host', type=Path, required=True)
 parser.add_argument('--fixture', type=Path, required=True, help='Completed native_events.py evidence')
 parser.add_argument('--evidence', type=Path, required=True)
 options = parser.parse_args()
-if platform.system() != 'Darwin':
-    raise SystemExit('Real macOS enforcement required')
+require_native_workspace()
 host = options.host.resolve(strict=True)
 root = options.evidence.resolve()
 root.mkdir(mode=448)

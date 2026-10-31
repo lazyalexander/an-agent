@@ -127,6 +127,14 @@ Code-role terminology follows [the spool code contract](doc/spool-code.md).
 Silk is the stable core; kit is adaptable glue. Preserve legacy wire/API names
 and distinguish target contracts from implemented runtime guarantees.
 
+## Platform claims
+
+Maintain current support in [the runtime matrix](doc/platforms.md), coordinated
+with Loom's tooling/handoff matrix. Backend and dedicated filesystem adapters own
+OS differences; acceptance entry points own test eligibility. Keep historical
+profile IDs and evidence unchanged. Do not replace unsupported execution with a
+skip, fallback or a broader grant to pass a gate.
+
 ## Test ownership and language
 
 Follow [the testing contract](doc/testing.md). Keep Rust tests for internal

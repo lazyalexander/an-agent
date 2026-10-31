@@ -10,6 +10,7 @@ import subprocess
 import tempfile
 import time
 import unittest
+from host_qualification import native_workspace_available, NATIVE_WORKSPACE_REASON
 
 
 PARSER = argparse.ArgumentParser(description=__doc__)
@@ -19,6 +20,7 @@ PARSER.add_argument("--legacy-host", type=Path, help="Optional pre-control host 
 OPTIONS = None
 
 
+@unittest.skipUnless(native_workspace_available(), NATIVE_WORKSPACE_REASON)
 class NativeState(unittest.TestCase):
     def setUp(self):
         parent = OPTIONS.evidence
@@ -99,7 +101,6 @@ class NativeState(unittest.TestCase):
         self.assertTrue(result["workspace"]["termination_confirmed"])
         return result["workspace"]["attempt"]
 
-    @unittest.skipUnless(platform.system() == "Darwin", "real macOS native backend required")
     def test_large_snapshot_collection_preserves_products_state_and_continuation(self):
         package = self.package()
         kit = package / "kit/step.sh"
@@ -186,7 +187,6 @@ class NativeState(unittest.TestCase):
         self.approved("spool-state-commit", root, checkpoint, "continue")
         self.assertEqual(Path(self.current(root)["selected"]["path"]).read_text(), "0\n")
 
-    @unittest.skipUnless(platform.system() == "Darwin", "real macOS native backend required")
     def test_storage_headroom_denial_records_positive_no_spawn_evidence(self):
         script = self.base / "tool.sh"
         script.write_text('printf should-not-run > report.txt\n')
@@ -215,7 +215,6 @@ class NativeState(unittest.TestCase):
         low = self.call("workspace-run", profile, self.base / "low")
         self.assertGreaterEqual(low["plan"]["minimum_free_bytes"], 128 * 1024 * 1024 + script.stat().st_size)
 
-    @unittest.skipUnless(platform.system() == "Darwin", "real macOS native backend required")
     def test_round_pause_checkpoint_suspension_and_explicit_resume(self):
         package = self.package()
         root = self.base / "instance"
@@ -368,7 +367,6 @@ class NativeState(unittest.TestCase):
         self.call("spool-resume", root, success=False)
         self.assertEqual(self.current(root)["head"], third)
 
-    @unittest.skipUnless(platform.system() == "Darwin", "real macOS native backend required")
     def test_explicit_commit_conflict_recovery_and_fresh_environment(self):
         package = self.package()
         root = self.base / "instance"

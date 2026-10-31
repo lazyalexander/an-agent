@@ -11,11 +11,16 @@ permissions:
 
 jobs:
   native-host:
+    name: native-host (${{ matrix.os }})
     timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        include:
+          - os: ubuntu-latest
+            native_workspace: false
+          - os: macos-latest
+            native_workspace: true
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -60,40 +65,40 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
       - name: Native spool state CLI acceptance
-        if: runner.os == 'macOS'
+        if: matrix.native_workspace
         run: python3 crates/an-agent-host/tests/cli/native_state.py --host target/debug/an-agent-host --evidence "$RUNNER_TEMP/native-state"
       - name: Native release review and independent continuation
-        if: runner.os == 'macOS'
+        if: matrix.native_workspace
         run: python3 -B crates/an-agent-host/tests/cli/native_release.py --host target/debug/an-agent-host --evidence "$RUNNER_TEMP/native-state/release-review"
       - name: Native workspace event delivery and cancellation
-        if: runner.os == 'macOS'
+        if: matrix.native_workspace
         run: python3 -B crates/an-agent-host/tests/cli/native_events.py --host target/debug/an-agent-host --evidence "$RUNNER_TEMP/native-state/events"
       - name: Concurrent observation and revocation without retries
-        if: runner.os == 'macOS'
+        if: matrix.native_workspace
         run: python3 -B crates/an-agent-host/tests/cli/native_monitor.py --host target/debug/an-agent-host --fixture "$RUNNER_TEMP/native-state/events" --evidence "$RUNNER_TEMP/native-state/monitor-concurrency"
       - name: Native Python runtime and binary event custody
-        if: runner.os == 'macOS'
+        if: matrix.native_workspace
         run: python3 -B crates/an-agent-host/tests/cli/native_binary.py --host target/debug/an-agent-host --evidence "$RUNNER_TEMP/native-state/binary"
       - name: Independent business data and state with cancellation retention
-        if: runner.os == 'macOS'
+        if: matrix.native_workspace
         run: python3 -B crates/an-agent-host/tests/cli/native_data_state.py --host target/debug/an-agent-host --evidence "$RUNNER_TEMP/native-state/data-state"
       - name: Native input references and confirmed cancelled-owner release
-        if: runner.os == 'macOS'
+        if: matrix.native_workspace
         run: python3 -B crates/an-agent-host/tests/cli/native_input_references.py --host target/debug/an-agent-host --fixture "$RUNNER_TEMP/native-state/data-state" --evidence "$RUNNER_TEMP/native-state/input-references"
       - name: Finite explicit event dispatch, stop, cancellation and no replay
-        if: runner.os == 'macOS'
+        if: matrix.native_workspace
         run: python3 -B crates/an-agent-host/tests/cli/native_dispatch.py --host target/debug/an-agent-host --evidence "$RUNNER_TEMP/native-state/dispatch"
       - name: Native receiver cutover and preserved historical custody
-        if: runner.os == 'macOS'
+        if: matrix.native_workspace
         run: python3 -B crates/an-agent-host/tests/cli/native_route_successor.py --host target/debug/an-agent-host --evidence "$RUNNER_TEMP/native-state/route-successor"
       - name: Multi-round native capacity maintenance and retained products
-        if: runner.os == 'macOS'
+        if: matrix.native_workspace
         run: python3 -B crates/an-agent-host/tests/cli/native_capacity.py --host target/debug/an-agent-host --evidence "$RUNNER_TEMP/native-state/capacity"
       - name: Native artifact retirement and admitted downstream custody
-        if: runner.os == 'macOS'
+        if: matrix.native_workspace
         run: python3 -B crates/an-agent-host/tests/cli/native_retirement.py --host target/debug/an-agent-host --evidence "$RUNNER_TEMP/native-state/retirement"
       - name: Retain native state evidence
-        if: always() && runner.os == 'macOS'
+        if: always() && matrix.native_workspace
         uses: actions/upload-artifact@v4
         with:
           name: native-state-${{ matrix.os }}

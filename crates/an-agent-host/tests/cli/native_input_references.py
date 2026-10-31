@@ -4,7 +4,7 @@ import argparse
 import hashlib
 import json
 from pathlib import Path
-import platform
+from host_qualification import require_native_workspace
 import signal
 import subprocess
 import time
@@ -14,8 +14,7 @@ parser.add_argument('--host', type=Path, required=True)
 parser.add_argument('--fixture', type=Path, required=True)
 parser.add_argument('--evidence', type=Path, required=True)
 args = parser.parse_args()
-if platform.system() != 'Darwin':
-    raise SystemExit('Real macOS enforcement required')
+require_native_workspace()
 host = args.host.resolve(strict=True)
 fixture = args.fixture.resolve(strict=True)
 root = args.evidence.resolve()

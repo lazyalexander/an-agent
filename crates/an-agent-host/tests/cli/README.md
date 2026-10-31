@@ -2,7 +2,9 @@
 
 Build the selected host binary once, then pass its explicit path. No runner
 builds a binary, reads model credentials or invokes Loom. Python 3 standard
-library is sufficient.
+library is sufficient. Platform eligibility is centralized in
+`host_qualification.py`; see the [support and qualification matrix](../../../../doc/platforms.md).
+This prerequisite does not replace the host enforcement exercised by each case.
 
 ```sh
 cargo build --locked -p an-agent-host --bin an-agent-host
@@ -10,7 +12,7 @@ python3 crates/an-agent-host/tests/cli/native_state.py \
   --host target/debug/an-agent-host --evidence /private/tmp/native-state-evidence
 ```
 
-`native_state.py` requires the real macOS native backend; other platforms report
+`native_state.py` requires the qualified native workspace backend; other platforms report
 a skip, not successful runtime qualification. It tests explicit initialization,
 fixed state input, successful accepted-output commit, stale conflicts, cancelled
 candidate refusal, interrupted HEAD publication, orphan refusal, idempotent
@@ -34,7 +36,7 @@ feeds a fixed report into another instance. Unknown entries/changed inputs and
 lost collection receipts cannot authorize new deletion. A raised operator
 headroom request exercises the real no-spawn denial path without filling disk.
 
-`native_release.py --host HOST --evidence NEW_DIRECTORY` uses real macOS execution
+`native_release.py --host HOST --evidence NEW_DIRECTORY` uses real qualified native execution
 to qualify read-only release comparison, same-label changed content, unsupported
 capability/dependency refusal, separate instance/state initialization, stale
 approval refusal, failed candidate output rejection and original-instance

@@ -4,7 +4,7 @@ import argparse
 import hashlib
 import json
 from pathlib import Path
-import platform
+from host_qualification import require_native_workspace
 import signal
 import subprocess
 import time
@@ -16,8 +16,7 @@ def main():
     parser.add_argument("--legacy-host", type=Path)
     parser.add_argument("--evidence", type=Path, required=True)
     args = parser.parse_args()
-    if platform.system() != "Darwin":
-        raise SystemExit("Real macOS enforcement required; no fallback")
+    require_native_workspace()
     host, root = args.host.resolve(strict=True), args.evidence.resolve()
     legacy = args.legacy_host.resolve(strict=True) if args.legacy_host else None
     root.mkdir(mode=0o700)

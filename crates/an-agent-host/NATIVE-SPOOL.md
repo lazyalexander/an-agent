@@ -1,8 +1,9 @@
-# Release-bound native spool: first macOS slice
+# Release-bound native spool: reviewed headless profile
 
 Status: implemented for reviewed local shell tools and explicitly selected
 [native Python environments](NATIVE-PYTHON.md). This is a bounded spool
 facade over the existing workspace supervisor, snapshots and custody machinery.
+Platform coverage is maintained in the [runtime matrix](../../doc/platforms.md).
 It is not an arbitrary agent sandbox, general dependency resolver or replacement
 for trusted in-process `SpoolBeat` mounting. No core or Loom runtime dependency is
 introduced. Domain sequencing remains in the entry silk.

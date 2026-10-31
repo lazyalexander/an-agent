@@ -187,7 +187,7 @@ fn run_inner(
     if !execute {
         return Ok(json!({"plan":plan,"approval_sha256":digest,"executed":false}));
     }
-    if !cfg!(target_os = "macos") {
+    if !sandbox::workspace::supported() {
         return Err("workspace execution is macOS-only; no fallback".into());
     }
     if cancelled.load(Ordering::Acquire) {

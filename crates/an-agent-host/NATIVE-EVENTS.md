@@ -1,6 +1,7 @@
 # Native workspace artifact events
 
-Status: bounded, explicit macOS headless delivery. An accepted output can become
+Status: bounded, explicit headless delivery under the
+[qualified native workspace backend](../../doc/platforms.md). An accepted output can become
 a workspace fact, activate a separately approved receiver, and produce a causal
 result event after formal acceptance. This is not a business graph engine,
 background listener, low-latency channel or arbitrary agent sandbox.

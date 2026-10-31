@@ -111,7 +111,8 @@ CI retains the report per OS; timing is diagnostic evidence, not a benchmark.
 ## One reviewed body with two silks
 
 The qualified reviewed-body path runs one coordinator and two internal silk
-processes through the existing macOS reviewed workspace profile. One process group, attempt and
+processes through the existing reviewed workspace profile
+([platform qualification](platforms.md)). One process group, attempt and
 cancellation owner cover the whole round. A producer hands off an internal file;
 a consumer offers a candidate, and only whole-round settlement can authorize host
 copy/verification and publication. A zero-exit leader with abandoned members is

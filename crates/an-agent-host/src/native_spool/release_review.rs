@@ -41,7 +41,10 @@ fn summary(bundle: &bundle::Bundle) -> Result<Value> {
     let refusal = requirements::validate(&bundle.manifest)
         .err()
         .map(|error| error.to_string())
-        .or_else(|| (!cfg!(target_os = "macos")).then(|| "native execution requires macOS".into()));
+        .or_else(|| {
+            (!crate::execution::sandbox::workspace::supported())
+                .then(|| "native execution requires macOS".into())
+        });
     Ok(
         json!({"release":bundle.release,"manifest":serde_json::to_value(&bundle.manifest)?,
         "legacy_implicit_kit_editability":bundle.manifest.requirements.is_none(),
