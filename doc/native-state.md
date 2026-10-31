@@ -241,3 +241,49 @@ approvals, explicitly seeds independent state, rejects a failed candidate's
 partial output and continues the original instance with its prior approval.
 It is not a generic migration or power-loss recovery test. Evidence is retained
 privately; no agent/model, new backend or domain rule is added to the host.
+
+## Explicit checkpoint artifact dependencies
+
+```text
+an-agent-host spool-state-dependencies INSTANCE REVISION REQUEST_JSON [--approve DIGEST]
+```
+
+The optional request uses schema `an-native-checkpoint-dependencies-v1` and an
+`artifacts` array of 1..16 entries. Each entry names a producer `instance` path,
+`run`, declared `output` and exact accepted `revision`. For example:
+
+```json
+{"schema":"an-native-checkpoint-dependencies-v1","artifacts":[
+  {"instance":"./producer","run":"build","output":"report.txt","revision":"<full digest>"}
+]}
+```
+
+The host previews a plan binding the committed checkpoint, instance/release,
+activation generation and verified accepted source versions. Approval records an
+immutable declaration and acquires source-side checkpoint pins through the existing
+reference store. Duplicate entries, unaccepted or retired sources, wrong versions
+and stale approvals refuse. This is retention authority only: it neither adds a
+runtime input/file grant nor interprets the checkpoint's domain content.
+
+`spool-state-show` includes dependency registration status. The producer's existing
+`spool-artifacts ... --references OUTPUT` view includes the checkpoint owners.
+Checkpoint pins cannot be released through attempt cleanup. HEAD advancement,
+private work collection, unloading and cancelled-attempt input release leave them
+intact. Older checkpoints remain addressable and retain their own pins; new
+checkpoints do not implicitly inherit or release another revision's declaration.
+
+A declaration directory fences one registration. Missing intent/completion or
+source claims refuse selection of that checkpoint; partial source pins stay
+retained, with no automatic repair or retry. Inspect evidence before deciding a
+future reconciliation action. Fully recorded declarations cannot be rewritten.
+Existing checkpoints without declarations report `undeclared`, not dependency-free.
+This optional declaration is not a complete dependency census and does not enable
+stateful-success release, native payload deletion or automatic collection. Older
+hosts do not understand these sidecars; mixed-version operation is unqualified.
+
+Real headless qualification extends both explicit-state supervisor suites: accepted
+producer output, wrong/duplicate version refusal, old checkpoint with newer HEAD,
+client/supervisor loss, cancellation and private collection. Checkpoint pins survive
+cancelled-attempt reference release; missing registration completion blocks further
+execution. Unknown execution remains uncollected and is never replayed. Internal
+reference tests also reject attempt-style release and fabricated release markers.

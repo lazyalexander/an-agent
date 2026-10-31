@@ -1,6 +1,8 @@
 //! Explicit opaque state over existing immutable artifacts and instance ownership.
 use super::*;
 use crate::artifact_versions;
+mod dependencies;
+pub use dependencies::declare;
 
 fn catalog(root: &Path) -> PathBuf {
     root.join("checkpoints/catalog")
@@ -47,6 +49,7 @@ pub(super) fn selection(root: &Path, revision: &str) -> Result<Value> {
             return Err("state revision ownership mismatch".into());
         }
         if cursor == revision {
+            dependencies::inspect(root, revision)?;
             return Ok(json!({"catalog":catalog(root),"binding":binding,
                 "path":catalog(root).join("revisions").join(revision).join("content.txt"),
                 "output":metadata["output"]}));
@@ -105,7 +108,8 @@ pub fn inspect(path: &Path, revision: Option<&str>) -> Result<Value> {
     let _lock = store::lock(&root)?;
     let (metadata, head) = metadata(&root)?;
     let selected = selection(&root, revision.unwrap_or(&head))?;
-    Ok(json!({"metadata":metadata,"head":head,"selected":selected}))
+    Ok(json!({"metadata":metadata,"head":head,"selected":selected,
+        "dependencies":dependencies::inspect(&root, revision.unwrap_or(&head))?}))
 }
 
 /// Commit only an accepted output of a run explicitly started from EXPECTED.

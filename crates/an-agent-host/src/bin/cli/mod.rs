@@ -71,6 +71,7 @@ pub(super) fn run(args: Vec<String>) -> Result<()> {
         | "spool-event-deliver"
         | "spool-event-complete" => spool_events::dispatch(command, args)?,
         "spool-state-init"
+        | "spool-state-dependencies"
         | "spool-state-show"
         | "spool-state-commit"
         | "spool-start-state"
