@@ -228,6 +228,40 @@ explicit release, unrelated retained claims, partial acquisition, lost completio
 and unchanged source payloads. The host owns this fault matrix; Loom only checks
 the packaged producer/consumer handoff. No model or formal payload deletion runs.
 
+## Observing a product's registered consumers
+
+```text
+an-agent-host spool-artifacts INSTANCE RUN --references OUTPUT
+```
+
+This optional view selects one formally accepted output and inspects its exact
+source revision's native input claims. It takes no instance, catalog or consumer
+control lock and does not open paths from consumer ownership records. The original
+`spool-artifacts INSTANCE RUN` report and stored acceptance identities are unchanged.
+
+Each entry distinguishes `claim_without_source_release` from
+`source_release_recorded`. A source marker alone does not prove that the consumer
+completed its final release receipt. Partial registration, successful owners and
+unknown outcomes remain visible; this query neither reconciles nor releases them.
+It reports `consumer_receipts_checked: false`, `reference_census_complete: false`
+and `collection_authorized: false`, including when the directory is absent or empty.
+Old hosts, raw-file readers and opaque state references are outside this inventory.
+
+The query checks source binding, content-addressed claim filenames and paired
+release markers. Orphan, malformed, foreign, linked or oversized records refuse
+without repair. Inspection is bounded to 1,024 directory entries, 64 KiB per record
+and 8 MiB of compact JSON claim data. It is not an atomic snapshot: concurrent
+publication may be absent from the view or cause a refusal. The view cannot be
+used as a deletion precondition. No background polling, retry or payload deletion
+is introduced. Owner paths are private operational evidence, not publication data.
+
+Real acceptance extends the existing producer/two-consumer case: incoming claims
+are observable while the consumer runs and source control locks are held; partial
+registration remains visible; confirmed cancellation creates a source marker while
+another consumer stays retained. Removing the consumer completion receipt does not
+turn that marker into a completed-release guarantee. Malformed source evidence
+refuses, and all original payload hashes remain unchanged.
+
 ## Remaining formal payload collection contract
 
 The generic instance checkpoint/delivery ledger already has explicit retention,

@@ -67,6 +67,21 @@ seed = root / 'seed.txt'
 seed.write_text('0\n')
 state = approve('spool-state-init', consumer, 'state.txt', seed)['state']['revision']
 source = call('spool-artifacts', producer, 'first')
+
+
+def incoming():
+    view = call('spool-artifacts', producer, 'first', '--references', 'batch.txt')
+    assert view['binding'] == original['claims'][0]['reference']['binding']
+    for key in ('revision', 'content_sha256', 'bytes', 'parent'):
+        assert view['binding'][key] == source['outputs'][0]['binding'][key]
+    assert view['observation_only'] and not view['atomic_snapshot']
+    assert not view['reference_census_complete'] and not view['collection_authorized']
+    assert not view['consumer_receipts_checked']
+    return view
+
+
+call('spool-artifacts', producer, 'first', '--references', 'unknown.txt', success=False)
+assert incoming()['registered_claims'] >= 1
 request = root / 'input.json'
 request.write_text(json.dumps(dict(schema='an-native-data-state-v1', data={
     'catalog': source['catalog'], 'revision': source['outputs'][0]['binding']['revision']},
@@ -92,6 +107,8 @@ assert not (partial_dir / 'start.json').exists() and not (partial_dir / 'job').e
 source_claims = Path(source['catalog']) / 'revisions' / source['outputs'][0]['binding']['revision'] / 'native-input-references'
 retained = {p.name: p.read_bytes() for p in source_claims.iterdir()}
 assert any(json.loads(v)['owner']['run'] == 'partial' for v in retained.values())
+assert any(c['reference']['owner']['run'] == 'partial'
+           and c['observation'] == 'claim_without_source_release' for c in incoming()['claims'])
 call('spool-input-references', consumer, 'partial', success=False)
 call('spool-input-release', consumer, 'partial', success=False)
 call('spool-start-data-state', consumer, 'partial', request, 30,
@@ -111,6 +128,19 @@ try:
     assert len(active['claims']) == 2 and all(c['release'] is None for c in active['claims'])
     assert active['plan']['owner'] != original['plan']['owner']
     assert active['claims'][0]['reference']['binding'] == original['claims'][0]['reference']['binding']
+    # Source observation does not wait for producer/catalog control locks or read
+    # the running consumer's private control state. It grants no collection.
+    with (producer / 'host.lock').open('x') as producer_lock, \
+            (Path(source['catalog']) / 'host.lock').open('x') as catalog_lock:
+        producer_lock.write('fixture: producer mutation lock\n')
+        catalog_lock.write('fixture: source mutation lock\n')
+        try:
+            view = incoming()
+            assert any(c['reference']['owner']['run'] == 'held'
+                       and c['observation'] == 'claim_without_source_release' for c in view['claims'])
+        finally:
+            (producer / 'host.lock').unlink()
+            (Path(source['catalog']) / 'host.lock').unlink()
     call('spool-input-release', consumer, 'held', success=False)
     approve('spool-artifact-retire', producer, 'first', 'batch.txt')
 finally:
@@ -137,6 +167,11 @@ assert call('spool-input-release', consumer, 'held')['already_released'] is True
 claims = call('spool-input-references', consumer, 'held')['claims']
 assert all(c['release']['approval_sha256'] == preview['approval_sha256'] for c in claims)
 assert all(c['release'] is None for c in call('spool-input-references', succeeded, 'direct')['claims'])
+released_view = incoming()
+assert any(c['reference']['owner']['run'] == 'held'
+           and c['observation'] == 'source_release_recorded' for c in released_view['claims'])
+assert any(c['reference']['owner']['run'] == 'direct'
+           and c['observation'] == 'claim_without_source_release' for c in released_view['claims'])
 for claim in claims:
     ref = claim['reference']
     payload = Path(ref['catalog']) / 'revisions' / ref['binding']['revision'] / 'content.txt'
@@ -147,11 +182,21 @@ complete.unlink()
 call('spool-input-release', consumer, 'held', '--approve', preview['approval_sha256'], success=False)
 assert call('spool-input-references', consumer, 'held')['claims'] == claims
 assert not complete.exists()
+assert incoming() == released_view  # A source marker cannot prove consumer completion.
 complete.write_bytes(saved)
 assert call('spool-input-release', consumer, 'held')['already_released'] is True
+partial_claim = next(p for p in source_claims.glob('*.json')
+                     if json.loads(p.read_text()).get('owner', {}).get('run') == 'partial')
+saved_claim = partial_claim.read_bytes()
+partial_claim.write_bytes(b'{torn')
+call('spool-artifacts', producer, 'first', '--references', 'batch.txt', success=False)
+assert partial_claim.read_bytes() == b'{torn'
+partial_claim.write_bytes(saved_claim)
+assert incoming() == released_view
 summary = dict(passed=True, host_sha256=hashlib.sha256(host.read_bytes()).hexdigest(),
                cancelled_references_released=True, successful_references_retained=True,
                partial_acquisition_retained=True, lost_confirmation_not_retried=True,
-               payloads_deleted=0, automatic_retries=0)
+               source_observation_without_control_locks=True, source_markers_not_consumer_completion=True,
+               malformed_source_claim_refused=True, payloads_deleted=0, automatic_retries=0)
 (root / 'acceptance.json').write_text(json.dumps(summary, indent=2))
 print(json.dumps(summary))

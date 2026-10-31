@@ -190,6 +190,9 @@ confirmed cancelled owners can release after private collection. Successful owne
 partial registrations and old/unmanaged readers remain retained. Explicit opaque
 checkpoint dependencies, successful-owner release and a mixed-host version fence
 are still required before slice B. No current reference query authorizes deletion.
+The producer-side `spool-artifacts ... --references OUTPUT` observation now exposes
+registered consumers without control locks. Source release markers are reported
+separately from consumer completion; an empty view is never a complete census.
 
 Use Rust tests for internal transition/race windows and Python for real CLI
 acceptance. Loom keeps one narrow package-to-host compatibility case; it does not

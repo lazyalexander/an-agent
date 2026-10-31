@@ -47,6 +47,9 @@ pub(super) fn dispatch(command: &str, args: &[String]) -> Result<Value> {
         }
         ("spool-status", [root, run]) => spool::status(Path::new(root), run),
         ("spool-artifacts", [root, run]) => spool::artifacts(Path::new(root), run),
+        ("spool-artifacts", [root, run, flag, output]) if flag == "--references" => {
+            spool::artifact_references(Path::new(root), run, output)
+        }
         ("spool-artifact-retire", [root, run, output]) => {
             spool::retire_artifact(Path::new(root), run, output, None)
         }

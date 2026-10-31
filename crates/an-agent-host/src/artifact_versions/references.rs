@@ -1,5 +1,7 @@
 //! Native consumer claims are retention evidence, never a complete reader census.
 use super::*;
+mod observation;
+pub(crate) use observation::observe;
 
 fn paths(reference: &Value) -> Result<(PathBuf, PathBuf)> {
     if reference["schema"] != "an-native-input-reference-v1" {
