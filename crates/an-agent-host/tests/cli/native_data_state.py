@@ -4,7 +4,7 @@ import argparse
 import hashlib
 import json
 from pathlib import Path
-import platform
+from host_qualification import require_native_workspace
 import signal
 import subprocess
 import sys
@@ -16,8 +16,7 @@ def main():
     parser.add_argument("--host", type=Path, required=True)
     parser.add_argument("--evidence", type=Path, required=True)
     options = parser.parse_args()
-    if platform.system() != "Darwin":
-        raise SystemExit("Real macOS enforcement required; no fallback")
+    require_native_workspace()
     root, host = options.evidence.resolve(), options.host.resolve(strict=True)
     root.mkdir(mode=0o700)
     calls = []
@@ -157,6 +156,14 @@ def main():
         result_path.write_bytes(saved)
     approved("spool-reclaim", b, run)
     approved("spool-reclaim-snapshots", b, run)
+
+    state_claims = call("spool-input-references", b, run)["claims"]
+    assert len(state_claims) == 2 and all(c["release"] is None for c in state_claims)
+    call("spool-input-release", b, run, "--delivery", ws, "batches", success=False)
+    assert "stateful inputs stay retained" in calls[-1]["stderr"]
+    assert call("spool-input-references", b, run)["claims"] == state_claims
+    assert call("spool-state-show", b)["head"] == head
+    assert not (b / "runs" / run / "input-release-intent.json").exists()
 
     _, holding = produce("holding", "hold\n")
     hold_args = ["spool-event-deliver", ws, holding["id"], "batches", "--state", head]

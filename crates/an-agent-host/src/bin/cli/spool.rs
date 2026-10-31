@@ -7,6 +7,10 @@ pub(super) fn dispatch(command: &str, args: &[String]) -> Result<Value> {
         ("spool-release-diff", [previous, candidate]) => {
             spool::compare_releases(Path::new(previous), Path::new(candidate))
         }
+        ("spool-storage-collect", [root, request]) => collect(root, request, None),
+        ("spool-storage-collect", [root, request, flag, hash]) if flag == "--approve" => {
+            collect(root, request, Some(hash))
+        }
         ("spool-storage", [root]) => spool::storage(Path::new(root)),
         ("spool-reclaim-snapshots", [root, run]) => {
             spool::reclaim_snapshots(Path::new(root), run, None)
@@ -32,8 +36,48 @@ pub(super) fn dispatch(command: &str, args: &[String]) -> Result<Value> {
         ("spool-reconcile-accept", [root, run, flag, hash]) if flag == "--approve" => {
             spool::reconcile_accept(Path::new(root), run, Some(hash))
         }
+        ("spool-input-references", [root, run]) => {
+            spool::input_references::inspect(Path::new(root), run)
+        }
+        ("spool-input-release", [root, run]) => {
+            spool::input_references::release_cancelled(Path::new(root), run, None)
+        }
+        ("spool-input-release", [root, run, flag, hash]) if flag == "--approve" => {
+            spool::input_references::release_cancelled(Path::new(root), run, Some(hash))
+        }
+        ("spool-input-release", [root, run, flag, workspace, subscription])
+            if flag == "--delivery" =>
+        {
+            spool::input_references::release_succeeded(
+                Path::new(root),
+                run,
+                Path::new(workspace),
+                subscription,
+                None,
+            )
+        }
+        ("spool-input-release", [root, run, flag, workspace, subscription, approve, hash])
+            if flag == "--delivery" && approve == "--approve" =>
+        {
+            spool::input_references::release_succeeded(
+                Path::new(root),
+                run,
+                Path::new(workspace),
+                subscription,
+                Some(hash),
+            )
+        }
         ("spool-status", [root, run]) => spool::status(Path::new(root), run),
         ("spool-artifacts", [root, run]) => spool::artifacts(Path::new(root), run),
+        ("spool-artifacts", [root, run, flag, output]) if flag == "--references" => {
+            spool::artifact_references(Path::new(root), run, output)
+        }
+        ("spool-artifact-retire", [root, run, output]) => {
+            spool::retire_artifact(Path::new(root), run, output, None)
+        }
+        ("spool-artifact-retire", [root, run, output, flag, hash]) if flag == "--approve" => {
+            spool::retire_artifact(Path::new(root), run, output, Some(hash))
+        }
         ("spool-kit-proposal-request" | "spool-weaver-request", [root, name]) => {
             spool::kit_proposal::request(Path::new(root), name)
         }
@@ -111,4 +155,10 @@ fn custody(command: &str, root: &str, name: &str, approved: Option<&str>) -> Res
     } else {
         spool::reclaim(Path::new(root), name, approved)
     }
+}
+
+fn collect(root: &str, request: &str, approved: Option<&str>) -> Result<Value> {
+    super::with_cancellation(|cancelled| {
+        spool::collect_private(Path::new(root), Path::new(request), approved, &cancelled)
+    })
 }

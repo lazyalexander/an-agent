@@ -8,6 +8,33 @@ pub(super) fn dispatch(command: &str, args: &[String]) -> Result<Value> {
         _ => (args, None),
     };
     match (command, args) {
+        ("spool-events-dispatch-reconcile", [root, name]) => {
+            events::reconcile_dispatch(Path::new(root), name, approved)
+        }
+        ("spool-events-dispatch", [root, request]) => dispatch_control(|stop, cancel| {
+            events::dispatch(Path::new(root), Path::new(request), approved, stop, cancel)
+        }),
+        ("spool-events-dispatch-show", [root, name]) if approved.is_none() => {
+            events::inspect_dispatch(Path::new(root), name)
+        }
+        ("spool-events-pending", [root]) if approved.is_none() => events::pending(Path::new(root)),
+        ("spool-events-watch", [root, seconds, interval]) if approved.is_none() => {
+            super::with_cancellation(|cancelled| {
+                use std::io::Write;
+                events::watch(
+                    Path::new(root),
+                    seconds.parse()?,
+                    interval.parse()?,
+                    &cancelled,
+                    |value| {
+                        let mut out = std::io::stdout().lock();
+                        writeln!(out, "{}", serde_json::to_string(value)?)?;
+                        out.flush()?;
+                        Ok(())
+                    },
+                )
+            })
+        }
         ("spool-events-init", [root]) if approved.is_none() => events::init(Path::new(root)),
         ("spool-events-show", [root]) if approved.is_none() => events::inspect(Path::new(root)),
         ("spool-event-publish", [root, instance, run, output]) => {
@@ -15,6 +42,15 @@ pub(super) fn dispatch(command: &str, args: &[String]) -> Result<Value> {
         }
         ("spool-event-subscribe", [root, name, config]) => {
             events::subscribe(Path::new(root), name, Path::new(config), approved)
+        }
+        ("spool-event-pause", [root, name]) => {
+            events::subscription_control(Path::new(root), name, true, approved)
+        }
+        ("spool-event-resume", [root, name]) => {
+            events::subscription_control(Path::new(root), name, false, approved)
+        }
+        ("spool-event-replace", [root, previous, next, config]) => {
+            events::replace(Path::new(root), previous, next, Path::new(config), approved)
         }
         ("spool-event-revoke", [root, name]) => events::revoke(Path::new(root), name, approved),
         ("spool-event-deliver", [root, event, name]) => super::with_cancellation(|cancelled| {
@@ -37,4 +73,27 @@ pub(super) fn dispatch(command: &str, args: &[String]) -> Result<Value> {
         }
         _ => Err("invalid native event arguments".into()),
     }
+}
+
+/// Dispatch stop drains the selected entry; cancel uses the existing supervisor.
+fn dispatch_control(
+    run: impl FnOnce(&std::sync::atomic::AtomicBool, &std::sync::atomic::AtomicBool) -> Result<Value>,
+) -> Result<Value> {
+    use std::sync::{Arc, atomic::AtomicBool};
+    let stop = Arc::new(AtomicBool::new(false));
+    let cancel = Arc::new(AtomicBool::new(false));
+    #[cfg(unix)]
+    let mut signals = super::SignalRegistrations::default();
+    #[cfg(unix)]
+    {
+        signals.0.push(signal_hook::flag::register(
+            signal_hook::consts::SIGTERM,
+            Arc::clone(&stop),
+        )?);
+        signals.0.push(signal_hook::flag::register(
+            signal_hook::consts::SIGINT,
+            Arc::clone(&cancel),
+        )?);
+    }
+    run(&stop, &cancel)
 }

@@ -1,5 +1,6 @@
 //! Strict admission for the first explicit runtime-requirements contract.
 use super::{Result, bundle};
+use crate::execution::sandbox::workspace;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 #[derive(Clone, Deserialize, Serialize)]
@@ -59,9 +60,9 @@ pub(super) fn validate(m: &bundle::Manifest) -> Result<()> {
         return Ok(());
     };
     let python = r.runtime == super::runtime::PYTHON && m.schema == "an-native-spool-v3";
-    if (!python && r.runtime != "macos-native-process-v1")
-        || r.os != "macos"
-        || !cfg!(target_os = "macos")
+    if (!python && r.runtime != workspace::SHELL_RUNTIME)
+        || r.os != workspace::TARGET_OS
+        || !workspace::supported()
         || r.arch != "portable-source"
         || r.interaction != "headless"
         || r.gpu != "none"

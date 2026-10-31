@@ -18,7 +18,8 @@ The concrete gap was output transfer: a kit retains up to 64 KiB per stream and
 a model result up to 1 MiB, but an explicit context packet is capped at 4 KiB.
 Manual copying either loses provenance, overfills the packet, or encourages
 accidental full-history transfer. A deterministic export closes this gap without
-new model calls, execution permissions, Waver coupling, or core changes.
+new model calls, execution permissions, development-tool runtime coupling, or
+core changes.
 
 ## Use
 
@@ -81,7 +82,7 @@ Omission counts concern the retained artifact, not the whole process transcript:
 the execution output cap may already have stopped and truncated a noisy process.
 No full-output recovery, replay or token-savings percentage is promised.
 
-Waver can continue generating the same packet/CLI contracts. Kit authors retain
+Development clients can target these packet/CLI contracts. Kit authors retain
 responsibility for meaningful domain summaries. Core remains admission and audit;
 selection and export are host responsibilities. No Codex dependency is added.
 

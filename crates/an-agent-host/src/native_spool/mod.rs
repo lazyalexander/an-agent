@@ -1,17 +1,22 @@
 //! Release-bound native spool facade over qualified workspace execution.
 //! This reviewed-tool profile is not hostile process-tree containment.
 mod artifacts;
-pub use artifacts::artifacts;
+pub use artifacts::{artifact_references, artifacts};
 mod bundle;
 pub mod checkpoint;
 mod event_contract;
 pub mod events;
+pub mod input_references;
 mod inputs;
 pub mod kit_proposal;
 mod lifecycle;
+mod maintenance;
+pub use maintenance::collect_private;
 mod reconcile;
 mod release_review;
 mod requirements;
+mod retirement;
+pub use retirement::retire_artifact;
 mod runtime;
 pub use release_review::compare_releases;
 mod round_control;

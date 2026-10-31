@@ -16,6 +16,8 @@ doc/
 !/doc/status.md
 !/doc/testing.md
 !/doc/weaver.md
+!/doc/session-and-retention.md
+!/doc/platforms.md
 docs/
 .notes/
 .superpowers/

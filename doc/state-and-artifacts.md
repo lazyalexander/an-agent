@@ -40,6 +40,12 @@ survive eligible scratch collection. Retained state references and unresolved
 delivery/execution evidence can prevent product reclamation. A successful
 consumer acknowledgement is not by itself deletion authority.
 
+Native accepted outputs can separately close new revision-based input admission.
+This preserves immutable payloads, admitted execution/custody and independent
+checkpoints; it is not a reference-release receipt or permission to delete bytes.
+Private work/snapshot collection remains independent. See [the native storage
+contract](../crates/an-agent-host/NATIVE-STORAGE.md).
+
 The fixed native file profile permits explicit reclamation after confirmed
 cancellation as well as success. Cancelled partial output is never published or
 used as a capability request. Missing settlement or unknown termination refuses
@@ -67,3 +73,8 @@ External read-only access can avoid an extra file copy, but does not freeze a
 source that another application can change. Fixed-version inputs need managed
 immutable bytes or a qualified snapshot; live inputs must not claim that guarantee.
 See the [handoff pressure decision](../crates/an-agent-host/HANDOFF-PRESSURE.md).
+
+The proposed [session and retention plan](session-and-retention.md) separates
+evidence references, explicit byte-retention pins and independent copies. The
+native pin ledger, formal payload collector and session coordinator described
+there are not implemented yet.

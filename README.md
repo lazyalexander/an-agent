@@ -15,10 +15,13 @@ The framework provides execution coordination, semantic assessment, supervision,
 This is an early-stage library and integration effort, not a finished creative application.
 
 A spool is the domain execution isolation and lifecycle boundary; internal
-**silks** implement its callable steps. OpenShell is a replaceable execution
-backend, and application shuttles remain host-authorized external bridges.
+**silks** implement its callable steps. Local reviewed headless execution is the
+current delivery focus. OpenShell remains an optional, replaceable backend with
+expansion paused; application shuttles remain host-authorized external bridges.
+Headless does not imply trusted code, and insufficient isolation must refuse
+execution rather than fall back to a weaker backend.
 See the [implementation audit and staged migration](crates/an-agent-host/SPOOL-BOUNDARY.md).
-Existing bounded execution profiles do not yet provide a multi-silk runtime.
+OpenShell's bounded file profile does not provide the native spool state/event/artifact contract.
 
 The [spool code contract](doc/spool-code.md) distinguishes **silks**, the stable pipeline
 skeleton and core domain code, from **kits**, adaptable internal glue. Published
@@ -54,7 +57,7 @@ Loom owns development and packaging. The an-agent host owns workflow admission, 
 - **Semantic checks:** a separate crate represents claims, concrete attempts, version-bound grants, receipts, contract assessments, and dependency validity. It does not own business scheduling or user interaction. Trusted adapters determine what evidence and enforcement are actually available.
 - **Supervision:** operations requiring review can yield to a live supervisor. Approvals are bound to the exact operation and current authority; explicit denial or missing capabilities cannot be bypassed through approval. Changes to relevant live state invalidate affected reviews.
 - **Audit and limited recovery:** append-only tapes retain execution evidence, while session APIs support bounded recovery with required inputs available. Dependency checks can quarantine stale model results rather than treating them as current work.
-- **Bounded CLI hosting:** `an-agent-host` independently registers hash-bound deployments and runs an explicit stdio-only capability through admission, native macOS restrictions, and retained receipts. Development and packaging tools are not runtime dependencies. See [the host execution contract](crates/an-agent-host/README.md).
+- **Bounded CLI hosting:** `an-agent-host` independently registers hash-bound deployments and runs an explicit stdio-only capability through admission, the qualified native backend restrictions, and retained receipts. Development and packaging tools are not runtime dependencies. See [the host execution contract](crates/an-agent-host/README.md) and [platform support matrix](doc/platforms.md).
 
 Release-bound native spools also support explicit workspace-event handoff and
 [operator-selected Python with binary products](crates/an-agent-host/NATIVE-PYTHON.md).

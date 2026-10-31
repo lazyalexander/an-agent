@@ -1,6 +1,34 @@
 //! Consumption is accepted output plus causal evidence, not delivery or process exit.
 use super::*;
 
+/// Reuse original acknowledgement validation; this never repairs a lost receipt.
+pub(in crate::native_spool) fn confirmed_input_consumption(
+    path: &Path,
+    subscription: &str,
+    target: &Path,
+    run: &str,
+    start: &Value,
+) -> Result<Value> {
+    let space = Space::observe(path)?;
+    let route = space.route(subscription)?;
+    let event = space.event(text(&start["event_input"], "event")?)?;
+    let ctx = delivery::context(&space, &event, &route)?;
+    if ctx != start["event_input"] || ctx["delivery"] != run || route["target"] != identity(target)?
+    {
+        return Err("input release delivery identity mismatch".into());
+    }
+    delivery::routed(&space, &event, &route)?;
+    publication::verify(&space, &event)?;
+    let observed = observe(&space, &event, &route)?;
+    if observed["status"] != "succeeded" || observed["disposition"] != "already-consumed" {
+        return Err(
+            "input release requires original consumption acknowledgement; no repair or retry"
+                .into(),
+        );
+    }
+    Ok(observed["receipt"].clone())
+}
+
 fn receipt(space: &Space, event: &Value, route: &Value) -> Result<Value> {
     let intent = delivery::intent(space, event, route)?;
     let ctx = &intent["plan"]["context"];
@@ -64,7 +92,7 @@ pub fn complete(path: &Path, event_id: &str, name: &str, approved: Option<&str>)
     let _instance = store::lock(target)?;
     let _lock = store::lock(&space.root)?;
     let event = space.event(event_id)?;
-    delivery::routed(&event, &route)?;
+    delivery::routed(&space, &event, &route)?;
     publication::verify(&space, &event)?;
     let proof = receipt(&space, &event, &route)?;
     let result_id = text(&proof["result_event"], "id")?;

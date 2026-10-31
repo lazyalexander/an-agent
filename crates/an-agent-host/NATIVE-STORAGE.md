@@ -1,9 +1,10 @@
-# Native storage observation and private snapshot retention
+# Native storage, private collection and artifact admission
 
-This slice collects private input copies after their round is settled and its
-work area has been explicitly collected. Formal artifacts, checkpoint payloads,
-release/kit files and execution/control evidence remain retained. It is not
-general artifact GC, a cross-instance lease manager or automatic disk cleanup.
+Private input copies can be collected after their round is settled and its work
+area has been explicitly collected. A separate operation retires one accepted
+output from new revision-based input acquisition. Formal artifact bytes,
+checkpoint payloads, release/kit files and execution/control evidence remain
+retained. Neither operation implements formal artifact GC or automatic cleanup.
 
 ```text
 an-agent-host spool-storage INSTANCE
@@ -32,9 +33,9 @@ Input snapshot paths are private evidence, not durable artifact handles. A
 downstream consumer uses formal artifact checkout or an explicitly selected
 checkpoint. Reclaiming snapshots abandons byte-for-byte replay from those private
 copies; it does not delete the independent registered state or formal outputs.
-Opaque domain references are not inferred by scanning state text. General formal
-artifact retirement requires its own explicit reference/delivery contract; it is
-not enabled by this slice.
+Opaque domain references are not inferred by scanning state text. Formal artifact
+deletion requires its own explicit reference/delivery contract. Closing new input
+admission is a separate operation described below.
 
 ## Collection evidence
 
@@ -78,3 +79,223 @@ collection, fixed downstream handoff, suspension/resume, confirmed cancellation,
 changed/unregistered-input refusal, partial no-spawn preparation and lost receipt
 reconciliation. A real headroom denial uses an explicitly raised operator request;
 tests do not fill the user's disk or replace filesystem observations with mocks.
+
+## Finite private-material maintenance
+
+```text
+an-agent-host spool-storage-collect INSTANCE REQUEST_JSON [--approve HASH]
+```
+
+The strict request is `{"schema":"an-native-private-collection-request-v1",
+"material":"work","runs":["round-0","round-1"]}`. Select either `work` or
+`snapshots`, with 1..16 unique explicit run names. These are separate phases:
+collect work first, then preview/approve snapshots. No wildcard, age-based scan,
+formal product/state selector or recursive host-path removal is accepted.
+
+The host validates every selected original per-run preview before any deletion.
+One approval binds the material, instance/release identity, order and all exact
+child inventories/evidence. Each original collection operation revalidates under
+its existing locks and writes its own durable one-shot intent and receipt. No
+new collector, deletion policy or second retention ledger is introduced. A
+changed owner/selection/inventory cannot inherit an old approval. An invalid,
+already-collected or uncertain item refuses the selection rather than being
+silently skipped.
+
+This is not an atomic all-or-nothing transaction. Cancellation stops before the
+next item; an admitted child operation settles using its original protocol.
+An error or unconfirmed child result stops subsequent items without rollback,
+auto-retry or auto-resume. If the client response is lost, inspect the existing
+per-run collection evidence. Do not resend a batch to infer that remaining items
+are safe: uncertain original intents remain fenced. Known unstarted remaining
+items need a new explicit selection and approval.
+
+Formal artifacts, checkpoint state, release/kit files, execution evidence and
+external input files remain retained. Logical bytes removed are not physical
+space savings on APFS; this entry point makes no runtime-quota or disk-reservation
+claim. Real macOS qualification runs four rounds with an 8 MiB external input,
+starts maintenance while an independent downstream receiver runs, measures the
+producer's logical footprint, and confirms fixed products and checkpoint history
+after collection. It also qualifies maintenance cancellation before deletion,
+whole-selection refusal, confirmed execution cancellation and a lost collection
+receipt without further deletion. This is controlled receipt-loss injection,
+not arbitrary crash or power-loss recovery.
+
+## Retiring new artifact input admission
+
+```text
+an-agent-host spool-artifact-retire INSTANCE RUN OUTPUT [--approve HASH]
+```
+
+The host verifies the owning instance, successful whole-attempt settlement,
+formal acceptance and exact declared output. Preview binds its immutable catalog,
+revision, content identity and acceptance evidence; approval writes one exclusive
+`admission-retired.json` closure record beside that revision. No bytes, manifests,
+accepted-output bindings or historical event identities are rewritten or deleted.
+Other outputs and newer revisions remain independent. Committed checkpoint
+catalogs cannot be retired through this command.
+
+New revision-based checkout/edit, native business-input selection, workspace
+artifact input preparation and registered native revision execution refuse the
+closed version. New event publication refuses it; an existing event can still be
+read back. Unstarted direct/delivery/batch previews cannot bypass the fence with
+an old approval. Pending inventory reports unstarted deliveries as blocked.
+
+Retirement writes use the existing catalog lock and exclusive marker creation.
+Input readers stay concurrent: immutable bytes are checked with the monotonic
+closure fence before and after acquisition. If closure precedes the final check,
+the acquisition refuses; otherwise its bytes were acquired before closure and
+may finish. Workspace preparation rechecks while acquiring its private input
+snapshot. A concurrent closure can therefore refuse preparation after execution
+intent was written; existing no-spawn/uncertain evidence governs reconciliation,
+without automatic retry. Retirement does not promise that every previously
+approved process has already started or stopped.
+
+Evidence reads remain separate from new input acquisition. Already-admitted
+output acceptance, state commit, causal completion and private collection can
+still verify retained bytes. A checkpoint committed from a retired accepted
+output is an independent version, not a lease on disposable scratch. A result
+fact needed to confirm an admitted delivery may still be recorded after its
+output admission was closed; it does not reopen input admission.
+
+Repeating a complete matching closure confirms it without rewriting. A torn,
+malformed, linked or contradictory marker closes new admission and requires
+inspection; it is never overwritten as a retry. This profile has no reopen or
+delete operation. `spool-artifacts` reports admission separately from its stable
+accepted-output inventory. Missing/corrupt payloads still fail evidence checks.
+
+This is cooperating-host policy, not access revocation or a sandbox boundary.
+It does not revoke independent checkouts, copied or raw-file inputs, caches or
+an older executable that does not implement this gate. Use the qualified host
+revision for all managed operations; mixed host versions are unqualified. The
+original artifact revision schemas and release formats remain unchanged.
+
+Real headless qualification runs one receiver during producer retirement,
+refuses a second receiver's stale direct/event/batch approvals, completes custody
+and state commit after closure, and verifies independent checkpoints, unrelated
+outputs, cancellation, retained bytes and torn-record refusal. No formal payload
+is collected and no model is invoked.
+
+## Native input ownership and explicit release
+
+```text
+an-agent-host spool-input-references INSTANCE RUN
+an-agent-host spool-input-release INSTANCE RUN [--approve HASH]
+an-agent-host spool-input-release INSTANCE RUN --delivery WORKSPACE SUBSCRIPTION [--approve HASH]
+```
+
+New approved native starts register each managed artifact/checkpoint input at its
+source revision before execution. Preview does not acquire references. A claim
+binds the consumer root, instance, release, unique run, exact start-plan digest,
+input slot and full source binding. Two roles using the same revision have distinct
+claims. Raw-file inputs do not acquire source claims. Historical runs remain
+readable; an `unregistered` observation is not proof that no consumer exists.
+
+The consumer writes a durable registration intent, then acquires each source claim
+under the existing catalog write lock and finally confirms registration. Native
+starts have at most two managed input slots. Acquisition refuses when a revision
+already has 512 history entries, counting claims and release records; existing
+owners can still record releases, so retained history can grow to 1,024 entries.
+No history is pruned to make room. Only one source lock is held at a time, inside the
+consumer's existing instance operation. Read-only inspection takes neither lock;
+it cannot authorize deletion and may fail if it captures incomplete publication.
+Catalog write contention remains an explicit refusal, without retry or queuing.
+
+Registration is not an atomic transaction across catalogs. Partial acquisition
+retains the claims already written and refuses execution/reuse of that run identity.
+It does not automatically complete missing claims or roll back ownership evidence.
+Source admission closure can still refuse preparation after registration; retained
+claims are conservative evidence, not a promise that the process started.
+
+The original release command supports **confirmed cancelled runs only**, after
+both work collection and private input snapshot collection are positively confirmed.
+It reuses original settlement and collection checks, then binds an explicit approval
+to those records and the complete registration. An exclusive intent precedes
+source-side release markers. A matching complete result can be confirmed without
+rewriting; a missing completion, partial release, changed owner or unknown settlement
+refuses without repair or replay. A source release never releases another run's claim.
+
+The `--delivery` form supports successful **stateless event consumers**. It requires
+confirmed whole-attempt success, accepted outputs, the original matching delivery
+acknowledgement and causal result event, plus confirmed work and snapshot collection.
+Its separate `an-native-success-input-release-v1` approval binds that consumption
+receipt; the original cancelled-run plan and CLI remain compatible. An execution
+exit or an accepted output alone cannot release the claim. A missing acknowledgement
+refuses rather than invoking acknowledgement repair. Release is explicit, not a
+side effect of collection or observation.
+
+This bounded success path requires exactly one managed event input and no explicit
+state/data selection, checkpoint store or pending checkpoint initialization. State
+is opaque and does not yet declare all external dependencies: successful stateful
+runs retain all input claims, even after state commit, acknowledgement and private
+collection. Unstarted or partially registered failures also stay retained pending
+a separate reconciliation contract. The command deletes **no payload** and grants
+no collection authority. A source marker without the matching final consumer
+receipt remains uncertain; release cannot reconstruct that receipt or replay work.
+Existing artifact/release formats are unchanged. Mixed old/new hosts, unmanaged
+readers, opaque checkpoint dependencies and legacy catalogs prevent treating these
+claims as a complete reference census. Do not infer GC permission from zero claims
+or from release records alone.
+
+Real headless acceptance uses one producer, a successful consumer and a separate
+cancelled consumer. It qualifies live/unknown-owner refusal, work/snapshot ordering,
+explicit release, unrelated retained claims, partial acquisition, lost completion
+and unchanged source payloads. The host owns this fault matrix; Loom only checks
+the packaged producer/consumer handoff. No model or formal payload deletion runs.
+The event case also qualifies successful stateless release with a second retained
+consumer, missing acknowledgement/result/release receipts, stale approval and partial
+state initialization. The state case verifies that committed state still blocks
+success release. Unsupported isolation/runtime/network requirements refuse before
+native loading; no backend downgrade is used to make these cases pass.
+
+## Observing a product's registered consumers
+
+```text
+an-agent-host spool-artifacts INSTANCE RUN --references OUTPUT
+```
+
+This optional view selects one formally accepted output and inspects its exact
+source revision's native input claims. It takes no instance, catalog or consumer
+control lock and does not open paths from consumer ownership records. The original
+`spool-artifacts INSTANCE RUN` report and stored acceptance identities are unchanged.
+
+Each entry distinguishes `claim_without_source_release` from
+`source_release_recorded`. A source marker alone does not prove that the consumer
+completed its final release receipt. Partial registration, successful owners and
+unknown outcomes remain visible; this query neither reconciles nor releases them.
+It reports `consumer_receipts_checked: false`, `reference_census_complete: false`
+and `collection_authorized: false`, including when the directory is absent or empty.
+Old hosts, raw-file readers and opaque state references are outside this inventory.
+
+The query checks source binding, content-addressed claim filenames and paired
+release markers. Orphan, malformed, foreign, linked or oversized records refuse
+without repair. Inspection is bounded to 1,024 directory entries, 64 KiB per record
+and 8 MiB of compact JSON claim data. It is not an atomic snapshot: concurrent
+publication may be absent from the view or cause a refusal. The view cannot be
+used as a deletion precondition. No background polling, retry or payload deletion
+is introduced. Owner paths are private operational evidence, not publication data.
+
+Real acceptance extends the existing producer/two-consumer case: incoming claims
+are observable while the consumer runs and source control locks are held; partial
+registration remains visible; confirmed cancellation creates a source marker while
+another consumer stays retained. Removing the consumer completion receipt does not
+turn that marker into a completed-release guarantee. Malformed source evidence
+refuses, and all original payload hashes remain unchanged.
+
+## Remaining formal payload collection contract
+
+The generic instance checkpoint/delivery ledger already has explicit retention,
+recipient acknowledgements and registered state-reference checks. Native outputs
+also live in per-run artifact catalogs and can be selected from independently
+located instances. That usage is not a closed global reference inventory. Do not
+apply generic `product-reclaim` to a native catalog or infer deletion consent from
+observing no current reader or receiving an event acknowledgement.
+
+Closing admission does not prove that existing consumers, state references or
+unmanaged readers have released a version. Native input claims now record new
+managed consumers; formal collection still needs successful-owner release, explicit
+checkpoint dependencies and a defined boundary for unmanaged/legacy readers.
+Opaque state references cannot be inferred by scanning text.
+The current operations reduce private-copy accumulation and close selected new
+uses while preserving formal bytes. Loom may describe intended retention, but
+cannot supply runtime deletion authority. General native formal-product/state GC
+remains unimplemented.

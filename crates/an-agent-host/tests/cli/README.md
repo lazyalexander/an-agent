@@ -2,7 +2,9 @@
 
 Build the selected host binary once, then pass its explicit path. No runner
 builds a binary, reads model credentials or invokes Loom. Python 3 standard
-library is sufficient.
+library is sufficient. Platform eligibility is centralized in
+`host_qualification.py`; see the [support and qualification matrix](../../../../doc/platforms.md).
+This prerequisite does not replace the host enforcement exercised by each case.
 
 ```sh
 cargo build --locked -p an-agent-host --bin an-agent-host
@@ -10,7 +12,7 @@ python3 crates/an-agent-host/tests/cli/native_state.py \
   --host target/debug/an-agent-host --evidence /private/tmp/native-state-evidence
 ```
 
-`native_state.py` requires the real macOS native backend; other platforms report
+`native_state.py` requires the qualified native workspace backend; other platforms report
 a skip, not successful runtime qualification. It tests explicit initialization,
 fixed state input, successful accepted-output commit, stale conflicts, cancelled
 candidate refusal, interrupted HEAD publication, orphan refusal, idempotent
@@ -34,7 +36,7 @@ feeds a fixed report into another instance. Unknown entries/changed inputs and
 lost collection receipts cannot authorize new deletion. A raised operator
 headroom request exercises the real no-spawn denial path without filling disk.
 
-`native_release.py --host HOST --evidence NEW_DIRECTORY` uses real macOS execution
+`native_release.py --host HOST --evidence NEW_DIRECTORY` uses real qualified native execution
 to qualify read-only release comparison, same-label changed content, unsupported
 capability/dependency refusal, separate instance/state initialization, stale
 approval refusal, failed candidate output rejection and original-instance
@@ -47,6 +49,10 @@ explicit accepted-output consumption, duplicate delivery, missing confirmation,
 stale/revoked/foreign identities, concurrent observation, actual cancellation and
 lost facade evidence. Missing-record cases deliberately remove records after
 known execution; they do not claim arbitrary process-crash or power-loss recovery.
+It also qualifies explicit stateless-success reference release, a retained peer,
+missing result/acknowledgement/release receipts, partial state initialization and
+unsupported isolation requests. Stateful-success claims stay retained in
+`native_data_state.py`; no payload deletion is qualified.
 No model, background dispatch or GUI is exercised. The paired Loom suite owns
 actual archive/export handoff; this host suite owns the refusal/fault matrix.
 
@@ -70,3 +76,64 @@ On a client deadline the runner requests host cancellation; unknown termination
 fails the suite and keeps evidence. It never automatically reruns an execution.
 All fixture directories, receipts and command observations are retained, including
 on failure. Operational evidence contains local paths; do not publish it raw.
+
+`native_input_references.py --host HOST --fixture COMPLETED_DATA_STATE_DIRECTORY
+--evidence NEW_DIRECTORY` consumes a fresh successful `native_data_state.py` case.
+It inspects successful-owner references, starts and cancels an independent real
+consumer, and releases only after confirmed work and snapshot collection. It
+checks unknown settlement, wrong approval, another retained consumer, unchanged
+payload hashes and missing release confirmation without repair. An injected second
+catalog lock proves partial registration cannot execute or silently reacquire.
+The producer-side optional reference view is checked under held producer/catalog
+locks while a real consumer runs. It distinguishes source markers from consumer
+completion, includes partial registrations, and refuses malformed source records.
+These fault probes are deliberate refusal checks, not production retry policy.
+The fixture's producer is retired during the case; do not reuse it for another run.
+This covers new managed inputs, not a complete pin census or formal product GC.
+
+The event suite also qualifies read-only delivery inventory and foreground
+monitoring during actual execution, evidence changes, observation cancellation,
+deadline exit and restart without replaying unknown work. The monitor emits
+NDJSON, whereas ordinary host commands return one JSON value.
+
+`native_dispatch.py --host HOST --evidence NEW_DIRECTORY` qualifies finite
+approved stateful headless dispatch. It covers exact inputs, no implicit state
+chaining, stale commits, drain-stop versus cancellation, confirmed-only cleanup,
+actual dispatch-ledger write failure and interrupted observation without replay.
+
+The dispatch suite also qualifies subscription admission pause/resume, old direct
+and batch approval refusal, running-work custody and no replay after resume.
+Optionally pass `--legacy-host OLD_HOST` to invoke a previous v1-only binary and
+verify upgrade refusal. Its summary distinguishes whether this extra check ran.
+
+The dispatch suite also loses a known completed summary, checks inert/wrong
+approval and missing-entry refusal, reconstructs it explicitly and checks unchanged
+attempt counts. Partial stopped batches cannot use this reconciliation path.
+
+`native_route_successor.py --host HOST --evidence NEW_DIRECTORY` runs actual old
+and new stateful receivers, including cutover while old work runs, historical and
+uncertain-event refusal, changed-approval refusal, explicit state transfer and
+retained custody. `--legacy-host OLD_HOST` optionally qualifies old-host refusal;
+the portable summary records whether it ran and the selected binary hash.
+
+`native_capacity.py --host HOST --evidence NEW_DIRECTORY` runs four 8 MiB rounds
+through two real headless instances, measures producer logical bytes before/after
+finite private collection, and verifies concurrent consumer progress, cancellation,
+retained products/state/external inputs and lost-receipt refusal. It reports no
+physical APFS savings or formal-product GC guarantee.
+
+`native_retirement.py --host HOST --evidence NEW_DIRECTORY` retires an accepted
+output while one real stateful receiver runs, rejects another receiver's stale
+direct/event/batch approvals, and completes acceptance, state commit and causal
+confirmation after closure. It checks unrelated/new versions, private collection,
+confirmed cancellation, preserved bytes and a torn retirement record without
+retry. This qualifies admission closure, not formal payload deletion or revocation
+of independent copies. Unit tests own concurrent-reader and marker-fault checks.
+
+`native_monitor.py` consumes a freshly completed `native_events.py` fixture and
+creates independent measured workspaces. It adds six real producer rounds, then
+runs 144 unique revocations under 0/1/4 observers with no retries. Run it once per
+fresh fixture; a failed/unknown scenario must not reuse the same round IDs. It
+records every command, watcher outcome and opt-in timing, and rejects observation
+writes, control refusal or watcher failure. It does not weaken stale-approval,
+cancellation or reclamation assertions in the preceding real event suite.

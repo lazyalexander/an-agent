@@ -3,7 +3,7 @@ use super::*;
 use serde::{Deserialize, Serialize};
 
 mod inventory;
-pub(super) const PYTHON: &str = "macos-native-python-v1";
+pub(super) use crate::execution::sandbox::workspace::PYTHON_RUNTIME as PYTHON;
 
 #[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]

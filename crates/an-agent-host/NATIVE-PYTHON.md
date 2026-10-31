@@ -1,6 +1,7 @@
 # Operator-selected native Python and binary products
 
-Status: qualified for reviewed, CPU-only, headless macOS tools. This extends the
+Status: qualified for reviewed, CPU-only, headless tools; platform coverage is
+maintained in the [runtime matrix](../../doc/platforms.md). This extends the
 [native v3 event profile](NATIVE-EVENTS.md) through existing workspace execution
 and binary artifact custody. It adds no core dependency, environment installer,
 package resolver, agent harness, domain parser or extra isolation per silk.

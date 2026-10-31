@@ -4,13 +4,15 @@ A spool is the domain execution isolation and lifecycle boundary. Internal
 **silks** are callable computations sharing its granted environment; they do not
 each receive a VM. See [the boundary, implementation audit and migration](SPOOL-BOUNDARY.md).
 OpenShell is optional and replaceable. Existing `kit` profile/CLI names below
-remain compatibility spellings; multi-silk execution is not implemented yet.
+remain compatibility spellings; reviewed native spools can run internal silk
+steps under one attempt boundary. See [the native contract](NATIVE-SPOOL.md).
 
 This crate owns host-side effects, not kit business logic. The library's
 `execution::{check, register, run}` and `an-agent-host` CLI implement a narrow
 stdio capability and a separate [bounded build/file profile](FILE-JOBS.md).
-Fixed-file execution supports macOS and native Linux. The isolated Rust build
-recipe remains macOS-only; see [Linux file permissions](LINUX-VALIDATION.md#fixed-file-runtime).
+Current execution and build coverage is centralized in the
+[platform matrix](../../doc/platforms.md). Fixed-file and reviewed-workspace
+execution are different profiles; one does not qualify the other.
 Core remains unchanged. `Host::pump` keeps its existing event
 semantics; a fallible process is not executed inside its infallible text sink.
 
@@ -261,3 +263,34 @@ instance-bound custody evidence. It reuses the native supervisor and workspace
 engine. Pause, suspension and arbitrary harness containment remain unsupported.
 
 The native spool facade also provides an optional [weaver proposal slot](NATIVE-SPOOL.md#optional-weaver-proposal-slot): scoped file requests and separately approved kit changes, without launching a model or granting the adapter host authority.
+
+For a bounded local delivery inventory use `spool-events-pending WORKSPACE`;
+`spool-events-watch WORKSPACE SECONDS INTERVAL_MS` emits changed snapshots as
+newline-delimited JSON. Monitoring grants no execution and never selects state
+or retries work. See [the event contract](NATIVE-EVENTS.md#delivery-inventory-and-foreground-monitoring).
+
+For finite reviewed event batches use `spool-events-dispatch WORKSPACE REQUEST_JSON`:
+preview first, then approve its exact hash. SIGTERM drains the selected entry and
+stops; SIGINT requests cancellation. State selection is explicit per entry;
+acceptance/commit/completion stay separate. Recorded batches never resume on
+repeat invocation. See [finite dispatch](NATIVE-EVENTS.md#finite-approved-dispatch).
+
+`spool-event-pause` / `spool-event-resume` preview and approve subscription
+admission control. They do not cancel execution. Resume invalidates old delivery
+approvals and cannot revive revoked routes or replay batches. First use upgrades
+the workspace format so earlier hosts refuse it; see [subscription control](NATIVE-EVENTS.md#subscription-admission-pause-and-resume).
+
+To move future events to another receiver, preview/approve
+`spool-event-replace WORKSPACE OLD NEW ROUTE_JSON`. Old admitted work retains its
+identity and custody; historical events are not replayed. State transfer remains
+explicit. See [receiver succession](NATIVE-EVENTS.md#explicit-receiver-succession).
+
+For periodic bounded private cleanup, preview/approve `spool-storage-collect
+INSTANCE REQUEST_JSON`, selecting either work or input snapshots for explicit run
+names. Original ownership, settlement and one-shot deletion guards remain in force;
+formal products/state are preserved. See [storage maintenance](NATIVE-STORAGE.md#finite-private-material-maintenance).
+
+To close one accepted output to new revision-based consumers, preview/approve
+`spool-artifact-retire INSTANCE RUN OUTPUT`. Original bytes, admitted custody and
+independent checkpoints remain retained; this grants no deletion authority.
+See [artifact input retirement](NATIVE-STORAGE.md#retiring-new-artifact-input-admission).

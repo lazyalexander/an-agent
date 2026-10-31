@@ -133,6 +133,8 @@ new run and evidence directory. No production retry or weaker policy was added.
 
 Retain OpenShell as an optional local execution backend, with cold workspace
 restart as a qualified backend primitive rather than a new host resume feature.
+Expansion is paused. The observations above remain historical evidence, not a
+requirement to extend the production adapter before native lifecycle delivery.
 Before adding host-directed continuation, define explicit new approval,
 checkpoint validity, run/generation linkage and output acceptance. Never reopen
 an old receipt or silently promote a late guest artifact.

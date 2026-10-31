@@ -1,81 +1,83 @@
 # Implementation status and next steps
 
-This page describes the bounded implementation, not all capabilities suggested
-by the architecture diagram. An example's success does not widen a runtime grant.
+This page separates qualified local contracts from the architecture's broader
+intent. Example success never expands a runtime grant. Reviewed headless execution
+is the current product scope; platform-specific coverage and deferred targets are
+maintained in the [support and qualification matrix](platforms.md).
 
-| Area | Current evidence and limitation |
+## P0: bounded headless event delivery
+
+P0 is qualified for reviewed local CLI spools, not arbitrary untrusted agents:
+
+- Immutable release/instance binding, two internal silk steps, scoped kit edits,
+  independent instances, whole-group cancellation and baseline restoration.
+- Explicit v3 workspace artifact facts, fixed subscriptions, separate delivery
+  approval, accepted-output custody and causal consumption confirmation.
+- One fixed business input combined with one explicitly selected opaque committed
+  checkpoint; stale-state conflict refusal and confirmed-cancellation retention.
+- Explicit reconciliation of complete original execution/acceptance evidence.
+  Missing termination or uncertain execution never authorizes a rerun.
+- Optional operator-selected Python environments and declared binary products;
+  the paired document example exercises saved XLSX and fixed downstream PPTX.
+
+See [native spool](../crates/an-agent-host/NATIVE-SPOOL.md),
+[native events](../crates/an-agent-host/NATIVE-EVENTS.md),
+[native state](../crates/an-agent-host/NATIVE-STATE.md) and
+[Python/binary inputs](../crates/an-agent-host/NATIVE-PYTHON.md).
+
+## P1: daily local event operation
+
+| Capability | Qualified boundary |
 | --- | --- |
-| Embedded agents | Existing event/admission/tape and supervision paths; in-process bodies are trusted code, not isolated workloads |
-| Native deployment | Registered hash-bound stdio/file profiles with platform-specific enforcement and receipts; not arbitrary code-agent execution |
-| Concurrent native attempts | Two single-entry spool releases in one store; independent cancellation/restart, pinned inputs and evidence-gated scratch cleanup; no queue or general multi-silk supervisor |
-| Optional OpenShell | Qualified single-program file execution, owned environment/identity checks, cancellation/timeout settlement and guarded output acceptance |
-| Reviewed workspace jobs | Trusted native macOS workflow execution, retained engine scratch and selected binary artifact custody; not a general production spool ABI |
-| Document handoff | Independent example acceptance for saved XLSX versions and fixed downstream PPT consumption; not a built-in Office application |
-| State and artifacts | Bounded revision, instance commit, checkpoint/delivery and reclamation contracts; no automatic domain merge or complete rollback |
-| Semantics | Pure claims/assessments and existing admission adapters; not comprehensive static program analysis or a security boundary |
-| Multi-silk environment | Reviewed macOS coordinator plus two internal silks qualified through workspace jobs; early-leader-exit failure, whole-group cancellation and copied artifact custody; not a registered general spool runtime |
-| Release-bound native spool | v1/v2 compatibility, v3 events and explicit byte products, operator-selected Python dependency inventories, independent instances, approved kit edits/reset, cancellation and explicit ledger repair; reviewed macOS headless tools |
-| Weaver / zero-mount development | Optional Loom-side reviewed harness example and standalone CLI qualification; not a host agent loop or hostile-harness sandbox |
-| Workspace-driven native events | Explicit v3 interfaces, static subscriptions, accepted artifact facts and one foreground delivery per approved event/subscription; consumed-output confirmation and no automatic retry; no background listener or generic graph |
-| Pause/suspend/backup | Backend-specific capabilities to qualify; not general host guarantees |
+| Inventory and watch | Read-only pending inventory and bounded foreground change monitor; no execution authority |
+| Finite dispatch | 1..16 explicitly approved selections, fixed state per entry, drain-stop/cancel and an exclusive no-resume fence; custody remains explicit |
+| Subscription control | Generation-bound admission pause/resume and permanent revocation; admitted custody survives |
+| Receiver succession | Immutable successor and fixed event cutover; no historical replay, automatic state migration or retargeting of old work |
+| Completed-summary repair | Explicit reconstruction from every original entry/start/delivery and confirmed-success receipt; no execution or partial-batch resume |
+| Private capacity maintenance | Explicit finite work/snapshot collection through original ownership/settlement gates; four real 8 MiB rounds and consumer progress qualified |
+| Artifact input retirement | One accepted output can close new revision-based acquisition; admitted work, independent checkpoints, original bytes and causal evidence remain retained |
+| Native input ownership | Exact managed claims; explicit cancelled-owner or acknowledged stateless-success release after private collection; stateful/unknown owners retained; producer-side observations, no complete reader census or payload deletion |
 
-macOS remains the primary local platform. Existing native Linux implementation
-and CI are retained. This documentation does not add a new platform or backend.
+P1 is not closed. The remaining required capacity contract is **formal payload
+collection**: identify registered references, release them explicitly, and define
+what unmanaged readers mean before deleting bytes. Admission retirement is not
+proof that all old references have expired. The native per-run catalogs do not
+have a global reference census; absence of a reader or an acknowledgement is not
+deletion authority. See [native storage](../crates/an-agent-host/NATIVE-STORAGE.md).
 
-## Remaining local spool milestones
+After that bounded contract, qualify the combined local headless path rather
+than adding another sequence of isolated features: concurrent instances,
+explicit inputs/state, finite event operation, interruption, retained products
+and measured capacity. Preserve unknown results without automatic replay. This
+is the P1 closure direction, not a requirement to build a daemon or graph engine.
 
-The immediate event-first slice is now qualified: workspace artifact facts can
-drive explicit native delivery, acceptance and causal result confirmation. Keep
-business control flow in silk/kit. Real XLSX/PPTX handoff now uses explicit binary
-outputs and operator-selected Python through the same event contract. A separate
-explicit state slot now combines one fixed business artifact with one committed
-checkpoint, including event delivery and stale-commit refusal. Multiple business
-inputs, broader environment support and daily
-subscription/lifecycle/retention management remain separate work. Low-latency
-channels require an actual high-frequency consumer. The runtime milestones below
-remain an inventory, not a host business-graph roadmap.
+The next [session and retention plan](session-and-retention.md) makes the
+remaining storage work explicit, then proposes a small session/thread coordination
+layer over existing attempts. It is a plan, not implemented session management.
+GUI and TUI are deferred; no new user interface is required for qualification.
 
-The bounded headless shell route is usable today. It is not yet the complete
-local spool host. Track these five milestones rather than a completion percentage
-or an unlimited sequence of examples; each may require several focused PRs.
+## Deferred scope and existing surfaces
 
-1. **Interrupted completion.** Explicitly reconcile complete execution/custody
-   evidence without retrying work. Result and acceptance handoff repair are
-   supported; missing termination evidence stays fenced. Close with real write
-   failures and refusal cases, not claims of universal crash recovery.
-2. **Explicit state continuation.** Bind the existing state/checkpoint primitives
-   to a release-bound spool attempt. Selected state, stale-commit refusal and
-   continuation without inherited scratch are qualified for one opaque text state
-   output. See [native state](../crates/an-agent-host/NATIVE-STATE.md). A fresh load
-   requires an explicit saved-version seed; automatic lineage/migration is separate.
-3. **Pause and suspension.** Qualify cooperative safe points, explicit resume and
-   checkpoint/stop suspension for the native backend. The first
-   [round-boundary control](../crates/an-agent-host/NATIVE-CONTROL.md) slice supports
-   admission pause, fixed-checkpoint suspension and explicit resume after verified
-   settlement/acceptance. In-flight safe-point signaling and process/VM restoration
-   remain unqualified; their generic capability flags stay false.
-4. **Retention and capacity.** Expose retained references and leases, safely retire
-   unreferenced products/input snapshots, and apply backpressure before storage
-   exhaustion. [Private snapshot collection](../crates/an-agent-host/NATIVE-STORAGE.md),
-   bounded logical storage observation and preparation headroom are qualified.
-   Formal products/state remain retained; general cross-instance reference/lease
-   retirement and runtime quotas remain outside this slice.
-5. **Release compatibility and final qualification.** Resolve declared dependencies
-   to exact supported bindings, show update/permission differences and preserve old
-   releases/state on rejected updates. [Release review](../crates/an-agent-host/NATIVE-RELEASES.md)
-   now verifies package differences, reports unsupported requests and qualifies
-   independent fresh-instance continuation while preserving the old state.
-   Authorized lineage, in-place updates, external dependency resolution and
-   generic migration remain separate, unimplemented capabilities.
-   Reuse the two-instance/two-silk acceptance,
-   with explicit supported scope and unsupported cases, as the local completion
-   gate. Publisher authentication and a public registry are not prerequisites.
+| Surface | Current scope or reason to defer |
+| --- | --- |
+| Core/embedded agents | Existing event/tape/admission/supervision; in-process bodies remain trusted embedding code |
+| Native registered profiles | Hash-bound stdio/file deployment and platform-specific enforcement; not arbitrary hostile-agent containment |
+| Optional OpenShell | Qualified single-program execution and termination/identity reconciliation; no new VM backend in this phase |
+| Reviewed workspace jobs | Operator-selected workflows and binary custody; not a general production spool ABI |
+| Semantics | Pure claims/assessments and existing adapters; not comprehensive static analysis or a security boundary |
+| Weaver | Optional Loom-side reviewed harness workflow; host kit proposal slot is not a host-owned agent loop |
+| State/release migration | Explicit fresh-instance checkpoint seeding and read-only release comparison; no automatic lineage, domain merge or in-place migration |
+| Live suspension | Admission pause and checkpoint/stop suspension are qualified; process-memory/VM restore and in-flight safe-point signaling are not |
+| Additional orchestration | Multiple business inputs, producer/topology editing, background admission and low-latency channels await concrete demand |
+| GPU/GUI and hostile harnesses | Require independent platform, application and enforcement qualification |
 
-Loom owns authoring, verification and delivery. Domain rules stay in the spool;
-an-agent owns execution and custody. Further Weaver orchestration, GPU/GUI,
-arbitrary hostile harnesses and additional VM backends are outside this local
-headless milestone set and require their own qualification.
+Spool interaction remains workspace-event routing. Domain branches, loops and
+subagent decisions stay in silk/kit. A future high-frequency channel needs a
+separate grant; it is not a reason to turn the host into a business graph engine.
 
-Preserve CLI/profile/tape compatibility. Unsupported enforcement must refuse,
-not silently fall back. Development merges require the existing CI and acceptance
-gates plus a user notification; main promotion remains user-triggered.
+Loom owns authoring, checks, packaging and narrow paired compatibility evidence.
+an-agent owns runtime authority, supervision, state/artifact custody and retention.
+There is no reverse runtime dependency. Preserve existing CLI/profile/tape
+identities and old release bytes; unsupported enforcement refuses rather than
+falling back. Dev merges require diff review, real acceptance and every CI gate,
+followed by user notification. Main promotion remains user-triggered.

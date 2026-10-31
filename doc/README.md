@@ -15,6 +15,12 @@ no machine configuration, credentials or private operational transcripts.
 4. [Implementation status and next steps](status.md): what works, what remains
    operator-only and the next bounded refactoring slices.
 
+5. [Artifact retention, sessions and logical threads](session-and-retention.md):
+   proposed ownership, bounded context and headless delivery plan.
+
+6. [Platform support and qualification](platforms.md): runtime support, test lanes
+   and the coordinated Loom handoff boundary.
+
 ## Detailed implementation contracts
 
 Keep detailed behavior close to the code that owns it. These existing documents
@@ -30,9 +36,9 @@ them or turn a design requirement into an implemented guarantee.
 | Multi-silk implementation and stress plan | [Native round lifecycle and custody](../crates/an-agent-host/MULTI-SILK-PLAN.md) |
 | Native process ownership | [Process lifecycle](../crates/an-agent-host/PROCESS-LIFECYCLE.md) |
 | Optional OpenShell backend | [Adapter contract](../crates/an-agent-host/OPENSHELL.md), [recovery limits](../crates/an-agent-host/OPENSHELL-RECOVERY.md) |
-| Release-bound native spool | [First macOS package lifecycle](../crates/an-agent-host/NATIVE-SPOOL.md) |
+| Release-bound native spool | [Reviewed native package lifecycle](../crates/an-agent-host/NATIVE-SPOOL.md) |
 | Native round control | [Pause admission, checkpoint suspension and explicit resume](../crates/an-agent-host/NATIVE-CONTROL.md) |
-| Native storage | [Observation, private snapshot collection and admission pressure](../crates/an-agent-host/NATIVE-STORAGE.md) |
+| Native storage | [Private collection, artifact input retirement and admission pressure](../crates/an-agent-host/NATIVE-STORAGE.md) |
 | Native release review | [Verified changes and independent continuation](../crates/an-agent-host/NATIVE-RELEASES.md) |
 | Native workspace events | [Artifact facts, static subscriptions and explicit delivery](../crates/an-agent-host/NATIVE-EVENTS.md) |
 | Native Python and binary products | [Operator selection, dependency inventory and byte custody](../crates/an-agent-host/NATIVE-PYTHON.md) |

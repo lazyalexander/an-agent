@@ -1,5 +1,6 @@
 //! Instance installation, bounded kit edits and explicit unloading.
 use super::*;
+use crate::execution::sandbox::workspace;
 
 pub fn load(package: &Path, destination: &Path) -> Result<Value> {
     load_selected(package, destination, None)
@@ -49,7 +50,7 @@ fn load_selected(package: &Path, destination: &Path, runtime: Option<&Path>) -> 
     let instance = an_agent_core::det_seam::Entropy::os().uuid_v4().to_string();
     let mut record = json!({"schema":"an-native-spool-instance-v1","instance":instance,
         "release":bundle.release,"name":bundle.manifest.name,"version":bundle.manifest.version,
-        "execution_granted":false,"profile":"macos-reviewed-native-spool-v1"});
+        "execution_granted":false,"profile":workspace::SPOOL_PROFILE});
     if let Some(bytes) = runtime {
         record["runtime_sha256"] = json!(store::digest(&bytes));
         store::write_new(&root.join("runtime.json"), &bytes)?;
@@ -66,8 +67,8 @@ pub fn show(path: &Path) -> Result<Value> {
     record["event_interface"] = json!(bundle.manifest.events);
     record["loaded"] = json!(!root.join("unloaded.json").exists());
     record["operation_locked"] = json!(root.join("host.lock").exists());
-    record["capabilities"] = json!({"start":cfg!(target_os="macos"),"cancel":"running CLI SIGINT/SIGTERM", "pause":false,"suspend":false,
-        "pause_between_attempts":cfg!(target_os="macos"),"suspend_checkpoint":cfg!(target_os="macos"),
+    record["capabilities"] = json!({"start":workspace::supported(),"cancel":"running CLI SIGINT/SIGTERM", "pause":false,"suspend":false,
+        "pause_between_attempts":workspace::supported(),"suspend_checkpoint":workspace::supported(),
         "weaver":false,"weaver_proposal_slot":true,"kit_proposal_slot":true});
     record["round_control"] = round_control::summary(&round_control::current(&root, &record)?);
     record["kits"] = kit_hashes(&root, &bundle)?;

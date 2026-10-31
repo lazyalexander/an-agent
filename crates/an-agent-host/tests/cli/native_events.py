@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Real macOS artifact-event delivery, cancellation and no-retry qualification."""
+"""Real native artifact-event delivery, cancellation and no-retry qualification."""
 import argparse
 import hashlib
 import json
 from pathlib import Path
+from host_qualification import require_native_workspace
 import platform
 import signal
 import subprocess
@@ -15,8 +16,7 @@ def main():
     parser.add_argument("--host", type=Path, required=True)
     parser.add_argument("--evidence", type=Path, required=True)
     options = parser.parse_args()
-    if platform.system() != "Darwin":
-        raise SystemExit("Real macOS native enforcement required; no fallback")
+    require_native_workspace()
     root = options.evidence.resolve()
     root.mkdir(mode=0o700)
     host = options.host.resolve(strict=True)
@@ -75,8 +75,26 @@ def main():
                                      "result": "report.txt", "wall_seconds": 30}))
         return approved("spool-event-subscribe", space, name, config)
 
+    def pending(event, name):
+        inventory = call("spool-events-pending", space)
+        assert inventory["execution_granted"] is False and inventory["automatic_retries"] == 0
+        return next(row for row in inventory["deliveries"]
+                    if row["event"] == event and row["subscription"] == name)
+
     source_package = package("producer", 'set -eu\ntr "[:lower:]" "[:upper:]" < "$1"\n')
     target_package = package("consumer", 'set -eu\nprintf "B:"\ncat "$1"\n')
+    restricted = package("requires-isolation", 'set -eu\ncat "$1"\n')
+    manifest_file = restricted / "native-spool.json"
+    restricted_manifest = json.loads(manifest_file.read_text())
+    for case, extra in [("vm", {"isolation": "vm"}),
+                        ("backend", {"runtime": "openshell-vm-file-v1"}),
+                        ("network", {"capabilities": ["read-input", "write-declared-outputs", "network"]})]:
+        candidate = json.loads(json.dumps(restricted_manifest))
+        candidate["requirements"].update(extra)
+        manifest_file.write_text(json.dumps(candidate))
+        refused_root = root / ("refused-" + case)
+        call("spool-load", restricted, refused_root, success=False)
+        assert not refused_root.exists()  # No native downgrade, even before start.
     a, b = root / "a", root / "b"
     call("spool-load", source_package, a)
     call("spool-load", target_package, b)
@@ -92,8 +110,11 @@ def main():
     event_id = event["id"]
     assert call("spool-event-publish", space, a, "first", "report.txt")["already_published"] is True
     call("spool-event-deliver", space, event_id, "absent", success=False)
+    assert pending(event_id, "main")["phase"] == "awaiting-authorization"
+    assert list((b / "runs").iterdir()) == []  # Observation never even prepares a run.
     preview = call("spool-event-deliver", space, event_id, "main")
     run = preview["plan"]["context"]["delivery"]
+    release_args = ["spool-input-release", b, run, "--delivery", space, "main"]
     assert not (b / "runs" / run / "job").exists()
     assert not (space / "deliveries" / run).exists()
     call("spool-event-deliver", space, event_id, "main", "--approve", "0" * 64, success=False)
@@ -105,6 +126,8 @@ def main():
     result = call("spool-event-deliver", space, event_id, "main", "--approve", preview["approval_sha256"])
     assert result["result"]["workspace"]["termination_confirmed"] is True
     assert result["consumed"] is False
+    call(*release_args, success=False)
+    assert pending(event_id, "main")["phase"] == "awaiting-acceptance"
     assert (b / "runs" / run / "job/work/report.txt").read_text() == "B:FIRST\n"
     attempted = b / "runs" / run / "job/attempts"
     assert len(list(attempted.iterdir())) == 1
@@ -119,6 +142,8 @@ def main():
     assert len(list(attempted.iterdir())) == 1
     result_file.write_bytes(result_bytes)
     approved("spool-accept", b, run)
+    call(*release_args, success=False)  # Acceptance alone is not consumption.
+    assert pending(event_id, "main")["phase"] == "awaiting-confirmation"
     approved("spool-pause", b)  # Admission pause must not block settling old consumption.
     completed = approved("spool-event-complete", space, event_id, "main")
     approved("spool-resume", b)
@@ -126,14 +151,53 @@ def main():
     assert call("spool-event-deliver", space, event_id, "main")["disposition"] == "already-consumed"
     records = call("spool-events-show", space)["records"]
     ack = space / "deliveries" / run / "ack.json"
+    assert pending(event_id, "main")["phase"] == "consumed"
     ack.unlink()  # Lost confirmation after complete consumption, not a process retry.
     call("spool-event-deliver", space, event_id, "main", success=False)
+    assert pending(event_id, "main")["phase"] == "awaiting-confirmation"
     approved("spool-event-complete", space, event_id, "main")
     assert call("spool-events-show", space)["records"] == records
     assert len(list(attempted.iterdir())) == 1
     for instance, name in [(a, "first"), (b, run)]:
         approved("spool-reclaim", instance, name)
+        if instance == b:
+            call(*release_args, success=False)
         approved("spool-reclaim-snapshots", instance, name)
+    peer = root / "peer"
+    call("spool-load", target_package, peer)
+    route(space, "peer", a, peer)
+    peer_run = approved("spool-event-deliver", space, event_id, "peer")["context"]["delivery"]
+    peer_claims = call("spool-input-references", peer, peer_run)["claims"]
+    release_preview = call(*release_args)
+    assert release_preview["plan"]["schema"] == "an-native-success-input-release-v1"
+    call(*release_args, "--approve", "0" * 64, success=False)
+    pending_state = b / "checkpoints.pending"
+    pending_state.mkdir()
+    call(*release_args, "--approve", release_preview["approval_sha256"], success=False)
+    pending_state.rmdir()  # Controlled partial-state fault; no production repair.
+    for evidence in [result_file, ack]:
+        saved = evidence.read_bytes()
+        evidence.unlink()
+        call(*release_args, "--approve", release_preview["approval_sha256"], success=False)
+        assert not evidence.exists()
+        assert not (b / "runs" / run / "input-release-intent.json").exists()
+        evidence.write_bytes(saved)
+    call("spool-input-release", b, run, "--delivery", space, "peer", success=False)
+    released = call(*release_args, "--approve", release_preview["approval_sha256"])
+    assert released["status"] == "succeeded" and not released["payloads_deleted"]
+    assert call(*release_args)["already_released"]
+    claims = call("spool-input-references", b, run)["claims"]
+    assert all(c["release"]["approval_sha256"] == release_preview["approval_sha256"] for c in claims)
+    assert call("spool-input-references", peer, peer_run)["claims"] == peer_claims
+    release_done = b / "runs" / run / "input-released.json"
+    saved_done = release_done.read_bytes()
+    release_done.unlink()
+    call(*release_args, "--approve", release_preview["approval_sha256"], success=False)
+    assert not release_done.exists()
+    assert call("spool-input-references", b, run)["claims"] == claims
+    release_done.write_bytes(saved_done)
+    assert call(*release_args)["already_released"]
+    assert call("spool-artifacts", b, run)["outputs"] == completed["receipt"]["accepted"]["outputs"]
     assert call("spool-event-deliver", space, event_id, "main")["executed"] is False
     route(space, "generation", a, b)
     stale = call("spool-event-deliver", space, second, "generation")
@@ -143,10 +207,20 @@ def main():
     assert not (space / "deliveries" / stale["plan"]["context"]["delivery"]).exists()
     approved("spool-event-revoke", space, "main")
     call("spool-event-deliver", space, second, "main", success=False)
+    assert pending(second, "main")["phase"] == "blocked"
     assert call("spool-event-deliver", space, event_id, "main")["executed"] is False
     foreign = root / "foreign-workspace"
     call("spool-events-init", foreign)
     call("spool-event-deliver", foreign, event_id, "main", success=False)
+
+    deadline_watch = subprocess.run([str(host), "spool-events-watch", str(foreign), "1", "100"],
+                                    capture_output=True, text=True, timeout=10, check=True)
+    deadline_lines = [json.loads(line) for line in deadline_watch.stdout.splitlines()]
+    assert len(deadline_lines) == 2  # No unchanged periodic snapshots.
+    assert deadline_lines[-1]["reason"] == "deadline"
+    assert deadline_lines[-1]["snapshots"] == 1
+    call("spool-events-watch", space, "0", "100", success=False)
+    call("spool-events-pending", space, "--approve", "0" * 64, success=False)
 
     # Actual cancellation holds the instance lock, but not the workspace lock.
     holding_package = package("holding", 'set -eu\nprintf ready > ready.marker\nsleep 25\ncat "$1"\n')
@@ -173,13 +247,40 @@ def main():
         call("spool-events-show", space)
         during = call("spool-event-deliver", space, second, "hold", success=False)
         assert during["executed"] is False
-        approved("spool-event-revoke", space, "hold")
+        assert pending(second, "hold")["phase"] == "running-or-unconfirmed"
+        watch_path = root / "watch.local.jsonl"
+        with watch_path.open("w") as output, (root / "watch.local.stderr").open("w") as errors:
+            watcher = subprocess.Popen([str(host), "spool-events-watch", str(space), "30", "100"],
+                                       stdout=output, stderr=errors)
+            try:
+                deadline = time.monotonic() + 10
+                while not watch_path.read_text().strip():
+                    if watcher.poll() is not None or time.monotonic() > deadline:
+                        raise RuntimeError("Monitor did not emit; no retry")
+                    time.sleep(0.02)
+                approved("spool-event-revoke", space, "hold")
+                while len(watch_path.read_text().splitlines()) < 2:
+                    if watcher.poll() is not None or time.monotonic() > deadline:
+                        raise RuntimeError("Monitor did not observe revocation; no retry")
+                    time.sleep(0.02)
+            finally:
+                if watcher.poll() is None:
+                    watcher.send_signal(signal.SIGINT)
+                watcher.wait(timeout=10)
+            assert watcher.returncode == 0
+        watched = [json.loads(line) for line in watch_path.read_text().splitlines()]
+        assert watched[-1]["reason"] == "cancelled"
+        assert watched[-1]["execution_cancelled"] is False
+        assert process.poll() is None  # Stopping observation must not cancel the delivery.
+        assert pending(second, "hold")["admission_refusal"] is not None
     finally:
         if process.poll() is None:
             process.send_signal(signal.SIGINT)
         cancelled = finish(process, args, success=False)
     assert cancelled["status"] == "cancelled"
+    assert pending(second, "hold")["phase"] == "settled-unsuccessful"
     assert cancelled["result"]["workspace"]["termination_confirmed"] is True
+    call("spool-input-release", holding, hold_run, "--delivery", space, "hold", success=False)
     call("spool-accept", holding, hold_run, success=False)
     call("spool-event-complete", space, second, "hold", success=False)
     assert not (space / "deliveries" / hold_run / "ack.json").exists()
@@ -192,6 +293,14 @@ def main():
     unknown = call("spool-event-deliver", space, second, "hold", success=False)
     assert unknown["status"] == "uncertain" and unknown["automatic_retries"] == 0
     assert len(list((holding / "runs" / hold_run / "job/attempts").iterdir())) == 1
+    before = list((holding / "runs" / hold_run / "job/attempts").iterdir())
+    restarted = subprocess.run([str(host), "spool-events-watch", str(space), "1", "100"],
+                               capture_output=True, text=True, timeout=10, check=True)
+    observed = json.loads(restarted.stdout.splitlines()[0])
+    hold_row = next(row for row in observed["deliveries"]
+                    if row["event"] == second and row["subscription"] == "hold")
+    assert hold_row["phase"] == "running-or-unconfirmed"
+    assert before == list((holding / "runs" / hold_run / "job/attempts").iterdir())
     result_file.write_bytes(original)
     # Reload at the same location is a distinct instance, not a subscription successor.
     b.rename(root / "retained-b")
@@ -203,7 +312,11 @@ def main():
                "platform": platform.platform(), "event": event_id, "second_event": second,
                "attempts_for_first_delivery": 1, "attempts_for_cancelled_delivery": 1,
                "lost_ack_repaired_without_execution": True, "execution_retried": False,
-               "model_invoked": False, "background_dispatch": False}
+               "model_invoked": False, "background_dispatch": False,
+               "monitor_read_only": True, "monitor_cancel_does_not_cancel_execution": True,
+               "monitor_restart_retried_unknown": False}
+    summary.update(successful_stateless_references_released=True, peer_references_retained=True,
+                   missing_release_confirmation_not_retried=True, isolation_downgrade_refused=True)
     (root / "acceptance.json").write_text(json.dumps(summary, indent=2))
     print(json.dumps(summary))
 

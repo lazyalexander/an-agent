@@ -43,6 +43,9 @@ clients retain their request formats. Its old global managed inference route has
 been removed; do not build a new integration around that obsolete interface.
 See [provider access](https://docs.nvidia.com/openshell/v0.1.4/how-it-works/inference).
 
-This repository does not yet integrate or certify OpenShell. A Linux adapter
-should be a separately reviewed experiment with failure tests and a pinned
-version, not a claim that the current macOS backend is container isolation.
+The repository now has a narrow [optional OpenShell adapter](OPENSHELL.md) with
+pinned historical real-VM qualification. Expansion is paused; this does not
+certify arbitrary workloads or make the native backend container isolation.
+Use the [current support matrix](../../doc/platforms.md). Missing isolation must
+refuse execution, never select a weaker backend automatically. Code inspection
+and headless operation do not establish workload trust.

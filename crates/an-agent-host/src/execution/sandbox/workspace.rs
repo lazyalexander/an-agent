@@ -6,6 +6,18 @@ use std::{
     sync::atomic::AtomicBool,
 };
 
+// Compatibility identities describe this backend, not a portable spool ABI.
+pub(crate) const TARGET_OS: &str = "macos";
+pub(crate) const SHELL_RUNTIME: &str = "macos-native-process-v1";
+pub(crate) const PYTHON_RUNTIME: &str = "macos-native-python-v1";
+pub(crate) const PLAN_BACKEND: &str = "macos-trusted-workspace-v1";
+pub(crate) const SPOOL_PROFILE: &str = "macos-reviewed-native-spool-v1";
+
+/// Qualification eligibility only. Actual policy installation can still refuse.
+pub(crate) const fn supported() -> bool {
+    cfg!(target_os = "macos")
+}
+
 #[cfg(target_os = "macos")]
 pub(crate) fn policy(
     executable: &Path,
