@@ -80,8 +80,19 @@ def incoming():
     return view
 
 
+def attempt_claim(record, run):
+    return record['schema'] == 'an-native-input-reference-v1' and record['owner']['run'] == run
+
+
 call('spool-artifacts', producer, 'first', '--references', 'unknown.txt', success=False)
-assert incoming()['registered_claims'] >= 1
+initial_view = incoming()
+checkpoint = json.loads((fixture / 'acceptance.json').read_text())['committed_state']
+checkpoint_pin, = [c for c in initial_view['claims']
+                   if c['reference']['schema'] == 'an-native-checkpoint-reference-v1'
+                   and c['reference']['owner']['checkpoint_revision'] == checkpoint
+                   and c['reference']['owner']['root'] == str(succeeded)]
+assert checkpoint_pin['release'] is None
+assert initial_view['registered_claims'] >= 1
 request = root / 'input.json'
 request.write_text(json.dumps(dict(schema='an-native-data-state-v1', data={
     'catalog': source['catalog'], 'revision': source['outputs'][0]['binding']['revision']},
@@ -106,8 +117,8 @@ assert not (partial_dir / 'input-references-registered.json').exists()
 assert not (partial_dir / 'start.json').exists() and not (partial_dir / 'job').exists()
 source_claims = Path(source['catalog']) / 'revisions' / source['outputs'][0]['binding']['revision'] / 'native-input-references'
 retained = {p.name: p.read_bytes() for p in source_claims.iterdir()}
-assert any(json.loads(v)['owner']['run'] == 'partial' for v in retained.values())
-assert any(c['reference']['owner']['run'] == 'partial'
+assert any(attempt_claim(json.loads(v), 'partial') for v in retained.values())
+assert any(attempt_claim(c['reference'], 'partial')
            and c['observation'] == 'claim_without_source_release' for c in incoming()['claims'])
 call('spool-input-references', consumer, 'partial', success=False)
 call('spool-input-release', consumer, 'partial', success=False)
@@ -136,7 +147,7 @@ try:
         catalog_lock.write('fixture: source mutation lock\n')
         try:
             view = incoming()
-            assert any(c['reference']['owner']['run'] == 'held'
+            assert any(attempt_claim(c['reference'], 'held')
                        and c['observation'] == 'claim_without_source_release' for c in view['claims'])
         finally:
             (producer / 'host.lock').unlink()
@@ -168,9 +179,10 @@ claims = call('spool-input-references', consumer, 'held')['claims']
 assert all(c['release']['approval_sha256'] == preview['approval_sha256'] for c in claims)
 assert all(c['release'] is None for c in call('spool-input-references', succeeded, 'direct')['claims'])
 released_view = incoming()
-assert any(c['reference']['owner']['run'] == 'held'
+assert checkpoint_pin in released_view['claims']  # Cancelling/releasing a peer preserves A's state pin.
+assert any(attempt_claim(c['reference'], 'held')
            and c['observation'] == 'source_release_recorded' for c in released_view['claims'])
-assert any(c['reference']['owner']['run'] == 'direct'
+assert any(attempt_claim(c['reference'], 'direct')
            and c['observation'] == 'claim_without_source_release' for c in released_view['claims'])
 for claim in claims:
     ref = claim['reference']
