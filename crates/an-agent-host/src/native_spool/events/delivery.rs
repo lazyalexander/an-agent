@@ -89,7 +89,7 @@ fn deliver_selected(
     cancelled: &AtomicBool,
 ) -> Result<Value> {
     let space = Space::open(path)?;
-    let (event, route, ctx) = {
+    let (event, route, ctx, control) = {
         let _lock = store::lock(&space.root)?;
         let event = space.event(event_id)?;
         let route = space.route(name)?;
@@ -108,7 +108,7 @@ fn deliver_selected(
         }
         space.check_active(&route)?;
         publication::verify(&space, &event)?;
-        (event, route, ctx)
+        (event, route.clone(), ctx, control::current(&space, &route)?)
     };
     let root = Path::new(text(&route["target"], "root")?);
     let run = text(&ctx, "delivery")?;
@@ -126,8 +126,11 @@ fn deliver_selected(
         cancelled,
         |_| Ok(()),
     )?;
-    let plan = json!({"operation":"deliver","context":ctx,"event":event,"route":route,"start":preview["plan"],
+    let mut plan = json!({"operation":"deliver","context":ctx,"event":event,"route":route,"start":preview["plan"],
         "consumption":"requires separate formal acceptance and event completion"});
+    if control["generation"] != 0 {
+        plan["subscription_control"] = control.clone();
+    }
     let (digest, execute) = native::approval(&plan, approved)?;
     if !execute {
         return Ok(json!({"plan":plan,"approval_sha256":digest,"executed":false}));
@@ -147,6 +150,7 @@ fn deliver_selected(
             if space.route(name)? != route
                 || space.event(event_id)? != event
                 || *start != plan["start"]
+                || control::current(&space, &route)? != control
             {
                 return Err("delivery changed before start admission".into());
             }

@@ -1,4 +1,5 @@
 //! Bounded artifact events and explicit delivery, not a business workflow engine.
+mod control;
 mod delivery;
 mod dispatch;
 mod monitor;
@@ -8,6 +9,7 @@ mod space;
 mod subscription;
 #[cfg(test)]
 mod tests;
+pub use control::subscription_control;
 pub use delivery::{deliver, deliver_with_state};
 pub use dispatch::{dispatch, inspect_dispatch};
 pub use monitor::{pending, watch};

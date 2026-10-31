@@ -64,7 +64,12 @@ pub fn subscribe(path: &Path, name: &str, request: &Path, approved: Option<&str>
         .facts
         .log()?
         .iter()
-        .filter(|r| r.kind == "config")
+        .filter(|r| {
+            r.kind == "config"
+                && r.name
+                    .as_deref()
+                    .is_some_and(|n| n.starts_with("native.events."))
+        })
         .count()
         >= 16
     {

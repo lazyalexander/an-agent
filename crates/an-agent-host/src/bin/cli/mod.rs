@@ -55,6 +55,8 @@ pub(super) fn run(args: Vec<String>) -> Result<()> {
         | "spool-events-show"
         | "spool-event-publish"
         | "spool-event-subscribe"
+        | "spool-event-pause"
+        | "spool-event-resume"
         | "spool-event-revoke"
         | "spool-event-deliver"
         | "spool-event-complete" => spool_events::dispatch(command, args)?,

@@ -272,3 +272,8 @@ preview first, then approve its exact hash. SIGTERM drains the selected entry an
 stops; SIGINT requests cancellation. State selection is explicit per entry;
 acceptance/commit/completion stay separate. Recorded batches never resume on
 repeat invocation. See [finite dispatch](NATIVE-EVENTS.md#finite-approved-dispatch).
+
+`spool-event-pause` / `spool-event-resume` preview and approve subscription
+admission control. They do not cancel execution. Resume invalidates old delivery
+approvals and cannot revive revoked routes or replay batches. First use upgrades
+the workspace format so earlier hosts refuse it; see [subscription control](NATIVE-EVENTS.md#subscription-admission-pause-and-resume).
