@@ -64,7 +64,7 @@ pub fn complete(path: &Path, event_id: &str, name: &str, approved: Option<&str>)
     let _instance = store::lock(target)?;
     let _lock = store::lock(&space.root)?;
     let event = space.event(event_id)?;
-    delivery::routed(&event, &route)?;
+    delivery::routed(&space, &event, &route)?;
     publication::verify(&space, &event)?;
     let proof = receipt(&space, &event, &route)?;
     let result_id = text(&proof["result_event"], "id")?;

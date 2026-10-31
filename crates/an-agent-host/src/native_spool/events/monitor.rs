@@ -9,7 +9,7 @@ fn observation(space: &Space, event: &Value, route: &Value) -> Result<Value> {
     store::no_links(&dir)?;
     let refusal = space.check_active(route).err().map(|e| e.to_string());
     let mut row = json!({"context":ctx,"event":event["id"],"subscription":route["name"],
-        "subscription_control":control::current(space,route)?,
+        "subscription_control":control::current(space,route)?,"retired_by":replacement::retired_by(space,route)?,
         "phase":if refusal.is_some() {"blocked"} else {"awaiting-authorization"},
         "admission_refusal":refusal,"automatic_retries":0});
     if dir.exists() {
@@ -65,7 +65,7 @@ pub fn pending(path: &Path) -> Result<Value> {
         let raw: Value = serde_json::from_str(record.body.as_deref().ok_or("missing event body")?)?;
         let event = space.event(text(&raw, "id")?)?;
         for route in &routes {
-            if delivery::routed(&event, route).is_ok() {
+            if delivery::routed(&space, &event, route).is_ok() {
                 rows.push(observation(&space, &event, route)?);
             }
         }

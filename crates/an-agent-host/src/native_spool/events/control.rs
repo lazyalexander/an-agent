@@ -19,7 +19,7 @@ pub(super) fn current(space: &Space, route: &Value) -> Result<Value> {
             continue;
         }
         let next = current["generation"].as_u64().ok_or("control generation")? + 1;
-        if space.version != 2
+        if space.version < 2
             || next > 32
             || record.name.as_deref() != Some(&format!("{prefix}{next}"))
         {
@@ -60,25 +60,7 @@ fn transition(before: &Value, after: &Value) -> Value {
         "execution_granted":false,"running_execution_cancelled":false})
 }
 fn upgrade(space: &Space) -> Result<()> {
-    if space.version == 2 {
-        return Ok(());
-    }
-    let metadata = space.root.join("native-events.json");
-    let pending = space.root.join("native-events-v2.pending");
-    store::no_links(&pending)?;
-    let mut value: Value = serde_json::from_slice(&regular(&metadata, 65536)?)?;
-    value["schema"] = json!(V2);
-    let bytes = serde_json::to_vec_pretty(&value)?;
-    if pending.exists() {
-        if regular(&pending, 65536)? != bytes {
-            return Err("workspace schema upgrade staging conflicts".into());
-        }
-    } else {
-        store::write_new(&pending, &bytes)?;
-    }
-    fs::rename(pending, metadata)?;
-    fs::File::open(&space.root)?.sync_all()?;
-    Ok(())
+    space.upgrade(2)
 }
 
 pub fn subscription_control(
@@ -91,6 +73,7 @@ pub fn subscription_control(
     let _lock = store::lock(&space.root)?;
     let route = space.route(name)?;
     space.not_revoked(&route)?;
+    replacement::not_retired(&space, &route)?;
     let before = current(&space, &route)?;
     let requested = if paused { "paused" } else { "active" };
     if before["mode"] == requested {

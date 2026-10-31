@@ -277,3 +277,8 @@ repeat invocation. See [finite dispatch](NATIVE-EVENTS.md#finite-approved-dispat
 admission control. They do not cancel execution. Resume invalidates old delivery
 approvals and cannot revive revoked routes or replay batches. First use upgrades
 the workspace format so earlier hosts refuse it; see [subscription control](NATIVE-EVENTS.md#subscription-admission-pause-and-resume).
+
+To move future events to another receiver, preview/approve
+`spool-event-replace WORKSPACE OLD NEW ROUTE_JSON`. Old admitted work retains its
+identity and custody; historical events are not replayed. State transfer remains
+explicit. See [receiver succession](NATIVE-EVENTS.md#explicit-receiver-succession).

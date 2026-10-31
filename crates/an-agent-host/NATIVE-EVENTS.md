@@ -299,3 +299,53 @@ No processes run, no batch resumes, and no products/state are accepted or commit
 Historical success is not a new cleanup authorization. Complete retained native
 receipts remain required, including after private collection. Fault injection
 qualifies loss of the projection after known completion, not arbitrary power loss.
+
+## Explicit receiver succession
+
+`spool-event-replace WORKSPACE OLD_NAME NEW_NAME ROUTE_JSON [--approve HASH]`
+reuses the existing strict `an-native-artifact-route-v1` request format. The
+producer, event kind and source output stay fixed. Select a fresh subscription
+name and a changed receiver identity/generation or result slot. Preview grants
+no execution and approval binds both routes, old control generation and a fixed
+workspace-log cutover. Any intervening log publication changes that approval;
+re-preview explicitly instead of automatically retrying.
+
+One immutable successor configuration commit retires old admission. It does not
+rewrite the old route, move a run, cancel execution, migrate state or accept
+outputs. Already-admitted work keeps its original delivery identity and may be
+explicitly accepted, committed and completed through the old route. Keep the old
+instance directory/evidence in place for that custody. Old pending single/batch
+approvals are refused, and retired admission cannot be resumed by control commands.
+Revoking a successor does not reactivate its predecessor.
+
+The successor binds the count and canonical hash of the record prefix preceding
+its commit. It only admits events published after that boundary; historical facts
+cannot be resent through replacement, even if old execution is unknown. New facts
+still need their own normal delivery approval and explicit checkpoint selection.
+A new receiver may be seeded from an explicitly checked-out old checkpoint using
+the existing state-init flow; this is a new instance history, not implicit lineage
+or schema migration. An independently approved unrelated subscription remains a
+distinct delivery authority: succession does not claim global exactly-once effects.
+
+First replacement upgrades workspace metadata to `an-native-event-workspace-v3`
+and stores the successor as `an-native-event-subscription-v2`. Earlier hosts
+refuse new opens. Existing v1/v2 workspaces are unchanged unless upgraded; v3
+supports previous control records without downgrading metadata. Do not mix old
+already-running hosts with the upgraded workspace. The metadata upgrade alone is
+not evidence that a successor committed. Missing/changed prefix or route snapshots
+refuse; no command automatically repairs a partial log or restarts uncertain work.
+A commit error may have published the successor: inspect both names before any
+new explicit request. No automatic retry/downgrade is provided.
+
+Retired declarations remain in the existing 16-route history and 512-record bounds.
+This is bounded receiver cutover, not active-route garbage collection, arbitrary
+producer/topology mutation, a workflow DSL or a background subscription service.
+Pending/show/watch observations expose retirement without granting execution.
+
+Real macOS qualification covers an in-flight old receiver during cutover,
+old/incorrect/stale approval rejection, a concurrent publication invalidating the
+preview, producer-change refusal, old uncertain result fencing, refusal of old
+facts through the successor, explicit fixed checkpoint transfer, new receiver
+output and retained historical custody after private cleanup. Local qualification
+can pass `--legacy-host OLD_HOST` and records its binary hash when checking actual
+old-host refusal; CI checks the current-host/v3 contract without another build.

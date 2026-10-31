@@ -16,7 +16,7 @@ by the architecture diagram. An example's success does not widen a runtime grant
 | Multi-silk environment | Reviewed macOS coordinator plus two internal silks qualified through workspace jobs; early-leader-exit failure, whole-group cancellation and copied artifact custody; not a registered general spool runtime |
 | Release-bound native spool | v1/v2 compatibility, v3 events and explicit byte products, operator-selected Python dependency inventories, independent instances, approved kit edits/reset, cancellation and explicit ledger repair; reviewed macOS headless tools |
 | Weaver / zero-mount development | Optional Loom-side reviewed harness example and standalone CLI qualification; not a host agent loop or hostile-harness sandbox |
-| Workspace-driven native events | Explicit v3 interfaces, static subscriptions, accepted artifact facts and one foreground delivery per approved event/subscription; consumed-output confirmation and no automatic retry; read-only foreground inventory/watch; no background dispatcher or generic graph |
+| Workspace-driven native events | Explicit v3 interfaces, immutable subscriptions and approved receiver succession at fixed cutovers; inventory/watch and finite approved dispatch; confirmed custody and summary reconciliation; no automatic retry, background dispatcher or business graph |
 | Pause/suspend/backup | Backend-specific capabilities to qualify; not general host guarantees |
 
 macOS remains the primary local platform. Existing native Linux implementation
@@ -32,11 +32,17 @@ selected existing deliveries with fixed state selectors, drain-stop, cancellatio
 and an exclusive no-resume intent. Per-entry confirmed success gates the next
 selection; acceptance/state commit/completion remain explicit. Subscription
 admission pause/resume is now explicit and generation-bound, with stale approvals
-refused and already-admitted custody retained. It does not replace route targets;
-instance/generation fencing and permanent revocation remain in force.
+refused and already-admitted custody retained. Explicit receiver succession now adds a new immutable subscription and retires
+old admission at a fixed workspace cutover. Old work/custody remains bound to the
+original instance; historical events cannot be replayed through the successor.
+Instance/generation fencing and permanent revocation remain in force.
+Completed dispatches support explicit missing-summary reconstruction from all
+original entry/start/delivery and confirmed-success native receipts. Incomplete,
+failed or unknown execution remains fenced; reconciliation never runs or resumes
+work.
 Do not introduce implicit latest-state selection, automatic retries, domain
 branch/loop routing, a second Loom scheduler or another execution backend.
-Background admission, route replacement and retention retirement
+Background admission, producer/topology changes and retention retirement
 remain separate unqualified operations. This is a staged local operational path,
 not a claim that all P1 daily operation is complete.
 
@@ -48,9 +54,9 @@ business control flow in silk/kit. Real XLSX/PPTX handoff now uses explicit bina
 outputs and operator-selected Python through the same event contract. A separate
 explicit state slot now combines one fixed business artifact with one committed
 checkpoint, including event delivery and stale-commit refusal. Multiple business
-inputs, broader environment support and daily
-subscription/lifecycle/retention management remain separate work. P1 now starts
-with a read-only delivery inventory and change monitor; execution authorization,
+inputs, broader environment support, continuous event-service operation and formal
+retention retirement remain separate work. P1 covers inventory, finite approved
+dispatch, subscription controls and receiver succession; execution authorization,
 state selection and consumption confirmation remain explicit. Low-latency
 channels require an actual high-frequency consumer. The runtime milestones below
 remain an inventory, not a host business-graph roadmap.
@@ -99,9 +105,3 @@ headless milestone set and require their own qualification.
 Preserve CLI/profile/tape compatibility. Unsupported enforcement must refuse,
 not silently fall back. Development merges require the existing CI and acceptance
 gates plus a user notification; main promotion remains user-triggered.
-
-Completed dispatches now support explicit missing-summary reconstruction from all
-original entry/start/delivery and confirmed-success native receipts. Incomplete,
-failed or unknown execution remains fenced; reconciliation never runs or resumes
-work. Background admission, route replacement and formal retention retirement
-remain unqualified P1 gaps.

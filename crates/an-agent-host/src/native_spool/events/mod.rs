@@ -6,6 +6,8 @@ mod dispatch_reconcile;
 pub use dispatch_reconcile::reconcile_dispatch;
 mod monitor;
 mod publication;
+mod replacement;
+pub use replacement::replace;
 mod settlement;
 mod space;
 mod subscription;

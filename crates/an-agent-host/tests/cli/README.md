@@ -89,3 +89,9 @@ verify upgrade refusal. Its summary distinguishes whether this extra check ran.
 The dispatch suite also loses a known completed summary, checks inert/wrong
 approval and missing-entry refusal, reconstructs it explicitly and checks unchanged
 attempt counts. Partial stopped batches cannot use this reconciliation path.
+
+`native_route_successor.py --host HOST --evidence NEW_DIRECTORY` runs actual old
+and new stateful receivers, including cutover while old work runs, historical and
+uncertain-event refusal, changed-approval refusal, explicit state transfer and
+retained custody. `--legacy-host OLD_HOST` optionally qualifies old-host refusal;
+the portable summary records whether it ran and the selected binary hash.

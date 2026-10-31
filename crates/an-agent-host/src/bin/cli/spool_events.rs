@@ -49,6 +49,9 @@ pub(super) fn dispatch(command: &str, args: &[String]) -> Result<Value> {
         ("spool-event-resume", [root, name]) => {
             events::subscription_control(Path::new(root), name, false, approved)
         }
+        ("spool-event-replace", [root, previous, next, config]) => {
+            events::replace(Path::new(root), previous, next, Path::new(config), approved)
+        }
         ("spool-event-revoke", [root, name]) => events::revoke(Path::new(root), name, approved),
         ("spool-event-deliver", [root, event, name]) => super::with_cancellation(|cancelled| {
             events::deliver(Path::new(root), event, name, approved, &cancelled)

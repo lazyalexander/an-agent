@@ -33,14 +33,14 @@ pub(super) fn intent(space: &Space, event: &Value, route: &Value) -> Result<Valu
     }
     Ok(value)
 }
-pub(super) fn routed(event: &Value, route: &Value) -> Result<()> {
+pub(super) fn routed(space: &Space, event: &Value, route: &Value) -> Result<()> {
     if event["event"]["source"] != route["source"]
         || event["event"]["output"] != route["output"]
         || event["event"]["kind"] != route["kind"]
     {
         return Err("event is outside the selected subscription".into());
     }
-    Ok(())
+    replacement::eligible(space, event, route)
 }
 fn selected(event: &Value, context: &Value) -> Result<Value> {
     let artifact = &event["event"]["artifact"];
@@ -93,7 +93,7 @@ fn deliver_selected(
         let _lock = store::lock(&space.root)?;
         let event = space.event(event_id)?;
         let route = space.route(name)?;
-        routed(&event, &route)?;
+        routed(&space, &event, &route)?;
         let ctx = context(&space, &event, &route)?;
         if directory(&space, &ctx)?.exists() {
             if let Some(revision) = state_revision {
