@@ -42,7 +42,11 @@ failed or unknown execution remains fenced; reconciliation never runs or resumes
 work.
 Do not introduce implicit latest-state selection, automatic retries, domain
 branch/loop routing, a second Loom scheduler or another execution backend.
-Background admission, producer/topology changes and retention retirement
+Finite private-material maintenance now groups explicit settled runs through the
+existing work/snapshot collection guards; multi-round headless qualification
+measures logical bytes and preserves independent products/state/downstream work.
+Native formal retirement still lacks a closed reference/lease contract.
+Background admission, producer/topology changes and formal retention retirement
 remain separate unqualified operations. This is a staged local operational path,
 not a claim that all P1 daily operation is complete.
 

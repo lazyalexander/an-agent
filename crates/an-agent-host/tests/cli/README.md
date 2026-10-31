@@ -95,3 +95,9 @@ and new stateful receivers, including cutover while old work runs, historical an
 uncertain-event refusal, changed-approval refusal, explicit state transfer and
 retained custody. `--legacy-host OLD_HOST` optionally qualifies old-host refusal;
 the portable summary records whether it ran and the selected binary hash.
+
+`native_capacity.py --host HOST --evidence NEW_DIRECTORY` runs four 8 MiB rounds
+through two real headless instances, measures producer logical bytes before/after
+finite private collection, and verifies concurrent consumer progress, cancellation,
+retained products/state/external inputs and lost-receipt refusal. It reports no
+physical APFS savings or formal-product GC guarantee.

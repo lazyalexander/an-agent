@@ -282,3 +282,8 @@ To move future events to another receiver, preview/approve
 `spool-event-replace WORKSPACE OLD NEW ROUTE_JSON`. Old admitted work retains its
 identity and custody; historical events are not replayed. State transfer remains
 explicit. See [receiver succession](NATIVE-EVENTS.md#explicit-receiver-succession).
+
+For periodic bounded private cleanup, preview/approve `spool-storage-collect
+INSTANCE REQUEST_JSON`, selecting either work or input snapshots for explicit run
+names. Original ownership, settlement and one-shot deletion guards remain in force;
+formal products/state are preserved. See [storage maintenance](NATIVE-STORAGE.md#finite-private-material-maintenance).

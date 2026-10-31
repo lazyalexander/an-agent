@@ -78,3 +78,59 @@ collection, fixed downstream handoff, suspension/resume, confirmed cancellation,
 changed/unregistered-input refusal, partial no-spawn preparation and lost receipt
 reconciliation. A real headroom denial uses an explicitly raised operator request;
 tests do not fill the user's disk or replace filesystem observations with mocks.
+
+## Finite private-material maintenance
+
+```text
+an-agent-host spool-storage-collect INSTANCE REQUEST_JSON [--approve HASH]
+```
+
+The strict request is `{"schema":"an-native-private-collection-request-v1",
+"material":"work","runs":["round-0","round-1"]}`. Select either `work` or
+`snapshots`, with 1..16 unique explicit run names. These are separate phases:
+collect work first, then preview/approve snapshots. No wildcard, age-based scan,
+formal product/state selector or recursive host-path removal is accepted.
+
+The host validates every selected original per-run preview before any deletion.
+One approval binds the material, instance/release identity, order and all exact
+child inventories/evidence. Each original collection operation revalidates under
+its existing locks and writes its own durable one-shot intent and receipt. No
+new collector, deletion policy or second retention ledger is introduced. A
+changed owner/selection/inventory cannot inherit an old approval. An invalid,
+already-collected or uncertain item refuses the selection rather than being
+silently skipped.
+
+This is not an atomic all-or-nothing transaction. Cancellation stops before the
+next item; an admitted child operation settles using its original protocol.
+An error or unconfirmed child result stops subsequent items without rollback,
+auto-retry or auto-resume. If the client response is lost, inspect the existing
+per-run collection evidence. Do not resend a batch to infer that remaining items
+are safe: uncertain original intents remain fenced. Known unstarted remaining
+items need a new explicit selection and approval.
+
+Formal artifacts, checkpoint state, release/kit files, execution evidence and
+external input files remain retained. Logical bytes removed are not physical
+space savings on APFS; this entry point makes no runtime-quota or disk-reservation
+claim. Real macOS qualification runs four rounds with an 8 MiB external input,
+starts maintenance while an independent downstream receiver runs, measures the
+producer's logical footprint, and confirms fixed products and checkpoint history
+after collection. It also qualifies maintenance cancellation before deletion,
+whole-selection refusal, confirmed execution cancellation and a lost collection
+receipt without further deletion. This is controlled receipt-loss injection,
+not arbitrary crash or power-loss recovery.
+
+## Remaining formal retention contract
+
+The generic instance checkpoint/delivery ledger already has explicit retention,
+recipient acknowledgements and registered state-reference checks. Native outputs
+also live in per-run artifact catalogs and can be selected from independently
+located instances. That usage is not a closed global reference inventory. Do not
+apply generic `product-reclaim` to a native catalog or infer deletion consent from
+observing no current reader or receiving an event acknowledgement.
+
+Native formal retirement still needs explicit host-owned catalog registration,
+reference/lease acquisition and release, and a defined boundary for unmanaged
+external readers. Opaque state references cannot be inferred by scanning its
+text. This slice deliberately reduces private-copy accumulation without deleting
+formal bytes. Loom may describe intended retention, but cannot supply runtime
+deletion authority. It does not close general native formal-product/state GC.
