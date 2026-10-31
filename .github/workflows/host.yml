@@ -94,6 +94,9 @@ jobs:
       - name: Native private materials and inert notes
         if: matrix.native_workspace
         run: python3 -B crates/an-agent-host/tests/cli/native_material_boundary.py --host target/debug/an-agent-host --evidence "$RUNNER_TEMP/native-state/material-boundary"
+      - name: Native split-phase peer requests and generation-bound replies
+        if: matrix.native_workspace
+        run: python3 -B crates/an-agent-host/tests/cli/native_peer.py --host target/debug/an-agent-host --evidence "$RUNNER_TEMP/native-state/peers"
       - name: Native receiver cutover and preserved historical custody
         if: matrix.native_workspace
         run: python3 -B crates/an-agent-host/tests/cli/native_route_successor.py --host target/debug/an-agent-host --evidence "$RUNNER_TEMP/native-state/route-successor"

@@ -97,11 +97,11 @@ pub fn start_data_state(
     )
 }
 
-/// The host event adapter checks its grant and records intent at start admission.
-pub(super) fn start_event(
+/// The host delivery adapter checks its grant and records intent at start admission.
+pub(super) fn start_bound(
     path: &Path,
     name: &str,
-    selected: inputs::EventInput<'_>,
+    selected: inputs::BoundInput<'_>,
     seconds: u64,
     approved: Option<&str>,
     cancelled: &AtomicBool,
@@ -110,7 +110,7 @@ pub(super) fn start_event(
     start_selected(
         path,
         name,
-        Input::Event(selected),
+        Input::Bound(selected),
         seconds,
         approved,
         cancelled,

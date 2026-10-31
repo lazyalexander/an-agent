@@ -11,6 +11,7 @@ mod inputs;
 pub mod kit_proposal;
 mod lifecycle;
 mod maintenance;
+pub mod peer;
 pub use maintenance::collect_private;
 mod reconcile;
 mod release_review;

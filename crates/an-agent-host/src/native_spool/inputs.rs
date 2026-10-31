@@ -16,14 +16,14 @@ struct Request {
     state_revision: String,
 }
 
-pub(super) struct EventInput<'a> {
+pub(super) struct BoundInput<'a> {
     pub artifact: &'a Value,
     pub state_revision: Option<&'a str>,
 }
 pub(super) enum Input<'a> {
     File(&'a Path),
     State(&'a str),
-    Event(EventInput<'a>),
+    Bound(BoundInput<'a>),
     DataState(&'a Path),
 }
 pub(super) struct Selection {
@@ -66,7 +66,7 @@ pub(super) fn select(root: &Path, bundle: &bundle::Bundle, input: Input<'_>) -> 
     let (data, revision) = match input {
         Input::File(path) => (json!({"path":path.canonicalize()?}), None),
         Input::State(revision) => (checkpoint::selection(root, revision)?, None),
-        Input::Event(event) => (
+        Input::Bound(event) => (
             event.artifact.clone(),
             event.state_revision.map(str::to_owned),
         ),
@@ -135,10 +135,16 @@ impl Selection {
         if let Some(event) = self.data.get("event_input") {
             plan["event_input"] = event.clone();
         }
+        if let Some(peer) = self.data.get("peer_input") {
+            plan["peer_input"] = peer.clone();
+        }
         if let Some(state) = &self.state {
             plan["data_input"] = binding(&self.data);
             plan["state_input"] = state.clone();
-        } else if self.data.get("binding").is_some() && self.data.get("event_input").is_none() {
+        } else if self.data.get("binding").is_some()
+            && self.data.get("event_input").is_none()
+            && self.data.get("peer_input").is_none()
+        {
             plan["state_input"] = self.data.clone();
         }
     }
