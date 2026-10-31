@@ -291,3 +291,6 @@ mod run_reconcile;
 
 #[path = "native_spool/supervised_inputs.rs"]
 mod supervised_inputs;
+
+#[path = "native_spool/prelaunch_cancel.rs"]
+mod prelaunch_cancel;

@@ -46,7 +46,14 @@ pub fn execute(root: &Path, name: &str, hash: &str, cancelled: Arc<AtomicBool>) 
             }
         });
         let stop_observer = StopObserver(&done);
-        let outcome = run::start_supervised(root, name, seconds, &record, &cancelled);
+        // Observe already-published cancellation synchronously before admission.
+        // The monitor handles cancellation arriving after this observation.
+        let outcome = if dir.join("cancel.json").try_exists()? || cancelled.load(Ordering::Acquire)
+        {
+            Ok(json!({"status":"cancelled","executed":false,"process_started":false}))
+        } else {
+            run::start_supervised(root, name, seconds, &record, &cancelled)
+        };
         drop(stop_observer);
         monitor
             .join()

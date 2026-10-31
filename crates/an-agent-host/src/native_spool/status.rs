@@ -17,6 +17,15 @@ pub fn status(path: &Path, name: &str) -> Result<Value> {
     if !dir.join("job").exists() {
         if dir.join("supervisor").exists() {
             value["phase"] = json!("supervisor-reserved-or-unconfirmed");
+            match super::supervisor::settled_prelaunch(&root, name) {
+                Ok(_) => {
+                    value["phase"] = json!("cancelled-before-launch");
+                    value["execution_status"] = json!("cancelled");
+                    value["termination_confirmed"] = json!(true);
+                    value["process_started"] = json!(false);
+                }
+                Err(error) => value["diagnostic"] = json!(error.to_string()),
+            }
             return Ok(value);
         }
         if dir.join("start.json").exists() || dir.join("result.json").exists() {
