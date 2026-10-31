@@ -80,6 +80,9 @@ consumer, and releases only after confirmed work and snapshot collection. It
 checks unknown settlement, wrong approval, another retained consumer, unchanged
 payload hashes and missing release confirmation without repair. An injected second
 catalog lock proves partial registration cannot execute or silently reacquire.
+The producer-side optional reference view is checked under held producer/catalog
+locks while a real consumer runs. It distinguishes source markers from consumer
+completion, includes partial registrations, and refuses malformed source records.
 These fault probes are deliberate refusal checks, not production retry policy.
 The fixture's producer is retired during the case; do not reuse it for another run.
 This covers new managed inputs, not a complete pin census or formal product GC.

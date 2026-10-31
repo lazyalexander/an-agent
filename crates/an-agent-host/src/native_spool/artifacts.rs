@@ -1,6 +1,25 @@
 //! Read-only discovery of formally accepted versions, never scratch promotion.
 use super::*;
 
+/// Observe incoming ownership without taking a producer or consumer control lock.
+pub fn artifact_references(path: &Path, name: &str, output: &str) -> Result<Value> {
+    let root = location(path)?;
+    let (report, _) = verified(&root, name, true)?;
+    let selected = report["outputs"]
+        .as_array()
+        .ok_or("outputs")?
+        .iter()
+        .find(|item| item["path"] == output)
+        .ok_or("unknown accepted output")?;
+    let mut observation = crate::artifact_versions::references::observe(
+        Path::new(report["catalog"].as_str().ok_or("catalog")?),
+        selected["binding"]["revision"].as_str().ok_or("revision")?,
+    )?;
+    observation["producer"] = json!({"instance":report["instance"],"release":report["release"],
+        "run":name,"output":output});
+    Ok(observation)
+}
+
 pub fn artifacts(path: &Path, name: &str) -> Result<Value> {
     let root = location(path)?;
     let _lock = store::lock(&root)?;
