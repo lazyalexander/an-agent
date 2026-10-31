@@ -8,12 +8,18 @@ pub(super) fn dispatch(args: &[String]) -> Result<Value> {
         _ => (args, None),
     };
     match args {
-        [operation, root, name, input, seconds] if operation == "start" => {
+        [operation, root, name, input, seconds]
+            if matches!(operation.as_str(), "start" | "start-state") =>
+        {
             super::with_cancellation(|cancelled| {
                 start(
                     Path::new(root),
                     name,
-                    Path::new(input),
+                    if operation == "start-state" {
+                        supervisor::Input::State(input)
+                    } else {
+                        supervisor::Input::File(Path::new(input))
+                    },
                     seconds.parse()?,
                     approved,
                     &cancelled,
@@ -42,7 +48,7 @@ pub(super) fn dispatch(args: &[String]) -> Result<Value> {
 fn start(
     root: &Path,
     name: &str,
-    input: &Path,
+    input: supervisor::Input<'_>,
     seconds: u64,
     approved: Option<&str>,
     cancelled: &std::sync::atomic::AtomicBool,

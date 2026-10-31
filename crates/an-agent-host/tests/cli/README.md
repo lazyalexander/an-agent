@@ -172,9 +172,9 @@ unload and replay. That injection is a test operation, never a recovery recipe.
 Its summary distinguishes passing refusal checks from the observed missing
 caller-independent supervisor. Local process samples carry no cleanup authority.
 
-`native_supervisor.py --host HOST --evidence NEW_DIRECTORY` qualifies the
-independent file-input supervisor. Real two-worker runs cover abrupt client exit,
-continuing timeout, separate cancellation, handled client signals, supervisor
-death, torn reservation and repeated admission refusal. It verifies confirmed-only
-collection, independent-instance progress and unchanged accepted products.
-Supervisor and group PIDs are recorded solely for fault injection and observation.
+`native_supervisor.py` and `native_supervisor_state.py` take `--host HOST
+--evidence NEW_DIRECTORY`. They qualify file-input and fixed-checkpoint supervision:
+client exit, continuing timeout/cancellation, supervisor loss, no replay and
+confirmed-only collection. The state suite advances HEAD before selecting the
+old revision and verifies retained checkpoints. PIDs serve fault injection and
+observation only; accepted products and independent instances remain unaffected.
