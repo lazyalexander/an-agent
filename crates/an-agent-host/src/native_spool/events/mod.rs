@@ -11,6 +11,7 @@ mod replacement;
 pub use replacement::replace;
 #[cfg(test)]
 mod observation_tests;
+pub mod sessions;
 mod settlement;
 mod space;
 mod subscription;
