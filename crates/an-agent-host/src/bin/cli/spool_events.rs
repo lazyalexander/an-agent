@@ -8,6 +8,24 @@ pub(super) fn dispatch(command: &str, args: &[String]) -> Result<Value> {
         _ => (args, None),
     };
     match (command, args) {
+        ("spool-events-pending", [root]) if approved.is_none() => events::pending(Path::new(root)),
+        ("spool-events-watch", [root, seconds, interval]) if approved.is_none() => {
+            super::with_cancellation(|cancelled| {
+                use std::io::Write;
+                events::watch(
+                    Path::new(root),
+                    seconds.parse()?,
+                    interval.parse()?,
+                    &cancelled,
+                    |value| {
+                        let mut out = std::io::stdout().lock();
+                        writeln!(out, "{}", serde_json::to_string(value)?)?;
+                        out.flush()?;
+                        Ok(())
+                    },
+                )
+            })
+        }
         ("spool-events-init", [root]) if approved.is_none() => events::init(Path::new(root)),
         ("spool-events-show", [root]) if approved.is_none() => events::inspect(Path::new(root)),
         ("spool-event-publish", [root, instance, run, output]) => {

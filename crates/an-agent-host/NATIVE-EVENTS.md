@@ -129,3 +129,42 @@ delivery, lost confirmation, cancellation and missing facade results. Missing
 record tests inject evidence loss after known execution, not arbitrary crash or
 power-loss recovery. Loom separately qualifies actual v3 packaging and handoff.
 No model, GUI, new backend or business workflow interpreter is introduced.
+
+## Delivery inventory and foreground monitoring
+
+`spool-events-pending WORKSPACE` lists matching event/subscription pairs without
+preparing runs. Rows retain exact workspace/event/subscription/delivery identities
+and admission refusals. Phases distinguish `awaiting-authorization`, `blocked`,
+`running-or-unconfirmed`, `settled-unsuccessful`, `awaiting-acceptance`,
+`awaiting-confirmation`, `needs-reconciliation` and verified `consumed`.
+Unconfirmed termination is deliberately not labelled simply running. An accepted
+output without an acknowledgement is not consumed, including after lost-ack
+injection. A revoked route can still have an admitted or consumed delivery;
+admission refusal and delivery evidence are separate fields.
+
+`spool-events-watch WORKSPACE SECONDS INTERVAL_MS` polls that inventory in the
+foreground and emits newline-delimited JSON: an initial snapshot, changed
+snapshots, then an `an-native-event-watch-stopped-v1` summary. Bounds are 1..3600
+seconds and 100..5000 milliseconds. Stdout is flushed after each snapshot. SIGINT
+or SIGTERM stops observation with reason `cancelled`; the deadline stops with
+reason `deadline`. Neither stops an independently running delivery. Missing or
+invalid evidence and output failures end the command with an error; they are not
+silently retried. Restarting the monitor reads durable evidence again and never
+reexecutes work. There is no persistent cursor or promise to emit every transient
+phase between polls. Existing workspace/delivery bounds still apply; the monitor
+is for bounded local operation, not a high-frequency event channel.
+
+Both commands are observational: they accept no approval, select no state,
+create no delivery intent, acknowledge nothing, collect nothing and grant no
+execution. Use the existing explicit delivery preview/approval for admission,
+`--state REVISION` where required, explicit acceptance and completion for custody,
+and existing subscription revocation for new-admission control. No automatic
+state selection, daemon, batch authorization or business graph is introduced.
+A monitor failure is not permission to reclaim, and an observation is not an
+authoritative transaction across concurrently changing instance evidence.
+
+The real event CLI acceptance qualifies pending/accepted/consumed and blocked
+rows, monitoring while an actual headless delivery holds the instance lock,
+changed evidence after revocation, observation cancellation without execution
+cancellation, deadline exit, and monitor restart with missing result evidence
+without creating another attempt. Rust tests cover torn logs and output faults.

@@ -13,6 +13,11 @@ pub enum Clock {
 }
 
 impl Clock {
+    /// Monotonic time for bounded real I/O adapters; not replay/domain time.
+    pub fn monotonic_now() -> std::time::Instant {
+        std::time::Instant::now()
+    }
+
     pub fn wall() -> Self {
         Self::Wall
     }

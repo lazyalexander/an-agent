@@ -261,3 +261,8 @@ instance-bound custody evidence. It reuses the native supervisor and workspace
 engine. Pause, suspension and arbitrary harness containment remain unsupported.
 
 The native spool facade also provides an optional [weaver proposal slot](NATIVE-SPOOL.md#optional-weaver-proposal-slot): scoped file requests and separately approved kit changes, without launching a model or granting the adapter host authority.
+
+For a bounded local delivery inventory use `spool-events-pending WORKSPACE`;
+`spool-events-watch WORKSPACE SECONDS INTERVAL_MS` emits changed snapshots as
+newline-delimited JSON. Monitoring grants no execution and never selects state
+or retries work. See [the event contract](NATIVE-EVENTS.md#delivery-inventory-and-foreground-monitoring).
