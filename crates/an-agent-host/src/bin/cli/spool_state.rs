@@ -20,6 +20,9 @@ pub(super) fn dispatch(command: &str, args: &[String]) -> Result<Value> {
         });
     }
     match (command, args) {
+        ("spool-state-dependencies", [root, revision, request]) => {
+            checkpoint::declare(Path::new(root), revision, Path::new(request), approved)
+        }
         ("spool-state-init", [root, output, file]) => {
             checkpoint::init(Path::new(root), output, Path::new(file), approved)
         }
