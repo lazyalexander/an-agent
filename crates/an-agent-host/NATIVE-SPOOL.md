@@ -152,19 +152,16 @@ Loom separately runs a real CLI round trip against a pinned host revision. It
 exports the actual example archive, edits the kit, executes, accepts, reclaims,
 unloads and loads a fresh instance. Neither repository links the other's runtime.
 
-## Next stages, not implemented guarantees
+## Current extensions and remaining scope
 
-1. Add a qualified weaver/harness adapter for bounded between-run edits, retaining
-   external agent session ownership and requiring the same fixed-code start route.
-2. Add cooperative safe-point pause and checkpoint/stop suspension. A checkpoint
-   must pin any adapted kit needed for continuation; a fresh load is not resume.
-   `spool-show` currently reports pause, suspend and weaver as unsupported.
-3. Add explicit artifact/checkpoint leases and retirement of retained input
-   snapshots, with backpressure before disk exhaustion. Do not delete pinned data.
-4. Resolve declared spool/shuttle interface dependencies to exact bindings before
-   activation. Keep publisher lineage, compatibility and artifact revisions distinct.
-5. Qualify stronger containment or durable supervision only against a concrete
-   workload. Do not promote the reviewed-process profile into an adversarial guarantee.
+The [status page](../../doc/status.md) owns the current P0/P1 plan. Explicit
+checkpoint continuation, round-boundary pause/suspension, private snapshot
+collection/headroom, event dispatch and receiver succession are implemented
+bounded contracts, not future stages. The host proposal slot below remains a file
+exchange; optional reviewed harness development belongs to Loom/Weaver, not a new
+host model loop. Process-memory pause/restore, automatic state/release migration,
+formal payload GC and stronger hostile-process containment remain unqualified.
+Do not infer those guarantees from admission-control or backend capability flags.
 
 Managed runs carry a `spool-owner.json` marker. Public standalone workspace run, acceptance, and reclamation commands reject these jobs; callers must use the owning spool commands so the instance operation lock and ownership checks remain in force. This is an API lifecycle fence, not protection against a host user modifying the control store.
 

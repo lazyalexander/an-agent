@@ -14,6 +14,8 @@ pub use maintenance::collect_private;
 mod reconcile;
 mod release_review;
 mod requirements;
+mod retirement;
+pub use retirement::retire_artifact;
 mod runtime;
 pub use release_review::compare_releases;
 mod round_control;

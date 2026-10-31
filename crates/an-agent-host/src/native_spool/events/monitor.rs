@@ -7,7 +7,11 @@ fn observation(space: &Space, event: &Value, route: &Value) -> Result<Value> {
     let ctx = delivery::context(space, event, route)?;
     let dir = delivery::directory(space, &ctx)?;
     store::no_links(&dir)?;
-    let refusal = space.check_active(route).err().map(|e| e.to_string());
+    let refusal = space
+        .check_active(route)
+        .and_then(|()| publication::admission(event))
+        .err()
+        .map(|e| e.to_string());
     let mut row = json!({"context":ctx,"event":event["id"],"subscription":route["name"],
         "subscription_control":control::current(space,route)?,"retired_by":replacement::retired_by(space,route)?,
         "phase":if refusal.is_some() {"blocked"} else {"awaiting-authorization"},

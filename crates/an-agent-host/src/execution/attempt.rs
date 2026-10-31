@@ -43,7 +43,9 @@ pub(super) fn run_selected(
     }
     let (input, binding) = match selected {
         Input::File(path) => (read(path, sandbox::INPUT_LIMIT)?, Value::Null),
-        Input::Revision(catalog, revision) => crate::artifact_versions::read(catalog, revision)?,
+        Input::Revision(catalog, revision) => {
+            crate::artifact_versions::admission::read_input(catalog, revision)?
+        }
     };
     if binding["encoding"] == "bytes" {
         return Err("text execution profile cannot consume binary artifacts".into());

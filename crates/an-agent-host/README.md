@@ -287,3 +287,8 @@ For periodic bounded private cleanup, preview/approve `spool-storage-collect
 INSTANCE REQUEST_JSON`, selecting either work or input snapshots for explicit run
 names. Original ownership, settlement and one-shot deletion guards remain in force;
 formal products/state are preserved. See [storage maintenance](NATIVE-STORAGE.md#finite-private-material-maintenance).
+
+To close one accepted output to new revision-based consumers, preview/approve
+`spool-artifact-retire INSTANCE RUN OUTPUT`. Original bytes, admitted custody and
+independent checkpoints remain retained; this grants no deletion authority.
+See [artifact input retirement](NATIVE-STORAGE.md#retiring-new-artifact-input-admission).

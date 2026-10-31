@@ -32,9 +32,16 @@ pub(super) struct Selection {
 }
 
 pub(super) fn artifact(catalog: &Path, revision: &str) -> Result<Value> {
+    artifact_binding(catalog, revision, true)
+}
+fn artifact_binding(catalog: &Path, revision: &str, new_input: bool) -> Result<Value> {
     store::no_links(catalog)?;
     let catalog = catalog.canonicalize()?;
-    let (_, binding) = crate::artifact_versions::read(&catalog, revision)?;
+    let (_, binding) = if new_input {
+        crate::artifact_versions::admission::read_input(&catalog, revision)?
+    } else {
+        crate::artifact_versions::read(&catalog, revision)?
+    };
     let file = if binding["encoding"] == "bytes" {
         "content.bin"
     } else {
@@ -146,11 +153,13 @@ pub(super) fn commit_bindings(
     let mut bindings = Vec::new();
     match (combined(bundle), start.get("data_input")) {
         (true, Some(data)) => {
-            let actual = artifact(
+            // Historical verification does not acquire another execution input.
+            let actual = artifact_binding(
                 Path::new(data["catalog"].as_str().ok_or("data catalog")?),
                 data["binding"]["revision"]
                     .as_str()
                     .ok_or("data revision")?,
+                false,
             )?;
             if actual != *data {
                 return Err("committed business data binding changed".into());

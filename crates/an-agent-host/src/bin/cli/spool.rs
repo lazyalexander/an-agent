@@ -38,6 +38,12 @@ pub(super) fn dispatch(command: &str, args: &[String]) -> Result<Value> {
         }
         ("spool-status", [root, run]) => spool::status(Path::new(root), run),
         ("spool-artifacts", [root, run]) => spool::artifacts(Path::new(root), run),
+        ("spool-artifact-retire", [root, run, output]) => {
+            spool::retire_artifact(Path::new(root), run, output, None)
+        }
+        ("spool-artifact-retire", [root, run, output, flag, hash]) if flag == "--approve" => {
+            spool::retire_artifact(Path::new(root), run, output, Some(hash))
+        }
         ("spool-kit-proposal-request" | "spool-weaver-request", [root, name]) => {
             spool::kit_proposal::request(Path::new(root), name)
         }

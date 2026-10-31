@@ -1,9 +1,10 @@
-# Native storage observation and private snapshot retention
+# Native storage, private collection and artifact admission
 
-This slice collects private input copies after their round is settled and its
-work area has been explicitly collected. Formal artifacts, checkpoint payloads,
-release/kit files and execution/control evidence remain retained. It is not
-general artifact GC, a cross-instance lease manager or automatic disk cleanup.
+Private input copies can be collected after their round is settled and its work
+area has been explicitly collected. A separate operation retires one accepted
+output from new revision-based input acquisition. Formal artifact bytes,
+checkpoint payloads, release/kit files and execution/control evidence remain
+retained. Neither operation implements formal artifact GC or automatic cleanup.
 
 ```text
 an-agent-host spool-storage INSTANCE
@@ -32,9 +33,9 @@ Input snapshot paths are private evidence, not durable artifact handles. A
 downstream consumer uses formal artifact checkout or an explicitly selected
 checkpoint. Reclaiming snapshots abandons byte-for-byte replay from those private
 copies; it does not delete the independent registered state or formal outputs.
-Opaque domain references are not inferred by scanning state text. General formal
-artifact retirement requires its own explicit reference/delivery contract; it is
-not enabled by this slice.
+Opaque domain references are not inferred by scanning state text. Formal artifact
+deletion requires its own explicit reference/delivery contract. Closing new input
+admission is a separate operation described below.
 
 ## Collection evidence
 
@@ -119,7 +120,60 @@ whole-selection refusal, confirmed execution cancellation and a lost collection
 receipt without further deletion. This is controlled receipt-loss injection,
 not arbitrary crash or power-loss recovery.
 
-## Remaining formal retention contract
+## Retiring new artifact input admission
+
+```text
+an-agent-host spool-artifact-retire INSTANCE RUN OUTPUT [--approve HASH]
+```
+
+The host verifies the owning instance, successful whole-attempt settlement,
+formal acceptance and exact declared output. Preview binds its immutable catalog,
+revision, content identity and acceptance evidence; approval writes one exclusive
+`admission-retired.json` closure record beside that revision. No bytes, manifests,
+accepted-output bindings or historical event identities are rewritten or deleted.
+Other outputs and newer revisions remain independent. Committed checkpoint
+catalogs cannot be retired through this command.
+
+New revision-based checkout/edit, native business-input selection, workspace
+artifact input preparation and registered native revision execution refuse the
+closed version. New event publication refuses it; an existing event can still be
+read back. Unstarted direct/delivery/batch previews cannot bypass the fence with
+an old approval. Pending inventory reports unstarted deliveries as blocked.
+
+Retirement and revision byte acquisition share the existing catalog lock. An
+acquisition ordered before closure may retain its bytes and finish; closure does
+not cancel it. Workspace preparation rechecks while acquiring its private input
+snapshot. A concurrent closure can therefore refuse preparation after execution
+intent was written; existing no-spawn/uncertain evidence governs reconciliation,
+without automatic retry. Retirement does not promise that every previously
+approved process has already started or stopped.
+
+Evidence reads remain separate from new input acquisition. Already-admitted
+output acceptance, state commit, causal completion and private collection can
+still verify retained bytes. A checkpoint committed from a retired accepted
+output is an independent version, not a lease on disposable scratch. A result
+fact needed to confirm an admitted delivery may still be recorded after its
+output admission was closed; it does not reopen input admission.
+
+Repeating a complete matching closure confirms it without rewriting. A torn,
+malformed, linked or contradictory marker closes new admission and requires
+inspection; it is never overwritten as a retry. This profile has no reopen or
+delete operation. `spool-artifacts` reports admission separately from its stable
+accepted-output inventory. Missing/corrupt payloads still fail evidence checks.
+
+This is cooperating-host policy, not access revocation or a sandbox boundary.
+It does not revoke independent checkouts, copied or raw-file inputs, caches or
+an older executable that does not implement this gate. Use the qualified host
+revision for all managed operations; mixed host versions are unqualified. The
+original artifact revision schemas and release formats remain unchanged.
+
+Real headless qualification runs one receiver during producer retirement,
+refuses a second receiver's stale direct/event/batch approvals, completes custody
+and state commit after closure, and verifies independent checkpoints, unrelated
+outputs, cancellation, retained bytes and torn-record refusal. No formal payload
+is collected and no model is invoked.
+
+## Remaining formal payload collection contract
 
 The generic instance checkpoint/delivery ledger already has explicit retention,
 recipient acknowledgements and registered state-reference checks. Native outputs
@@ -128,9 +182,11 @@ located instances. That usage is not a closed global reference inventory. Do not
 apply generic `product-reclaim` to a native catalog or infer deletion consent from
 observing no current reader or receiving an event acknowledgement.
 
-Native formal retirement still needs explicit host-owned catalog registration,
-reference/lease acquisition and release, and a defined boundary for unmanaged
-external readers. Opaque state references cannot be inferred by scanning its
-text. This slice deliberately reduces private-copy accumulation without deleting
-formal bytes. Loom may describe intended retention, but cannot supply runtime
-deletion authority. It does not close general native formal-product/state GC.
+Closing admission does not prove that existing consumers, state references or
+unmanaged readers have released a version. Native payload collection still needs
+explicit host-owned reference acquisition/release and a defined boundary for
+unmanaged readers. Opaque state references cannot be inferred by scanning text.
+The current operations reduce private-copy accumulation and close selected new
+uses while preserving formal bytes. Loom may describe intended retention, but
+cannot supply runtime deletion authority. General native formal-product/state GC
+remains unimplemented.

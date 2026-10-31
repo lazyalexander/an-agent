@@ -6,6 +6,7 @@ use std::{
     fs,
     path::{Path, PathBuf},
 };
+pub(crate) mod admission;
 
 const LIMIT: usize = 65536;
 pub(crate) const BINARY_LIMIT: usize = 8 * 1024 * 1024;
@@ -82,7 +83,7 @@ pub fn import(catalog: &Path, run: &Path) -> Result<Value> {
 /// Explicitly checkpoint an operator-saved file. The digest approves exact bytes;
 /// it does not prove the editor saved a semantically consistent document.
 pub fn edit(catalog: &Path, parent: &str, file: &Path, approved: &str) -> Result<Value> {
-    let (_, binding) = read(catalog, parent)?;
+    let (_, binding) = admission::read_input(catalog, parent)?;
     let binary = binding["encoding"] == "bytes";
     if !store::valid_digest(approved) {
         return Err("invalid approved content digest".into());
@@ -226,7 +227,7 @@ pub(crate) fn read(catalog: &Path, revision: &str) -> Result<(Vec<u8>, Value)> {
 
 /// Create a separate editable copy, never overwrite a revision or existing file.
 pub fn checkout(catalog: &Path, revision: &str, output: &Path) -> Result<Value> {
-    let (bytes, binding) = read(catalog, revision)?;
+    let (bytes, binding) = admission::read_input(catalog, revision)?;
     store::no_links(output)?;
     let parent = output
         .parent()

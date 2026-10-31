@@ -40,6 +40,12 @@ survive eligible scratch collection. Retained state references and unresolved
 delivery/execution evidence can prevent product reclamation. A successful
 consumer acknowledgement is not by itself deletion authority.
 
+Native accepted outputs can separately close new revision-based input admission.
+This preserves immutable payloads, admitted execution/custody and independent
+checkpoints; it is not a reference-release receipt or permission to delete bytes.
+Private work/snapshot collection remains independent. See [the native storage
+contract](../crates/an-agent-host/NATIVE-STORAGE.md).
+
 The fixed native file profile permits explicit reclamation after confirmed
 cancellation as well as success. Cancelled partial output is never published or
 used as a capability request. Missing settlement or unknown termination refuses

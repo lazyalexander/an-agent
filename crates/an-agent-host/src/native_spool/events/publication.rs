@@ -59,6 +59,14 @@ pub(super) fn verify(space: &Space, event: &Value) -> Result<()> {
     Ok(())
 }
 
+pub(super) fn admission(event: &Value) -> Result<()> {
+    let artifact = &event["event"]["artifact"];
+    crate::artifact_versions::admission::ensure_active(
+        Path::new(text(artifact, "catalog")?),
+        text(&artifact["binding"], "revision")?,
+    )
+}
+
 pub fn publish(
     path: &Path,
     instance: &Path,
@@ -82,6 +90,7 @@ pub fn publish(
             json!({"status":"succeeded","event":event,"executed":false,"already_published":true}),
         );
     }
+    admission(&event)?;
     if !execute {
         return Ok(json!({"plan":plan,"approval_sha256":digest,"executed":false}));
     }

@@ -3,7 +3,8 @@
 This first profile checkpoints one UTF-8 file, independently of VM retention.
 Spools carry domain knowledge and validation rules. The host verifies generic
 byte identity, lineage and execution boundaries; it does not judge the business
-correctness of an edit. No core, Waver or VM lifecycle change is required.
+correctness of an edit. Loom authors/packages releases; revision custody belongs
+to the host and does not depend on a developer tool or VM lifecycle.
 
 ## Operator workflow
 
@@ -62,7 +63,8 @@ for identical content. Legacy runs without settlement evidence cannot be importe
 operator-checkpoint declaration, not authenticated human authorship. References
 do not recursively embed the entire history or make data trusted instructions.
 
-The host verifies manifest and content hashes on every read. After selection,
+The host verifies manifest and content hashes on every read. New revision-based
+input acquisition also checks admission under the catalog lock. After selection,
 the exact bytes are held for this invocation and copied to its existing
 `input.txt` snapshot. Both plan and receipt record `input_revision`; input hashing
 continues to use the actual byte snapshot. New edits do not change this input,
@@ -152,6 +154,17 @@ The existing trusted-local-ownership and nontransactional multi-output acceptanc
 limitations apply. A content digest is neither a publisher signature nor an
 independent backup. Tests exercise native byte execution and tampering, saved
 edits, fixed downstream consumption, cancellation and late-output rejection.
+
+## Native output admission retirement
+
+`spool-artifact-retire INSTANCE RUN OUTPUT [--approve HASH]` closes one verified
+native formal output to new revision-based use without deleting its payload or
+changing its identity. Checkout, edit-parent selection and managed revision inputs
+honor this one-way record. Historical evidence reads, already-acquired inputs,
+causal completion and state commit remain independent. A malformed record fails
+closed, never requests automatic repair. Raw-file copies and older hosts are
+outside this cooperating-host policy; no access revocation or GC is implied.
+See [the storage contract](NATIVE-STORAGE.md#retiring-new-artifact-input-admission).
 
 ## Publication gate regression coverage
 
