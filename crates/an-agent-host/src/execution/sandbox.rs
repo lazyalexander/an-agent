@@ -3,6 +3,7 @@ use std::io::{Read, Write};
 use std::path::Path;
 use std::process::Stdio;
 mod process;
+pub mod supervisor_process;
 pub(crate) mod workspace;
 use process::OwnedChild;
 

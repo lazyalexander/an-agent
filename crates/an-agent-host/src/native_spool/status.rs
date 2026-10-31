@@ -15,6 +15,10 @@ pub fn status(path: &Path, name: &str) -> Result<Value> {
         "termination_confirmed":false,"execution_status":Value::Null,
         "artifact_status":"not-accepted","outputs":[],"authority":"observation only; custody commands revalidate"});
     if !dir.join("job").exists() {
+        if dir.join("supervisor").exists() {
+            value["phase"] = json!("supervisor-reserved-or-unconfirmed");
+            return Ok(value);
+        }
         if dir.join("start.json").exists() || dir.join("result.json").exists() {
             value["phase"] = json!("unconfirmed");
         }

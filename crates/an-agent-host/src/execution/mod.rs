@@ -6,6 +6,7 @@ pub(crate) mod metrics;
 pub(crate) mod publication;
 pub(crate) mod sandbox;
 pub(crate) mod store;
+pub use sandbox::supervisor_process;
 
 mod admission;
 mod attempt;

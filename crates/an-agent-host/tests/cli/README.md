@@ -171,3 +171,10 @@ that missing termination evidence independently blocks acceptance, collection,
 unload and replay. That injection is a test operation, never a recovery recipe.
 Its summary distinguishes passing refusal checks from the observed missing
 caller-independent supervisor. Local process samples carry no cleanup authority.
+
+`native_supervisor.py --host HOST --evidence NEW_DIRECTORY` qualifies the
+independent file-input supervisor. Real two-worker runs cover abrupt client exit,
+continuing timeout, separate cancellation, handled client signals, supervisor
+death, torn reservation and repeated admission refusal. It verifies confirmed-only
+collection, independent-instance progress and unchanged accepted products.
+Supervisor and group PIDs are recorded solely for fault injection and observation.

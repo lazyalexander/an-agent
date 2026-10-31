@@ -252,7 +252,7 @@ unfinished retention contract.
 
 ## Foreground supervisor loss qualification
 
-The native supervisor currently lives inside the initiating host CLI.
+The original foreground native entrypoints keep their supervisor inside the initiating CLI.
 `OwnedChild` keeps the group leader unreaped while observing and terminating
 other group members, then reaps the leader. The original bound workspace receipt
 records that outcome. Ordinary errors and unwinding run its cleanup guard;
@@ -272,20 +272,55 @@ and lock removal are diagnostic fault injection in disposable test directories.
 Neither numeric PIDs, absent processes, absent locks nor completed output files
 establish original supervisor ownership or recover a lost execution result.
 
-The next implementation should give each admitted attempt a supervisor process
-whose lifetime is independent of the interactive CLI. It should reuse native
-execution, owned-group termination and the existing result/custody contracts.
-The supervisor must acquire ownership before launch, persist the attempt and
-activation binding, continue deadlines after client loss, and accept bounded,
-authenticated control for that exact attempt. Unknown launch or completion stays
-fenced. A final receipt requires original child ownership, group settlement and
-durable publication. A supervisor crash remains unknown and blocks collection.
+## Independent attempt supervisor
 
-This evidence justifies an attempt-scoped supervisor that exits after settlement.
-A permanently running host-wide service needs a separate scheduling or recovery
-requirement. Loom continues to package the release and receive verified evidence.
-Host supervision owns process lifetime and termination. Backend-specific ownership
-and group observation stay behind the execution boundary.
+The explicit `spool-supervisor` entry owns one native file-input run in a
+separate process. It uses the same reviewed spool release, approved start plan,
+execution boundary, process-group settlement and formal artifact commands.
+
+```text
+spool-supervisor start INSTANCE RUN INPUT SECONDS [--approve HASH]
+spool-supervisor show INSTANCE RUN
+spool-supervisor cancel INSTANCE RUN [--approve HASH]
+spool-status INSTANCE RUN
+spool-reclaim INSTANCE RUN [--approve HASH]
+```
+
+Start previews a plan binding the canonical input, executable, instance, release,
+activation generation and native start. Approval durably reserves that run before
+spawning a detached supervisor. The worker must exclusively claim the request,
+then revalidate the original native plan before starting any domain process.
+Direct starts also reject reserved identities. A torn reservation or owner claim
+remains fenced. A client timeout, missing response or launch failure never retries.
+
+The worker owns the native process group and deadline. The client waits for its
+response and forwards handled signals as durable cancellation. Abrupt client loss
+leaves execution supervised until completion or the original deadline. Another
+operator CLI can request cancellation for the exact request without taking the
+instance execution lock. Controls live in the host-private run directory, beyond
+the domain process write grant. An unreadable control marker requests cancellation.
+PID fields are diagnostics only; control never signals a recorded numeric PID.
+
+The supervisor stops after execution and writes a request-bound response. Native
+settlement remains authoritative for acceptance and collection. Supervisor exit,
+a response file or a cancellation request alone grants no custody. A supervisor
+crash leaves unresolved records and blocks collection even after observed process
+exit. A lost client can inspect the original run without restarting it.
+
+`native_supervisor.py` qualifies client SIGKILL with continuing deadline and
+cancellation enforcement, handled client SIGTERM, duplicate-worker and stale-control
+refusal, a torn launch reservation, supervisor SIGKILL, an independent instance
+and preservation of formal products. Its finite workers bound fault experiments.
+The original foreground fault case remains in CI to preserve its explicit limits.
+
+This slice covers supervised native file inputs. Existing foreground starts,
+stateful starts, session dispatch and peer phases retain their existing lifecycle.
+Their migration needs ownership-specific qualification. Before-launch uncertain
+reservations remain retained; no automatic lock repair or process adoption is
+implemented. Local host records and the installed supervisor binary are trusted.
+A permanently running host-wide service awaits a separate scheduling requirement.
+Loom packages the release and receives verified evidence; the host owns execution
+and control. Platform detachment remains in the execution backend.
 
 ## Runtime control and legacy session compatibility
 
