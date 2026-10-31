@@ -19,8 +19,10 @@ Requirements may select `macos-native-python-v1` only in v3, with the existing
 macOS, portable-source, headless, GPU-none and exact capability request set. One
 file input remains supported. Its declared slot name becomes the snapshot name,
 so a consumer can receive `source.xlsx` from an artifact stored as `content.bin`.
-Code basenames and the input name must be distinct. There is no extension-based
-dispatch or implicit state/input merging.
+Code basenames and the input name must be distinct. Optional v3 `state_input`
+adds a separately selected checkpoint through the [data/state contract](NATIVE-STATE.md#independent-business-data-and-state).
+It receives its own snapshot name and AN_SPOOL_STATE path. There is no
+extension-based dispatch or implicit state/input merging.
 
 The release carries bounded unique dependency labels, not executable paths,
 installation hooks or grants. The operator separately selects a compatible

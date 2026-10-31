@@ -47,25 +47,44 @@ fn selected(event: &Value, context: &Value) -> Result<Value> {
     let catalog = Path::new(text(artifact, "catalog")?);
     let binding = &artifact["binding"];
     let revision = text(binding, "revision")?;
-    let (_, actual) = crate::artifact_versions::read(catalog, revision)?;
-    if actual != *binding {
+    let mut selected = native::inputs::artifact(catalog, revision)?;
+    if selected["binding"] != *binding {
         return Err("event delivery requires one exact artifact binding".into());
     }
-    let file = if binding["encoding"] == "bytes" {
-        "content.bin"
-    } else {
-        "content.txt"
-    };
-    Ok(
-        json!({"path":catalog.join("revisions").join(revision).join(file),
-        "catalog":catalog,"binding":binding,"event_input":context}),
-    )
+    selected["event_input"] = context.clone();
+    Ok(selected)
 }
 
 pub fn deliver(
     path: &Path,
     event_id: &str,
     name: &str,
+    approved: Option<&str>,
+    cancelled: &AtomicBool,
+) -> Result<Value> {
+    deliver_selected(path, event_id, name, None, approved, cancelled)
+}
+
+/// An explicit state selection does not create a second delivery identity.
+pub fn deliver_with_state(
+    path: &Path,
+    event_id: &str,
+    name: &str,
+    revision: &str,
+    approved: Option<&str>,
+    cancelled: &AtomicBool,
+) -> Result<Value> {
+    if !store::valid_digest(revision) {
+        return Err("state revision must be a full digest".into());
+    }
+    deliver_selected(path, event_id, name, Some(revision), approved, cancelled)
+}
+
+fn deliver_selected(
+    path: &Path,
+    event_id: &str,
+    name: &str,
+    state_revision: Option<&str>,
     approved: Option<&str>,
     cancelled: &AtomicBool,
 ) -> Result<Value> {
@@ -77,6 +96,14 @@ pub fn deliver(
         routed(&event, &route)?;
         let ctx = context(&space, &event, &route)?;
         if directory(&space, &ctx)?.exists() {
+            if let Some(revision) = state_revision {
+                let prior = intent(&space, &event, &route)?;
+                if prior["plan"]["start"]["state_input"]["binding"]["revision"] != revision {
+                    return Err(
+                        "delivery already binds another state; execution cannot be retried".into(),
+                    );
+                }
+            }
             return settlement::observe(&space, &event, &route);
         }
         space.check_active(&route)?;
@@ -87,8 +114,18 @@ pub fn deliver(
     let run = text(&ctx, "delivery")?;
     let input = selected(&event, &ctx)?;
     let seconds = route["wall_seconds"].as_u64().ok_or("wall seconds")?;
-    let preview =
-        native::run::start_event(root, run, &input, seconds, None, cancelled, |_| Ok(()))?;
+    let preview = native::run::start_event(
+        root,
+        run,
+        native::inputs::EventInput {
+            artifact: &input,
+            state_revision,
+        },
+        seconds,
+        None,
+        cancelled,
+        |_| Ok(()),
+    )?;
     let plan = json!({"operation":"deliver","context":ctx,"event":event,"route":route,"start":preview["plan"],
         "consumption":"requires separate formal acceptance and event completion"});
     let (digest, execute) = native::approval(&plan, approved)?;
@@ -98,7 +135,10 @@ pub fn deliver(
     let result = native::run::start_event(
         root,
         run,
-        &input,
+        native::inputs::EventInput {
+            artifact: &input,
+            state_revision,
+        },
         seconds,
         preview["approval_sha256"].as_str(),
         cancelled,

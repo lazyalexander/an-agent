@@ -87,3 +87,21 @@ fn python_requires_v3_and_bounded_unique_dependency_requests() -> Result<()> {
     }
     Ok(())
 }
+
+#[test]
+fn state_slot_is_explicit_v3_and_cannot_alias_data_or_code() -> Result<()> {
+    let mut value = manifest();
+    value["requirements"]["state_input"] = json!("checkpoint.txt");
+    let check = |v: Value| -> Result<()> { schema(&serde_json::from_value(v)?) };
+    assert!(check(value.clone()).is_err());
+    value["schema"] = json!("an-native-spool-v3");
+    assert!(check(value.clone()).is_ok());
+    for slot in ["input.txt", "main.sh", "edit.sh", "../state", "tmp"] {
+        let mut invalid = value.clone();
+        invalid["requirements"]["state_input"] = json!(slot);
+        assert!(check(invalid).is_err());
+    }
+    value["requirements"]["inputs"] = json!(["main.sh"]);
+    assert!(check(value).is_err());
+    Ok(())
+}

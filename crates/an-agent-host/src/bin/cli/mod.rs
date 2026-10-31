@@ -54,9 +54,11 @@ pub(super) fn run(args: Vec<String>) -> Result<()> {
         | "spool-event-revoke"
         | "spool-event-deliver"
         | "spool-event-complete" => spool_events::dispatch(command, args)?,
-        "spool-state-init" | "spool-state-show" | "spool-state-commit" | "spool-start-state" => {
-            spool_state::dispatch(command, args)?
-        }
+        "spool-state-init"
+        | "spool-state-show"
+        | "spool-state-commit"
+        | "spool-start-state"
+        | "spool-start-data-state" => spool_state::dispatch(command, args)?,
         "instance-init" | "instance-show" | "instance-run" | "instance-commit" => {
             instance::dispatch(command, args)?
         }

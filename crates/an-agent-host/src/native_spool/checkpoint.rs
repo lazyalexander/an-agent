@@ -15,6 +15,7 @@ fn metadata(root: &Path) -> Result<(Value, String)> {
         || metadata["instance"] != instance["instance"]
         || metadata["release"] != instance["release"]
         || !bundle.manifest.outputs.iter().any(|p| p == output)
+        || bundle.manifest.binary_outputs.iter().any(|p| p == output)
     {
         return Err("state ownership or output declaration mismatch".into());
     }
@@ -66,8 +67,10 @@ pub fn init(path: &Path, output: &str, file: &Path, approved: Option<&str>) -> R
     if root.join("checkpoints").exists() {
         return Err("state already initialized".into());
     }
-    if !bundle.manifest.outputs.iter().any(|p| p == output) {
-        return Err("state must select a declared output".into());
+    if !bundle.manifest.outputs.iter().any(|p| p == output)
+        || bundle.manifest.binary_outputs.iter().any(|p| p == output)
+    {
+        return Err("state must select a declared text output".into());
     }
     let bytes = regular(file, 65536)?;
     std::str::from_utf8(&bytes)?;
@@ -109,7 +112,7 @@ pub fn inspect(path: &Path, revision: Option<&str>) -> Result<Value> {
 pub fn commit(path: &Path, expected: &str, name: &str, approved: Option<&str>) -> Result<Value> {
     let root = location(path)?;
     let _lock = store::lock(&root)?;
-    let (instance, _) = active(&root)?;
+    let (instance, bundle) = active(&root)?;
     let (_, head) = metadata(&root)?;
     let selected = selection(&root, expected)?;
     let (artifacts, _) = super::artifacts::verified(&root, name, true)?;
@@ -121,14 +124,14 @@ pub fn commit(path: &Path, expected: &str, name: &str, approved: Option<&str>) -
         &dir.join("job/attempts").join(attempt).join("plan.json"),
         2 * 1024 * 1024,
     )?)?;
-    let input = json!({"path":selected["path"],"catalog":selected["catalog"],"binding":selected["binding"]});
+    let inputs = super::inputs::commit_bindings(&bundle, &start, &selected)?;
     if start["schema"] != "an-native-spool-start-v1"
         || start["instance"] != instance["instance"]
         || start["release"] != instance["release"]
         || start["run"] != name
         || start["state_input"] != selected
         || start["workspace"] != workspace
-        || workspace["artifact_inputs"] != json!([input])
+        || workspace["artifact_inputs"] != inputs
         || result["workspace"]["status"] != "succeeded"
     {
         return Err("run did not consume this exact committed state".into());

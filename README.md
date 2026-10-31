@@ -60,6 +60,9 @@ Release-bound native spools also support explicit workspace-event handoff and
 [operator-selected Python with binary products](crates/an-agent-host/NATIVE-PYTHON.md).
 The headless log-report example produces editable XLSX/PPTX through the same
 supervision and custody boundary; document rules remain in spool code.
+An optional [separate state input](crates/an-agent-host/NATIVE-STATE.md#independent-business-data-and-state)
+binds a fixed business artifact and committed checkpoint without implicit HEAD
+selection; expected-version commit and cancellation retention remain host-owned.
 
 Semantic assessment and execution enforcement are distinct. The host or supervising agent decides how to respond to findings; trusted execution boundaries enforce permissions. A declaration or a recorded receipt is not, by itself, an operating-system sandbox.
 

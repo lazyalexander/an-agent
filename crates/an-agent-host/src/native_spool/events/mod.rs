@@ -6,7 +6,7 @@ mod space;
 mod subscription;
 #[cfg(test)]
 mod tests;
-pub use delivery::deliver;
+pub use delivery::{deliver, deliver_with_state};
 pub use publication::publish;
 pub use settlement::complete;
 pub use space::{init, inspect};

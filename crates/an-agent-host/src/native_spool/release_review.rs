@@ -32,7 +32,7 @@ pub fn compare_releases(previous: &Path, candidate: &Path) -> Result<Value> {
         "changes":{"code":code,
             "manifest":fields(&a,&b,&["schema","name","version","entry","outputs","binary_outputs","events"]),
             "requirements":fields(&a["requirements"],&b["requirements"],
-                &["runtime","os","arch","interaction","gpu","inputs","editable","capabilities","dependencies"])},
+                &["runtime","os","arch","interaction","gpu","inputs","state_input","editable","capabilities","dependencies"])},
         "review_required":!same,"execution_granted":false,"successor_authorized":false,
         "domain_compatibility":"not_evaluated","state_migration":"not_evaluated"}))
 }

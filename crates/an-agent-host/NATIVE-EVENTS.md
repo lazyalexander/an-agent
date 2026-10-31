@@ -50,6 +50,10 @@ spool-event-revoke WORKSPACE NAME [--approve HASH]
 All commands use `an-agent-host`. Init creates no execution grant. Mutations
 preview exact plans before approval. Delivery previews may prepare a bounded
 native profile but create neither a delivery intent nor an execution attempt.
+For a v3 release declaring a separate state input, delivery additionally requires
+`--state REVISION`. The [data/state contract](NATIVE-STATE.md#independent-business-data-and-state)
+pins it independently of the event's business artifact. The delivery identity
+does not change with state, so another selection cannot force a second attempt.
 The host-facing foreground caller chooses which event/subscription to dispatch;
 there is no automatic discovery, global cursor, recursive drain or daemon.
 

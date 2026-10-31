@@ -11,6 +11,8 @@ pub(super) struct Requirements {
     interaction: String,
     gpu: String,
     pub inputs: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub state_input: Option<String>,
     pub editable: Vec<String>,
     capabilities: Vec<String>,
     pub dependencies: Vec<String>,
@@ -18,10 +20,38 @@ pub(super) struct Requirements {
 pub(super) fn schema(m: &bundle::Manifest) -> Result<()> {
     match (m.schema.as_str(), &m.requirements) {
         ("an-native-spool-v1", None) | ("an-native-spool-v2" | "an-native-spool-v3", Some(_)) => {
-            Ok(())
+            state_slot(m)
         }
         _ => Err("native schema and requirements must agree".into()),
     }
+}
+
+fn state_slot(m: &bundle::Manifest) -> Result<()> {
+    let Some(r) = &m.requirements else {
+        return Ok(());
+    };
+    let Some(slot) = &r.state_input else {
+        return Ok(());
+    };
+    bundle::identifier(slot)?;
+    if let Some(data) = r.inputs.first() {
+        bundle::identifier(data)?;
+    }
+    if m.schema != "an-native-spool-v3"
+        || r.inputs.len() != 1
+        || matches!(slot.as_str(), "kit" | "tmp")
+        || r.inputs
+            .first()
+            .is_some_and(|p| matches!(p.as_str(), "kit" | "tmp"))
+        || r.inputs.contains(slot)
+        || m.files.keys().any(|p| {
+            p.rsplit('/').next() == Some(slot.as_str())
+                || p.rsplit('/').next() == r.inputs.first().map(String::as_str)
+        })
+    {
+        return Err("state input requires distinct v3 data, state and code slots".into());
+    }
+    Ok(())
 }
 pub(super) fn validate(m: &bundle::Manifest) -> Result<()> {
     schema(m)?;
