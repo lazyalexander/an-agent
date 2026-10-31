@@ -143,3 +143,12 @@ finite threads using real pinned-input/state consumers. Explicit admissions over
 in execution; cancellation affects one session, pause drains, stale requests fail,
 closure preserves products and a lost completion receipt prevents closure/replay.
 Simultaneous same-workspace admission remains fail-fast, not queued or retried.
+
+`native_material_boundary.py --host HOST --evidence NEW_DIRECTORY` starts two
+real native spools. A path supplied as ordinary input does not grant access to
+another instance's output/identity or the workspace event log: content reads and
+writes must fail. A private instruction note remains scratch, creates no delivery,
+and is excluded from accepted products. Metadata visibility is measured, not
+claimed secret. No model runs; this does not qualify context ingestion, general
+request/reply IPC or scheduler fairness. See the runtime acceptance matrix in
+[the session contract](../../../../doc/session-and-retention.md).
