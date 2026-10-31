@@ -114,10 +114,10 @@ fn deliver_selected(
     let run = text(&ctx, "delivery")?;
     let input = selected(&event, &ctx)?;
     let seconds = route["wall_seconds"].as_u64().ok_or("wall seconds")?;
-    let preview = native::run::start_event(
+    let preview = native::run::start_bound(
         root,
         run,
-        native::inputs::EventInput {
+        native::inputs::BoundInput {
             artifact: &input,
             state_revision,
         },
@@ -135,10 +135,10 @@ fn deliver_selected(
     if !execute {
         return Ok(json!({"plan":plan,"approval_sha256":digest,"executed":false}));
     }
-    let result = native::run::start_event(
+    let result = native::run::start_bound(
         root,
         run,
-        native::inputs::EventInput {
+        native::inputs::BoundInput {
             artifact: &input,
             state_revision,
         },

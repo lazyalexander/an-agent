@@ -77,24 +77,59 @@ their hashes and audience fields do not independently authorize disclosure.
 
 | Design requirement | Current evidence | Remaining gap |
 | --- | --- | --- |
-| Fixed authorized artifact delivery | `native_events.py`, `native_data_state.py` | General peer request/reply endpoints are not implemented |
+| Fixed authorized artifact delivery | `native_events.py`, `native_data_state.py`, `native_peer.py` | No general live IPC endpoint |
 | No implicit private-note delivery | `native_material_boundary.py`: real read/write denials, unchanged fact log, no delivery, declared outputs only | No model ingestion tested; this is a foreground adapter, not an automatic watcher |
 | Private contents remain outside another attempt | Same suite checks another instance's output/identity and workspace log | Native policy allows file metadata; it does not hide existence or provide hostile-code containment |
 | Cancel one owner without cancelling another | `native_sessions.py`: overlapping real execution | Caller-independent supervisor ownership remains unqualified |
 | Unknown execution cannot release materials | `native_data_state.py`, lost-receipt session cases | Missing receipts are injected after execution; arbitrary crash recovery is not proved |
-| Old delivery cannot become new-instance work | `native_route_successor.py` | This is explicit route cutover, not runtime-session endpoint reactivation |
-| Waiting A cannot starve B | No acceptance claim | No general IPC waiter or global resource scheduler exists; sequential admission plus overlap is not fairness evidence |
+| Old delivery cannot become new-instance work | `native_route_successor.py`; `native_peer.py` refuses stale reply admission after pause/resume | Peer endpoints use instance identity and round generation, not a separate session manager |
+| Waiting A leaves B able to execute | `native_peer.py`: B runs while A has independent active work; the wait has no process or held execution lock | No general blocking IPC waiter, fairness guarantee or global scheduler |
 
 The first local material run denied all three protected content reads/writes but
 exposed metadata for all three paths. Keep that limitation explicit rather than
 weakening an assertion or presenting protocol identity checks as information-flow
 isolation. Raw machine paths and command evidence remain local.
 
-Next qualify a narrow host-mediated peer request and explicit waiting state with
-generation-bound replies, before general scheduling or model-session reuse.
-Waiting must not monopolize an execution slot needed by its recipient; resources
-actually held by the waiting process remain accounted for. A new backend or
-workspace-wide model memory is not required to validate this boundary.
+## Split-phase peer exchange
+
+For a reviewed headless pair A and B, the trusted host converts an accepted A
+output into a request to one exact B endpoint. A has finished its computation;
+waiting is a host-owned record under the requesting instance, not an idle OS
+thread, a live model, a workspace event or a grant to scan directories. The
+request schema is `an-native-peer-request-v1`; specify `source_run`,
+`source_output`, `target`, `reply_output`, and `wall_seconds` (1–300). Optional
+`request_state` and `response_state` are exact revisions for the respective
+recipient's declared state input, never implicit HEAD. The native generation
+is the existing `(instance, release, round-control generation)` binding. A reload
+has a different instance identity; pause/resume changes the round generation.
+
+```text
+spool-peer request A NAME SPEC.json        # preview; approve its exact digest
+spool-peer show A NAME                    # observation only
+spool-peer run A NAME request             # separately approve B's exact start
+spool-accept B B_RUN                      # formally accept B's declared output
+spool-peer reply A NAME                   # separately approve the correlated reply
+spool-peer run A NAME response            # separately approve A's continuation
+spool-accept A A_RUN                      # accept the final product independently
+spool-peer cancel A NAME                  # revoke future peer admission; no signal
+```
+
+Every mutation takes `--approve HASH` after preview. Each stage has one native
+attempt identity derived from the approved request and phase. The durable stage
+intent precedes execution. Already admitted or uncertain stages refuse replay;
+no implicit forwarding or next run occurs. A reply must match both endpoints,
+the original request, verified target termination, accepted output and exact
+artifact version. Observation distinguishes uncertain, revoked, stale and ready;
+it never authorizes execution or collection.
+
+Revocation fences future admission and consumption; work already admitted can
+finish and remains owned by its original process supervisor. Reclaim requires
+original termination evidence. There is no background worker or live socket
+service, no code-agent access to this operator CLI and no workspace transcript.
+Request names are single-use (64 per requester). Each admitted native phase pins
+its input. Successful peer pins currently stay retained: event acknowledgement
+cannot release them. Waiting itself is not a permanent retention grant; retired
+or unavailable materials refuse new execution. No formal payload GC is enabled.
 
 ## Artifact lifecycle: retain bytes only for explicit reasons
 
@@ -287,7 +322,7 @@ savings from prompt caching or summaries before measuring quality and actual use
 | --- | --- |
 | A: native artifact ownership | New managed outputs acquire/release explicit pins through real producer/two-consumer execution; active and unknown owners, retained checkpoint dependencies and legacy catalogs block deletion; no payload deletion yet |
 | B: formal payload collection | Closed admission plus released pins permits exact approved deletion; retained provenance remains inspectable, content reads fail clearly, unrelated outputs/checkpoints survive; race, cancellation and lost deletion receipt refuse unsafe progress |
-| C: runtime ownership | Preserve the qualified foreground dispatch-group adapter; next bind activation generations and supervisor ownership independently of CLI lifetime, with explicit peer delivery and waiting; old/unknown work cannot claim new work |
+| C: runtime ownership | Foreground dispatch groups and generation-bound peer waits run through explicit host commands. Old/unknown work cannot claim new work. A long-lived supervisor independent of the initiating CLI is not yet qualified |
 | D: bounded context handoff and combined qualification | Reuse explicit packets/export across authorized participants; unrelated data excluded, incorrect audience refused, oversized input explicit, missing source reported; combine lifecycle, pins, collection and interruption in one real headless run |
 
 A and B close the remaining P1 storage contract. C and D are the next small

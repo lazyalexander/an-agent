@@ -152,3 +152,11 @@ and is excluded from accepted products. Metadata visibility is measured, not
 claimed secret. No model runs; this does not qualify context ingestion, general
 request/reply IPC or scheduler fairness. See the runtime acceptance matrix in
 [the session contract](../../../../doc/session-and-retention.md).
+
+`native_peer.py --host HOST --evidence NEW_DIRECTORY` runs a split-phase
+request/reply/continuation through actual native spools. Waiting creates no process
+or held instance lock; an independent sender job can overlap receiver execution.
+It checks fixed input/reply pins, stale generations, wrong correlation, cancellation,
+missing completion without replay and confirmed-only collection. Revocation closes
+future delivery, while the receiver's supervisor owns termination. This is not
+live IPC, a fairness benchmark or a background scheduler.
