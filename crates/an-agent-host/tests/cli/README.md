@@ -49,6 +49,10 @@ explicit accepted-output consumption, duplicate delivery, missing confirmation,
 stale/revoked/foreign identities, concurrent observation, actual cancellation and
 lost facade evidence. Missing-record cases deliberately remove records after
 known execution; they do not claim arbitrary process-crash or power-loss recovery.
+It also qualifies explicit stateless-success reference release, a retained peer,
+missing result/acknowledgement/release receipts, partial state initialization and
+unsupported isolation requests. Stateful-success claims stay retained in
+`native_data_state.py`; no payload deletion is qualified.
 No model, background dispatch or GUI is exercised. The paired Loom suite owns
 actual archive/export handoff; this host suite owns the refusal/fault matrix.
 

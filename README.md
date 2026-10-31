@@ -15,10 +15,13 @@ The framework provides execution coordination, semantic assessment, supervision,
 This is an early-stage library and integration effort, not a finished creative application.
 
 A spool is the domain execution isolation and lifecycle boundary; internal
-**silks** implement its callable steps. OpenShell is a replaceable execution
-backend, and application shuttles remain host-authorized external bridges.
+**silks** implement its callable steps. Local reviewed headless execution is the
+current delivery focus. OpenShell remains an optional, replaceable backend with
+expansion paused; application shuttles remain host-authorized external bridges.
+Headless does not imply trusted code, and insufficient isolation must refuse
+execution rather than fall back to a weaker backend.
 See the [implementation audit and staged migration](crates/an-agent-host/SPOOL-BOUNDARY.md).
-Existing bounded execution profiles do not yet provide a multi-silk runtime.
+OpenShell's bounded file profile does not provide the native spool state/event/artifact contract.
 
 The [spool code contract](doc/spool-code.md) distinguishes **silks**, the stable pipeline
 skeleton and core domain code, from **kits**, adaptable internal glue. Published

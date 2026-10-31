@@ -10,6 +10,13 @@ The current delivery target is local, reviewed **headless** spools. Existing
 Linux implementations and CI remain intact; extending Linux execution, GPU/GUI
 support or adding a backend is separate work. There is no implicit OS conversion.
 
+OpenShell is retained as an optional backend; expansion is paused. Its existing
+adapter and failure tests remain supported within their pinned qualification.
+It is not a prerequisite for the native spool lifecycle. Headless describes an
+interaction mode, not trust: a workload needing stronger isolation must be
+refused until an adequate selected backend is qualified. Never automatically
+downgrade to native execution or weaken a declaration to fit it.
+
 ## Runtime matrix
 
 | Surface | macOS | Linux | Other platforms | Evidence and limits |

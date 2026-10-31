@@ -157,6 +157,14 @@ def main():
     approved("spool-reclaim", b, run)
     approved("spool-reclaim-snapshots", b, run)
 
+    state_claims = call("spool-input-references", b, run)["claims"]
+    assert len(state_claims) == 2 and all(c["release"] is None for c in state_claims)
+    call("spool-input-release", b, run, "--delivery", ws, "batches", success=False)
+    assert "stateful inputs stay retained" in calls[-1]["stderr"]
+    assert call("spool-input-references", b, run)["claims"] == state_claims
+    assert call("spool-state-show", b)["head"] == head
+    assert not (b / "runs" / run / "input-release-intent.json").exists()
+
     _, holding = produce("holding", "hold\n")
     hold_args = ["spool-event-deliver", ws, holding["id"], "batches", "--state", head]
     preview = call(*hold_args)

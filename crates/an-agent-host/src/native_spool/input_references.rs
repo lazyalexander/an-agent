@@ -1,6 +1,7 @@
 //! Explicit source claims for native inputs; no deletion or global GC authority.
 use super::*;
 use crate::artifact_versions::references;
+mod success;
 
 fn owner(root: &Path, name: &str) -> Result<Value> {
     bundle::identifier(name)?;
@@ -119,13 +120,46 @@ pub fn inspect(path: &Path, name: &str) -> Result<Value> {
     )
 }
 
-/// Only cancelled, fully collected rounds are releasable in this initial slice.
+/// Preserve the original cancelled-round release contract and approval identity.
 pub fn release_cancelled(path: &Path, name: &str, approved: Option<&str>) -> Result<Value> {
+    release(path, name, None, approved)
+}
+
+/// Release a successful stateless delivery only after verified consumption.
+pub fn release_succeeded(
+    path: &Path,
+    name: &str,
+    workspace: &Path,
+    subscription: &str,
+    approved: Option<&str>,
+) -> Result<Value> {
+    release(path, name, Some((workspace, subscription)), approved)
+}
+
+fn release(
+    path: &Path,
+    name: &str,
+    delivery: Option<(&Path, &str)>,
+    approved: Option<&str>,
+) -> Result<Value> {
     let root = location(path)?;
     let _lock = store::lock(&root)?;
     let (registration, claims) = registered(&root, name)?;
     let result = run::settled(&root, name)?;
-    if result["status"] != "cancelled" || result["workspace"]["termination_confirmed"] != true {
+    let completion = if let Some((workspace, subscription)) = delivery {
+        Some(success::evidence(
+            &root,
+            name,
+            &result,
+            workspace,
+            subscription,
+        )?)
+    } else {
+        None
+    };
+    if (completion.is_none() && result["status"] != "cancelled")
+        || result["workspace"]["termination_confirmed"] != true
+    {
         return Err(
             "input release requires confirmed cancellation; successful custody stays retained"
                 .into(),
@@ -145,9 +179,13 @@ pub fn release_cancelled(path: &Path, name: &str, approved: Option<&str>) -> Res
     if snapshot["status"] != "succeeded" || snapshot["inputs_present"] != false {
         return Err("input release requires confirmed snapshot collection".into());
     }
-    let plan = json!({"schema":"an-native-input-release-v1","registration":registration,
+    let mut plan = json!({"schema":"an-native-input-release-v1","registration":registration,
         "settlement_sha256":digest(&result)?,"work_sha256":digest(&work)?,"snapshots":snapshot,
         "payloads_deleted":false,"automatic_retries":0});
+    if let Some(completion) = completion {
+        plan["schema"] = json!("an-native-success-input-release-v1");
+        plan["completion"] = completion;
+    }
     let (hash, execute) = approval(&plan, approved)?;
     let intent = dir.join("input-release-intent.json");
     let complete = dir.join("input-released.json");

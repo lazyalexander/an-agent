@@ -185,11 +185,13 @@ management milestone, not permission to endlessly expand P1. GUI/TUI, general
 conversation engines, semantic search/GNN routing, provider catalogs, GPU/VM
 suspend and automatic state migration remain out of scope.
 
-Slice A is partial: new native starts register exact artifact/checkpoint inputs;
-confirmed cancelled owners can release after private collection. Successful owners,
-partial registrations and old/unmanaged readers remain retained. Explicit opaque
-checkpoint dependencies, successful-owner release and a mixed-host version fence
-are still required before slice B. No current reference query authorizes deletion.
+Slice A is partial: new native starts register exact artifact/checkpoint inputs.
+Confirmed cancelled owners can release after private collection; successful
+stateless event consumers can release after original consumption acknowledgement,
+accepted outputs and private collection. Successful stateful owners, partial
+registrations and old/unmanaged readers remain retained. Explicit opaque checkpoint
+dependencies, stateful-owner release and a mixed-host version fence are still
+required before slice B. No current reference query authorizes deletion.
 The producer-side `spool-artifacts ... --references OUTPUT` observation now exposes
 registered consumers without control locks. Source release markers are reported
 separately from consumer completion; an empty view is never a complete census.
