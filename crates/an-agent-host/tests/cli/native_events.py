@@ -83,6 +83,18 @@ def main():
 
     source_package = package("producer", 'set -eu\ntr "[:lower:]" "[:upper:]" < "$1"\n')
     target_package = package("consumer", 'set -eu\nprintf "B:"\ncat "$1"\n')
+    restricted = package("requires-isolation", 'set -eu\ncat "$1"\n')
+    manifest_file = restricted / "native-spool.json"
+    restricted_manifest = json.loads(manifest_file.read_text())
+    for case, extra in [("vm", {"isolation": "vm"}),
+                        ("backend", {"runtime": "openshell-vm-file-v1"}),
+                        ("network", {"capabilities": ["read-input", "write-declared-outputs", "network"]})]:
+        candidate = json.loads(json.dumps(restricted_manifest))
+        candidate["requirements"].update(extra)
+        manifest_file.write_text(json.dumps(candidate))
+        refused_root = root / ("refused-" + case)
+        call("spool-load", restricted, refused_root, success=False)
+        assert not refused_root.exists()  # No native downgrade, even before start.
     a, b = root / "a", root / "b"
     call("spool-load", source_package, a)
     call("spool-load", target_package, b)
@@ -102,6 +114,7 @@ def main():
     assert list((b / "runs").iterdir()) == []  # Observation never even prepares a run.
     preview = call("spool-event-deliver", space, event_id, "main")
     run = preview["plan"]["context"]["delivery"]
+    release_args = ["spool-input-release", b, run, "--delivery", space, "main"]
     assert not (b / "runs" / run / "job").exists()
     assert not (space / "deliveries" / run).exists()
     call("spool-event-deliver", space, event_id, "main", "--approve", "0" * 64, success=False)
@@ -113,6 +126,7 @@ def main():
     result = call("spool-event-deliver", space, event_id, "main", "--approve", preview["approval_sha256"])
     assert result["result"]["workspace"]["termination_confirmed"] is True
     assert result["consumed"] is False
+    call(*release_args, success=False)
     assert pending(event_id, "main")["phase"] == "awaiting-acceptance"
     assert (b / "runs" / run / "job/work/report.txt").read_text() == "B:FIRST\n"
     attempted = b / "runs" / run / "job/attempts"
@@ -128,6 +142,7 @@ def main():
     assert len(list(attempted.iterdir())) == 1
     result_file.write_bytes(result_bytes)
     approved("spool-accept", b, run)
+    call(*release_args, success=False)  # Acceptance alone is not consumption.
     assert pending(event_id, "main")["phase"] == "awaiting-confirmation"
     approved("spool-pause", b)  # Admission pause must not block settling old consumption.
     completed = approved("spool-event-complete", space, event_id, "main")
@@ -145,7 +160,44 @@ def main():
     assert len(list(attempted.iterdir())) == 1
     for instance, name in [(a, "first"), (b, run)]:
         approved("spool-reclaim", instance, name)
+        if instance == b:
+            call(*release_args, success=False)
         approved("spool-reclaim-snapshots", instance, name)
+    peer = root / "peer"
+    call("spool-load", target_package, peer)
+    route(space, "peer", a, peer)
+    peer_run = approved("spool-event-deliver", space, event_id, "peer")["context"]["delivery"]
+    peer_claims = call("spool-input-references", peer, peer_run)["claims"]
+    release_preview = call(*release_args)
+    assert release_preview["plan"]["schema"] == "an-native-success-input-release-v1"
+    call(*release_args, "--approve", "0" * 64, success=False)
+    pending_state = b / "checkpoints.pending"
+    pending_state.mkdir()
+    call(*release_args, "--approve", release_preview["approval_sha256"], success=False)
+    pending_state.rmdir()  # Controlled partial-state fault; no production repair.
+    for evidence in [result_file, ack]:
+        saved = evidence.read_bytes()
+        evidence.unlink()
+        call(*release_args, "--approve", release_preview["approval_sha256"], success=False)
+        assert not evidence.exists()
+        assert not (b / "runs" / run / "input-release-intent.json").exists()
+        evidence.write_bytes(saved)
+    call("spool-input-release", b, run, "--delivery", space, "peer", success=False)
+    released = call(*release_args, "--approve", release_preview["approval_sha256"])
+    assert released["status"] == "succeeded" and not released["payloads_deleted"]
+    assert call(*release_args)["already_released"]
+    claims = call("spool-input-references", b, run)["claims"]
+    assert all(c["release"]["approval_sha256"] == release_preview["approval_sha256"] for c in claims)
+    assert call("spool-input-references", peer, peer_run)["claims"] == peer_claims
+    release_done = b / "runs" / run / "input-released.json"
+    saved_done = release_done.read_bytes()
+    release_done.unlink()
+    call(*release_args, "--approve", release_preview["approval_sha256"], success=False)
+    assert not release_done.exists()
+    assert call("spool-input-references", b, run)["claims"] == claims
+    release_done.write_bytes(saved_done)
+    assert call(*release_args)["already_released"]
+    assert call("spool-artifacts", b, run)["outputs"] == completed["receipt"]["accepted"]["outputs"]
     assert call("spool-event-deliver", space, event_id, "main")["executed"] is False
     route(space, "generation", a, b)
     stale = call("spool-event-deliver", space, second, "generation")
@@ -228,6 +280,7 @@ def main():
     assert cancelled["status"] == "cancelled"
     assert pending(second, "hold")["phase"] == "settled-unsuccessful"
     assert cancelled["result"]["workspace"]["termination_confirmed"] is True
+    call("spool-input-release", holding, hold_run, "--delivery", space, "hold", success=False)
     call("spool-accept", holding, hold_run, success=False)
     call("spool-event-complete", space, second, "hold", success=False)
     assert not (space / "deliveries" / hold_run / "ack.json").exists()
@@ -262,6 +315,8 @@ def main():
                "model_invoked": False, "background_dispatch": False,
                "monitor_read_only": True, "monitor_cancel_does_not_cancel_execution": True,
                "monitor_restart_retried_unknown": False}
+    summary.update(successful_stateless_references_released=True, peer_references_retained=True,
+                   missing_release_confirmation_not_retried=True, isolation_downgrade_refused=True)
     (root / "acceptance.json").write_text(json.dumps(summary, indent=2))
     print(json.dumps(summary))
 

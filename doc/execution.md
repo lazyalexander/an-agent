@@ -52,6 +52,11 @@ local process exit. Do not infer durable crash recovery from an operation journa
 ## Backend and application boundaries
 
 OpenShell is optional; Native profiles use their existing OS-specific restrictions.
+OpenShell expansion is paused while native reviewed headless lifecycle and custody
+are completed. Preserve the adapter and its failure tests without making it a
+default runtime dependency. A selected backend must meet the required isolation;
+missing support refuses, with no automatic downgrade. Passing Loom checks or
+running headless does not make generated code a cooperating trusted worker.
 Isolation, credentials, networking, quotas, pause and snapshots are independent
 capabilities. Upstream backend support is not proof that our adapter exposes or
 has qualified it. Do not add one backend per internal silk.

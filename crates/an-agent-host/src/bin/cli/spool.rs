@@ -45,6 +45,28 @@ pub(super) fn dispatch(command: &str, args: &[String]) -> Result<Value> {
         ("spool-input-release", [root, run, flag, hash]) if flag == "--approve" => {
             spool::input_references::release_cancelled(Path::new(root), run, Some(hash))
         }
+        ("spool-input-release", [root, run, flag, workspace, subscription])
+            if flag == "--delivery" =>
+        {
+            spool::input_references::release_succeeded(
+                Path::new(root),
+                run,
+                Path::new(workspace),
+                subscription,
+                None,
+            )
+        }
+        ("spool-input-release", [root, run, flag, workspace, subscription, approve, hash])
+            if flag == "--delivery" && approve == "--approve" =>
+        {
+            spool::input_references::release_succeeded(
+                Path::new(root),
+                run,
+                Path::new(workspace),
+                subscription,
+                Some(hash),
+            )
+        }
         ("spool-status", [root, run]) => spool::status(Path::new(root), run),
         ("spool-artifacts", [root, run]) => spool::artifacts(Path::new(root), run),
         ("spool-artifacts", [root, run, flag, output]) if flag == "--references" => {

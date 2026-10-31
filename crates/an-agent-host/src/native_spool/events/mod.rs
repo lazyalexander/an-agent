@@ -22,6 +22,7 @@ pub use dispatch::{dispatch, inspect_dispatch};
 pub use monitor::{pending, watch};
 pub use publication::publish;
 pub use settlement::complete;
+pub(super) use settlement::confirmed_input_consumption;
 pub use space::{init, inspect};
 pub use subscription::{revoke, subscribe};
 

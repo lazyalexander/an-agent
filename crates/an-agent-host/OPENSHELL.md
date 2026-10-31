@@ -1,5 +1,10 @@
 # Optional OpenShell VM adapter
 
+Maintenance status: retain this optional adapter and its failure tests; expansion
+is paused. Native reviewed headless execution is the current product path.
+The historical qualification below does not establish parity with native spool
+state/event/artifact custody. Missing isolation never authorizes native fallback.
+
 `run-openshell` is a host-side backend for the existing `file-kit-v1`
 deployment contract. It does not change core, require Waver at runtime, install
 packages, or interpret workflow business logic. Native execution is unchanged.

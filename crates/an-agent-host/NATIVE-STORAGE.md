@@ -180,6 +180,7 @@ is collected and no model is invoked.
 ```text
 an-agent-host spool-input-references INSTANCE RUN
 an-agent-host spool-input-release INSTANCE RUN [--approve HASH]
+an-agent-host spool-input-release INSTANCE RUN --delivery WORKSPACE SUBSCRIPTION [--approve HASH]
 ```
 
 New approved native starts register each managed artifact/checkpoint input at its
@@ -205,7 +206,7 @@ It does not automatically complete missing claims or roll back ownership evidenc
 Source admission closure can still refuse preparation after registration; retained
 claims are conservative evidence, not a promise that the process started.
 
-This initial release command supports **confirmed cancelled runs only**, after
+The original release command supports **confirmed cancelled runs only**, after
 both work collection and private input snapshot collection are positively confirmed.
 It reuses original settlement and collection checks, then binds an explicit approval
 to those records and the complete registration. An exclusive intent precedes
@@ -213,10 +214,23 @@ source-side release markers. A matching complete result can be confirmed without
 rewriting; a missing completion, partial release, changed owner or unknown settlement
 refuses without repair or replay. A source release never releases another run's claim.
 
-Successful runs remain retained even after private collection: state commits, event
-acknowledgements and historical custody can still require original bytes. Unstarted
-or partially registered failures also stay retained pending a separate reconciliation
-contract. The command deletes **no payload** and grants no collection authority.
+The `--delivery` form supports successful **stateless event consumers**. It requires
+confirmed whole-attempt success, accepted outputs, the original matching delivery
+acknowledgement and causal result event, plus confirmed work and snapshot collection.
+Its separate `an-native-success-input-release-v1` approval binds that consumption
+receipt; the original cancelled-run plan and CLI remain compatible. An execution
+exit or an accepted output alone cannot release the claim. A missing acknowledgement
+refuses rather than invoking acknowledgement repair. Release is explicit, not a
+side effect of collection or observation.
+
+This bounded success path requires exactly one managed event input and no explicit
+state/data selection, checkpoint store or pending checkpoint initialization. State
+is opaque and does not yet declare all external dependencies: successful stateful
+runs retain all input claims, even after state commit, acknowledgement and private
+collection. Unstarted or partially registered failures also stay retained pending
+a separate reconciliation contract. The command deletes **no payload** and grants
+no collection authority. A source marker without the matching final consumer
+receipt remains uncertain; release cannot reconstruct that receipt or replay work.
 Existing artifact/release formats are unchanged. Mixed old/new hosts, unmanaged
 readers, opaque checkpoint dependencies and legacy catalogs prevent treating these
 claims as a complete reference census. Do not infer GC permission from zero claims
@@ -227,6 +241,11 @@ cancelled consumer. It qualifies live/unknown-owner refusal, work/snapshot order
 explicit release, unrelated retained claims, partial acquisition, lost completion
 and unchanged source payloads. The host owns this fault matrix; Loom only checks
 the packaged producer/consumer handoff. No model or formal payload deletion runs.
+The event case also qualifies successful stateless release with a second retained
+consumer, missing acknowledgement/result/release receipts, stale approval and partial
+state initialization. The state case verifies that committed state still blocks
+success release. Unsupported isolation/runtime/network requirements refuse before
+native loading; no backend downgrade is used to make these cases pass.
 
 ## Observing a product's registered consumers
 
