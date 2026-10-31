@@ -264,7 +264,9 @@ completed its final release receipt. Partial registration, successful owners and
 unknown outcomes remain visible; this query neither reconciles nor releases them.
 It reports `consumer_receipts_checked: false`, `reference_census_complete: false`
 and `collection_authorized: false`, including when the directory is absent or empty.
-Old hosts, raw-file readers and opaque state references are outside this inventory.
+Explicit checkpoint pins now appear in this inventory and cannot use attempt-release
+markers. Old hosts, raw-file readers and undeclared opaque state references remain
+outside it. See [checkpoint dependencies](native-state.md#explicit-checkpoint-artifact-dependencies).
 
 The query checks source binding, content-addressed claim filenames and paired
 release markers. Orphan, malformed, foreign, linked or oversized records refuse
@@ -293,7 +295,7 @@ observing no current reader or receiving an event acknowledgement.
 Closing admission does not prove that existing consumers, state references or
 unmanaged readers have released a version. Native input claims now record new
 managed consumers; formal collection still needs successful-owner release, explicit
-checkpoint dependencies and a defined boundary for unmanaged/legacy readers.
+checkpoint dependency retirement/reconciliation and a defined boundary for unmanaged/legacy readers.
 Opaque state references cannot be inferred by scanning text.
 The current operations reduce private-copy accumulation and close selected new
 uses while preserving formal bytes. Loom may describe intended retention, but

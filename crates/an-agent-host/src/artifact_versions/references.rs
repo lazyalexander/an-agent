@@ -4,7 +4,9 @@ mod observation;
 pub(crate) use observation::observe;
 
 fn paths(reference: &Value) -> Result<(PathBuf, PathBuf)> {
-    if reference["schema"] != "an-native-input-reference-v1" {
+    if reference["schema"] != "an-native-input-reference-v1"
+        && reference["schema"] != "an-native-checkpoint-reference-v1"
+    {
         return Err("unsupported input reference".into());
     }
     let catalog = Path::new(reference["catalog"].as_str().ok_or("reference catalog")?);
@@ -38,6 +40,9 @@ pub(crate) fn inspect(reference: &Value) -> Result<Value> {
     }
     store::no_links(&released)?;
     let release = if released.try_exists()? {
+        if reference["schema"] == "an-native-checkpoint-reference-v1" {
+            return Err("checkpoint reference has an unsupported release record".into());
+        }
         let value: Value = serde_json::from_slice(&crate::file_job::regular(&released, LIMIT)?)?;
         if value["schema"] != "an-native-input-reference-release-v1"
             || value["reference_sha256"] != store::digest(&serde_json::to_vec(reference)?)
@@ -77,6 +82,9 @@ pub(crate) fn acquire(reference: &Value) -> Result<()> {
 }
 
 pub(crate) fn release(reference: &Value, approval: &str) -> Result<()> {
+    if reference["schema"] == "an-native-checkpoint-reference-v1" {
+        return Err("checkpoint references cannot be released by attempt cleanup".into());
+    }
     if !store::valid_digest(approval) {
         return Err("invalid release approval".into());
     }

@@ -161,3 +161,24 @@ fn source_observation_never_follows_reference_links() -> Result<()> {
     assert!(fs::symlink_metadata(&path)?.file_type().is_symlink());
     Ok(())
 }
+
+#[test]
+fn checkpoint_claim_cannot_be_released_as_an_attempt() -> Result<()> {
+    let (_tmp, mut reference) = fixture()?;
+    reference["schema"] = json!("an-native-checkpoint-reference-v1");
+    reference["owner"] = json!({"checkpoint_revision":"c".repeat(64)});
+    acquire(&reference)?;
+    assert!(release(&reference, &"b".repeat(64)).is_err());
+    assert!(inspect(&reference)?["release"].is_null());
+    let (_, released) = paths(&reference)?;
+    store::write_new(&released, b"{}")?;
+    assert!(inspect(&reference).is_err());
+    assert!(
+        observe(
+            Path::new(reference["catalog"].as_str().unwrap()),
+            reference["binding"]["revision"].as_str().unwrap()
+        )
+        .is_err()
+    );
+    Ok(())
+}
