@@ -8,6 +8,9 @@ pub(super) fn dispatch(command: &str, args: &[String]) -> Result<Value> {
         _ => (args, None),
     };
     match (command, args) {
+        ("spool-events-dispatch-reconcile", [root, name]) => {
+            events::reconcile_dispatch(Path::new(root), name, approved)
+        }
         ("spool-events-dispatch", [root, request]) => dispatch_control(|stop, cancel| {
             events::dispatch(Path::new(root), Path::new(request), approved, stop, cancel)
         }),
