@@ -53,3 +53,31 @@ fn manifest_cannot_request_runtime_grants_or_import_unlisted_files() -> Result<(
     assert!(load(&source, &base.join("grant-target")).is_err());
     Ok(())
 }
+
+#[test]
+fn binary_output_encoding_is_versioned_unique_and_declared() -> Result<()> {
+    let temp = TempDir::new("native-binary-contract");
+    let base = temp.path().canonicalize()?;
+    let source = fixture(&base)?;
+    let path = source.join(bundle::FILE);
+    let mut manifest: Value = serde_json::from_slice(&fs::read(&path)?)?;
+    manifest["binary_outputs"] = json!(["result.txt"]);
+    fs::write(&path, serde_json::to_vec(&manifest)?)?;
+    assert!(bundle::inspect(&source).is_err());
+    manifest["schema"] = json!("an-native-spool-v3");
+    manifest["events"] = json!({"consumes":[],"produces":["artifact.accepted"]});
+    manifest["requirements"] = json!({"runtime":"macos-native-process-v1","os":"macos",
+        "arch":"portable-source","interaction":"headless","gpu":"none",
+        "inputs":["source"],"editable":[],"capabilities":["read-input","write-declared-outputs"],"dependencies":[]});
+    fs::write(&path, serde_json::to_vec(&manifest)?)?;
+    assert!(bundle::inspect(&source).is_ok());
+    for binary in [
+        json!(["undeclared.bin"]),
+        json!(["result.txt", "result.txt"]),
+    ] {
+        manifest["binary_outputs"] = binary;
+        fs::write(&path, serde_json::to_vec(&manifest)?)?;
+        assert!(bundle::inspect(&source).is_err());
+    }
+    Ok(())
+}

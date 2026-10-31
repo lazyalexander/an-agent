@@ -50,6 +50,13 @@ known execution; they do not claim arbitrary process-crash or power-loss recover
 No model, background dispatch or GUI is exercised. The paired Loom suite owns
 actual archive/export handoff; this host suite owns the refusal/fault matrix.
 
+`native_binary.py` uses the same `--host` and `--evidence` arguments. It qualifies
+the Python/binary contract, dependency changes before start and acceptance,
+read-only runtime roots, fixed byte-event consumption, actual cancellation and
+retained products after the selected runtime disappears. Only Python's standard
+library is needed by this host-owned refusal suite. The separate Loom document
+suite installs its example dependencies and validates editable XLSX/PPTX.
+
 Each command has a bounded wait and records stdout/stderr and its exit status.
 On a client deadline the runner requests host cancellation; unknown termination
 fails the suite and keeps evidence. It never automatically reruns an execution.

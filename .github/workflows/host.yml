@@ -68,6 +68,9 @@ jobs:
       - name: Native workspace event delivery and cancellation
         if: runner.os == 'macOS'
         run: python3 -B crates/an-agent-host/tests/cli/native_events.py --host target/debug/an-agent-host --evidence "$RUNNER_TEMP/native-state/events"
+      - name: Native Python runtime and binary event custody
+        if: runner.os == 'macOS'
+        run: python3 -B crates/an-agent-host/tests/cli/native_binary.py --host target/debug/an-agent-host --evidence "$RUNNER_TEMP/native-state/binary"
       - name: Retain native state evidence
         if: always() && runner.os == 'macOS'
         uses: actions/upload-artifact@v4

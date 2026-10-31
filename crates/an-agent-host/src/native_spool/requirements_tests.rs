@@ -67,3 +67,23 @@ fn event_interfaces_require_v3_and_do_not_grant_runtime_support() -> Result<()> 
     assert!(parse(value).is_err());
     Ok(())
 }
+
+#[test]
+fn python_requires_v3_and_bounded_unique_dependency_requests() -> Result<()> {
+    let mut value = manifest();
+    value["requirements"]["runtime"] = json!(super::super::runtime::PYTHON);
+    let parse = |v: Value| -> Result<()> { validate(&serde_json::from_value(v)?) };
+    assert!(parse(value.clone()).is_err());
+    value["schema"] = json!("an-native-spool-v3");
+    value["requirements"]["dependencies"] = json!(["package-1.0"]);
+    assert_eq!(parse(value.clone()).is_ok(), cfg!(target_os = "macos"));
+    for invalid in [
+        json!(["package-1.0", "package-1.0"]),
+        json!(["../package"]),
+        json!(["https://example.invalid"]),
+    ] {
+        value["requirements"]["dependencies"] = invalid;
+        assert!(parse(value.clone()).is_err());
+    }
+    Ok(())
+}

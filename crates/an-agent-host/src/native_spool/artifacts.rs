@@ -84,7 +84,11 @@ pub(super) fn verified(root: &Path, name: &str, require_bound: bool) -> Result<(
             .iter()
             .find(|p| p["path"] == name)
             .ok_or("unaccepted artifact")?;
-        if version["content_sha256"] != output["binding"]["content_sha256"]
+        let binary = bundle.manifest.binary_outputs.iter().any(|p| p == name);
+        if (version["encoding"] == "bytes") != binary
+            || (candidate["encoding"] == "bytes") != binary
+            || (output["binding"]["encoding"] == "bytes") != binary
+            || version["content_sha256"] != output["binding"]["content_sha256"]
             || version["bytes"] != output["binding"]["bytes"]
             || candidate["sha256"] != version["content_sha256"]
             || candidate["bytes"] != version["bytes"]

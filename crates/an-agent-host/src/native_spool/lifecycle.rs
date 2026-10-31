@@ -2,6 +2,15 @@
 use super::*;
 
 pub fn load(package: &Path, destination: &Path) -> Result<Value> {
+    load_selected(package, destination, None)
+}
+
+/// Runtime selection is operator material, never a path supplied by the release.
+pub fn load_runtime(package: &Path, destination: &Path, runtime: &Path) -> Result<Value> {
+    load_selected(package, destination, Some(runtime))
+}
+
+fn load_selected(package: &Path, destination: &Path, runtime: Option<&Path>) -> Result<Value> {
     let bundle = bundle::read(package)?;
     store::no_links(destination)?;
     if destination.exists() {
@@ -15,6 +24,7 @@ pub fn load(package: &Path, destination: &Path) -> Result<Value> {
     if root.starts_with(package.canonicalize()?) {
         return Err("instance must not modify its source release directory".into());
     }
+    let runtime = runtime::prepare(&bundle, runtime, &root, package)?;
     // Exclusive directory ownership; a partial load is never implicitly resumed.
     let mut directory = fs::DirBuilder::new();
     #[cfg(unix)]
@@ -37,9 +47,14 @@ pub fn load(package: &Path, destination: &Path) -> Result<Value> {
     store::write_new(&root.join("release").join(bundle::FILE), &bundle.bytes)?;
     readonly(&root.join("release").join(bundle::FILE))?;
     let instance = an_agent_core::det_seam::Entropy::os().uuid_v4().to_string();
-    let record = json!({"schema":"an-native-spool-instance-v1","instance":instance,
+    let mut record = json!({"schema":"an-native-spool-instance-v1","instance":instance,
         "release":bundle.release,"name":bundle.manifest.name,"version":bundle.manifest.version,
         "execution_granted":false,"profile":"macos-reviewed-native-spool-v1"});
+    if let Some(bytes) = runtime {
+        record["runtime_sha256"] = json!(store::digest(&bytes));
+        store::write_new(&root.join("runtime.json"), &bytes)?;
+        readonly(&root.join("runtime.json"))?;
+    }
     write_json(&root.join("instance.json"), &record)?;
     show(&root)
 }

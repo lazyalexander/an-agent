@@ -55,6 +55,9 @@ subscriptions, admission, attempt supervision and fixed-version delivery evidenc
 The [native event slice](../crates/an-agent-host/NATIVE-EVENTS.md) connects accepted
 artifact facts to separately approved native attempts through explicit foreground
 dispatch. It adds no graph DSL, background scheduler or low-latency channel.
+The [native Python extension](../crates/an-agent-host/NATIVE-PYTHON.md) binds an
+operator-selected environment and explicit binary products to that same boundary.
+Spool packages declare requests; local runtime selection and grants stay host-owned.
 Subagents use the same authority boundary; shuttles remain external-application
 bridges. Future high-frequency data needs a separately granted channel rather
 than forcing every sample into the durable workspace log or tape.

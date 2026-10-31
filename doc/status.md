@@ -14,7 +14,7 @@ by the architecture diagram. An example's success does not widen a runtime grant
 | State and artifacts | Bounded revision, instance commit, checkpoint/delivery and reclamation contracts; no automatic domain merge or complete rollback |
 | Semantics | Pure claims/assessments and existing admission adapters; not comprehensive static program analysis or a security boundary |
 | Multi-silk environment | Reviewed macOS coordinator plus two internal silks qualified through workspace jobs; early-leader-exit failure, whole-group cancellation and copied artifact custody; not a registered general spool runtime |
-| Release-bound native spool | v1/v2 requirements, two internal silks, independent instances, approved kit edits/reset, fixed products, cancellation, status and explicit ledger repair; reviewed macOS shell tools only |
+| Release-bound native spool | v1/v2 compatibility, v3 events and explicit byte products, operator-selected Python dependency inventories, independent instances, approved kit edits/reset, cancellation and explicit ledger repair; reviewed macOS headless tools |
 | Weaver / zero-mount development | Optional Loom-side reviewed harness example and standalone CLI qualification; not a host agent loop or hostile-harness sandbox |
 | Workspace-driven native events | Explicit v3 interfaces, static subscriptions, accepted artifact facts and one foreground delivery per approved event/subscription; consumed-output confirmation and no automatic retry; no background listener or generic graph |
 | Pause/suspend/backup | Backend-specific capabilities to qualify; not general host guarantees |
@@ -26,8 +26,10 @@ and CI are retained. This documentation does not add a new platform or backend.
 
 The immediate event-first slice is now qualified: workspace artifact facts can
 drive explicit native delivery, acceptance and causal result confirmation. Keep
-business control flow in silk/kit. Next expand real headless inputs/runtime/output
-support, then daily subscription/lifecycle/retention management. Low-latency
+business control flow in silk/kit. Real XLSX/PPTX handoff now uses explicit binary
+outputs and operator-selected Python through the same event contract. Multiple
+data inputs alongside selected state, broader environment support and daily
+subscription/lifecycle/retention management remain separate work. Low-latency
 channels require an actual high-frequency consumer. The runtime milestones below
 remain an inventory, not a host business-graph roadmap.
 

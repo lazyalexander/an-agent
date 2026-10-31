@@ -23,13 +23,16 @@ fn profile(root: &Path, bundle: &bundle::Bundle, input: &Path, seconds: u64) -> 
     let input_index = inputs.len();
     inputs.push(input.canonicalize()?);
     let args = vec![format!("{{input:{}}}", entry.ok_or("missing silk entry")?)];
-    Ok(
-        json!({"schema":"an-workspace-job-v2","executable":"/bin/bash","args":args,
+    let mut profile = json!({"schema":"an-workspace-job-v2","executable":"/bin/bash","args":args,
         "environment":{"AN_SPOOL_SILK_DIR":"{inputs}","AN_SPOOL_KIT_DIR":"{inputs}",
             "AN_SPOOL_INPUT":format!("{{input:{input_index}}}")},
         "readonly":[],"inputs":inputs,"outputs":bundle.manifest.outputs,
-        "wall_seconds":seconds,"trusted_process_group":true}),
-    )
+        "wall_seconds":seconds,"trusted_process_group":true});
+    if !bundle.manifest.binary_outputs.is_empty() {
+        profile["binary_outputs"] = json!(bundle.manifest.binary_outputs);
+    }
+    runtime::profile(root, bundle, &mut profile)?;
+    Ok(profile)
 }
 
 pub fn start(
@@ -250,6 +253,10 @@ fn custody(path: &Path, name: &str, approved: Option<&str>, collect: bool) -> Re
     let root = location(path)?;
     let _lock = store::lock(&root)?;
     let result = settled(&root, name)?;
+    if !collect {
+        let (instance, bundle) = state(&root)?;
+        runtime::verify(&root, &instance, &bundle)?;
+    }
     let job = root.join("runs").join(name).join("job");
     let id = result["workspace"]["attempt"]
         .as_str()
