@@ -16,11 +16,22 @@ by the architecture diagram. An example's success does not widen a runtime grant
 | Multi-silk environment | Reviewed macOS coordinator plus two internal silks qualified through workspace jobs; early-leader-exit failure, whole-group cancellation and copied artifact custody; not a registered general spool runtime |
 | Release-bound native spool | v1/v2 compatibility, v3 events and explicit byte products, operator-selected Python dependency inventories, independent instances, approved kit edits/reset, cancellation and explicit ledger repair; reviewed macOS headless tools |
 | Weaver / zero-mount development | Optional Loom-side reviewed harness example and standalone CLI qualification; not a host agent loop or hostile-harness sandbox |
-| Workspace-driven native events | Explicit v3 interfaces, static subscriptions, accepted artifact facts and one foreground delivery per approved event/subscription; consumed-output confirmation and no automatic retry; no background listener or generic graph |
+| Workspace-driven native events | Explicit v3 interfaces, static subscriptions, accepted artifact facts and one foreground delivery per approved event/subscription; consumed-output confirmation and no automatic retry; read-only foreground inventory/watch; no background dispatcher or generic graph |
 | Pause/suspend/backup | Backend-specific capabilities to qualify; not general host guarantees |
 
 macOS remains the primary local platform. Existing native Linux implementation
 and CI are retained. This documentation does not add a new platform or backend.
+
+## P1: daily event operation
+
+The first slice is a read-only pending-delivery inventory and bounded foreground
+change monitor, reusing the P0 delivery identities and evidence. It does not
+prepare runs or extend execution authority. The next slice should qualify
+bounded approved dispatch with explicit state selectors and stop/unknown-result
+behavior; subscription changes must preserve instance/generation fencing.
+Do not introduce implicit latest-state selection, automatic retries, domain
+branch/loop routing, a second Loom scheduler or another execution backend.
+This is a staged local operational path, not a claim that P1 is complete.
 
 ## Remaining local spool milestones
 
@@ -31,7 +42,9 @@ outputs and operator-selected Python through the same event contract. A separate
 explicit state slot now combines one fixed business artifact with one committed
 checkpoint, including event delivery and stale-commit refusal. Multiple business
 inputs, broader environment support and daily
-subscription/lifecycle/retention management remain separate work. Low-latency
+subscription/lifecycle/retention management remain separate work. P1 now starts
+with a read-only delivery inventory and change monitor; execution authorization,
+state selection and consumption confirmation remain explicit. Low-latency
 channels require an actual high-frequency consumer. The runtime milestones below
 remain an inventory, not a host business-graph roadmap.
 

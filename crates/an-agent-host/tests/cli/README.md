@@ -70,3 +70,8 @@ On a client deadline the runner requests host cancellation; unknown termination
 fails the suite and keeps evidence. It never automatically reruns an execution.
 All fixture directories, receipts and command observations are retained, including
 on failure. Operational evidence contains local paths; do not publish it raw.
+
+The event suite also qualifies read-only delivery inventory and foreground
+monitoring during actual execution, evidence changes, observation cancellation,
+deadline exit and restart without replaying unknown work. The monitor emits
+NDJSON, whereas ordinary host commands return one JSON value.
