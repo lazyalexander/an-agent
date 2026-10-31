@@ -53,7 +53,9 @@ is the P1 closure direction, not a requirement to build a daemon or graph engine
 
 The next [session and retention plan](session-and-retention.md) makes the
 remaining storage work explicit, then proposes a small session/thread coordination
-layer over existing attempts. It is a plan, not implemented session management.
+layer over existing attempts. Its first foreground session/finite-thread adapter is
+implemented; general model-context threads and formal payload collection remain
+unimplemented. See the plan for exact commands and concurrency limits.
 GUI and TUI are deferred; no new user interface is required for qualification.
 
 ## Deferred scope and existing surfaces

@@ -137,3 +137,9 @@ fresh fixture; a failed/unknown scenario must not reuse the same round IDs. It
 records every command, watcher outcome and opt-in timing, and rejects observation
 writes, control refusal or watcher failure. It does not weaken stale-approval,
 cancellation or reclamation assertions in the preceding real event suite.
+
+`native_sessions.py --host HOST --evidence NEW_DIRECTORY` qualifies session-owned
+finite threads using real pinned-input/state consumers. Explicit admissions overlap
+in execution; cancellation affects one session, pause drains, stale requests fail,
+closure preserves products and a lost completion receipt prevents closure/replay.
+Simultaneous same-workspace admission remains fail-fast, not queued or retried.

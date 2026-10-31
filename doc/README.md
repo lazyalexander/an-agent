@@ -16,7 +16,7 @@ repository root unless stated otherwise. Current guarantees are bounded by the
 | Reviewed harness development | [Weaver](weaver.md) |
 | Implemented capabilities and remaining work | [Status](status.md) |
 | Runtime support and qualification | [Platforms](platforms.md) |
-| Proposed retention and session work | [Session and retention plan](session-and-retention.md) |
+| Session coordination and remaining retention work | [Session and retention plan](session-and-retention.md) |
 | Testing, CI and cross-repository ownership | [Testing](testing.md) |
 | Code and documentation quality gates | [Quality](quality.md) |
 

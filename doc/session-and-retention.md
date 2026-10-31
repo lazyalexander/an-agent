@@ -2,7 +2,8 @@
 
 Status: accepted development direction, with the first native input-reference
 slice implemented in [native storage](native-storage.md).
-Formal payload deletion and host sessions remain planned. The qualified boundary
+Formal payload deletion remains planned. A bounded native session/dispatch adapter
+is implemented below; general model-session coordination remains planned. The qualified boundary
 remains reviewed headless CLI spools; see the [platform matrix](platforms.md).
 GUI/TUI, new backends and process-memory restoration are deferred.
 
@@ -107,10 +108,65 @@ operations settle, and qualify tombstone-aware history inspection. Do not weaken
 content verification globally to make deletion pass. Checkpoint payload GC is a
 separate operation; the first artifact collector must not delete committed state.
 
+## Implemented native session slice
+
+The foreground event adapter exposes the following host commands. `WORKSPACE` is
+an existing native event workspace, not a directory granted to spool processes.
+
+```sh
+an-agent-host session-create WORKSPACE SESSION
+an-agent-host session-run WORKSPACE SESSION THREAD dispatch-request.json
+an-agent-host session-run WORKSPACE SESSION THREAD dispatch-request.json --approve HASH
+an-agent-host session-show WORKSPACE SESSION
+an-agent-host session-control WORKSPACE SESSION paused
+an-agent-host session-control WORKSPACE SESSION paused --approve HASH
+```
+
+Control modes are `open`, `paused`, `cancelled` and `closed`. Each control change
+requires a fresh digest-bound preview. Pause drains the current dispatch entry and
+prevents the next; reopen permits new threads, never resumes a partial dispatch.
+Cancel is permanent admission closure and asks each live session runner to forward
+cancellation through its existing supervisor. Close requires retained thread
+completion and original confirmed attempt evidence. Closure never accepts products,
+commits state, releases references, unloads instances or deletes bytes.
+
+A thread is one immutable finite dispatch (1..16 explicitly selected event/route/
+state entries). It has a session-scoped identity and a durable pre-execution intent.
+Changing source request bytes or session generation invalidates approval. Thread
+names cannot be reused, including after cancellation or missing results. The host
+keeps only selected artifact/state context, not another harness's conversation tape.
+Parents, cross-thread model packets and general multi-attempt thread continuation
+are deferred. No release field or Loom runtime dependency is introduced.
+
+Inspection returns compact identities and outcome metadata; full dispatch evidence
+stays available through `spool-events-dispatch-show`, not copied into every summary.
+The session lock covers short admission/control publication only. Observation and
+execution do not hold it. A foreground runner polls its bounded control history
+at 25 ms intervals; this is not a cancellation-latency guarantee. A read error
+requests cancellation, not successful settlement. Reopening records after a host
+crash is read-only inspection: missing receipts remain unknown, and no daemon
+restarts work or signals a process based on a reused PID. A dead runner cannot
+forward a new cancellation; original backend reconciliation remains necessary.
+
+Existing event admission locks remain fail-fast. Simultaneous admissions in the
+same workspace can refuse; the qualified case explicitly admits independent
+threads and then overlaps their execution. It does not claim a queue or conflict-free
+parallel admission. Neither refusal nor unknown execution is automatically retried.
+Limits are 32 sessions per workspace, 32 threads per session and 128 control records.
+Legacy executables do not manage these new session records; operator-issued direct
+commands remain separate authority and are not retroactively governed by sessions.
+
+`tests/cli/native_sessions.py` under the host crate qualifies independent overlapping
+execution, scoped cancellation, drain-stop, stale generation/request refusal,
+multiple logical threads, pinned input/state, products after close and injected
+lost-receipt refusal after real execution. It uses zero model calls. Session
+closure rechecks native evidence; formal payload GC remains blocked by its separate
+unfinished retention contract.
+
 ## Minimal session and thread management
 
 Start with inspectable records and explicit foreground CLI actions, not a daemon.
-The proposed session record binds a workspace, session identity, generation,
+The broader proposed session record binds a workspace, session identity, generation,
 thread references and operator-owned limits. A thread record binds its own
 identity/generation, optional parent, selected instance/attempt references,
 explicit context selections, cancellation intent and observed outcomes.
