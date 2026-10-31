@@ -9,6 +9,8 @@ pub mod events;
 mod inputs;
 pub mod kit_proposal;
 mod lifecycle;
+mod maintenance;
+pub use maintenance::collect_private;
 mod reconcile;
 mod release_review;
 mod requirements;
