@@ -85,6 +85,9 @@ an-agent-host spool-reconcile-run INSTANCE RUN [--approve DIGEST]
 an-agent-host spool-kit-update INSTANCE BASENAME SOURCE [--approve DIGEST]
 an-agent-host spool-kit-reset INSTANCE BASENAME [--approve DIGEST]
 an-agent-host spool-start INSTANCE RUN INPUT SECONDS [--approve DIGEST]
+an-agent-host spool-supervisor start INSTANCE RUN INPUT SECONDS [--approve DIGEST]
+an-agent-host spool-supervisor show INSTANCE RUN
+an-agent-host spool-supervisor cancel INSTANCE RUN [--approve DIGEST]
 an-agent-host spool-pause INSTANCE [--approve DIGEST]
 an-agent-host spool-suspend INSTANCE STATE_REVISION [--approve DIGEST]
 an-agent-host spool-resume INSTANCE [--approve DIGEST]
@@ -519,3 +522,9 @@ without Python.
 It records commands and evidence privately and never rebuilds its selected binary.
 Loom separately packages the existing log-report code and qualifies real editable
 XLSX/PPTX products. No GUI, model, GPU or new backend is claimed.
+
+For client-independent execution of a native file-input attempt, use
+`spool-supervisor start`. Its separate worker retains the original deadline and
+process ownership after abrupt client exit. The [supervision contract](session-and-retention.md#independent-attempt-supervisor)
+defines durable launch/cancellation, uncertain-result retention and the narrower
+migration scope. Ordinary `spool-start` retains its foreground behavior.
