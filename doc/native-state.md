@@ -277,8 +277,9 @@ source claims refuse selection of that checkpoint; partial source pins stay
 retained, with no automatic repair or retry. Inspect evidence before deciding a
 future reconciliation action. Fully recorded declarations cannot be rewritten.
 Existing checkpoints without declarations report `undeclared`, not dependency-free.
-This optional declaration is not a complete dependency census and does not enable
-stateful-success release, native payload deletion or automatic collection. Older
+This optional declaration is not a complete dependency census. An acknowledged
+stateful event needs a spool-emitted, accepted input policy and separately approved [coverage statement](native-storage.md)
+to release its own input claims. Native payload deletion remains unsupported. Older
 hosts do not understand these sidecars; mixed-version operation is unqualified.
 
 Real headless qualification extends both explicit-state supervisor suites: accepted

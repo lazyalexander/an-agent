@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Real data/checkpoint selection, stale commits and cancellation retention."""
+from stateful_input_release import qualify as qualify_release, contradictory_policy
 import argparse
 import hashlib
 import json
@@ -66,13 +67,20 @@ def main():
         return target
 
     source = package("source", {"silk/main.sh": 'set -eu\ncat "$AN_SPOOL_INPUT" > batch.txt\n'}, ["batch.txt"])
+    policy = {"schema": "an-native-checkpoint-managed-input-policy-v1", "state_output": "state.txt",
+              "data": "checkpoint-pin", "parent_state": "not-required"}
+    # The counter retains its source batch as provenance. The audit batch (100)
+    # also needs its parent state, so an operator cannot choose to discard it.
+    emit_policy = ("if [ \"$(cat \"$1\")\" = 100 ]; then\n" +
+                   "echo '" + json.dumps(dict(policy, parent_state="checkpoint-pin")) + "'\nelse\n" +
+                   "echo '" + json.dumps(policy) + "'\nfi > checkpoint-input-policy.json\n")
     target = package("counter", {
         "silk/main.sh": 'set -eu\n/bin/bash "$AN_SPOOL_KIT_DIR/step.sh" "$AN_SPOOL_INPUT" "$AN_SPOOL_STATE"\n',
         "kit/step.sh": 'set -eu\nif [ "$(cat "$1")" = hold ]; then\n'
                        '  printf "999\\n" > state.txt\nprintf ready > ready.marker\nsleep 60\nfi\n'
                        'awk \'/^[0-9]+$/ {sum += $1; next} {exit 2} END {print sum}\' "$2" "$1" > state.txt\n'
-                       'cat state.txt > report.txt\n',
-    }, ["state.txt", "report.txt"], True)
+                       'cat state.txt > report.txt\n' + emit_policy,
+    }, ["state.txt", "report.txt", "checkpoint-input-policy.json"], True)
     a, b, ws = root / "a", root / "b", root / "workspace"
     call("spool-load", source, a)
     call("spool-load", target, b)
@@ -90,7 +98,7 @@ def main():
         return artifact, event
 
     first, event = produce("first", "2\n3\n")
-    newer, _ = produce("newer", "100\n")
+    newer, audit_event = produce("newer", "100\n")
     old = first["outputs"][0]["binding"]["revision"]
     new = newer["outputs"][0]["binding"]["revision"]
     request = root / "selection.local.json"
@@ -164,6 +172,8 @@ def main():
     assert call("spool-input-references", b, run)["claims"] == state_claims
     assert call("spool-state-show", b)["head"] == head
     assert not (b / "runs" / run / "input-release-intent.json").exists()
+
+    qualify_release(call, approved, ws, a, b, run, head, state_claims)
 
     _, holding = produce("holding", "hold\n")
     hold_args = ["spool-event-deliver", ws, holding["id"], "batches", "--state", head]
@@ -239,11 +249,13 @@ def main():
     call("artifact-checkout", py_state["catalog"], new_head, continued)
     assert continued.read_text() == "25\n"
     assert call("spool-state-show", b)["head"] == head
+    contradictory_policy(call, approved, ws, a, b, head, audit_event, newer, calls)
     summary = {"schema": "native-data-state-qualification-v1", "passed": True,
         "host_sha256": hashlib.sha256(host.read_bytes()).hexdigest(), "data_revision": old,
         "newer_data_revision": new, "initial_state": initial, "committed_state": head,
         "stale_commit_refused": True, "unknown_delivery_retried": False,
         "cancel_termination_confirmed": True, "retained_after_collection": True, "automatic_retries": 0}
+    summary["stateful_release_verified"] = {"released_attempt_inputs": 2, "retained_checkpoint_inputs": 1}
     summary["python_data_state_qualified"] = True
     (root / "acceptance.json").write_text(json.dumps(summary, indent=2))
     print(json.dumps(summary))

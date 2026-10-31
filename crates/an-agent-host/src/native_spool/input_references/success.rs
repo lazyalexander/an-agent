@@ -7,11 +7,21 @@ pub(super) fn evidence(
     result: &Value,
     workspace: &Path,
     subscription: &str,
+    coverage: Option<&Path>,
 ) -> Result<Value> {
     if result["status"] != "succeeded" || result["workspace"]["termination_confirmed"] != true {
         return Err("successful input release requires confirmed whole-attempt success".into());
     }
     let start = read(&root.join("runs").join(name).join("start.json"))?;
+    if let Some(file) = coverage {
+        let receipt =
+            events::confirmed_input_consumption(workspace, subscription, root, name, &start)?;
+        let proof = coverage::verify(root, name, &start, result, &receipt["accepted"], file)?;
+        return Ok(
+            json!({"workspace":location(workspace)?,"subscription":subscription,
+            "receipt":receipt,"state_coverage":proof}),
+        );
+    }
     state_free(root, &start)?;
     let completion =
         events::confirmed_input_consumption(workspace, subscription, root, name, &start)?;
@@ -27,7 +37,7 @@ fn state_free(root: &Path, start: &Value) -> Result<()> {
         store::no_links(&path)?;
         if path.try_exists()? {
             return Err(
-                "successful stateful inputs stay retained pending explicit checkpoint dependencies"
+                "successful stateful inputs stay retained without approved checkpoint coverage"
                     .into(),
             );
         }
