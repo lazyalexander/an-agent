@@ -1,7 +1,7 @@
 # Artifact retention, sessions and logical threads
 
 Status: accepted development direction, with the first native input-reference
-slice implemented in [native storage](../crates/an-agent-host/NATIVE-STORAGE.md).
+slice implemented in [native storage](native-storage.md).
 Formal payload deletion and host sessions remain planned. The qualified boundary
 remains reviewed headless CLI spools; see the [platform matrix](platforms.md).
 GUI/TUI, new backends and process-memory restoration are deferred.
@@ -10,12 +10,12 @@ GUI/TUI, new backends and process-memory restoration are deferred.
 
 | Existing implementation | Reuse and limit |
 | --- | --- |
-| [Native storage](../crates/an-agent-host/NATIVE-STORAGE.md) | Settled scratch/snapshot collection, capacity observations and new-input retirement; no formal native payload deletion |
+| [Native storage](native-storage.md) | Settled scratch/snapshot collection, capacity observations and new-input retirement; no formal native payload deletion |
 | [Artifact admission](../crates/an-agent-host/src/artifact_versions/admission.rs) | Monotonic closure with concurrent immutable readers; no reference inventory |
 | [Checkpoint retention](../crates/an-agent-host/src/instance/checkpoint/retention.rs) | Explicit recipients/state references in a closed store; not a global census of native catalogs |
 | [Core session](../crates/an-agent-core/src/agent/session.rs) and [session control](../crates/an-agent-core/src/control/session.rs) | Private tape/files, seal, finished-thread release and identity-checked resume; not a native-spool session coordinator or whole-machine recovery |
-| [Native events](../crates/an-agent-host/NATIVE-EVENTS.md) | Fixed versions, finite approved dispatch, admission controls and explicit reconciliation; no background agent loop |
-| [Model/context](../crates/an-agent-host/MODEL-CONTEXT.md) and [bounded export](../crates/an-agent-host/CONTEXT-OUTPUT.md) | Explicit audience/clip selection, receipt-linked excerpts and byte limits; no token estimator, automatic compaction or cross-thread authorization service |
+| [Native events](native-events.md) | Fixed versions, finite approved dispatch, admission controls and explicit reconciliation; no background agent loop |
+| [Model/context](model-services.md) and [bounded export](model-services.md) | Explicit audience/clip selection, receipt-linked excerpts and byte limits; no token estimator, automatic compaction or cross-thread authorization service |
 
 Do not rename existing core sessions, thread UUIDs, tape records or wire formats.
 A future host adapter maps its coordination records to these identities explicitly;

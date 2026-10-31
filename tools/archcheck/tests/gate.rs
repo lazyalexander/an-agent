@@ -30,7 +30,11 @@ fn fixture() -> (tempfile::TempDir, String) {
     .unwrap();
     fs::write(root.join("crates/core/src/lib.rs"), "pub fn safe() {}\n").unwrap();
     let upstream = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-    for file in ["ARCHITECTURE.toml", "architecture-policy.toml"] {
+    for file in [
+        "ARCHITECTURE.toml",
+        "architecture-policy.toml",
+        "documentation-policy.toml",
+    ] {
         fs::copy(upstream.join(file), root.join(file)).unwrap();
     }
     fs::write(
@@ -296,4 +300,46 @@ fn real_metadata_detects_core_to_host_dependency() {
     .unwrap();
     let (ok, log) = gate(dir.path(), &base);
     assert!(!ok && log.contains("forbidden dependency path"), "{log}");
+}
+
+#[test]
+fn documentation_placement_size_count_links_and_policy_are_enforced() {
+    let (dir, base) = fixture();
+    let root = dir.path();
+    let policy = root.join("documentation-policy.toml");
+    let original = fs::read_to_string(&policy).unwrap();
+    fs::write(root.join("crates/core/NOTES.md"), "# Stray contract\n").unwrap();
+    assert!(gate(root, &base).1.contains("must live in doc/"));
+    fs::remove_file(root.join("crates/core/NOTES.md")).unwrap();
+    fs::create_dir(root.join("doc")).unwrap();
+    fs::write(root.join("doc/topic.md"), "text\n".repeat(601)).unwrap();
+    assert!(gate(root, &base).1.contains("line budget"));
+    fs::write(root.join("doc/topic.md"), "[missing](absent.md)\n").unwrap();
+    assert!(gate(root, &base).1.contains("missing published"));
+    fs::write(root.join(".gitignore"), "secret.md\n").unwrap();
+    fs::write(root.join("secret.md"), "private\n").unwrap();
+    fs::write(root.join("doc/topic.md"), "[private](../secret.md)\n").unwrap();
+    assert!(gate(root, &base).1.contains("missing published"));
+    fs::write(
+        root.join("doc/topic.md"),
+        "[code](../crates/core/src/lib.rs)\n",
+    )
+    .unwrap();
+    assert!(gate(root, &base).0);
+    fs::write(root.join("README.md"), "text\n".repeat(181)).unwrap();
+    assert!(gate(root, &base).1.contains("line budget"));
+    fs::remove_file(root.join("README.md")).unwrap();
+    for n in 0..24 {
+        fs::write(root.join(format!("doc/page-{n}.md")), "# Topic\n").unwrap();
+    }
+    assert!(gate(root, &base).1.contains("page budget"));
+    for n in 0..24 {
+        fs::remove_file(root.join(format!("doc/page-{n}.md"))).unwrap();
+    }
+    change_integer(&policy, &["max_pages"], 25);
+    assert!(gate(root, &base).1.contains("budget weakening"));
+    fs::remove_file(&policy).unwrap();
+    assert!(gate(root, &base).1.contains("cannot be removed"));
+    fs::write(&policy, original).unwrap();
+    assert!(gate(root, &base).0);
 }

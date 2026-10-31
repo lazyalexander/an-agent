@@ -45,17 +45,18 @@ flowchart TB
 This is the target responsibility model. Existing single-entry profiles cover
 only a bounded specialization. In-process `SpoolBeat` bodies remain trusted
 embedding code; mounting a declaration does not place that code in isolation.
-A general multi-silk spool runtime is not implemented.
+The native facade qualifies bounded multi-silk CLI execution; arbitrary agent
+containment and a general multi-backend spool ABI remain unimplemented.
 
 ## Local execution strategy
 
 Spool interaction is workspace-event routing, not a host business workflow graph.
 Silk/kit owns domain branches, loops and delegation decisions. The host owns
 subscriptions, admission, attempt supervision and fixed-version delivery evidence.
-The [native event slice](../crates/an-agent-host/NATIVE-EVENTS.md) connects accepted
+The [native event slice](native-events.md) connects accepted
 artifact facts to separately approved native attempts through explicit foreground
 dispatch. It adds no graph DSL, background scheduler or low-latency channel.
-The [native Python extension](../crates/an-agent-host/NATIVE-PYTHON.md) binds an
+The [native Python extension](native-spool.md) binds an
 operator-selected environment and explicit binary products to that same boundary.
 Spool packages declare requests; local runtime selection and grants stay host-owned.
 Subagents use the same authority boundary; shuttles remain external-application
@@ -88,7 +89,7 @@ commands, `kit.*` events, paths and compatibility APIs retain their spelling.
 Historical Silk communication protocol/Silksong records are a different schema,
 not executable silks; no history is rewritten by the naming change.
 
-For the detailed audit and migration, see [the spool boundary](../crates/an-agent-host/SPOOL-BOUNDARY.md).
+For the detailed audit and migration, see [the spool boundary](architecture.md).
 
 ## Implementation boundary audit
 
@@ -125,10 +126,55 @@ still decides whether the received release and requested execution are admissibl
 
 - Trusted in-process `SpoolBeat` embedding and isolated CLI attempts remain distinct
   paths. A declaration does not sandbox an in-process body.
-- Deployment still supports bounded profiles, not arbitrary multi-silk releases or
-  a general mutable-kit execution contract.
+- Legacy deployments still support bounded one-program profiles. The native
+  facade adds declared silk/kit snapshots and approved between-run edits, not a
+  general mutable-code or hostile-agent execution contract.
 - Loom's host CLI transport is trusted operator tooling, not a sandbox for a
   model-selected executable. Its response-size check occurs after capture.
 - No wire format, legacy name, CLI, permission scope or domain acceptance rule is
   migrated here. A new profile must earn integration evidence before broadening
   the interfaces; a generic plugin/control-plane framework is not a prerequisite.
+
+## Attention is not authority
+
+
+| Question | Authority and mechanism |
+| --- | --- |
+| Does a known dependency need updating? | Explicit application dependencies, input revisions and invalidation rules |
+| Is optional assistance worth proposing now, and with which context? | A replaceable, bounded rule or learned policy, returning a candidate request |
+| May that request execute or disclose data? | Host admission and grants, checked again at the actual execution/model boundary |
+
+A learned relevance score must not suppress required dependency invalidation,
+audit evidence, cancellation or enforcement. Conversely, a dependency change
+does not authorize immediate expensive work: the host may coalesce it, defer it
+or reject work against an obsolete revision. Application-local preview loops
+remain separate from slower agent reasoning.
+
+Attention selects candidates; it does not grant capabilities, rewrite roles,
+silently move context between audiences, choose secrets or override a denial.
+Relevance, factual confidence, provenance and permission are different concepts.
+High relevance cannot turn untrusted source text into instructions.
+
+## Requirements for a future attention consumer
+
+Use native object identities and revisions when applications provide them.
+Names, paths, aliases and text-extracted entities are adapter observations, not
+authoritative object identity. Model relevance for an object at a particular
+event/revision; do not treat the last label as a permanent property of an object.
+
+A candidate must remain traceable to its observations, input revisions, policy
+identity and intended audience. Execution still needs its own approved plan.
+Do not let an optional policy erase the evidence of a skipped or superseded
+request, or mutate already recorded facts. Keep raw high-frequency UI samples
+at the application edge; only appropriate bounded facts cross the host boundary.
+
+Start with explicit subscriptions, coalescing and bounded rules when a real
+cross-application consumer needs them. Compare any learned policy against those
+baselines using useful accepted work, missed updates, false interruptions,
+staleness, latency and total model/context cost. Trigger-stage latency is not
+end-to-end task latency or a token-savings guarantee.
+
+[Temporal-graph triggering and routing](https://arxiv.org/abs/2605.30152)
+is a design reference for separating attention from generation. No implementation
+or benchmark result from that paper is incorporated here. Do not introduce a
+GNN or a generic workflow framework before independent consumers justify it.

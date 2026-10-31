@@ -1,4 +1,6 @@
-# Optional OpenShell VM adapter
+# Optional OpenShell backend
+
+## Optional OpenShell VM adapter
 
 Maintenance status: retain this optional adapter and its failure tests; expansion
 is paused. Native reviewed headless execution is the current product path.
@@ -6,13 +8,13 @@ The historical qualification below does not establish parity with native spool
 state/event/artifact custody. Missing isolation never authorizes native fallback.
 
 `run-openshell` is a host-side backend for the existing `file-kit-v1`
-deployment contract. It does not change core, require Waver at runtime, install
+deployment contract. It does not change core, require Loom at runtime, install
 packages, or interpret workflow business logic. Native execution is unchanged.
 This first adapter qualifies OpenShell **0.1.5** on macOS with its VM driver
 and Linux ARM64 executables. Other platforms fail closed; there is no fallback.
 
 ```text
-Waver -> deployment (spool.yaml + Linux ARM64 program)
+Loom -> deployment (spool.yaml + Linux ARM64 program)
                        |
                        v
 an-agent-host: registration / admission / input snapshot / audit
@@ -26,7 +28,7 @@ an-agent-host: registration / admission / input snapshot / audit
       bounded candidate -> confirmed VM stop -> host artifact
 ```
 
-## Operator setup and invocation
+### Operator setup and invocation
 
 Install the official matching OpenShell CLI, gateway and VM driver, and configure
 a dedicated gateway with authenticated access. Gateway installation, credentials,
@@ -69,7 +71,7 @@ destinations. The host copies only the program and input snapshot into the VM.
 Hard Landlock is required. These settings do not prevent a kit from computing
 or generating more code inside its authorized guest filesystem.
 
-## Cancellation, deadlines and publication
+### Cancellation, deadlines and publication
 
 Each invocation creates a separate, never-restarted sandbox with a random name
 and a host run ownership annotation. Shared/reused sandboxes are not supported.
@@ -100,7 +102,7 @@ the earlier lifecycle decision. This is not immutable catalog acceptance:
 `artifact-import` currently requires native host settlement evidence and refuses
 OpenShell runs until a backend-specific host settlement contract is available.
 
-## Evidence and recovery limits
+### Evidence and recovery limits
 
 Run directories retain input/context hashes, request/result journals,
 `openshell-owner.json`, `openshell.json`, `receipt.json` and the existing audit.
@@ -116,12 +118,12 @@ confirm its state. Do not restart it or adopt its output automatically. No disk
 rollback, transactional external-effect reversal or general security proof is
 claimed. SPACE integration and provider/model routing are outside this slice.
 
-[Local lifecycle assessment](OPENSHELL-RECOVERY.md) examines the selected
+[Local lifecycle assessment](openshell.md) examines the selected
 backend's stop/start implementation and provides an opt-in cold workspace
 recovery test. This does not add pause, memory restore, backups or restart
 authority to the production adapter.
 
-## Verification
+### Verification
 
 Regular unit tests cover timeout, cancellation after candidate capture, failed
 stop, identity replacement, ambiguous submission and oversized output. They
@@ -146,7 +148,7 @@ The test leaves VM state and evidence intact. After more than eight seconds,
 an operator can separately start each stopped probe VM, verify `late.txt` is
 absent, and stop it again; this diagnostic restart is not adapter behavior.
 
-### Recorded acceptance (2026-10-23)
+#### Recorded acceptance (2026-10-23)
 
 Apple Silicon host, official OpenShell CLI/gateway/VM driver 0.1.5, ARM64 Ubuntu
 image pinned to digest
@@ -172,3 +174,105 @@ CLI. That observation is why this adapter explicitly stops the VM rather than
 equating local process exit with remote cancellation. These tests are bounded
 acceptance evidence, not proof against arbitrary VM escapes or control-plane
 failure. Raw logs, local paths and TLS material are deliberately not published.
+
+## OpenShell local lifecycle assessment
+
+Scope: the already qualified OpenShell CLI/gateway/VM driver **0.1.5** on
+Apple Silicon, source revision
+`bdb956f2cd65a635f1294fccf1d138d263bf650f`. This is a bounded backend assessment,
+not a claim about every OpenShell release or every libkrun capability.
+
+### What can actually be reused
+
+| Requirement | Observed interface/implementation | Decision |
+| --- | --- | --- |
+| Pause admission | A host scheduling decision, not a compute-driver RPC | Defer until there is a real multi-stage consumer |
+| Freeze a running VM | No pause/unpause RPC in the selected compute contract or CLI | Unsupported by this adapter; do not emulate with a launcher signal |
+| Suspend and resume memory | No memory checkpoint/restore RPC in the selected contract | Unsupported; stop/start is not equivalent |
+| Stop and cold-restart a workspace | Backend stop preserves disk state; start reuses the overlay with new launch authentication | Reuse for an explicit operator acceptance test |
+| Whole-VM backup/restore | No export/import backup RPC in the selected contract | Do not copy private driver state and call it a supported backup |
+| Retain accepted kit outputs | Existing host receipts, hashes and immutable accepted copies | Keep this boundary; it is not whole-VM recovery |
+
+The CLI's workload templates describe images, resources, environment and driver
+configuration. They do not capture a running machine's disk and memory. In
+source, many occurrences of “snapshot” mean a resource/status observation rather
+than a restorable VM image.
+
+### Source evidence
+
+- [Compute-driver contract](https://github.com/NVIDIA/OpenShell/blob/bdb956f2cd65a635f1294fccf1d138d263bf650f/proto/compute_driver.proto):
+  `StopSandbox` and `StartSandbox` are present; pause, suspend and backup RPCs
+  are absent. Start carries a generation and fresh launch credentials.
+- [VM driver](https://github.com/NVIDIA/OpenShell/blob/bdb956f2cd65a635f1294fccf1d138d263bf650f/crates/openshell-driver-vm/src/driver.rs):
+  `stop_sandbox` persists a stop marker, terminates processes and removes runtime
+  authentication material. `start_sandbox` validates the persisted request,
+  installs new generation/authentication and restores the retained overlay.
+- The same driver's `terminate_sandbox_processes_within` allows bounded guest
+  shutdown/flush time, then terminates the VM. A forced supervisor termination
+  can leave recent writes unflushed even when the VM ultimately stops.
+  **Stopped is termination evidence, not application-consistent backup evidence.**
+- [VM driver overview](https://github.com/NVIDIA/OpenShell/blob/bdb956f2cd65a635f1294fccf1d138d263bf650f/crates/openshell-driver-vm/README.md):
+  immutable bootstrap/root images and per-sandbox writable overlays belong to
+  the backend. Do not mount or edit these private disks from the host adapter.
+- [Workload templates](https://github.com/NVIDIA/OpenShell/blob/bdb956f2cd65a635f1294fccf1d138d263bf650f/docs/how-it-works/sandboxes/templates.mdx)
+  are configuration reuse, not backups.
+
+### Minimal acceptance and responsibility boundary
+
+The opt-in test first invokes the real host registration, admission, controlled
+file-kit execution, confirmed stop and accepted-artifact path. Only then does
+the operator test directly request backend restarts. Production
+`run-openshell` remains one sandbox per run with no restart or automatic retry.
+The test reuses the existing CLI transport, bounded process supervisor and
+request/result journals; it introduces no new production VM API.
+
+The witness distinguishes disk recovery from execution continuation:
+
+1. Confirm the host's settled sandbox ID, generation and stopped state.
+2. Explicitly start it; require the same sandbox and a new runtime generation.
+3. Run a process that writes a checkpoint and boot identity, syncs, and would
+   write a late marker after twelve seconds. Observe readiness before stopping.
+4. Confirm stop and refusal of commands while stopped.
+5. Start again, verify retained checkpoint and kit output, a changed boot ID,
+   another generation and unchanged effective policy.
+6. Wait beyond the old process delay; require that its late marker is absent.
+7. Mutate only the guest output during inspection; require that the host's
+   accepted artifact and original receipt remain byte-identical.
+8. Verify ownership and confirm a final stop, retaining all evidence.
+
+This is a cooperating checkpoint fixture, not database consistency, crash
+recovery, hardware migration, credential replay testing or VM escape testing.
+Generation rotation is observable; it does not by itself prove that every old
+credential was rejected. Existing mocked generation-mismatch tests continue to
+protect the host's stop/acceptance boundary.
+
+### Running the opt-in test
+
+Use the existing [operator setup](openshell.md). Listener TLS and VM launch
+signing are separate requirements: configure the gateway's launch signing
+material as documented by OpenShell. A healthy listener alone is insufficient.
+Do not weaken authentication to make the test pass.
+When starting the gateway with a cleared environment, explicitly configure its
+XDG config, state and data directories. The VM launcher needs its runtime data
+directory even when the gateway itself starts successfully. These are trusted
+operator settings, never permissions granted to a kit.
+
+Use canonical absolute paths, a fresh evidence directory, the qualified
+digest-pinned image, and the unchanged Linux ARM64 file-list kit:
+
+```sh
+AN_OPENSHELL_PROFILE=/absolute/operator.json \
+AN_OPENSHELL_EVIDENCE=/absolute/new-recovery-evidence \
+AN_OPENSHELL_KIT=/absolute/file-list-linux \
+cargo test -p an-agent-host --lib real_workspace_cold_restart -- --ignored --nocapture
+```
+
+The image must provide `cat`, `sync`, `sleep` and `/bin/sh` in addition to the
+existing adapter requirements. The test keeps the stopped VM and private
+evidence; it never deletes unrelated sandboxes or overwrites an earlier run.
+Inspect `cold-recovery.json` and the control journals. A failed initial host
+run retains the normal host receipt instead. Do not publish configuration,
+machine identities, gateway credentials or raw guest/control logs.
+
+
+Historical qualification at OpenShell 0.1.5 observed disk persistence and changed boot identity, not memory restoration. Production restart remains unsupported. Full historical results are available in Git history.

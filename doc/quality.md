@@ -10,6 +10,7 @@ checks, using the PR's base SHA (or the previous push SHA), not a moving branch.
 - `ARCHITECTURE.toml`: SPACE-compatible size, command-mention and naming rules.
 - `architecture-baseline.toml`: existing exceptions and exact caps.
 - `architecture-policy.toml`: local advisory thresholds and dependency edges.
+- `documentation-policy.toml`: central page and length budgets.
 - `tools/archcheck`: thin fail-closed wrapper; an independent Cargo workspace
   and lockfile, with no product dependency or runtime coupling.
 
@@ -98,3 +99,20 @@ cargo arch
 Tool tests deliberately corrupt baselines, add forbidden command mentions, grow
 files, raise caps and weaken policy. Passing the current tree alone is not
 enough evidence that the gate works.
+
+## Documentation gate
+
+`documentation-policy.toml` owns the documentation budget. `cargo arch` checks
+tracked and nonignored candidate Markdown files, so a new page need not be staged
+to be checked. Narrative documents belong in `doc/`; only README files and the
+root contributor instructions stay beside code. It bounds central page count,
+individual page length and README length, and rejects missing local file links.
+Links to private or ignored material do not qualify as published documentation.
+External URLs and heading fragments are not fetched or certified by this check.
+
+Do not split a page solely to meet a line budget or concatenate unrelated topics
+to evade a count budget. Keep commands and failure contracts, delete duplicated
+status/history, and link to the authoritative page. Completed plans and detailed
+historical experiment logs belong in Git history, not an ever-growing archive.
+Budget weakening or removal is refused against an established comparison policy;
+introducing this policy has no legacy exception baseline.

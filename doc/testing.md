@@ -111,3 +111,19 @@ historical host releases are distinct build inputs even when they expose similar
 CLI commands. Do not share one host executable across those jobs to save time.
 A combined dependency cache may cover multiple target directories, but never
 cache accepted products or replace receipt verification with a cache hit.
+
+## Historical qualification and retained decisions
+
+Completed multi-silk plans and handoff pressure reports are retained in
+[the pre-consolidation tree](https://github.com/lazyalexander/an-agent/tree/b44b3c538eb9428975d38e7cbc3669ddf9b0f827/crates/an-agent-host).
+They are historical measurements, not current support promises or new work items.
+The durable decisions are unchanged: hash immutable inputs before the catalog
+commit lock, keep copying/publication inside it, treat contention as explicit
+refusal, and require whole-group termination rather than leader exit. A retained
+input clone is an independent version, not a live mount or permission to delete
+its source. No measurement is a universal latency or throughput SLA.
+
+Current reproducible CLI scenarios and their arguments remain in the
+[acceptance entry-point README](../crates/an-agent-host/tests/cli/README.md).
+Optional Linux recipes remain in [qualification](qualification.md), separate from
+[qualified platform support](platforms.md). Raw evidence stays private.

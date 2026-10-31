@@ -44,7 +44,7 @@ Native accepted outputs can separately close new revision-based input admission.
 This preserves immutable payloads, admitted execution/custody and independent
 checkpoints; it is not a reference-release receipt or permission to delete bytes.
 Private work/snapshot collection remains independent. See [the native storage
-contract](../crates/an-agent-host/NATIVE-STORAGE.md).
+contract](native-storage.md).
 
 The fixed native file profile permits explicit reclamation after confirmed
 cancellation as well as success. Cancelled partial output is never published or
@@ -60,10 +60,10 @@ the host and require explicit abandonment before their scratch is reclaimed.
 A stopped environment is not an independent backup. Disk restart, memory restore,
 state migration and undo of external software changes need different contracts.
 
-See [artifact versions](../crates/an-agent-host/ARTIFACT-VERSIONS.md),
-[instance commits](../crates/an-agent-host/INSTANCE-STATE.md),
-[checkpoint/delivery](../crates/an-agent-host/CHECKPOINT-DELIVERY.md) and
-[retention/capabilities](../crates/an-agent-host/RETENTION-CAPABILITIES.md).
+See [artifact versions](artifacts.md),
+[instance commits](checkpoints.md),
+[checkpoint/delivery](checkpoints.md) and
+[retention/capabilities](artifacts.md).
 
 ## Opaque scratch and borrowed inputs
 
@@ -72,7 +72,7 @@ inventory/limits for safe cleanup remain distinct from business-level indexing.
 External read-only access can avoid an extra file copy, but does not freeze a
 source that another application can change. Fixed-version inputs need managed
 immutable bytes or a qualified snapshot; live inputs must not claim that guarantee.
-See the [handoff pressure decision](../crates/an-agent-host/HANDOFF-PRESSURE.md).
+See the [handoff pressure decision](testing.md).
 
 The proposed [session and retention plan](session-and-retention.md) separates
 evidence references, explicit byte-retention pins and independent copies. The

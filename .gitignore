@@ -27,3 +27,17 @@ docs/
 
 # lab/ — experiments and observation tooling; never merges to main (dev-lines skill)
 lab/
+
+!/doc/native-spool.md
+!/doc/native-state.md
+!/doc/native-events.md
+!/doc/native-storage.md
+!/doc/workspace-jobs.md
+!/doc/artifacts.md
+!/doc/checkpoints.md
+!/doc/model-services.md
+!/doc/openshell.md
+!/doc/core-contracts.md
+!/doc/quality.md
+!/doc/qualification.md
+!/doc/native-deployment.md
