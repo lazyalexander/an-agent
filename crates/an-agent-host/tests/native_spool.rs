@@ -288,3 +288,6 @@ mod reconcile;
 
 #[path = "native_spool/run_reconcile.rs"]
 mod run_reconcile;
+
+#[path = "native_spool/supervised_inputs.rs"]
+mod supervised_inputs;

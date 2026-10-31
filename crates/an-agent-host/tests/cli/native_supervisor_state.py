@@ -15,6 +15,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--host', type=Path, required=True)
     parser.add_argument('--evidence', type=Path, required=True)
+    parser.add_argument('--combined', action='store_true', help='Also bind an accepted business artifact')
     args = parser.parse_args()
     require_native_workspace()
     host, root = args.host.resolve(strict=True), args.evidence.resolve()
@@ -59,6 +60,13 @@ def main():
     (package / 'silk').mkdir(parents=True)
     code = """set -eu
 read -r mode < "$AN_SPOOL_INPUT"
+if [ -n "${AN_SPOOL_STATE:-}" ]; then
+  cat "$AN_SPOOL_INPUT" > observed-data
+  cat "$AN_SPOOL_STATE" > observed-state
+  [ "$mode" = preserved ] || exit 92
+  read -r mode < "$AN_SPOOL_STATE"
+fi
+if [ "$mode" = changed ]; then printf 'changed-data\\n' > report.txt; exit 0; fi
 case "$PWD" in */advance/job/work) printf "quick\n" > report.txt; exit 0;; esac
 if [ "$mode" = quick ]; then printf 'preserved\n' > report.txt; exit 0; fi
 printf '%s\n' "$$" > leader.pid
@@ -91,28 +99,68 @@ printf 'late-output\n' > report.txt
     a, b = root / 'a', root / 'b'
     call('spool-load', package, a)
     call('spool-load', package, b)
+    state_package = package
+    if args.combined:
+        state_package = root / 'combined-release'
+        (state_package / 'silk').mkdir(parents=True)
+        (state_package / 'silk/main.sh').write_text(code)
+        manifest = json.loads((package / 'native-spool.json').read_text())
+        manifest['schema'] = 'an-native-spool-v3'
+        manifest['events'] = {'consumes': [], 'produces': ['artifact.accepted']}
+        manifest['requirements']['state_input'] = 'checkpoint.txt'
+        (state_package / 'native-spool.json').write_text(json.dumps(manifest))
     try:
         normal = approved('spool-supervisor', 'start', a, 'baseline', quick, 15)
         assert normal['status'] == 'succeeded'
         approved('spool-accept', a, 'baseline')
         original = call('spool-artifacts', a, 'baseline')
+        if args.combined:
+            changed = root / 'changed.txt'
+            changed.write_text('changed\n')
+            approved('spool-start', a, 'replacement', changed, 15)
+            approved('spool-accept', a, 'replacement')
+            replacement = call('spool-artifacts', a, 'replacement')
+
+        def select(path, version, state):
+            path.write_text(json.dumps({'schema': 'an-native-data-state-v1',
+                'data': {'catalog': version['catalog'], 'revision': version['outputs'][0]['binding']['revision']},
+                'state_revision': state}))
+
         old_cancel = call('spool-supervisor', 'cancel', a, 'baseline')['approval_sha256']
         for name, seconds in [('deadline', 3), ('cancel', 20), ('client-cancel', 20), ('owner-lost', 20)]:
             instance = root / (name + '-state')
-            call('spool-load', package, instance)
+            call('spool-load', state_package, instance)
             revision = approved('spool-state-init', instance, 'report.txt', work_input)['state']['revision']
-            approved('spool-start-state', instance, 'advance', revision, 15)
+            selection = root / (name + '-selection.json')
+            operation, selected = 'start-state', revision
+            if args.combined:
+                select(selection, original, revision)
+                operation, selected = 'start-data-state', selection
+            approved('spool-' + operation, instance, 'advance', selected, 15)
             approved('spool-accept', instance, 'advance')
             newer = approved('spool-state-commit', instance, revision, 'advance')['revision']
             assert newer != revision
             checkpoint = call('spool-state-show', instance, revision)['selected']
-            preview = call('spool-supervisor', 'start-state', instance, name, revision, seconds)
-            client = spawn('spool-supervisor', 'start-state', instance, name, revision, seconds,
+            preview = call('spool-supervisor', operation, instance, name, selected, seconds)
+            if args.combined:
+                select(selection, replacement, newer)
+                call('spool-supervisor', operation, instance, name, selected, seconds,
+                     '--approve', preview['approval_sha256'], success=False)
+                assert not (instance / 'runs' / name / 'supervisor').exists()
+                select(selection, original, revision)
+            client = spawn('spool-supervisor', operation, instance, name, selected, seconds,
                            '--approve', preview['approval_sha256'])
             run = instance / 'runs' / name
             work = run / 'job/work'
             until(lambda: (work / 'workers.pid').exists()
                   and (work / 'alpha.heartbeat').exists() and (work / 'beta.heartbeat').exists())
+            if args.combined:
+                select(selection, replacement, newer)
+                assert (work / 'observed-data').read_text() == 'preserved\n'
+                assert (work / 'observed-state').read_text() == 'workers\n'
+                start = json.loads((run / 'start.json').read_text())
+                assert start['data_input']['binding']['revision'] == original['outputs'][0]['binding']['revision']
+                assert start['state_input']['binding']['revision'] == revision
             owner = json.loads((run / 'supervisor/owner.json').read_text())
             group = int((work / 'leader.pid').read_text())
             members = group_members(group)
@@ -132,8 +180,8 @@ printf 'late-output\n' > report.txt
                 assert not (run / 'supervisor/completion.json').exists()
                 for marker in instance.rglob('host.lock'):
                     marker.unlink()  # Disposable, stopped fixture fault injection.
-                call('spool-supervisor', 'start-state', instance, name, revision, seconds, success=False)
-                call('spool-start-state', instance, name, revision, seconds, success=False)
+                call('spool-supervisor', operation, instance, name, selected, seconds, success=False)
+                call('spool-' + operation, instance, name, selected, seconds, success=False)
                 call('spool-supervisor', 'worker', instance, name, preview['approval_sha256'], success=False)
                 call('spool-reclaim', instance, name, success=False)
                 call('spool-accept', instance, name, success=False)
@@ -166,7 +214,7 @@ printf 'late-output\n' > report.txt
             approved('spool-reclaim', instance, name)
             assert call('spool-state-show', instance)['head'] == newer
             assert call('spool-state-show', instance, revision)['selected'] == checkpoint
-            call('spool-supervisor', 'start-state', instance, name, revision, seconds, success=False)
+            call('spool-supervisor', operation, instance, name, selected, seconds, success=False)
             cases[name] = {'outcome': expected, 'termination_confirmed': True,
                            'signal_to_observation_seconds': time.monotonic() - changed_at}
         # A torn prelaunch reservation is uncertain, not a fresh run.
@@ -184,7 +232,7 @@ printf 'late-output\n' > report.txt
         (root / 'report.json').write_text(json.dumps({
             'passed': True, 'host_sha256': hashlib.sha256(host.read_bytes()).hexdigest(),
             'cases': cases, 'formal_output_preserved': True, 'automatic_retries': 0,
-            'model_calls': 0, 'scope': 'explicit old state with newer HEAD; independent supervision', 'fixed_old_state': True
+            'model_calls': 0, 'scope': 'explicit old state with newer HEAD; independent supervision', 'fixed_old_state': True, 'combined_data_state': args.combined
         }, indent=2))
     finally:
         for child in children:

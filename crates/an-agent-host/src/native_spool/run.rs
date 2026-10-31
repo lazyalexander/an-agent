@@ -143,11 +143,32 @@ pub(super) fn start_supervised(
     cancelled: &AtomicBool,
 ) -> Result<Value> {
     let plan = &request["plan"];
-    let input = match plan.get("state_revision") {
-        Some(value) => Input::State(value.as_str().ok_or("state revision")?),
-        None => Input::File(Path::new(plan["input"].as_str().ok_or("input path")?)),
-    };
     let start = &plan["start"];
+    let data = if plan["input_kind"] == "data-state" {
+        let data = &start["data_input"];
+        Some(inputs::artifact(
+            Path::new(data["catalog"].as_str().ok_or("data catalog")?),
+            data["binding"]["revision"]
+                .as_str()
+                .ok_or("data revision")?,
+        )?)
+    } else {
+        None
+    };
+    let input = match data.as_ref() {
+        Some(artifact) => Input::Bound(inputs::BoundInput {
+            artifact,
+            state_revision: Some(
+                start["state_input"]["binding"]["revision"]
+                    .as_str()
+                    .ok_or("state revision")?,
+            ),
+        }),
+        None => match plan.get("state_revision") {
+            Some(value) => Input::State(value.as_str().ok_or("state revision")?),
+            None => Input::File(Path::new(plan["input"].as_str().ok_or("input path")?)),
+        },
+    };
     let approval = store::digest(&serde_json::to_vec(start)?);
     start_selected(
         root,

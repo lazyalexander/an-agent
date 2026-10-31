@@ -15,6 +15,8 @@ P0 is qualified for reviewed local CLI spools, not arbitrary untrusted agents:
   approval, accepted-output custody and causal consumption confirmation.
 - One fixed business input combined with one explicitly selected opaque committed
   checkpoint; stale-state conflict refusal and confirmed-cancellation retention.
+- Explicit per-attempt supervision for file, checkpoint and combined data/state
+  starts survives client loss; event/session/peer dispatch remains foreground.
 - Explicit reconciliation of complete original execution/acceptance evidence.
   Missing termination or uncertain execution never authorizes a rerun.
 - Optional operator-selected Python environments and declared binary products;

@@ -178,3 +178,38 @@ end-to-end task latency or a token-savings guarantee.
 is a design reference for separating attention from generation. No implementation
 or benchmark result from that paper is incorporated here. Do not introduce a
 GNN or a generic workflow framework before independent consumers justify it.
+
+## Context, messages and work ownership
+
+These design rules guide new consumers; they do not claim a general context
+router or automatic recovery implementation:
+
+1. **Select context after checking visibility.** Bind selected material to its
+   source, revision, purpose and audience before summarizing or paging it.
+   Derived summaries inherit the source's disclosure restrictions. Prefer bounded
+   views and explicit read pointers over copying entire histories into a model.
+2. **Separate context, requests and grants.** A subscription delivers information;
+   it cannot expand authority or turn source text into instructions. Workspace
+   holds versioned materials and shared facts. Directed spool communication uses
+   an authorized protocol, including when files carry its envelopes.
+3. **Track authorization origin separately from event ownership.** Record why work
+   was admitted and which policy/grant applies, independently of who handles,
+   acknowledges or returns an event. Correlation adds evidence, not permission.
+4. **Separate work from execution.** A continuing task holds its goal, scope and
+   handoff state. Each attempt binds exact inputs/state, effective authority and
+   termination evidence. An unfinished task never authorizes replay of an unknown
+   attempt. Recovery advice may request inspection; it grants no execution or
+   collection authority.
+
+Weaver and pluggable harnesses may supply role prompts, context paging, human
+handoff and recovery suggestions. The host enforces access, admission, execution
+and custody. Loom packages domain code and declarations; it owns neither a model
+loop nor runtime policy. OS threads and resource-owning sessions must not be
+confused with a discussion timeline called a "Thread" by a coding application.
+
+Design reference: [dsh-superagent-prototype at 6337fc8](https://github.com/deepseek-ai/dsh-superagent-prototype/tree/6337fc823ce20251c8de8085948165c81aaa701e),
+especially its domain, authorization and execution documents and its effect queue.
+Consult its mechanisms and tests when a matching need appears. Its full-access
+executor and restart-driven reassignment are not our isolation or recovery
+contract. This reference adds no dependency, source-code import or GitHub/Feishu
+integration; those applications are optional future qualification cases.
