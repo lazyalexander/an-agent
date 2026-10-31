@@ -3,8 +3,8 @@
 Status: accepted development direction, with the first native input-reference
 slice implemented in [native storage](../crates/an-agent-host/NATIVE-STORAGE.md).
 Formal payload deletion and host sessions remain planned. The qualified boundary
-remains local macOS, reviewed headless CLI spools. GUI/TUI, new backends and process-memory restoration
-are deferred. Existing Linux code and CI remain intact.
+remains reviewed headless CLI spools; see the [platform matrix](platforms.md).
+GUI/TUI, new backends and process-memory restoration are deferred.
 
 ## Reuse before adding a manager
 

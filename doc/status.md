@@ -1,9 +1,9 @@
 # Implementation status and next steps
 
 This page separates qualified local contracts from the architecture's broader
-intent. Example success never expands a runtime grant. macOS headless execution
-is the current product scope; existing Linux code and CI remain supported without
-new compatibility or backend work in this phase.
+intent. Example success never expands a runtime grant. Reviewed headless execution
+is the current product scope; platform-specific coverage and deferred targets are
+maintained in the [support and qualification matrix](platforms.md).
 
 ## P0: bounded headless event delivery
 

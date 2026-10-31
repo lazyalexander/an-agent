@@ -140,7 +140,7 @@ fn transition(
     revision: Option<&str>,
     approved: Option<&str>,
 ) -> Result<Value> {
-    if !cfg!(target_os = "macos") {
+    if !crate::execution::sandbox::workspace::supported() {
         return Err("native round control is qualified only on macOS".into());
     }
     let root = location(path)?;

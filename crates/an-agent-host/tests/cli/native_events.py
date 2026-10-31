@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Real macOS artifact-event delivery, cancellation and no-retry qualification."""
+"""Real native artifact-event delivery, cancellation and no-retry qualification."""
 import argparse
 import hashlib
 import json
 from pathlib import Path
+from host_qualification import require_native_workspace
 import platform
 import signal
 import subprocess
@@ -15,8 +16,7 @@ def main():
     parser.add_argument("--host", type=Path, required=True)
     parser.add_argument("--evidence", type=Path, required=True)
     options = parser.parse_args()
-    if platform.system() != "Darwin":
-        raise SystemExit("Real macOS native enforcement required; no fallback")
+    require_native_workspace()
     root = options.evidence.resolve()
     root.mkdir(mode=0o700)
     host = options.host.resolve(strict=True)

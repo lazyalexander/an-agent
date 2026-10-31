@@ -1,7 +1,7 @@
 //! Operator-owned trusted-runtime plan; package metadata cannot supply authority.
 use super::inventory;
 use crate::{
-    execution::{Result, store},
+    execution::{Result, sandbox::workspace, store},
     file_job::regular,
 };
 use serde::Deserialize;
@@ -163,8 +163,8 @@ impl Profile {
                 );
             }
         }
-        let mut plan = json!({"schema":"an-workspace-plan-v2","backend":"macos-trusted-workspace-v1",
-            "supported":cfg!(target_os="macos"),"profile_sha256":store::digest(bytes),
+        let mut plan = json!({"schema":"an-workspace-plan-v2","backend":workspace::PLAN_BACKEND,
+            "supported":workspace::supported(),"profile_sha256":store::digest(bytes),
             "executable":exe,"executable_sha256":executable_hash,"args":args,"environment":env,
             "inputs":inputs,"readonly":roots,"outputs":outputs,"root":root,
             "predecessor":predecessor,"scratch_before":if work.exists(){inventory::scan(&work)?}else{json!({})},
