@@ -15,6 +15,9 @@ no machine configuration, credentials or private operational transcripts.
 4. [Implementation status and next steps](status.md): what works, what remains
    operator-only and the next bounded refactoring slices.
 
+5. [Artifact retention, sessions and logical threads](session-and-retention.md):
+   proposed ownership, bounded context and headless delivery plan.
+
 ## Detailed implementation contracts
 
 Keep detailed behavior close to the code that owns it. These existing documents
