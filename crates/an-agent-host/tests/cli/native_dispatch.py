@@ -174,6 +174,23 @@ def main():
     assert call("spool-events-dispatch-show", ws, "normal-batch", success=False)["reason"] == "incomplete-entry-evidence"
     call("spool-events-dispatch", ws, req, success=False)
     evidence.write_bytes(receipt_bytes)
+    summary_file = ws / "dispatches/normal-batch/result.json"
+    original_summary = summary_file.read_bytes()
+    summary_file.unlink()
+    call("spool-events-dispatch", ws, req, success=False)
+    repair = call("spool-events-dispatch-reconcile", ws, "normal-batch")
+    assert not summary_file.exists()
+    call("spool-events-dispatch-reconcile", ws, "normal-batch", "--approve", "0" * 64, success=False)
+    saved_entry = (ws / "dispatches/normal-batch/entry-0.json").read_bytes()
+    (ws / "dispatches/normal-batch/entry-0.json").unlink()
+    call("spool-events-dispatch-reconcile", ws, "normal-batch", success=False)
+    (ws / "dispatches/normal-batch/entry-0.json").write_bytes(saved_entry)
+    repaired = call("spool-events-dispatch-reconcile", ws, "normal-batch", "--approve", repair["approval_sha256"])
+    assert repaired["executed"] is False and repaired["summary_reconstructed"] is True
+    assert json.loads(summary_file.read_bytes()) == json.loads(original_summary)
+    assert call("spool-events-dispatch-reconcile", ws, "normal-batch")["already_recorded"] is True
+    for run in ids:
+        assert len(list((normal / "runs" / run / "job/attempts").iterdir())) == 1
     # A fresh batch name does not bypass event/subscription's single-admission fence.
     duplicate = request("duplicate", "normal", initial)
     call("spool-events-dispatch", ws, duplicate, success=False)
@@ -191,6 +208,7 @@ def main():
         if process.poll() is None:
             process.send_signal(signal.SIGINT)
             finish(process, False)
+    call("spool-events-dispatch-reconcile", ws, "stop-batch", success=False)
     assert result["reason"] == "stopped" and result["attempted_entries"] == 1
     assert call("spool-status", stopped, ids[0])["execution_status"] == "succeeded"
     assert not (stopped / "runs" / ids[1] / "job").exists()
@@ -306,7 +324,7 @@ def main():
         "host_sha256": hashlib.sha256(host.read_bytes()).hexdigest(), "fixed_state": True,
         "stale_commit_refused": True, "stop_drained_one_entry": True,
         "cancel_termination_confirmed": True, "unknown_retried": False, "real_ledger_write_failure_fenced": True,
-        "automatic_retries": 0, "model_invoked": False, "subscription_control_qualified": True,
+        "automatic_retries": 0, "model_invoked": False, "subscription_control_qualified": True, "summary_reconstruction_qualified": True,
         "old_approval_refused_after_resume": True, "legacy_host_refusal_checked": legacy is not None}
     (root / "acceptance.json").write_text(json.dumps(summary, indent=2))
     print(json.dumps(summary))

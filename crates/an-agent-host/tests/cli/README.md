@@ -85,3 +85,7 @@ The dispatch suite also qualifies subscription admission pause/resume, old direc
 and batch approval refusal, running-work custody and no replay after resume.
 Optionally pass `--legacy-host OLD_HOST` to invoke a previous v1-only binary and
 verify upgrade refusal. Its summary distinguishes whether this extra check ran.
+
+The dispatch suite also loses a known completed summary, checks inert/wrong
+approval and missing-entry refusal, reconstructs it explicitly and checks unchanged
+attempt counts. Partial stopped batches cannot use this reconciliation path.

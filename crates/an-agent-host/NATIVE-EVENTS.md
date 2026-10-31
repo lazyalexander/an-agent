@@ -285,3 +285,17 @@ unchanged delivery identity, pausing during a running batch, explicit custody
 while paused, no batch replay after resume and permanent revocation. Local
 qualification also invokes the previous host binary to verify v2 refusal;
 CI checks the v2 marker and current-host contract without building a second host.
+
+## Explicit completed-summary reconstruction
+
+`spool-events-dispatch-reconcile WORKSPACE NAME [--approve HASH]` reconstructs
+only a missing completed summary. Every selected entry must have its original
+batch-bound record, exact admitted delivery/start plan, and matching successful
+native receipt with confirmed termination. Preview is inert; approval binds all
+those proofs and the deterministic summary. Conflicting summaries are never
+overwritten. Missing entry/start/result evidence, cancelled execution and partial
+or stopped batches refuse. Repeated reconstruction of the same summary is inert.
+No processes run, no batch resumes, and no products/state are accepted or committed.
+Historical success is not a new cleanup authorization. Complete retained native
+receipts remain required, including after private collection. Fault injection
+qualifies loss of the projection after known completion, not arbitrary power loss.

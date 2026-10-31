@@ -2,6 +2,8 @@
 mod control;
 mod delivery;
 mod dispatch;
+mod dispatch_reconcile;
+pub use dispatch_reconcile::reconcile_dispatch;
 mod monitor;
 mod publication;
 mod settlement;

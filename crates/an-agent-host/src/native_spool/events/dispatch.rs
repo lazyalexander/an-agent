@@ -75,7 +75,7 @@ fn deliver(
         ),
     }
 }
-fn recorded(space: &Space, dir: &Path) -> Result<Value> {
+pub(super) fn recorded(space: &Space, dir: &Path) -> Result<Value> {
     let value: Value =
         serde_json::from_slice(&regular(&dir.join("intent.json"), 8 * 1024 * 1024)?)?;
     if value["schema"] != "an-native-event-dispatch-intent-v1"

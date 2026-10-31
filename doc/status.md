@@ -99,3 +99,9 @@ headless milestone set and require their own qualification.
 Preserve CLI/profile/tape compatibility. Unsupported enforcement must refuse,
 not silently fall back. Development merges require the existing CI and acceptance
 gates plus a user notification; main promotion remains user-triggered.
+
+Completed dispatches now support explicit missing-summary reconstruction from all
+original entry/start/delivery and confirmed-success native receipts. Incomplete,
+failed or unknown execution remains fenced; reconciliation never runs or resumes
+work. Background admission, route replacement and formal retention retirement
+remain unqualified P1 gaps.
