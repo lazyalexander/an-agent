@@ -85,23 +85,20 @@ The [native spool slice](NATIVE-SPOOL.md) now binds a verified code release and
 instance to the reviewed workspace engine. Its fixed shell profile and between-run
 kit edits do not establish general agent containment or a multi-backend spool ABI.
 
-## Incremental migration
+## Qualified local boundary and deferred work
 
-1. Adopt spool/silk terminology in architecture and new authoring output. Preserve
-   existing CLI/wire spellings and immutable releases; do not rewrite history.
-2. Make every production execution entry explicitly bind an owning spool release,
-   attempt, input/state versions and effective operator grant. Keep operator-only
-   development/workspace jobs visibly separate until they satisfy this contract.
-3. Define the smallest common plan/settlement fields from those real paths. Bind
-   selected backend capabilities to platform/version/profile evidence. Unsupported
-   requests are rejected; semantic advice does not choose a weaker backend.
-4. Qualify one spool with two internal silk steps in one owned environment. Verify
-   release/input binding, no extra environment per call, whole-attempt cancellation,
-   surviving descendants, stale-generation refusal and unchanged artifact custody.
-   Keep business sequencing inside the spool, not in a generic host DAG engine.
-5. Only then consider persistent environments or another backend. Pause, memory
-   suspension, snapshot backup, crash reconciliation and stronger process-tree
-   containment each require separate evidence. No new VM controller is implied.
+The native release facade binds code, instance, attempt, explicit input/state and
+operator approval to the existing supervisor. Real two-silk/kit/two-instance
+acceptance qualifies cancellation, baseline restoration and fixed product custody.
+Workspace events add separately authorized inter-spool delivery; domain branches
+and loops remain inside silk/kit. Developer-only workspace jobs remain visibly
+separate from registered production profiles.
+
+Native round-boundary pause and checkpoint/stop suspension do not imply live
+process-memory suspension or VM restoration. Stronger containment, dependency
+resolution, automatic migration and another backend require concrete demand and
+separate qualification. Use [implementation status](../../doc/status.md) for the
+current plan rather than treating completed migration steps as new work.
 
 ## Naming compatibility
 

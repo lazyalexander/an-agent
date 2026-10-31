@@ -73,7 +73,7 @@ pub fn artifact_read(
         if settled_run::accepted(&root, request_run)?.evidence != accepted.evidence {
             return Err("request evidence changed since approval".into());
         }
-        let (_, binding) = artifact_versions::read(&catalog, &request.revision)?;
+        let (_, binding) = artifact_versions::admission::read_input(&catalog, &request.revision)?;
         if binding != execution_plan["input_revision"] {
             return Err("revision changed since approval".into());
         }

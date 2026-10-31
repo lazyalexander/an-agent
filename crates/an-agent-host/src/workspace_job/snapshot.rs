@@ -122,7 +122,7 @@ pub(super) fn prepare(plan: &Value, attempt: &Path, cancelled: &AtomicBool) -> R
             return Err("snapshot preparation cancelled; no workload started".into());
         }
         let bytes = if let Some(item) = pinned {
-            let (bytes, binding) = crate::artifact_versions::read(
+            let (bytes, binding) = crate::artifact_versions::admission::read_input(
                 Path::new(item["catalog"].as_str().ok_or("catalog")?),
                 item["binding"]["revision"].as_str().ok_or("revision")?,
             )?;

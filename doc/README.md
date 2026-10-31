@@ -32,7 +32,7 @@ them or turn a design requirement into an implemented guarantee.
 | Optional OpenShell backend | [Adapter contract](../crates/an-agent-host/OPENSHELL.md), [recovery limits](../crates/an-agent-host/OPENSHELL-RECOVERY.md) |
 | Release-bound native spool | [First macOS package lifecycle](../crates/an-agent-host/NATIVE-SPOOL.md) |
 | Native round control | [Pause admission, checkpoint suspension and explicit resume](../crates/an-agent-host/NATIVE-CONTROL.md) |
-| Native storage | [Observation, private snapshot collection and admission pressure](../crates/an-agent-host/NATIVE-STORAGE.md) |
+| Native storage | [Private collection, artifact input retirement and admission pressure](../crates/an-agent-host/NATIVE-STORAGE.md) |
 | Native release review | [Verified changes and independent continuation](../crates/an-agent-host/NATIVE-RELEASES.md) |
 | Native workspace events | [Artifact facts, static subscriptions and explicit delivery](../crates/an-agent-host/NATIVE-EVENTS.md) |
 | Native Python and binary products | [Operator selection, dependency inventory and byte custody](../crates/an-agent-host/NATIVE-PYTHON.md) |

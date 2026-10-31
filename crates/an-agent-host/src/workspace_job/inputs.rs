@@ -38,7 +38,8 @@ pub(super) fn bind(
                 "artifact catalog must remain outside workload read and write roots".into(),
             );
         }
-        let (bytes, binding) = artifact_versions::read(&catalog, &request.revision)?;
+        let (bytes, binding) =
+            artifact_versions::admission::read_input(&catalog, &request.revision)?;
         if selected["sha256"] != store::digest(&bytes) {
             return Err("selected file does not match pinned artifact revision".into());
         }

@@ -110,12 +110,14 @@ CI retains the report per OS; timing is diagnostic evidence, not a benchmark.
 
 ## One reviewed body with two silks
 
-The next slice qualifies one coordinator and two internal silk processes through
-the existing macOS reviewed workspace profile. One process group, attempt and
+The qualified reviewed-body path runs one coordinator and two internal silk
+processes through the existing macOS reviewed workspace profile. One process group, attempt and
 cancellation owner cover the whole round. A producer hands off an internal file;
 a consumer offers a candidate, and only whole-round settlement can authorize host
 copy/verification and publication. A zero-exit leader with abandoned members is
-failed, not successful after forced cleanup.
+failed, not successful after forced cleanup. The release-bound native facade also
+qualifies two internal silk steps; neither path grants a separate environment per
+silk or moves domain sequencing into the host.
 
 The [implementation and stress plan](../crates/an-agent-host/MULTI-SILK-PLAN.md)
 separates current regression/soak evidence from future saturation and crash-fault

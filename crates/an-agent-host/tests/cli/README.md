@@ -101,3 +101,11 @@ through two real headless instances, measures producer logical bytes before/afte
 finite private collection, and verifies concurrent consumer progress, cancellation,
 retained products/state/external inputs and lost-receipt refusal. It reports no
 physical APFS savings or formal-product GC guarantee.
+
+`native_retirement.py --host HOST --evidence NEW_DIRECTORY` retires an accepted
+output while one real stateful receiver runs, rejects another receiver's stale
+direct/event/batch approvals, and completes acceptance, state commit and causal
+confirmation after closure. It checks unrelated/new versions, private collection,
+confirmed cancellation, preserved bytes and a torn retirement record without
+retry. This qualifies admission closure, not formal payload deletion or revocation
+of independent copies. Unit tests own concurrent-reader and marker-fault checks.
