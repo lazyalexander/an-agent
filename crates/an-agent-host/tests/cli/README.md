@@ -160,3 +160,14 @@ It checks fixed input/reply pins, stale generations, wrong correlation, cancella
 missing completion without replay and confirmed-only collection. Revocation closes
 future delivery, while the receiver's supervisor owns termination. This is not
 live IPC, a fairness benchmark or a background scheduler.
+
+`native_supervisor_loss.py --host HOST --evidence NEW_DIRECTORY` contrasts
+SIGTERM with SIGKILL of the actual launching CLI. Two finite workers make orphan
+execution observable after the original deadline. It checks original group
+settlement for handled cancellation, conservative custody after owner loss,
+independent-instance progress and preserved formal products. The disposable
+fixture then removes stale lock markers after sampled process exit to verify
+that missing termination evidence independently blocks acceptance, collection,
+unload and replay. That injection is a test operation, never a recovery recipe.
+Its summary distinguishes passing refusal checks from the observed missing
+caller-independent supervisor. Local process samples carry no cleanup authority.
