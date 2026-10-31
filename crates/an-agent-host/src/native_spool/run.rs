@@ -138,17 +138,21 @@ struct RunAdmission<'a> {
 pub(super) fn start_supervised(
     root: &Path,
     name: &str,
-    input: &Path,
     seconds: u64,
     request: &Value,
     cancelled: &AtomicBool,
 ) -> Result<Value> {
-    let start = &request["plan"]["start"];
+    let plan = &request["plan"];
+    let input = match plan.get("state_revision") {
+        Some(value) => Input::State(value.as_str().ok_or("state revision")?),
+        None => Input::File(Path::new(plan["input"].as_str().ok_or("input path")?)),
+    };
+    let start = &plan["start"];
     let approval = store::digest(&serde_json::to_vec(start)?);
     start_selected(
         root,
         name,
-        Input::File(input),
+        input,
         seconds,
         Some(&approval),
         RunAdmission {

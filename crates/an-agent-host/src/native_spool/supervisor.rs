@@ -43,20 +43,47 @@ fn request(root: &Path, name: &str) -> Result<(PathBuf, Value)> {
     Ok((dir, record))
 }
 
+pub enum Input<'a> {
+    File(&'a Path),
+    State(&'a str),
+}
 pub fn prepare(
     root: &Path,
     name: &str,
-    input: &Path,
+    input: Input<'_>,
     seconds: u64,
     executable: &Path,
     approved: Option<&str>,
 ) -> Result<Value> {
     let root = location(root)?;
-    let input = location(input)?;
+    let (input, revision, preview) = match input {
+        Input::File(path) => {
+            let path = location(path)?;
+            let preview = run::start(&root, name, &path, seconds, None, &AtomicBool::new(false))?;
+            (json!(path), None, preview)
+        }
+        Input::State(revision) => {
+            if !store::valid_digest(revision) {
+                return Err("state requires an exact revision".into());
+            }
+            let preview = run::start_state(
+                &root,
+                name,
+                revision,
+                seconds,
+                None,
+                &AtomicBool::new(false),
+            )?;
+            (Value::Null, Some(revision), preview)
+        }
+    };
     let executable = location(executable)?;
-    let preview = run::start(&root, name, &input, seconds, None, &AtomicBool::new(false))?;
-    let plan = json!({"schema":"an-native-supervisor-v1","root":root,"run":name,
+
+    let mut plan = json!({"schema":"an-native-supervisor-v1","root":root,"run":name,
         "input":input,"seconds":seconds,"executable":executable,"start":preview["plan"]});
+    if let Some(revision) = revision {
+        plan["state_revision"] = json!(revision);
+    }
     let (hash, execute) = approval(&plan, approved)?;
     if !execute {
         return Ok(json!({"plan":plan,"approval_sha256":hash,"reserved":false,"executed":false}));

@@ -274,12 +274,13 @@ establish original supervisor ownership or recover a lost execution result.
 
 ## Independent attempt supervisor
 
-The explicit `spool-supervisor` entry owns one native file-input run in a
+The explicit `spool-supervisor` entry owns one native file-input or explicit-state run in a
 separate process. It uses the same reviewed spool release, approved start plan,
 execution boundary, process-group settlement and formal artifact commands.
 
 ```text
 spool-supervisor start INSTANCE RUN INPUT SECONDS [--approve HASH]
+spool-supervisor start-state INSTANCE RUN REVISION SECONDS [--approve HASH]
 spool-supervisor show INSTANCE RUN
 spool-supervisor cancel INSTANCE RUN [--approve HASH]
 spool-status INSTANCE RUN
@@ -313,8 +314,17 @@ refusal, a torn launch reservation, supervisor SIGKILL, an independent instance
 and preservation of formal products. Its finite workers bound fault experiments.
 The original foreground fault case remains in CI to preserve its explicit limits.
 
-This slice covers supervised native file inputs. Existing foreground starts,
-stateful starts, session dispatch and peer phases retain their existing lifecycle.
+Explicit state supervision uses `start-state` with an exact checkpoint revision.
+The revision and native start plan are bound into the durable approval, and the
+worker selects that revision again through the existing state-input path.
+Advancing HEAD never selects a different checkpoint. The real state fault suite
+advances HEAD before launching the old revision and tests client loss, timeout,
+cancellation and unknown-owner retention. Combined business-data/state requests
+and session/peer migration retain their separate qualification scope.
+
+This slice covers supervised native file inputs and exact checkpoint inputs.
+Existing foreground starts, combined data/state starts, session dispatch and peer
+phases retain their existing lifecycle.
 Their migration needs ownership-specific qualification. Before-launch uncertain
 reservations remain retained; no automatic lock repair or process adoption is
 implemented. Local host records and the installed supervisor binary are trusted.

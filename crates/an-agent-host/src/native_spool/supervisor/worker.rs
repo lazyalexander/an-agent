@@ -27,7 +27,6 @@ pub fn execute(root: &Path, name: &str, hash: &str, cancelled: Arc<AtomicBool>) 
         &json!({"request":hash,"pid":std::process::id()}),
     )?;
     sync(&dir)?;
-    let input = Path::new(text(&record["plan"], "input")?);
     let seconds = record["plan"]["seconds"]
         .as_u64()
         .ok_or("supervisor deadline")?;
@@ -47,7 +46,7 @@ pub fn execute(root: &Path, name: &str, hash: &str, cancelled: Arc<AtomicBool>) 
             }
         });
         let stop_observer = StopObserver(&done);
-        let outcome = run::start_supervised(root, name, input, seconds, &record, &cancelled);
+        let outcome = run::start_supervised(root, name, seconds, &record, &cancelled);
         drop(stop_observer);
         monitor
             .join()

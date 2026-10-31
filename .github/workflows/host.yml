@@ -97,6 +97,9 @@ jobs:
       - name: Independent attempt supervision after client exit
         if: matrix.native_workspace
         run: python3 -B crates/an-agent-host/tests/cli/native_supervisor.py --host target/debug/an-agent-host --evidence "$RUNNER_TEMP/native-state/attempt-supervisor"
+      - name: Explicit fixed state with independent supervision
+        if: matrix.native_workspace
+        run: python3 -B crates/an-agent-host/tests/cli/native_supervisor_state.py --host target/debug/an-agent-host --evidence "$RUNNER_TEMP/native-state/supervised-state"
       - name: Native private materials and inert notes
         if: matrix.native_workspace
         run: python3 -B crates/an-agent-host/tests/cli/native_material_boundary.py --host target/debug/an-agent-host --evidence "$RUNNER_TEMP/native-state/material-boundary"
