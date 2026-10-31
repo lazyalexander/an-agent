@@ -75,3 +75,8 @@ The event suite also qualifies read-only delivery inventory and foreground
 monitoring during actual execution, evidence changes, observation cancellation,
 deadline exit and restart without replaying unknown work. The monitor emits
 NDJSON, whereas ordinary host commands return one JSON value.
+
+`native_dispatch.py --host HOST --evidence NEW_DIRECTORY` qualifies finite
+approved stateful headless dispatch. It covers exact inputs, no implicit state
+chaining, stale commits, drain-stop versus cancellation, confirmed-only cleanup,
+actual dispatch-ledger write failure and interrupted observation without replay.

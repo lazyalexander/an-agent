@@ -24,6 +24,7 @@ impl Space {
             "facts/env.md",
             "deliveries",
             "revocations",
+            "dispatches",
         ] {
             store::no_links(&root.join(name))?;
         }

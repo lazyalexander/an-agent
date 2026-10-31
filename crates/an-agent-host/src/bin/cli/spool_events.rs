@@ -8,6 +8,12 @@ pub(super) fn dispatch(command: &str, args: &[String]) -> Result<Value> {
         _ => (args, None),
     };
     match (command, args) {
+        ("spool-events-dispatch", [root, request]) => dispatch_control(|stop, cancel| {
+            events::dispatch(Path::new(root), Path::new(request), approved, stop, cancel)
+        }),
+        ("spool-events-dispatch-show", [root, name]) if approved.is_none() => {
+            events::inspect_dispatch(Path::new(root), name)
+        }
         ("spool-events-pending", [root]) if approved.is_none() => events::pending(Path::new(root)),
         ("spool-events-watch", [root, seconds, interval]) if approved.is_none() => {
             super::with_cancellation(|cancelled| {
@@ -55,4 +61,27 @@ pub(super) fn dispatch(command: &str, args: &[String]) -> Result<Value> {
         }
         _ => Err("invalid native event arguments".into()),
     }
+}
+
+/// Dispatch stop drains the selected entry; cancel uses the existing supervisor.
+fn dispatch_control(
+    run: impl FnOnce(&std::sync::atomic::AtomicBool, &std::sync::atomic::AtomicBool) -> Result<Value>,
+) -> Result<Value> {
+    use std::sync::{Arc, atomic::AtomicBool};
+    let stop = Arc::new(AtomicBool::new(false));
+    let cancel = Arc::new(AtomicBool::new(false));
+    #[cfg(unix)]
+    let mut signals = super::SignalRegistrations::default();
+    #[cfg(unix)]
+    {
+        signals.0.push(signal_hook::flag::register(
+            signal_hook::consts::SIGTERM,
+            Arc::clone(&stop),
+        )?);
+        signals.0.push(signal_hook::flag::register(
+            signal_hook::consts::SIGINT,
+            Arc::clone(&cancel),
+        )?);
+    }
+    run(&stop, &cancel)
 }

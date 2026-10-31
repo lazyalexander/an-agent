@@ -168,3 +168,71 @@ rows, monitoring while an actual headless delivery holds the instance lock,
 changed evidence after revocation, observation cancellation without execution
 cancellation, deadline exit, and monitor restart with missing result evidence
 without creating another attempt. Rust tests cover torn logs and output faults.
+
+## Finite approved dispatch
+
+`spool-events-dispatch WORKSPACE REQUEST_JSON [--approve HASH]` selects a finite
+list of existing artifact events. It does not listen for future events or follow
+result events. The strict request is:
+
+```json
+{
+  "schema": "an-native-event-dispatch-request-v1",
+  "name": "reviewed-batch",
+  "entries": [
+    {
+      "event": "FULL_EVENT_DIGEST",
+      "subscription": "counter",
+      "state_revision": "FULL_COMMITTED_STATE_DIGEST"
+    }
+  ]
+}
+```
+
+Select 1..16 unique event/subscription pairs; omit `state_revision` for stateless
+entries. A different state cannot create a second delivery identity. Preview
+prepares the existing bounded run profiles but launches nothing. One approval
+binds the workspace, ordered selections and every exact existing delivery/start
+plan, including state, code, target identity/generation and runtime inputs. No
+wildcard, latest-state alias, future-event grant or implicit state chaining is
+accepted. Every entry still revalidates the normal delivery approval at admission.
+A changed/revoked target or edited kit cannot inherit the previous grant.
+
+An exclusive durable dispatch intent is recorded before any entry is attempted.
+Entries run sequentially, and each returned result is durably recorded before
+selecting the next. Only a successful result with confirmed termination permits
+the next selection. Any refusal, failure, uncertain outcome or ledger write error
+stops the batch; unknown work is never retried. A workspace allows 32 dispatch
+identities. These are retained evidence, not a recyclable work queue.
+
+For this command only, **SIGTERM stops selection after the current selected entry
+finishes**, while **SIGINT requests cancellation through its existing supervisor
+and prevents further selection**. Other commands retain their existing signal
+semantics. Stop is not instantaneous revocation of an already selected entry.
+Cancellation does not itself prove termination; inspect the retained native run
+receipt before any acceptance or collection. Process disappearance or a missing
+batch summary cannot authorize either. There is no cross-process pause/resume
+service or parallel task pool in this slice.
+
+`spool-events-dispatch-show WORKSPACE NAME` observes retained intent/entry/result
+records without execution. Repeating a recorded dispatch also observes it: it
+never resumes the remaining entries, even if it stopped cleanly. A partial intent,
+lost entry record or missing final summary remains fenced/uncertain. Choosing a
+new batch name does not bypass the existing event/subscription delivery fence.
+To request still-unadmitted work after a clean stop, explicitly review a fresh
+finite selection; do not resend unknown deliveries. No automatic retry or resume
+command is provided.
+
+Dispatch success means its selected executions completed with termination
+confirmed, **not** that products were accepted or events consumed. Acceptance,
+checkpoint compare-and-swap, event completion and cleanup remain separate host
+operations. Multiple entries may explicitly consume the same checkpoint, so later
+state commits can conflict; the host does not merge or rebase their business state.
+Loom packages the same existing interfaces and gains no scheduler or runtime grant.
+
+Real macOS headless acceptance covers exact state/data results, stale commit
+refusal, wrong/changed approval, graceful stop, cancellation with confirmation,
+blocked cleanup during execution, retained state/products, an actual ledger write
+failure after execution, incomplete intent and missing receipt/summary observation
+without replay. Evidence-loss injection follows known execution; it is not a
+claim of arbitrary process-kill or power-loss recovery.

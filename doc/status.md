@@ -26,12 +26,17 @@ and CI are retained. This documentation does not add a new platform or backend.
 
 The first slice is a read-only pending-delivery inventory and bounded foreground
 change monitor, reusing the P0 delivery identities and evidence. It does not
-prepare runs or extend execution authority. The next slice should qualify
-bounded approved dispatch with explicit state selectors and stop/unknown-result
-behavior; subscription changes must preserve instance/generation fencing.
+prepare runs or extend execution authority. Finite explicitly approved dispatch
+now reuses those identities for 1..16
+selected existing deliveries with fixed state selectors, drain-stop, cancellation
+and an exclusive no-resume intent. Per-entry confirmed success gates the next
+selection; acceptance/state commit/completion remain explicit. Subscription
+changes must preserve instance/generation fencing.
 Do not introduce implicit latest-state selection, automatic retries, domain
 branch/loop routing, a second Loom scheduler or another execution backend.
-This is a staged local operational path, not a claim that P1 is complete.
+Background admission, ongoing subscription updates and retention retirement
+remain separate unqualified operations. This is a staged local operational path,
+not a claim that all P1 daily operation is complete.
 
 ## Remaining local spool milestones
 
