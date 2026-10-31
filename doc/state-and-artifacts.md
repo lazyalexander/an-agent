@@ -73,3 +73,8 @@ External read-only access can avoid an extra file copy, but does not freeze a
 source that another application can change. Fixed-version inputs need managed
 immutable bytes or a qualified snapshot; live inputs must not claim that guarantee.
 See the [handoff pressure decision](../crates/an-agent-host/HANDOFF-PRESSURE.md).
+
+The proposed [session and retention plan](session-and-retention.md) separates
+evidence references, explicit byte-retention pins and independent copies. The
+native pin ledger, formal payload collector and session coordinator described
+there are not implemented yet.

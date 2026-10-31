@@ -68,6 +68,9 @@ jobs:
       - name: Native workspace event delivery and cancellation
         if: runner.os == 'macOS'
         run: python3 -B crates/an-agent-host/tests/cli/native_events.py --host target/debug/an-agent-host --evidence "$RUNNER_TEMP/native-state/events"
+      - name: Concurrent observation and revocation without retries
+        if: runner.os == 'macOS'
+        run: python3 -B crates/an-agent-host/tests/cli/native_monitor.py --host target/debug/an-agent-host --fixture "$RUNNER_TEMP/native-state/events" --evidence "$RUNNER_TEMP/native-state/monitor-concurrency"
       - name: Native Python runtime and binary event custody
         if: runner.os == 'macOS'
         run: python3 -B crates/an-agent-host/tests/cli/native_binary.py --host target/debug/an-agent-host --evidence "$RUNNER_TEMP/native-state/binary"

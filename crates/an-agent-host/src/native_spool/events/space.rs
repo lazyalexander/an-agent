@@ -5,10 +5,17 @@ pub(super) struct Space {
     pub root: PathBuf,
     pub id: String,
     pub version: u8,
-    pub facts: Workspace,
+    pub facts: super::facts::Facts,
+    pub observed_log: Option<String>,
 }
 impl Space {
     pub fn open(path: &Path) -> Result<Self> {
+        Self::open_mode(path, false)
+    }
+    pub fn observe(path: &Path) -> Result<Self> {
+        Self::open_mode(path, true)
+    }
+    fn open_mode(path: &Path, observing: bool) -> Result<Self> {
         let root = native::location(path)?;
         let meta: Value =
             serde_json::from_slice(&regular(&root.join("native-events.json"), 65536)?)?;
@@ -32,8 +39,13 @@ impl Space {
         ] {
             store::no_links(&root.join(name))?;
         }
-        regular(&root.join("facts/log.jsonl"), 8 * 1024 * 1024)?;
-        let facts = Workspace::open(root.join("facts"))?;
+        let bytes = regular(&root.join("facts/log.jsonl"), 8 * 1024 * 1024)?;
+        let observed_log = observing.then(|| store::digest(&bytes));
+        let facts = if observing {
+            super::facts::Facts::observed(&bytes)?
+        } else {
+            super::facts::Facts::Live(Workspace::open(root.join("facts"))?)
+        };
         if facts.log()?.len() > 512 {
             return Err("native event workspace record limit exceeded".into());
         }
@@ -42,10 +54,12 @@ impl Space {
             id,
             version,
             facts,
+            observed_log,
         })
     }
     /// Metadata upgrades are monotonic and require the workspace operation lock.
     pub fn upgrade(&self, version: u8) -> Result<()> {
+        self.facts.writable()?;
         if !(2..=3).contains(&version) {
             return Err("unsupported workspace upgrade".into());
         }
@@ -108,6 +122,7 @@ impl Space {
         Ok(found)
     }
     pub fn append(&self, event: &Value) -> Result<Value> {
+        self.facts.writable()?;
         let id = text(event, "id")?;
         if hash(&event["event"])? != id || event["event"]["workspace"] != self.id {
             return Err("event does not bind this workspace".into());
@@ -221,8 +236,7 @@ pub fn init(path: &Path) -> Result<Value> {
     inspect(&root)
 }
 pub fn inspect(path: &Path) -> Result<Value> {
-    let space = Space::open(path)?;
-    let _lock = store::lock(&space.root)?;
+    let space = Space::observe(path)?;
     let records = space.facts.log()?;
     let mut subscriptions = Vec::new();
     for record in &records {
@@ -263,6 +277,7 @@ pub fn inspect(path: &Path) -> Result<Value> {
         json!({"schema":"an-native-events-observation-v1","workspace":space.id,
         "records":records,"subscriptions":subscriptions,"deliveries":deliveries,
         "authority":"observations and marker presence are not execution or cleanup permission",
-        "execution_granted":false,"background_dispatch":false}),
+        "execution_granted":false,"background_dispatch":false,
+        "observation":super::monitor::boundary(&space)?}),
     )
 }

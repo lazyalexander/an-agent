@@ -1,8 +1,8 @@
 # Model connections and explicit context
 
 This is a host-library slice, not a new model gateway or autonomous agent.
-Core is unchanged. Waver produces portable inputs; it does not retain model
-credentials, install connections, manage sessions, or perform inference.
+Core is unchanged. Loom owns development and packaging; it does not retain model
+credentials, install connections, manage runtime sessions, or perform inference.
 
 ## Connection ownership
 
@@ -46,7 +46,8 @@ The normal core path provides admission, request/response evidence and usage.
 Do not use an infallible output sink to claim a fallible file write succeeded.
 
 `an-agent-host context-check THREAD PACKET` validates without importing, granting
-authority or calling a model. Waver's `context-packet` produces this wire format.
+authority or calling a model. The legacy Waver `context-packet` command produced
+this wire format; this is not a claim that current Loom exposes that command.
 The [one-shot model CLI](MODEL-CLI.md) now runs explicitly approved requests
 through this host library. A digest binds bytes, not authorship, truth or confidence. Source labels
 are claims. Re-import can create duplicate notes; there is no deduplication or
@@ -65,8 +66,8 @@ It verifies unrelated notes/events are not sent and the secret is absent from
 tape. Additional tests reject identity changes and malformed endpoints, preserve
 usage validation and redact failed responses. `tests/host_agent.rs` verifies
 the imported context stays out of the system message and is cited by the action.
-Waver's pinned cross-repository test checks packet compatibility and audience
-rejection through the real CLI. These are not live vendor-model quality tests.
+The historical Waver pinned cross-repository test checks packet compatibility
+and audience rejection through the real CLI. These are not live vendor-model quality tests.
 
 Next: named profile management, stronger spending controls and authenticated
 remote approval if needed. Do

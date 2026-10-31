@@ -50,6 +50,11 @@ explicit inputs/state, finite event operation, interruption, retained products
 and measured capacity. Preserve unknown results without automatic replay. This
 is the P1 closure direction, not a requirement to build a daemon or graph engine.
 
+The next [session and retention plan](session-and-retention.md) makes the
+remaining storage work explicit, then proposes a small session/thread coordination
+layer over existing attempts. It is a plan, not implemented session management.
+GUI and TUI are deferred; no new user interface is required for qualification.
+
 ## Deferred scope and existing surfaces
 
 | Surface | Current scope or reason to defer |

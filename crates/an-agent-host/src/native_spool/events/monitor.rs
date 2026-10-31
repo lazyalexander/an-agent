@@ -42,8 +42,7 @@ fn observation(space: &Space, event: &Value, route: &Value) -> Result<Value> {
 
 /// Inventory does not prepare runs, select state, acknowledge or grant execution.
 pub fn pending(path: &Path) -> Result<Value> {
-    let space = Space::open(path)?;
-    let _lock = store::lock(&space.root)?;
+    let space = Space::observe(path)?;
     let records = space.facts.log()?;
     let mut routes = Vec::new();
     for record in &records {
@@ -77,6 +76,7 @@ pub fn pending(path: &Path) -> Result<Value> {
     Ok(
         json!({"schema":"an-native-event-pending-v1","workspace":space.id,"deliveries":rows,
         "execution_granted":false,"automatic_retries":0,
+        "observation":boundary(&space)?,
         "authority":"observation only; delivery, state selection, acceptance and completion remain explicit"}),
     )
 }
@@ -122,5 +122,20 @@ pub fn watch(
         "reason":if cancelled.load(Ordering::Relaxed) {"cancelled"} else {"deadline"},
         "snapshots":snapshots,"execution_granted":false,"automatic_retries":0,
         "execution_cancelled":false}),
+    )
+}
+
+/// Currentness is advisory, never a claim of an atomic cross-instance snapshot.
+pub(super) fn boundary(space: &Space) -> Result<Value> {
+    let current = regular(&space.root.join("facts/log.jsonl"), 8 * 1024 * 1024)?;
+    let metadata: Value =
+        serde_json::from_slice(&regular(&space.root.join("native-events.json"), 65536)?)?;
+    let unchanged = space.observed_log.as_deref() == Some(&store::digest(&current))
+        && metadata["workspace"] == space.id
+        && metadata["schema"] == format!("an-native-event-workspace-v{}", space.version);
+    Ok(
+        json!({"log_sha256":space.observed_log,"log_unchanged_at_end":unchanged,
+        "scope":"fixed log; external evidence observed independently; not atomic",
+        "execution_granted":false}),
     )
 }
