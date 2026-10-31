@@ -123,8 +123,11 @@ an-agent-host session-control WORKSPACE SESSION paused --approve HASH
 ```
 
 Control modes are `open`, `paused`, `cancelled` and `closed`. Each control change
-requires a fresh digest-bound preview. Pause drains the current dispatch entry and
-prevents the next; reopen permits new threads, never resumes a partial dispatch.
+requires a fresh digest-bound preview. Pause requests drain-stop: once observed,
+the runner finishes its current entry and prevents the next. Control responses
+acknowledge publication, not a synchronous barrier across all runners; an entry
+concurrently crossing admission may still start. It remains owned and must settle.
+Reopen permits new threads, never resumes a partial dispatch.
 Cancel is permanent admission closure and asks each live session runner to forward
 cancellation through its existing supervisor. Close requires retained thread
 completion and original confirmed attempt evidence. Closure never accepts products,
