@@ -266,3 +266,9 @@ For a bounded local delivery inventory use `spool-events-pending WORKSPACE`;
 `spool-events-watch WORKSPACE SECONDS INTERVAL_MS` emits changed snapshots as
 newline-delimited JSON. Monitoring grants no execution and never selects state
 or retries work. See [the event contract](NATIVE-EVENTS.md#delivery-inventory-and-foreground-monitoring).
+
+For finite reviewed event batches use `spool-events-dispatch WORKSPACE REQUEST_JSON`:
+preview first, then approve its exact hash. SIGTERM drains the selected entry and
+stops; SIGINT requests cancellation. State selection is explicit per entry;
+acceptance/commit/completion stay separate. Recorded batches never resume on
+repeat invocation. See [finite dispatch](NATIVE-EVENTS.md#finite-approved-dispatch).

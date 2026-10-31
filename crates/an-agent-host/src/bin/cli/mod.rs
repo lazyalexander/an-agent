@@ -47,7 +47,9 @@ fn with_cancellation(
 pub(super) fn run(args: Vec<String>) -> Result<()> {
     let (command, args) = args.split_first().ok_or("missing command")?;
     let result = match command.as_str() {
-        "spool-events-pending"
+        "spool-events-dispatch"
+        | "spool-events-dispatch-show"
+        | "spool-events-pending"
         | "spool-events-watch"
         | "spool-events-init"
         | "spool-events-show"

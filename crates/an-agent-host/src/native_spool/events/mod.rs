@@ -1,5 +1,6 @@
 //! Bounded artifact events and explicit delivery, not a business workflow engine.
 mod delivery;
+mod dispatch;
 mod monitor;
 mod publication;
 mod settlement;
@@ -8,6 +9,7 @@ mod subscription;
 #[cfg(test)]
 mod tests;
 pub use delivery::{deliver, deliver_with_state};
+pub use dispatch::{dispatch, inspect_dispatch};
 pub use monitor::{pending, watch};
 pub use publication::publish;
 pub use settlement::complete;
