@@ -13,13 +13,13 @@ struct Selection {
 }
 #[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
-struct Request {
+pub(super) struct Request {
     schema: String,
-    name: String,
+    pub(super) name: String,
     entries: Vec<Selection>,
 }
 impl Request {
-    fn read(path: &Path) -> Result<Self> {
+    pub(super) fn read(path: &Path) -> Result<Self> {
         let request: Self = serde_json::from_slice(&regular(path, 65536)?)?;
         native::bundle::identifier(&request.name)?;
         if request.schema != "an-native-event-dispatch-request-v1"
@@ -156,7 +156,16 @@ pub fn dispatch(
     stop: &AtomicBool,
     cancel: &AtomicBool,
 ) -> Result<Value> {
-    let request = Request::read(request)?;
+    execute_request(path, Request::read(request)?, approved, stop, cancel)
+}
+
+pub(super) fn execute_request(
+    path: &Path,
+    request: Request,
+    approved: Option<&str>,
+    stop: &AtomicBool,
+    cancel: &AtomicBool,
+) -> Result<Value> {
     let space = Space::open(path)?;
     let dir = directory(&space, &request.name)?;
     if dir.exists() {

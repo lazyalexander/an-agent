@@ -5,10 +5,13 @@ mod context;
 mod host;
 mod instance;
 mod model;
+mod peer;
 mod retention;
+mod session;
 mod spool;
 mod spool_events;
 mod spool_state;
+mod supervisor;
 mod workspace;
 
 use an_agent_host::execution::Result;
@@ -47,6 +50,11 @@ fn with_cancellation(
 pub(super) fn run(args: Vec<String>) -> Result<()> {
     let (command, args) = args.split_first().ok_or("missing command")?;
     let result = match command.as_str() {
+        "spool-supervisor" => supervisor::dispatch(args)?,
+        "spool-peer" => peer::dispatch(args)?,
+        "session-create" | "session-show" | "session-control" | "session-run" => {
+            session::dispatch(command, args)?
+        }
         "spool-events-dispatch-reconcile"
         | "spool-events-dispatch"
         | "spool-events-dispatch-show"

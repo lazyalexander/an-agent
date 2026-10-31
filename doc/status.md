@@ -15,6 +15,8 @@ P0 is qualified for reviewed local CLI spools, not arbitrary untrusted agents:
   approval, accepted-output custody and causal consumption confirmation.
 - One fixed business input combined with one explicitly selected opaque committed
   checkpoint; stale-state conflict refusal and confirmed-cancellation retention.
+- Explicit per-attempt supervision for file, checkpoint and combined data/state
+  starts survives client loss; event/session/peer dispatch remains foreground.
 - Explicit reconciliation of complete original execution/acceptance evidence.
   Missing termination or uncertain execution never authorizes a rerun.
 - Optional operator-selected Python environments and declared binary products;
@@ -53,7 +55,9 @@ is the P1 closure direction, not a requirement to build a daemon or graph engine
 
 The next [session and retention plan](session-and-retention.md) makes the
 remaining storage work explicit, then proposes a small session/thread coordination
-layer over existing attempts. It is a plan, not implemented session management.
+layer over existing attempts. Its first foreground session/finite-thread adapter is
+implemented; general model-context threads and formal payload collection remain
+unimplemented. See the plan for exact commands and concurrency limits.
 GUI and TUI are deferred; no new user interface is required for qualification.
 
 ## Deferred scope and existing surfaces

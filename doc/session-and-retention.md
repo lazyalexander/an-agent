@@ -1,8 +1,9 @@
-# Artifact retention, sessions and logical threads
+# Artifact retention and runtime ownership
 
 Status: accepted development direction, with the first native input-reference
 slice implemented in [native storage](native-storage.md).
-Formal payload deletion and host sessions remain planned. The qualified boundary
+Formal payload deletion remains planned. A bounded native session/dispatch adapter
+is implemented below; general model-session coordination remains planned. The qualified boundary
 remains reviewed headless CLI spools; see the [platform matrix](platforms.md).
 GUI/TUI, new backends and process-memory restoration are deferred.
 
@@ -25,18 +26,27 @@ a native spool attempt need not create a core model session at all.
 
 | Concept | Meaning | Not equivalent to |
 | --- | --- | --- |
-| Workspace | Host-controlled collaboration and artifact namespace | A shared writable directory granted to every spool |
-| Host session | One bounded engagement: selected participants, thread references, budgets and lifecycle controls | Spool business state, an authorization grant or a VM |
-| Logical thread | One context/disclosure scope and cancellation scope within that engagement | An OS thread, process or independent execution backend |
+| Workspace | Host-controlled versioned material and fact namespace | A peer mailbox or shared model conversation |
+| Runtime session (target) | One activation generation of a spool instance, owning resource and endpoint references | A model conversation, a grant or a new isolation boundary |
+| OS thread/process | Backend execution machinery | A context identity or a domain workflow node |
 | Spool instance | Release-bound domain identity with explicit committed state | One conversation or model session |
 | Attempt | One exact admitted execution, selected inputs/state and settlement evidence | The persistent session or an automatically resumable task |
 | Artifact reference | Exact managed version and declared reason for retaining bytes | A mutable path, implicit latest or permission to execute |
 
-One host session may coordinate several instances; one logical thread may refer
-to several attempts over time. Two sessions can refer to the same instance only
-through its existing ownership/currentness rules. No new concurrent-write right
-is implied. Parent/child thread links explain causality; children receive no
-implicit context, filesystem access, model credentials or spending authority.
+The target starts with one active runtime session per instance. Reuse instance
+activation records rather than adding a parallel manager. Attempts retain their
+existing execution isolation and exact input/state identities; sharing a session
+does not merge attempt scratch or grant concurrent state writes. Reactivation
+must fence old endpoints/results with a new generation. This is not implemented
+by the current `session-*` CLI: that compatible adapter groups finite dispatches,
+and its `THREAD` argument is a one-shot dispatch identity, not an OS thread.
+Do not reinterpret historical records or delete duplicate-admission guards.
+
+Host workers and OS threads may serve different operations over time. Bind model
+context to the authorized participant, selected materials and harness handle,
+never a worker/TID or the entire workspace. Private contexts inside one shared
+spool environment are not independent security boundaries. Existing harnesses
+retain their own history; revoking file access does not erase prior disclosure.
 
 The host owns effective grants, identities, cancellation, reference custody and
 boundary evidence. The spool owns domain state sufficiency, internal sequencing
@@ -45,6 +55,81 @@ and context contracts, validates and packages them; it does not grant access,
 run a scheduler or collect runtime files. Existing harnesses own their native
 conversation history and compaction. Weaver stays a replaceable development
 assistant, not a second runtime supervisor.
+
+## Communication and context boundary
+
+Workspace facts describe accepted material changes. Addressing, request/reply,
+subscription authorization and delivery acknowledgement belong to the host
+protocol boundary. Files may carry protocol envelopes or immutable referenced
+payloads; arbitrary shared-directory writes must not become implicit commands.
+Receiving a message, completing execution and accepting an output are different
+events. Causal downstream work does not inherit upstream cancellation ownership.
+Retain existing event/subscription delivery identities and no-replay fences.
+
+Material read permission does not imply disclosure permission to a model service.
+Domain code/harnesses select useful context; the host checks access, recipient,
+versions and effective authority. The core workspace `env` remains trusted host
+configuration, not a sink for peer messages, retrieved text or arbitrary files:
+it enters the system envelope. Context packets remain untrusted selected data;
+their hashes and audience fields do not independently authorize disclosure.
+
+## Runtime acceptance matrix
+
+| Design requirement | Current evidence | Remaining gap |
+| --- | --- | --- |
+| Fixed authorized artifact delivery | `native_events.py`, `native_data_state.py`, `native_peer.py` | No general live IPC endpoint |
+| No implicit private-note delivery | `native_material_boundary.py`: real read/write denials, unchanged fact log, no delivery, declared outputs only | No model ingestion tested; this is a foreground adapter, not an automatic watcher |
+| Private contents remain outside another attempt | Same suite checks another instance's output/identity and workspace log | Native policy allows file metadata; it does not hide existence or provide hostile-code containment |
+| Cancel one owner without cancelling another | `native_sessions.py`: overlapping real execution | Caller-independent supervisor ownership remains unqualified |
+| Unknown execution cannot release materials | `native_data_state.py`, lost-receipt session cases | Missing receipts are injected after execution; arbitrary crash recovery is not proved |
+| Old delivery cannot become new-instance work | `native_route_successor.py`; `native_peer.py` refuses stale reply admission after pause/resume | Peer endpoints use instance identity and round generation, not a separate session manager |
+| Waiting A leaves B able to execute | `native_peer.py`: B runs while A has independent active work; the wait has no process or held execution lock | No general blocking IPC waiter, fairness guarantee or global scheduler |
+
+The first local material run denied all three protected content reads/writes but
+exposed metadata for all three paths. Keep that limitation explicit rather than
+weakening an assertion or presenting protocol identity checks as information-flow
+isolation. Raw machine paths and command evidence remain local.
+
+## Split-phase peer exchange
+
+For a reviewed headless pair A and B, the trusted host converts an accepted A
+output into a request to one exact B endpoint. A has finished its computation;
+waiting is a host-owned record under the requesting instance, not an idle OS
+thread, a live model, a workspace event or a grant to scan directories. The
+request schema is `an-native-peer-request-v1`; specify `source_run`,
+`source_output`, `target`, `reply_output`, and `wall_seconds` (1–300). Optional
+`request_state` and `response_state` are exact revisions for the respective
+recipient's declared state input, never implicit HEAD. The native generation
+is the existing `(instance, release, round-control generation)` binding. A reload
+has a different instance identity; pause/resume changes the round generation.
+
+```text
+spool-peer request A NAME SPEC.json        # preview; approve its exact digest
+spool-peer show A NAME                    # observation only
+spool-peer run A NAME request             # separately approve B's exact start
+spool-accept B B_RUN                      # formally accept B's declared output
+spool-peer reply A NAME                   # separately approve the correlated reply
+spool-peer run A NAME response            # separately approve A's continuation
+spool-accept A A_RUN                      # accept the final product independently
+spool-peer cancel A NAME                  # revoke future peer admission; no signal
+```
+
+Every mutation takes `--approve HASH` after preview. Each stage has one native
+attempt identity derived from the approved request and phase. The durable stage
+intent precedes execution. Already admitted or uncertain stages refuse replay;
+no implicit forwarding or next run occurs. A reply must match both endpoints,
+the original request, verified target termination, accepted output and exact
+artifact version. Observation distinguishes uncertain, revoked, stale and ready;
+it never authorizes execution or collection.
+
+Revocation fences future admission and consumption; work already admitted can
+finish and remains owned by its original process supervisor. Reclaim requires
+original termination evidence. There is no background worker or live socket
+service, no code-agent access to this operator CLI and no workspace transcript.
+Request names are single-use (64 per requester). Each admitted native phase pins
+its input. Successful peer pins currently stay retained: event acknowledgement
+cannot release them. Waiting itself is not a permanent retention grant; retired
+or unavailable materials refuse new execution. No formal payload GC is enabled.
 
 ## Artifact lifecycle: retain bytes only for explicit reasons
 
@@ -107,13 +192,164 @@ operations settle, and qualify tombstone-aware history inspection. Do not weaken
 content verification globally to make deletion pass. Checkpoint payload GC is a
 separate operation; the first artifact collector must not delete committed state.
 
-## Minimal session and thread management
+## Implemented native session slice
 
-Start with inspectable records and explicit foreground CLI actions, not a daemon.
-The proposed session record binds a workspace, session identity, generation,
-thread references and operator-owned limits. A thread record binds its own
-identity/generation, optional parent, selected instance/attempt references,
-explicit context selections, cancellation intent and observed outcomes.
+The foreground event adapter exposes the following host commands. `WORKSPACE` is
+an existing native event workspace, not a directory granted to spool processes.
+
+```sh
+an-agent-host session-create WORKSPACE SESSION
+an-agent-host session-run WORKSPACE SESSION THREAD dispatch-request.json
+an-agent-host session-run WORKSPACE SESSION THREAD dispatch-request.json --approve HASH
+an-agent-host session-show WORKSPACE SESSION
+an-agent-host session-control WORKSPACE SESSION paused
+an-agent-host session-control WORKSPACE SESSION paused --approve HASH
+```
+
+Control modes are `open`, `paused`, `cancelled` and `closed`. Each control change
+requires a fresh digest-bound preview. Pause requests drain-stop: once observed,
+the runner finishes its current entry and prevents the next. Control responses
+acknowledge publication, not a synchronous barrier across all runners; an entry
+concurrently crossing admission may still start. It remains owned and must settle.
+Reopen permits new threads, never resumes a partial dispatch.
+Cancel is permanent admission closure and asks each live session runner to forward
+cancellation through its existing supervisor. Close requires retained thread
+completion and original confirmed attempt evidence. Closure never accepts products,
+commits state, releases references, unloads instances or deletes bytes.
+
+A thread is one immutable finite dispatch (1..16 explicitly selected event/route/
+state entries). It has a session-scoped identity and a durable pre-execution intent.
+Changing source request bytes or session generation invalidates approval. Thread
+names cannot be reused, including after cancellation or missing results. The host
+keeps only selected artifact/state context, not another harness's conversation tape.
+Parents, cross-thread model packets and general multi-attempt thread continuation
+are deferred. No release field or Loom runtime dependency is introduced.
+
+Inspection returns compact identities and outcome metadata; full dispatch evidence
+stays available through `spool-events-dispatch-show`, not copied into every summary.
+The session lock covers short admission/control publication only. Observation and
+execution do not hold it. A foreground runner polls its bounded control history
+at 25 ms intervals; this is not a cancellation-latency guarantee. A read error
+requests cancellation, not successful settlement. Reopening records after a host
+crash is read-only inspection: missing receipts remain unknown, and no daemon
+restarts work or signals a process based on a reused PID. A dead runner cannot
+forward a new cancellation; original backend reconciliation remains necessary.
+
+Existing event admission locks remain fail-fast. Simultaneous admissions in the
+same workspace can refuse; the qualified case explicitly admits independent
+threads and then overlaps their execution. It does not claim a queue or conflict-free
+parallel admission. Neither refusal nor unknown execution is automatically retried.
+Limits are 32 sessions per workspace, 32 threads per session and 128 control records.
+Legacy executables do not manage these new session records; operator-issued direct
+commands remain separate authority and are not retroactively governed by sessions.
+
+`tests/cli/native_sessions.py` under the host crate qualifies independent overlapping
+execution, scoped cancellation, drain-stop, stale generation/request refusal,
+multiple logical threads, pinned input/state, products after close and injected
+lost-receipt refusal after real execution. It uses zero model calls. Session
+closure rechecks native evidence; formal payload GC remains blocked by its separate
+unfinished retention contract.
+
+## Foreground supervisor loss qualification
+
+The original foreground native entrypoints keep their supervisor inside the initiating CLI.
+`OwnedChild` keeps the group leader unreaped while observing and terminating
+other group members, then reaps the leader. The original bound workspace receipt
+records that outcome. Ordinary errors and unwinding run its cleanup guard;
+SIGKILL bypasses the guard, cancellation polling and the wall-clock deadline.
+
+`native_supervisor_loss.py` exercises the real CLI with two finite workers.
+
+| Fault | Observed execution | Custody outcome |
+| --- | --- | --- |
+| SIGTERM to the initiating CLI | Original supervisor terminates its group and records cancellation | Confirmed private collection succeeds |
+| SIGKILL to the initiating CLI | Both workers survive, exceed the 3-second deadline and finish writing | Status remains unconfirmed; late output cannot be accepted or collected |
+| Same terminated fixture with stale operation locks removed | No live group remains in external observations | Missing original receipts still refuse reconciliation, collection, unload and same-run admission |
+
+The fixture verifies a separate instance can run and previously accepted products
+remain intact. Finite workers bound the experiment's lifetime. Process samples
+and lock removal are diagnostic fault injection in disposable test directories.
+Neither numeric PIDs, absent processes, absent locks nor completed output files
+establish original supervisor ownership or recover a lost execution result.
+
+## Independent attempt supervisor
+
+The explicit `spool-supervisor` entry owns one native file, checkpoint or combined
+business-data/state run in a separate process. It uses the same reviewed spool release, approved start plan,
+execution boundary, process-group settlement and formal artifact commands.
+
+```text
+spool-supervisor start INSTANCE RUN INPUT SECONDS [--approve HASH]
+spool-supervisor start-state INSTANCE RUN REVISION SECONDS [--approve HASH]
+spool-supervisor start-data-state INSTANCE RUN SELECTION_JSON SECONDS [--approve HASH]
+spool-supervisor show INSTANCE RUN
+spool-supervisor cancel INSTANCE RUN [--approve HASH]
+spool-status INSTANCE RUN
+spool-reclaim INSTANCE RUN [--approve HASH]
+```
+
+Start previews a plan binding the canonical input, executable, instance, release,
+activation generation and native start. Approval durably reserves that run before
+spawning a detached supervisor. The worker must exclusively claim the request,
+then revalidate the original native plan before starting any domain process.
+Direct starts also reject reserved identities. A torn reservation or owner claim
+remains fenced. A client timeout, missing response or launch failure never retries.
+
+The worker owns the native process group and deadline. The client waits for its
+response and forwards handled signals as durable cancellation. Abrupt client loss
+leaves execution supervised until completion or the original deadline. Another
+operator CLI can request cancellation for the exact request without taking the
+instance execution lock. Controls live in the host-private run directory, beyond
+the domain process write grant. An unreadable control marker requests cancellation.
+PID fields are diagnostics only; control never signals a recorded numeric PID.
+
+The supervisor stops after execution and writes a request-bound response. Native
+settlement remains authoritative for acceptance and collection. Supervisor exit,
+a response file or a cancellation request alone grants no custody. A supervisor
+crash leaves unresolved records and blocks collection even after observed process
+exit. A lost client can inspect the original run without restarting it.
+
+`native_supervisor.py` qualifies client SIGKILL with continuing deadline and
+cancellation enforcement, handled client SIGTERM, duplicate-worker and stale-control
+refusal, a torn launch reservation, supervisor SIGKILL, an independent instance
+and preservation of formal products. Its finite workers bound fault experiments.
+The original foreground fault case remains in CI to preserve its explicit limits.
+
+Explicit state supervision uses `start-state` with an exact checkpoint revision.
+The revision and native start plan are bound into the durable approval, and the
+worker selects that revision again through the existing state-input path.
+Advancing HEAD never selects a different checkpoint. The real state fault suite
+advances HEAD before launching the old revision and tests client loss, timeout,
+cancellation and unknown-owner retention. Its `--combined` mode repeats the fault
+matrix with separate business data and state, including stale selector refusal
+and preserved exact input references.
+
+Combined supervision uses `start-data-state` with the existing selection JSON.
+Approval retains the resolved native plan and both exact bindings, not the mutable
+selector path. The worker revalidates those revisions and admission before starting;
+selector replacement/removal after reservation cannot retarget it. A retired input
+fails closed, with no fallback or new attempt. A deterministic real-execution test
+covers selector removal and retirement between reservation and worker claim.
+
+This slice covers explicit supervised file, checkpoint and combined input starts.
+Existing foreground starts, event/session dispatch and peer phases retain their
+existing lifecycle.
+Their migration needs ownership-specific qualification. Before-launch uncertain
+reservations remain retained; no automatic lock repair or process adoption is
+implemented. Local host records and the installed supervisor binary are trusted.
+A permanently running host-wide service awaits a separate scheduling requirement.
+Loom packages the release and receives verified evidence; the host owns execution
+and control. Platform detachment remains in the execution backend.
+
+## Runtime control and legacy session compatibility
+
+Keep inspectable records and explicit CLI actions. The current foreground adapter
+does not transfer supervisor ownership when its caller disappears. A future
+caller-independent supervisor must retain backend ownership and reconcile actual
+execution before accepting control; reopening metadata is insufficient.
+The target activation record binds one instance/release, generation, owned attempt
+references, endpoint references and operator-owned limits. Reuse existing attempt
+identities rather than adding a second execution ledger or OS-thread scheduler.
 Provider/harness session IDs, when supported, are opaque private adapter data.
 They are neither spool IDs nor new authority. Do not ingest private harness tapes.
 
@@ -129,7 +365,7 @@ Use the following lifecycle distinctions rather than one overloaded status:
 A session-wide stop closes admission before forwarding cancellation to an exact,
 generation-bound set of owned active attempts. Stop and cancel remain separate:
 stop drains existing work; cancel requests termination. Two sessions must remain
-independent. A logical child link alone cannot cancel another session's work.
+independent. A causal protocol link alone cannot cancel another session's work.
 Reference release and scratch cleanup still require their own original evidence.
 
 After interruption, reopen records and inspect attempts before offering new work.
@@ -177,8 +413,8 @@ savings from prompt caching or summaries before measuring quality and actual use
 | --- | --- |
 | A: native artifact ownership | New managed outputs acquire/release explicit pins through real producer/two-consumer execution; active and unknown owners, retained checkpoint dependencies and legacy catalogs block deletion; no payload deletion yet |
 | B: formal payload collection | Closed admission plus released pins permits exact approved deletion; retained provenance remains inspectable, content reads fail clearly, unrelated outputs/checkpoints survive; race, cancellation and lost deletion receipt refuse unsafe progress |
-| C: session/thread skeleton | Foreground create/inspect/pause/close and explicitly scoped cancel over existing attempts; two sessions, multiple threads, one cancelled and one uninterrupted; reopen after host interruption without replay; stale generations and late results refused |
-| D: bounded context handoff and combined qualification | Reuse explicit packets/export across two logical threads; unrelated data excluded, incorrect audience refused, oversized input explicit, missing source reported; combine lifecycle, pins, collection and interruption in one real headless run |
+| C: runtime ownership | Foreground dispatch groups and generation-bound peer waits run through explicit host commands. Old/unknown work cannot claim new work. A long-lived supervisor independent of the initiating CLI is not yet qualified |
+| D: bounded context handoff and combined qualification | Reuse explicit packets/export across authorized participants; unrelated data excluded, incorrect audience refused, oversized input explicit, missing source reported; combine lifecycle, pins, collection and interruption in one real headless run |
 
 A and B close the remaining P1 storage contract. C and D are the next small
 management milestone, not permission to endlessly expand P1. GUI/TUI, general

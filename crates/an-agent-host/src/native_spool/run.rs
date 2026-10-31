@@ -53,7 +53,10 @@ pub fn start(
         Input::File(input),
         seconds,
         approved,
-        cancelled,
+        RunAdmission {
+            cancelled,
+            supervisor: None,
+        },
         |_| Ok(()),
     )
 }
@@ -72,7 +75,10 @@ pub fn start_state(
         Input::State(revision),
         seconds,
         approved,
-        cancelled,
+        RunAdmission {
+            cancelled,
+            supervisor: None,
+        },
         |_| Ok(()),
     )
 }
@@ -92,16 +98,19 @@ pub fn start_data_state(
         Input::DataState(selection),
         seconds,
         approved,
-        cancelled,
+        RunAdmission {
+            cancelled,
+            supervisor: None,
+        },
         |_| Ok(()),
     )
 }
 
-/// The host event adapter checks its grant and records intent at start admission.
-pub(super) fn start_event(
+/// The host delivery adapter checks its grant and records intent at start admission.
+pub(super) fn start_bound(
     path: &Path,
     name: &str,
-    selected: inputs::EventInput<'_>,
+    selected: inputs::BoundInput<'_>,
     seconds: u64,
     approved: Option<&str>,
     cancelled: &AtomicBool,
@@ -110,11 +119,73 @@ pub(super) fn start_event(
     start_selected(
         path,
         name,
-        Input::Event(selected),
+        Input::Bound(selected),
         seconds,
         approved,
-        cancelled,
+        RunAdmission {
+            cancelled,
+            supervisor: None,
+        },
         before_start,
+    )
+}
+
+struct RunAdmission<'a> {
+    cancelled: &'a AtomicBool,
+    supervisor: Option<&'a str>,
+}
+
+pub(super) fn start_supervised(
+    root: &Path,
+    name: &str,
+    seconds: u64,
+    request: &Value,
+    cancelled: &AtomicBool,
+) -> Result<Value> {
+    let plan = &request["plan"];
+    let start = &plan["start"];
+    let data = if plan["input_kind"] == "data-state" {
+        let data = &start["data_input"];
+        Some(inputs::artifact(
+            Path::new(data["catalog"].as_str().ok_or("data catalog")?),
+            data["binding"]["revision"]
+                .as_str()
+                .ok_or("data revision")?,
+        )?)
+    } else {
+        None
+    };
+    let input = match data.as_ref() {
+        Some(artifact) => Input::Bound(inputs::BoundInput {
+            artifact,
+            state_revision: Some(
+                start["state_input"]["binding"]["revision"]
+                    .as_str()
+                    .ok_or("state revision")?,
+            ),
+        }),
+        None => match plan.get("state_revision") {
+            Some(value) => Input::State(value.as_str().ok_or("state revision")?),
+            None => Input::File(Path::new(plan["input"].as_str().ok_or("input path")?)),
+        },
+    };
+    let approval = store::digest(&serde_json::to_vec(start)?);
+    start_selected(
+        root,
+        name,
+        input,
+        seconds,
+        Some(&approval),
+        RunAdmission {
+            cancelled,
+            supervisor: request["approval_sha256"].as_str(),
+        },
+        |observed| {
+            if observed != start {
+                return Err("supervisor native plan changed".into());
+            }
+            Ok(())
+        },
     )
 }
 
@@ -124,13 +195,15 @@ fn start_selected(
     input: Input<'_>,
     seconds: u64,
     approved: Option<&str>,
-    cancelled: &AtomicBool,
+    admission: RunAdmission<'_>,
     before_start: impl FnOnce(&Value) -> Result<()>,
 ) -> Result<Value> {
+    let cancelled = admission.cancelled;
     bundle::identifier(name)?;
     let root = location(path)?;
     let _lock = store::lock(&root)?;
     let (instance, bundle) = active(&root)?;
+    super::supervisor::admit(&root, name, admission.supervisor)?;
     let dir = root.join("runs").join(name);
     if !dir.exists() && fs::read_dir(root.join("runs"))?.take(64).count() >= 64 {
         return Err("instance run limit reached; load a fresh instance".into());
@@ -237,7 +310,10 @@ pub(super) fn settled_runs(root: &Path) -> Result<Vec<Value>> {
                     .and_then(|s| s.to_str())
                     .ok_or("invalid run")?,
             )?);
-        } else if path.join("start.json").exists() || path.join("result.json").exists() {
+        } else if path.join("start.json").exists()
+            || path.join("result.json").exists()
+            || path.join("supervisor").exists()
+        {
             return Err("started spool run lacks workspace settlement evidence".into());
         }
     }

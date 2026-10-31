@@ -137,3 +137,44 @@ fresh fixture; a failed/unknown scenario must not reuse the same round IDs. It
 records every command, watcher outcome and opt-in timing, and rejects observation
 writes, control refusal or watcher failure. It does not weaken stale-approval,
 cancellation or reclamation assertions in the preceding real event suite.
+
+`native_sessions.py --host HOST --evidence NEW_DIRECTORY` qualifies session-owned
+finite threads using real pinned-input/state consumers. Explicit admissions overlap
+in execution; cancellation affects one session, pause drains, stale requests fail,
+closure preserves products and a lost completion receipt prevents closure/replay.
+Simultaneous same-workspace admission remains fail-fast, not queued or retried.
+
+`native_material_boundary.py --host HOST --evidence NEW_DIRECTORY` starts two
+real native spools. A path supplied as ordinary input does not grant access to
+another instance's output/identity or the workspace event log: content reads and
+writes must fail. A private instruction note remains scratch, creates no delivery,
+and is excluded from accepted products. Metadata visibility is measured, not
+claimed secret. No model runs; this does not qualify context ingestion, general
+request/reply IPC or scheduler fairness. See the runtime acceptance matrix in
+[the session contract](../../../../doc/session-and-retention.md).
+
+`native_peer.py --host HOST --evidence NEW_DIRECTORY` runs a split-phase
+request/reply/continuation through actual native spools. Waiting creates no process
+or held instance lock; an independent sender job can overlap receiver execution.
+It checks fixed input/reply pins, stale generations, wrong correlation, cancellation,
+missing completion without replay and confirmed-only collection. Revocation closes
+future delivery, while the receiver's supervisor owns termination. This is not
+live IPC, a fairness benchmark or a background scheduler.
+
+`native_supervisor_loss.py --host HOST --evidence NEW_DIRECTORY` contrasts
+SIGTERM with SIGKILL of the actual launching CLI. Two finite workers make orphan
+execution observable after the original deadline. It checks original group
+settlement for handled cancellation, conservative custody after owner loss,
+independent-instance progress and preserved formal products. The disposable
+fixture then removes stale lock markers after sampled process exit to verify
+that missing termination evidence independently blocks acceptance, collection,
+unload and replay. That injection is a test operation, never a recovery recipe.
+Its summary distinguishes passing refusal checks from the observed missing
+caller-independent supervisor. Local process samples carry no cleanup authority.
+
+`native_supervisor.py` and `native_supervisor_state.py` take `--host HOST
+--evidence NEW_DIRECTORY`. They qualify file-input and fixed-checkpoint supervision:
+client exit, continuing timeout/cancellation, supervisor loss, no replay and
+confirmed-only collection. The state suite advances HEAD before selecting the
+old revision and verifies retained checkpoints; `--combined` also pins business
+data and rejects changed selectors. PIDs serve fault injection and observation only; accepted products and independent instances remain unaffected.
