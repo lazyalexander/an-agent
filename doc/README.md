@@ -1,68 +1,45 @@
 # an-agent documentation
 
-This is the public documentation starting point. It distinguishes the accepted
-product direction from the bounded profiles actually implemented. It contains
-no machine configuration, credentials or private operational transcripts.
+Architecture and operational contracts live here. Package and directory READMEs
+provide orientation and links, not parallel specifications. Commands assume the
+repository root unless stated otherwise. Current guarantees are bounded by the
+[implementation status](status.md) and [platform matrix](platforms.md).
 
-## Start here
+## Product and development
 
-1. [Architecture and vocabulary](architecture.md): host, spool, silk, shuttle,
-   Loom and replaceable execution backends.
-2. [Execution and authority](execution.md): admission, lifecycle, semantic
-   assessment, termination evidence and external application access.
-3. [State, artifacts and history](state-and-artifacts.md): committed business
-   state, immutable products, scratch, tape and backend snapshots.
-4. [Implementation status and next steps](status.md): what works, what remains
-   operator-only and the next bounded refactoring slices.
-
-5. [Artifact retention, sessions and logical threads](session-and-retention.md):
-   proposed ownership, bounded context and headless delivery plan.
-
-6. [Platform support and qualification](platforms.md): runtime support, test lanes
-   and the coordinated Loom handoff boundary.
-
-## Detailed implementation contracts
-
-Keep detailed behavior close to the code that owns it. These existing documents
-remain authoritative for their individual profiles; this index does not replace
-them or turn a design requirement into an implemented guarantee.
-
-| Area | Reference |
+| Topic | Reference |
 | --- | --- |
-| Host execution and embedding | [Host README](../crates/an-agent-host/README.md) |
-| Spool boundary and migration | [Spool boundary](../crates/an-agent-host/SPOOL-BOUNDARY.md) |
-| Permissions and settlement | [Host architecture](../crates/an-agent-host/ARCHITECTURE.md) |
-| Platform-specific enforcement | [Security layers](../crates/an-agent-host/SECURITY-LAYERS.md), [platforms](../crates/an-agent-host/PLATFORMS.md) |
-| Multi-silk implementation and stress plan | [Native round lifecycle and custody](../crates/an-agent-host/MULTI-SILK-PLAN.md) |
-| Native process ownership | [Process lifecycle](../crates/an-agent-host/PROCESS-LIFECYCLE.md) |
-| Optional OpenShell backend | [Adapter contract](../crates/an-agent-host/OPENSHELL.md), [recovery limits](../crates/an-agent-host/OPENSHELL-RECOVERY.md) |
-| Release-bound native spool | [Reviewed native package lifecycle](../crates/an-agent-host/NATIVE-SPOOL.md) |
-| Native round control | [Pause admission, checkpoint suspension and explicit resume](../crates/an-agent-host/NATIVE-CONTROL.md) |
-| Native storage | [Private collection, artifact input retirement and admission pressure](../crates/an-agent-host/NATIVE-STORAGE.md) |
-| Native release review | [Verified changes and independent continuation](../crates/an-agent-host/NATIVE-RELEASES.md) |
-| Native workspace events | [Artifact facts, static subscriptions and explicit delivery](../crates/an-agent-host/NATIVE-EVENTS.md) |
-| Native Python and binary products | [Operator selection, dependency inventory and byte custody](../crates/an-agent-host/NATIVE-PYTHON.md) |
-| Reviewed operator workflows | [Workspace jobs](../crates/an-agent-host/WORKSPACE-JOBS.md) |
-| CLI handoff pressure and input references | [Measurements and bounded decision](../crates/an-agent-host/HANDOFF-PRESSURE.md) |
-| Fixed external inputs without full copying | [Filesystem clone qualification](../crates/an-agent-host/INPUT-CLONES.md) |
-| Artifact revisions and human edits | [Artifact versions](../crates/an-agent-host/ARTIFACT-VERSIONS.md) |
-| Instance state and delivery | [Instance commits](../crates/an-agent-host/INSTANCE-STATE.md), [checkpoint/delivery](../crates/an-agent-host/CHECKPOINT-DELIVERY.md) |
-| Delivery authority | [Registration currentness and host landing](../crates/an-agent-core/DELIVERY-CURRENTNESS.md) |
-| Tape writer ownership | [Exclusive ownership and recovery](../crates/an-agent-core/TAPE-OWNERSHIP.md) |
-| Environment input identity | [Committed environment generations](../crates/an-agent-core/ENVIRONMENT.md) |
-| Model/context services | [Model/context](../crates/an-agent-host/MODEL-CONTEXT.md), [model CLI](../crates/an-agent-host/MODEL-CLI.md) |
-| Semantic assessment | [Semantic crate](../crates/an-agent-semantic/README.md) |
-| Test ownership and paired verification | [Testing contract](testing.md) |
-| Repository gates | [Architecture gates](../ARCHITECTURE-GATES.md) |
+| Responsibilities, authority and dependency direction | [Architecture](architecture.md) |
+| Admission, supervision and backend boundaries | [Execution](execution.md) |
+| State, products, scratch and history | [State and artifacts](state-and-artifacts.md) |
+| Stable silk and editable kit roles | [Spool code](spool-code.md) |
+| Reviewed harness development | [Weaver](weaver.md) |
+| Implemented capabilities and remaining work | [Status](status.md) |
+| Runtime support and qualification | [Platforms](platforms.md) |
+| Proposed retention and session work | [Session and retention plan](session-and-retention.md) |
+| Testing, CI and cross-repository ownership | [Testing](testing.md) |
+| Code and documentation quality gates | [Quality](quality.md) |
 
-Documentation is English. Link to existing contracts instead of duplicating CLI
-reference material. Update status when a slice gains real acceptance evidence.
-Historical profile names and records remain stable unless a separately reviewed
-migration changes them. Do not copy private deployment notes into public docs.
+## Runtime contracts
 
-Code-role terminology follows [the spool code contract](spool-code.md).
-Silk is the stable core; kit is adaptable glue. Preserve legacy wire/API names
-and distinguish target contracts from implemented runtime guarantees.
+| Task | Reference |
+| --- | --- |
+| Load/run/edit, round control, Python environment selection | [Native spool](native-spool.md) |
+| Select/commit explicit state and compare releases | [Native state](native-state.md) |
+| Observe, route and dispatch fixed-version events | [Native events](native-events.md) |
+| Private collection, input retirement and reference release | [Native storage](native-storage.md) |
+| Register and execute a bounded stdio deployment | [Native deployment](native-deployment.md) |
+| Reviewed builds/workspaces and process ownership | [Execution profiles](workspace-jobs.md) |
+| Immutable product versions, input clones, mediated reads | [Artifacts](artifacts.md) |
+| Legacy instance commits and checkpoint recipients | [Checkpoints](checkpoints.md) |
+| Model CLI, explicit context and finite coding-tool access | [Model services](model-services.md) |
+| Optional backend setup and qualified recovery limits | [OpenShell](openshell.md) |
+| Embedded delivery, tape and environment identity | [Core contracts](core-contracts.md) |
+| Optional developer setup and historical qualification | [Qualification recipes](qualification.md) |
 
-[Weaver and independent development](weaver.md) describes reviewed domain inputs
-and the boundary between zero-mount iteration and managed execution.
+Update the owning contract and status together when behavior changes. Link rather
+than repeat commands, support matrices or safety guarantees. Completed plans and
+obsolete architectural alternatives are removed; Git history retains the original
+rationale and measurements. Private machine configuration and raw operational
+records do not belong in public documentation. Historical profile and wire names
+remain compatibility identities.

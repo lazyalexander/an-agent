@@ -67,9 +67,9 @@ versions and actual-effect receipts. Filesystem backup cannot undo a message,
 remote API call or arbitrary GUI operation.
 
 Detailed contracts: [host execution](../crates/an-agent-host/README.md),
-[security layers](../crates/an-agent-host/SECURITY-LAYERS.md),
-[process ownership](../crates/an-agent-host/PROCESS-LIFECYCLE.md),
-[OpenShell](../crates/an-agent-host/OPENSHELL.md).
+[security layers](execution.md),
+[process ownership](workspace-jobs.md),
+[OpenShell](openshell.md).
 
 ## Concurrent native attempts
 
@@ -125,7 +125,7 @@ failed, not successful after forced cleanup. The release-bound native facade als
 qualifies two internal silk steps; neither path grants a separate environment per
 silk or moves domain sequencing into the host.
 
-The [implementation and stress plan](../crates/an-agent-host/MULTI-SILK-PLAN.md)
+The [implementation and stress plan](testing.md)
 separates current regression/soak evidence from future saturation and crash-fault
 tests. This is not a general registered multi-silk deployment or a hostile-code
 sandbox. Reuse the current authority boundary before designing another package

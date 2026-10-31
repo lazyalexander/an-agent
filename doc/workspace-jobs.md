@@ -1,4 +1,6 @@
-# Reviewed local workspace jobs
+# Reviewed execution profiles and process ownership
+
+## Reviewed local workspace jobs
 
 This bounded macOS profile runs an operator-selected, reviewed local workflow
 engine and manages its scratch and selected UTF-8 outputs. It reuses the native
@@ -9,7 +11,7 @@ This is an operator development/acceptance boundary, not a new spool deployment
 ABI or an untrusted code-agent execution profile. Existing file/stdio kits retain
 their stricter process and filesystem restrictions.
 
-## Authority and profile
+### Authority and profile
 
 The caller selects a private JSON profile outside the job. Never accept this
 profile as authority from a spool, model output or writable project configuration.
@@ -51,7 +53,7 @@ still checked against the approved digest before launch. Only unsupported-volume
 or cross-device errors select the existing full-copy path; permission, size,
 existing-destination and other errors refuse preparation. Artifact catalog inputs
 keep their existing validated copy path. Input limits and CLI schemas are unchanged.
-See [external input clone qualification](INPUT-CLONES.md) for measurements and limits.
+See [external input clone qualification](artifacts.md) for measurements and limits.
 
 Output acceptance verifies the receipt-bound execution manifest, its exact mapping
 from the approved plan, and the snapshot hashes. Source files may subsequently
@@ -77,12 +79,12 @@ allowing arbitrary Mach services is unnecessary. Process metadata queries and
 signals are limited to the same sandbox. There is no fallback on Linux or another
 unsupported platform; their existing host profiles remain unchanged.
 
-## Run, interrupt and explicitly continue
+### Run, interrupt and explicitly continue
 
 ```sh
 an-agent-host workspace-run PROFILE NEW_JOB
 an-agent-host workspace-run PROFILE NEW_JOB --approve REVIEWED_DIGEST
-# SIGINT/SIGTERM requests cancellation of the host-owned execution.
+## SIGINT/SIGTERM requests cancellation of the host-owned execution.
 an-agent-host workspace-resume PROFILE JOB PREVIOUS_ATTEMPT
 an-agent-host workspace-resume PROFILE JOB PREVIOUS_ATTEMPT --approve REVIEWED_DIGEST
 ```
@@ -146,7 +148,7 @@ internal task graph or infer which tasks should rerun. A resumed engine may
 internally retry/recompute its tasks; host `automatic_retries: 0` describes host
 submission policy, not an override of the engine's semantics.
 
-## Separate output acceptance and collection
+### Separate output acceptance and collection
 
 ```sh
 an-agent-host workspace-accept JOB ATTEMPT
@@ -179,7 +181,7 @@ the writable/reclaimed tree. Existing consumers can keep selecting the same
 revision after collection. Formal artifact GC, delivery subscriptions and domain
 checkpoint completeness are not reimplemented here.
 
-## Layout and limits
+### Layout and limits
 
 ```text
 JOB/
@@ -216,7 +218,7 @@ Launched/unconfirmed attempts, hostile same-user renames and power loss retain
 the existing manual-investigation limitations. No VM framework or automatic GC
 service is introduced.
 
-## Acceptance
+### Acceptance
 
 `cargo test -p an-agent-host --test workspace_job` exercises actual Seatbelt
 execution, network/outside-write denial, cancellation, timeout, current-attempt
@@ -226,7 +228,7 @@ also sends a real CLI SIGINT during a task, resumes through the native engine
 cache and consumes pinned output revisions after reclamation. Native tape remains
 engine/agent-owned; the host records its boundary evidence, not internal replay.
 
-### Optional binary outputs and pinned artifacts
+#### Optional binary outputs and pinned artifacts
 
 The additive `binary_outputs` list opts selected declared outputs into bounded
 opaque byte custody; absent entries retain text-only behavior. `artifact_inputs`
@@ -234,12 +236,12 @@ may bind a selected read-only snapshot to `{ "path": "/selected/snapshot",
 "catalog": "/host/catalog", "revision": "FULL_SHA256" }`. The catalog is not
 mounted or passed to the workload. Missing revisions, substituted snapshots,
 duplicate bindings and changed approval inputs are refused.
-See [artifact version semantics](ARTIFACT-VERSIONS.md). These are generic file
+See [artifact version semantics](artifacts.md). These are generic file
 capabilities; workbook parsing and presentation composition belong to the kit.
 
-### Two internal silks and stress qualification
+#### Two internal silks and stress qualification
 
-The [multi-silk plan](MULTI-SILK-PLAN.md) defines invariants, custody transfer,
+The [multi-silk plan](testing.md) defines invariants, custody transfer,
 lock scope and staged stress tests. The real macOS fixture uses one coordinator,
 a producer and a consumer in the same native group, with no per-silk host run.
 It covers cancellation before/after handoff, early leader exit, silk failure,
@@ -248,7 +250,7 @@ The explicit ignored soak runs four independent jobs for ten mixed rounds each.
 This is reviewed spool-body qualification through the existing workspace profile;
 it does not create a registered production multi-silk package ABI.
 
-### Bounded recovery regressions
+#### Bounded recovery regressions
 
 `cargo test -p an-agent-host --lib workspace_job::recovery_tests` runs a real host
 child that exits without unwinding at four persistence boundaries. Each child has
@@ -264,7 +266,7 @@ Python or TypeScript may drive external acceptance scenarios; moving assertions
 out of Rust does not accelerate the host's snapshot or hashing path. Persistence
 ordering and fault windows remain tested against the Rust implementation.
 
-## Preserving a reviewed input tree
+### Preserving a reviewed input tree
 
 `an-workspace-job-v2` accepts an optional `input_layout` array parallel to
 `inputs`. Omission or an empty array retains the existing basename layout and
@@ -285,3 +287,249 @@ host does not parse Loom tasks, select domain tests, package releases or evaluat
 business correctness. An operator still reviews the generated profile and
 approves execution and formal output acceptance separately. The existing native
 trusted-process-group scope is unchanged; this is not hostile-agent containment.
+
+## Bounded Rust build and file-kit handoff
+
+This slice adds one concrete build recipe and one file ABI. It does not add a
+workflow framework, package manager, code generator, container adapter, or SPACE
+backend. Core is unchanged. Loom scaffolds and packages; this host executes.
+
+### Build contract
+
+`an-agent-host build-kit SOURCE TOOLCHAIN_JSON NEW_JOB` previews the source hash,
+tool fingerprints, exact arguments, working directories, environments, policies,
+output boundary and limits. It creates no job. The operator reviews the plan and
+passes its `approval_sha256` with `--approve`. Changed source/profile/paths/tools
+invalidate that approval. An existing job is never overwritten or auto-resumed.
+
+The toolchain JSON contains exactly `rustc`, `sdk`, and `linker`: absolute paths
+to a concrete Rust compiler (not the rustup shim), the selected macOS SDK, and
+clang. Use `rustc --print sysroot` and `xcrun --show-sdk-path/--find clang` to
+locate operator-installed tools. They are trusted dependencies; this is not a
+compiler/SDK supply-chain attestation. The full SDK/toolchain trees are not hashed.
+Keep tools and job parents private to trusted operators during preview and run.
+
+Only a UTF-8 Rust source file, at most 64 KiB, is copied into the job. The fixed
+recipe invokes rustc twice (program and test harness), then runs the tests. It
+has no Cargo resolution, network download, dependency installation, project
+flags, procedural macros, build scripts, or automatic repair/retry. Source-level
+macros remain untrusted and compilation itself runs inside Seatbelt.
+
+| Stage | Read boundary | Write / process boundary |
+| --- | --- | --- |
+| Compiler | Source, selected Rust/SDK/linker trees and OS runtime data | Job build directory; selected trusted compiler/linker programs |
+| Tests | Test executable and OS runtime data | No file writes, networking or child processes |
+| Acceptance | Host checks exact regular source/program files | New accepted directory, inaccessible to either workload |
+
+Compilation may read data inside approved toolchain/SDK trees. Do not place
+secrets there. System library/metadata reads are necessary allowances, not a
+claim of total filesystem invisibility. No ambient environment is forwarded.
+Local job and Rust toolchain source paths are remapped in emitted binaries.
+This reduces path disclosure, not arbitrary private strings in user source.
+
+Each stage has a 60-second wall limit and 64 KiB per captured output stream.
+Compiler writes have a 20 MiB per-file limit; there is no aggregate disk/memory
+quota or hostile compiler containment. Tests use the stricter no-write/no-fork
+policy. The fixed test command uses one test thread; an author can still write
+expensive tests, so the supervisor remains authoritative.
+
+The real AgentControl registration, described mount, request, admitted intent,
+and tape precede compilation. The host binds the internal `/job` declaration
+slot to the new job directory in the plan. Read-only toolchain inputs are
+additional plan allowances. Stage status, bounded streams, PID/reaping evidence,
+receipt and core audit remain in the job. Only complete success gets `applied`.
+Tests passing is evidence of the supplied tests, not proof of domain correctness.
+
+### Artifact reception
+
+On success, `accepted/` contains `main.rs`, `program`, and `manifest.json`.
+The portable `an-rust-build-artifacts-v1` manifest binds the two SHA-256 hashes
+and passing-test state. The enclosing `an-rust-build-receipt-v1` records the
+approval hash and matching manifest. Failed or interrupted jobs do not publish
+accepted artifacts. Files must be bounded regular files, not symlinks/hardlinks.
+
+Loom's `receive-build PROJECT JOB` checks those bytes against the current
+project source and successful receipt. It copies only the program and portable
+manifest, never the private plan, compiler paths, logs or audit. Loom declares,
+packages, verifies and exports the two-file deployment. The host independently
+validates and registers that deployment; reception grants no execution rights.
+Hashes do not authenticate a maliciously forged job directory.
+
+### Runtime contract: file-kit-v1
+
+The existing two-file deployment format is reused. The new exact descriptor
+combination is `host: an-agent-file-v1`, `profile: file-kit-v1`, and
+`file: { op: rw, path: /work, recursive: true }`. Other fields match the narrow
+stdio contract. `/work` is a reserved **declaration slot for this host ABI**,
+not access to the machine's literal /work directory or a core-wide path alias.
+The execution plan records its binding to one run's private `work/` directory.
+Do not interpret this descriptor with another host.
+
+The kit starts in that directory. It reads `input.txt` (a snapshot, at most
+8 KiB UTF-8) and writes `output.txt` (at most 64 KiB), using create-or-truncate.
+On Linux, the host pre-creates the output inode; `create_new`, atomic replacement
+and temporary files are outside this ABI. The actual policy is
+stricter than the coarse YAML request: only that output path is writable.
+It cannot modify input, audit, registry, source documents, or other runs.
+Network, model calls and subprocesses remain denied. Stdin is empty; stdout
+and stderr remain bounded diagnostics. Wall limit is five seconds.
+
+After reaping a successful process, the host rejects a missing, oversized,
+symlinked, hard-linked or non-regular output. Accepted bytes are copied to
+`artifact.txt` outside the writable directory and identified in `receipt.json`.
+Nothing is automatically applied to the user's original document. The original
+stdio-only-v1 permissions remain unchanged.
+
+To pass the accepted product to a subsequent model request, explicitly select
+`context-export RUN artifact THREAD_UUID TEXT_BYTE_BUDGET NEW_OUTPUT`. The host
+checks success, exit/reaping evidence, fixed path, size and digest before making
+a bounded context view. It never substitutes diagnostics or the kit's writable
+working copy. [Context export](model-services.md) and model approval remain
+separate steps; Loom does not own runtime context selection.
+
+### Platform and lifecycle limits
+
+The isolated Rust **build** recipe remains macOS-only. File-kit **execution** is
+supported on macOS and native Linux; other systems refuse. Linux uses the
+existing Landlock/seccomp supervisor with the fixed file permissions detailed in
+[Linux validation](platforms.md#runtime-matrix). A Linux deployment
+needs a separately built native program; successful file execution does not
+establish isolated compilation. SPACE machine acceptance remains separate.
+
+Compiler stages reuse the host's bounded pipe/cancel/deadline supervisor with a
+dedicated process group. The leader remains unreaped while the group is signaled,
+avoiding PGID reuse. macOS member signaling on denied group signals follows the
+approach inspected in Codex's process-group helpers; no Codex runtime dependency
+or copied module is introduced. A member cleanup error remains an error.
+This covers trusted compiler children, not adversarial setsid/double-fork jobs.
+Only the direct leader is reaped by the host; descendant exit is not a cgroup
+emptiness proof. Kits and tests are forbidden to fork.
+
+SIGINT/SIGTERM settle through cancellation; no automatic retry occurs. Hard host
+death, uninterruptible kernel states and storage errors can leave partial
+evidence. Retention is manual. Inspect partial jobs; use a fresh destination for
+another attempt. This slice neither promises rollback nor expands workspace GC.
+
+### Acceptance
+
+- `cargo test -p an-agent-host --test file_job`: real compile/test, file execution,
+  outside-source include denial, unchanged input, audit/network/child denial,
+  missing/oversized/linked outputs, stale approval, cancellation, no false applied.
+- Supervisor tests: compiler-group deadline/cancel, exited leader with inherited
+  descendant pipes, and existing stdio lifecycle tests.
+- Loom's pinned cross-repository `file_job_handoff` test: scaffold → check →
+  approved host build → receive → declare → pack/verify → export → register →
+  approved file execution. Both libraries remain independently buildable.
+
+### Exported debug metadata
+
+The fixed compiler recipe requests `-C link-arg=-Wl,-S` for both program and
+test binaries. Rust source-span remapping alone leaves macOS linker object-file
+records containing absolute toolchain paths. The selected native linker removes this metadata before the host publishes and
+hashes accepted bytes. This does not depend on a best-effort post-link strip
+helper that can fail with a compiler warning. Consumers do
+not need to mutate accepted programs or rewrite their build receipts.
+
+This removes compiler/linker debug-path records; it does not sanitize private
+strings deliberately embedded by source code or dependencies. Local plans and
+full diagnostics remain operator data and should not be published as portable
+build evidence.
+
+## Process ownership and termination
+
+
+The direct-child owner caches observed exit, explicitly kills and waits when
+stopping, and attempts cleanup on drop for early returns and unwind. Pipe workers
+are scoped; the process owner is created inside the scope so its cleanup precedes
+automatic joins. All normal worker joins are collected before errors propagate.
+Worker creation is fallible, and ordinary I/O failures signal the supervisor.
+Interrupted reads are retried instead of being confused with cancellation errors.
+If an external reaper consumed the child (ECHILD), cleanup refuses to signal a
+possibly reused PID and reports the missing confirmation instead.
+
+The first observed stop reason is retained. If multiple conditions are first
+observed in the same poll, priority is cancellation, output cap, I/O failure,
+then deadline. A final output-cap check still catches buffered excess after a
+natural exit, but does not overwrite an earlier stop reason.
+
+The monotonic deadline begins before spawn. A blocking OS spawn cannot itself be
+interrupted by this synchronous implementation; elapsed setup time counts once
+control returns. Checks occur approximately every 10 ms, not at hard real-time
+deadlines. No grace period or interactive interrupt protocol is granted to kits:
+the host terminates the single bounded workload on cancellation/timeout.
+
+### Evidence and failures
+
+Receipts add process.pid, process.reaped and process.scope (direct-child).
+No-start refusal or cancellation has a null PID and reaped=false. PID is an
+observation, not a reusable process handle or permission to signal a future PID.
+Started executions that encounter a recoverable supervision error are failed,
+not mislabeled as prelaunch refusals. A cleanup error is explicitly unconfirmed;
+it is never marked applied. Failed I/O/setup may prevent retaining partial stream
+bytes; the diagnostic is not a claim of complete output retention.
+
+SIGINT/SIGTERM registration ownership belongs to the CLI, not the host library.
+Registration guards remove successfully installed handlers on partial failure,
+normal return and unwind. Cancellation settles through normal receipt/audit;
+the shared allocation lock has already been released before process launch. A later cancellation does not undo an already settled run.
+This covers the kit run command. For cancellation of the separate HTTP
+model command, see [model cancellation and deadlines](model-services.md#cancellation-and-deadlines).
+
+### Limits
+
+The separate [bounded build recipe](workspace-jobs.md) adds a macOS process-group scope
+for trusted compiler/linker children. It retains the leader until group cleanup
+and checks individual members when macOS denies the group signal, following the
+approach reviewed in [Codex process-group helpers](https://github.com/openai/codex/blob/2351d9e1b608e6f9d9a3699b71d7eb39ee41cfa4/codex-rs/utils/pty/src/process_group.rs).
+This does not grant subprocesses to stdio/file kits or tests.
+
+The stdio profile still denies process creation. This fixes direct-child
+ownership; it does not implement arbitrary descendant discovery or process-tree
+management. Allowing child processes in a future profile requires a new reviewed
+termination boundary, not a silent relaxation here.
+
+Drop cleanup is best effort if the OS refuses kill/wait. Uninterruptible kernel
+states can delay termination and pipe joins; no user-space wrapper guarantees a
+hard cleanup deadline in that situation. Panic unwind cleans the child and joins
+workers but does not guarantee a final receipt. Abort, SIGKILL, host crash and
+power loss bypass Rust destructors. Linux retains its existing parent-death
+signal, while macOS has no equivalent crash guarantee in this slice. Partial
+artifacts/stale locks after abrupt host death require inspection, not auto-replay.
+
+### Acceptance
+
+- Native sandbox tests verify timeout, cancellation and output overflow with
+  waitpid evidence that the direct child was reaped, not just status strings.
+- Error/unwind injection with blocked input/output workers verifies owner-before-
+  scope cleanup; repeated terminate is idempotent.
+- Actual CLI SIGINT and SIGTERM tests inspect the resulting child PID, receipt,
+  absence of applied, released store lock and a subsequent successful run.
+- Prelaunch cancellation and a full host deadline test verify no-start versus
+  started/reaped evidence and failed-run audit.
+
+Signal acceptance uses the standard pgrep utility available on native macOS and
+Ubuntu runners, only to identify children of the test's own CLI. Production does
+not depend on pgrep or shell-based process discovery.
+
+### Reviewed group completion
+
+A coordinator that exits zero with remaining group members is not a completed
+workflow. The supervisor observes peers while retaining the unreaped leader,
+records `group_cleanup_required`, terminates the owned group and reports failure
+unless a cancellation/timeout already supplies the stop reason. This avoids
+promoting partial output merely because forced cleanup succeeded. Single-child
+profiles and OpenShell retain their own existing completion contracts.
+
+The reviewed workspace adapter additionally records bounded post-reap group
+observations. Reaping and empty-group confirmation are distinct; missing/failed
+confirmation prevents acceptance, continuation and scratch reclamation. Numerical
+PIDs are diagnostic evidence, never durable handles for later signaling. See the
+[multi-silk execution plan](testing.md) for qualification and limits.
+
+Group cancellation also accounts for forks racing the first signal. Before
+reaping the leader, cleanup confirms its exit and re-observes remaining peers
+while the group identity is still owned. This prevents a missed late child from
+holding inherited pipes until its natural exit. Cleanup observations are bounded
+and do not authorize replay or signaling a subsequently reused group ID.
+The [pressure report](testing.md) retains the observed delayed-cancel
+case and the regression/qualification limits.

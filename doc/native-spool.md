@@ -1,38 +1,40 @@
-# Release-bound native spool: reviewed headless profile
+# Native spool runtime and round control
+
+## Release-bound native spool: reviewed headless profile
 
 Status: implemented for reviewed local shell tools and explicitly selected
-[native Python environments](NATIVE-PYTHON.md). This is a bounded spool
+[native Python environments](native-spool.md). This is a bounded spool
 facade over the existing workspace supervisor, snapshots and custody machinery.
-Platform coverage is maintained in the [runtime matrix](../../doc/platforms.md).
+Platform coverage is maintained in the [runtime matrix](platforms.md).
 It is not an arbitrary agent sandbox, general dependency resolver or replacement
 for trusted in-process `SpoolBeat` mounting. No core or Loom runtime dependency is
 introduced. Domain sequencing remains in the entry silk.
 
-Optional [explicit native state](NATIVE-STATE.md) binds a selected checkpoint to a
+Optional [explicit native state](native-state.md) binds a selected checkpoint to a
 run and commits an accepted state output with an expected-version check. It uses
-the same release and one-input execution contract; ordinary runs stay stateless.
+the same release; v3 can select independent data and state inputs. Ordinary runs stay stateless.
 
-[Round-boundary control](NATIVE-CONTROL.md) pauses admission after confirmed
+[Round-boundary control](native-spool.md) pauses admission after confirmed
 settlement, pins a checkpoint for suspension and explicitly reopens admission.
 It does not pause or restore a running process.
 
-[Native storage](NATIVE-STORAGE.md) separates work collection from private input
+[Native storage](native-storage.md) separates work collection from private input
 snapshot collection and formal state/artifact retention. It also adds native
 workspace admission headroom without a runtime filesystem quota.
 
-[Release review](NATIVE-RELEASES.md) compares exact verified package bytes and
+[Release review](native-state.md) compares exact verified package bytes and
 requested contracts without authorizing an update. Candidate continuation uses
 a fresh independently approved instance; old releases and state remain retained.
 
-[Native workspace events](NATIVE-EVENTS.md) adds explicit v3 event interfaces and
+[Native workspace events](native-events.md) adds explicit v3 event interfaces and
 host-owned artifact delivery. V1/v2 releases remain unchanged and do not acquire
 event rights implicitly. Business sequencing stays inside silk/kit.
 
-[Native Python and binary products](NATIVE-PYTHON.md) adds operator-selected,
+[Native Python and binary products](native-spool.md) adds operator-selected,
 inventory-bound dependencies and explicit byte outputs to v3. V1/v2 and existing
 shell packages retain their behavior; no package performs dependency installation.
 
-## Contract and layout
+### Contract and layout
 
 Loom's `export-native-spool` exports `native-spool.json` and selected `silk/` and
 `kit/` files. Any producer can emit this versioned JSON contract; the host validates
@@ -74,7 +76,7 @@ directory; existing instances and their evidence are not overwritten. Loading
 under the source release directory is refused. At most 64 run names are allocated
 per instance. A used run name is never automatically retried.
 
-## Commands and explicit authority
+### Commands and explicit authority
 
 ```text
 an-agent-host spool-load PACKAGE NEW_INSTANCE
@@ -113,7 +115,7 @@ Generated work files remain scratch and cannot mutate canonical silk or the
 selected code snapshot. This does not prove a compromised interpreter will obey
 domain sequencing: arbitrary hostile native process trees remain unsupported.
 
-## Lifecycle and artifact ownership
+### Lifecycle and artifact ownership
 
 One active operation holds a per-instance lock. Independent instances use distinct
 locks and work areas. SIGINT/SIGTERM to the running host CLI request whole-attempt
@@ -140,7 +142,7 @@ A killed host, missing result, stale lock or partial publication remains visibly
 uncertain and fenced. There is no automatic lock removal, restart or receipt repair.
 The store is trusted against same-user tampering, as in existing host profiles.
 
-## Qualified acceptance
+### Qualified acceptance
 
 `tests/native_spool.rs` exercises real native isolation, two silk steps, an edited
 kit, prohibited silk/external writes, two concurrent instances, cancellation,
@@ -153,9 +155,9 @@ Loom separately runs a real CLI round trip against a pinned host revision. It
 exports the actual example archive, edits the kit, executes, accepts, reclaims,
 unloads and loads a fresh instance. Neither repository links the other's runtime.
 
-## Current extensions and remaining scope
+### Current extensions and remaining scope
 
-The [status page](../../doc/status.md) owns the current P0/P1 plan. Explicit
+The [status page](status.md) owns the current P0/P1 plan. Explicit
 checkpoint continuation, round-boundary pause/suspension, private snapshot
 collection/headroom, event dispatch and receiver succession are implemented
 bounded contracts, not future stages. The host proposal slot below remains a file
@@ -167,7 +169,7 @@ Do not infer those guarantees from admission-control or backend capability flags
 Managed runs carry a `spool-owner.json` marker. Public standalone workspace run, acceptance, and reclamation commands reject these jobs; callers must use the owning spool commands so the instance operation lock and ownership checks remain in force. This is an API lifecycle fence, not protection against a host user modifying the control store.
 
 
-## Optional kit proposal slot
+### Optional kit proposal slot
 
 The host now exposes a file exchange slot, not a model loop or plugin launcher:
 
@@ -211,7 +213,7 @@ file proposal, not a model. Host tests also cover revoked/stale/foreign requests
 protected silk, changed proposal approval, duplicate application and fixed-version
 artifact checkout into a second spool. This adds no new domain or model dependency.
 
-## Readiness timing and CI
+### Readiness timing and CI
 
 CI shows test compilation and execution as separate steps, without excluding any
 workspace tests. The 64 MiB clone-handoff regression runs five mutation/cancellation cases. Its
@@ -229,7 +231,7 @@ tickets and v1 schemas remain compatible. `kit_proposal_slot` advertises the
 canonical name. This slot receives edits; it does not prepare harness tasks,
 review generated code or launch an agent. Those future roles use the Weaver name.
 
-## Explicit native v2 requirements
+### Explicit native v2 requirements
 
 The host also accepts `an-native-spool-v2`, with the v1 fields plus a required
 `requirements` object. V1 with requirements and v2 without requirements refuse.
@@ -248,7 +250,7 @@ V2 is currently macOS-only. Linux packaging and future backend contracts must
 not be confused with qualified execution. GPU CLI execution and shuttle-mediated
 application interaction are separate capabilities; neither is implemented here.
 
-## Discovering accepted artifact versions
+### Discovering accepted artifact versions
 
 `spool-artifacts INSTANCE RUN` is a read-only host query returning instance,
 release, run, artifact catalog and fixed output revision bindings. It requires
@@ -263,7 +265,7 @@ The command works for both native v1 and v2. Missing acceptance, uncertain
 termination, foreign records and changed content refuse. An existing filename or
 a successful exit alone does not establish a formal artifact.
 
-## Run monitoring
+### Run monitoring
 
 `spool-status INSTANCE RUN` is an observation-only query. It returns a stable
 phase (`prepared`, `unconfirmed`, `running-or-unconfirmed`, `settled`, `accepted`,
@@ -285,7 +287,7 @@ reused for future GPU/application backends, whose actual supported lifecycle and
 external settlement must be separately qualified. No pause or suspend support is
 implied by these state names.
 
-## Reconciling an interrupted acceptance handoff
+### Reconciling an interrupted acceptance handoff
 
 If workspace acceptance completed but recording the instance-bound accepted.json
 failed, status reports unconfirmed custody and ordinary acceptance is not retried.
@@ -304,7 +306,7 @@ The filesystem failure acceptance test exercises actual publication followed by
 a failed facade write; it is not a claim of arbitrary power-loss durability.
 
 
-## Restoring an editable kit baseline
+### Restoring an editable kit baseline
 
 `spool-kit-reset` restores one declared editable working copy from the verified
 release baseline without changing instance identity, retained products or other
@@ -319,7 +321,7 @@ stale even after an edit-away/edit-back cycle. It grants no execution. Inspect a
 next start. Existing load/unload/fresh-directory baseline restoration still works.
 
 
-## Reconciling a missing execution result
+### Reconciling a missing execution result
 
 `spool-reconcile-run INSTANCE RUN [--approve DIGEST]` explicitly repairs a missing
 outer result.json when one intact workspace attempt already confirms process
@@ -346,3 +348,174 @@ Real filesystem-failure tests complete successful and failed workloads while a
 directory blocks the final result write. They then verify explicit repair, no
 additional attempt or publication, negative evidence cases and normal custody.
 This is not arbitrary crash recovery or a power-loss durability claim.
+
+## Native control at round boundaries
+
+The first control slice uses a completed spool attempt as its safe point. It
+pauses admission between attempts; it does not stop a running process. The spool
+author decides how domain work reaches a committed checkpoint. The host verifies
+termination, accepted outputs and fixed identities, without interpreting state.
+Loom packages the same v1/v2 release; no new release schema or backend is needed.
+
+```text
+an-agent-host spool-pause INSTANCE [--approve HASH]
+an-agent-host spool-suspend INSTANCE STATE_REVISION [--approve HASH]
+an-agent-host spool-resume INSTANCE [--approve HASH]
+```
+
+Every transition has a preview and separate approval. A live operation, stale
+lock, unknown termination or successful run lacking formal acceptance refuses.
+Prepared plans do not count as execution; an interrupted start with no completed
+workspace evidence does. Nothing clears a stale lock or retries an execution.
+
+Pause fences new starts, kit/proposal application and state mutations. Inspection,
+proposal revocation and existing guarded artifact custody remain available.
+Suspension additionally pins the current committed text checkpoint and effective
+kit hashes. It retains state, release and evidence; scratch can be explicitly
+reclaimed through the existing command after settlement and acceptance.
+
+Resume verifies the saved release, kits, checkpoint and completed-run evidence
+before reopening admission. It launches nothing and carries no old execution
+approval forward. Continuation still requires an explicit `spool-start-state`
+selection and fresh approval. A domain may instead begin separately authorized
+new work. No state, program counter, heap or hidden scratch is injected implicitly.
+
+Control generations prevent old start and transition approvals from becoming
+valid again after a pause/resume cycle. A transition publishes immutable evidence
+before atomically changing the control head. An interrupted publication keeps the
+previous mode; explicit repetition of the same approved transition may finish its
+publication. Confirmation of an already published transition is a no-op. An
+incompatible staged record refuses for inspection, without overwriting history.
+This does not establish sudden-power-loss recovery or hostile host-store safety.
+
+`spool-show` reports the mode and generation separately from a run's outcome.
+Existing `spool-status` continues to describe execution and custody, independently
+of whether new work is paused. Unload remains terminal, preserves checkpoints and
+control evidence, and is allowed from a settled paused/suspended instance. A fresh
+load uses the existing explicit fixed-state checkout/seed path and restores kit
+baselines; it is not automatic instance or process restoration.
+
+Existing instances without a control head begin at active generation zero. The
+first approved transition installs the baseline without changing release identity.
+Before publishing any stopped admission mode, it atomically upgrades the private
+instance record to `an-native-spool-instance-v2`. Older hosts reject that record
+instead of silently ignoring control; hosts supporting this feature continue to
+read legacy v1 instances. This is an instance-format floor, not a release-format
+change or protection against an operator deliberately rewriting the private store.
+Missing or inconsistent control evidence after installation fences admission.
+The generic process pause/suspend capability flags remain false. Separate
+`pause_between_attempts` and `suspend_checkpoint` flags describe this macOS slice.
+In-flight cooperative signaling, transparent process suspension, VM snapshots,
+GPU/GUI backends and automatic storage collection remain unqualified.
+
+## Operator-selected native Python and binary products
+
+Status: qualified for reviewed, CPU-only, headless tools; platform coverage is
+maintained in the [runtime matrix](platforms.md). This extends the
+[native v3 event profile](native-events.md) through existing workspace execution
+and binary artifact custody. It adds no core dependency, environment installer,
+package resolver, agent harness, domain parser or extra isolation per silk.
+
+### Portable requests and local selection
+
+A native v3 release may declare `binary_outputs`, a unique subset of `outputs`.
+Omission preserves text output behavior. Each binary output is accepted as opaque
+bytes through the existing artifact-v2 contract: 8 MiB per file, 16 MiB combined
+outputs; text retains its UTF-8/64 KiB bound. Format, formulas, ZIP expansion and
+domain checks belong to the consumer. A file extension does not select encoding.
+An older v3 host rejects the new field instead of silently accepting it as text.
+V1/v2 bytes and behavior remain unchanged; they cannot declare binary outputs.
+
+Requirements may select `macos-native-python-v1` only in v3, with the existing
+macOS, portable-source, headless, GPU-none and exact capability request set. One
+file input remains supported. Its declared slot name becomes the snapshot name,
+so a consumer can receive `source.xlsx` from an artifact stored as `content.bin`.
+Code basenames and the input name must be distinct. Optional v3 `state_input`
+adds a separately selected checkpoint through the [data/state contract](native-state.md#independent-business-data-and-state).
+It receives its own snapshot name and AN_SPOOL_STATE path. There is no
+extension-based dispatch or implicit state/input merging.
+
+The release carries bounded unique dependency labels, not executable paths,
+installation hooks or grants. The operator separately selects a compatible
+environment:
+
+```text
+an-agent-host spool-load DELIVERY NEW_INSTANCE --runtime RUNTIME_JSON
+```
+
+The strict operator JSON has these fields:
+
+```json
+{
+  "schema": "an-native-python-runtime-v1",
+  "executable": "/selected/python/bin/python3",
+  "executable_sha256": "EXACT_SHA256",
+  "stdlib": "/selected/python",
+  "site": "/selected/venv/lib/python3.12/site-packages",
+  "site_sha256": "EXACT_INVENTORY_SHA256",
+  "dependencies": ["example-1.0.0"]
+}
+```
+
+Paths must already be canonical absolute selections. `stdlib` and `site` are
+separate directories, outside both the release and instance; root-directory,
+symlink and nested selections refuse. Dependency labels must match the release
+exactly. Shell releases reject an unsolicited runtime; Python releases refuse a
+missing binding before creating an instance. Load copies the selected JSON to
+read-only `runtime.json`, binds its exact digest in `instance.json`, and executes
+no interpreter, project hook or installer. Start still requires its own approval.
+Loom never supplies or approves this machine-local binding.
+
+The site inventory is SHA-256 of compact UTF-8 JSON mapping sorted relative POSIX
+file paths to SHA-256 content digests. All files, including bytecode, are included.
+Symlinks, hardlinks, nonregular files, more than 8,192 entries, depth over 16,
+files over 20 MiB or total bytes over 256 MiB refuse. The host does not import
+packages while checking them. Labels are operator assertions; neither their
+equality nor content hashes authenticate the package publisher or certify safety.
+
+### Execution and acceptance
+
+The existing workspace supervisor runs the selected interpreter with `-S -B`,
+attempt-private code/data snapshots and no ambient environment. `PYTHONPATH`
+names only the selected snapshot and site directory. User-site initialization,
+`.pth` startup processing and bytecode writes are disabled. `HOME` and `TMPDIR`
+point into work scratch; selected runtime roots are read-only and networking
+remains denied by the reviewed native policy. The operator binding digest is
+included in the approved execution environment.
+
+The interpreter digest and dependency inventory are rechecked at load, while
+planning an approved start, and before native artifact acceptance. Changed
+dependencies refuse instead of silently changing the environment, launching a
+replacement attempt or accepting its outputs. Restore/reselect a valid
+environment explicitly; an unknown execution is never automatically retried.
+The standard library and system dynamic libraries remain operator-owned platform
+dependencies, not immutable packaged snapshots. Pre/post checks are not a proof
+against a hostile concurrent same-user change-and-restore attack. This is the
+existing reviewed-tools boundary, not arbitrary hostile-code containment.
+
+Native artifact discovery and collection depend on retained execution/custody
+evidence, not the continuing installation of Python. Accepted binary artifacts
+and consumption confirmations remain readable after work/snapshot collection,
+instance unload or loss of the runtime. Unaccepted successful work remains
+retained until its acceptance boundary can be resolved.
+
+Binary events use the same exact full revision binding as text events. A delivery
+selects `content.bin` for verified byte revisions and carries the revision into
+workspace input provenance. It never follows a mutable latest pointer. Explicit
+acceptance and consumption completion remain separate from successful execution.
+
+### Qualification
+
+```sh
+python3 -B crates/an-agent-host/tests/cli/native_binary.py \
+  --host /selected/an-agent-host --evidence /private/tmp/native-binary-NEW
+```
+
+The real macOS suite checks missing/mismatched runtime refusal, changed dependency
+refusal before start and acceptance, read-only runtime enforcement, opaque byte
+handoff after a newer publication, confirmed cancellation, active collection and
+cancelled-output acceptance refusal, and retained products/duplicate confirmation
+without Python.
+It records commands and evidence privately and never rebuilds its selected binary.
+Loom separately packages the existing log-report code and qualifies real editable
+XLSX/PPTX products. No GUI, model, GPU or new backend is claimed.

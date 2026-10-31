@@ -20,10 +20,10 @@ P0 is qualified for reviewed local CLI spools, not arbitrary untrusted agents:
 - Optional operator-selected Python environments and declared binary products;
   the paired document example exercises saved XLSX and fixed downstream PPTX.
 
-See [native spool](../crates/an-agent-host/NATIVE-SPOOL.md),
-[native events](../crates/an-agent-host/NATIVE-EVENTS.md),
-[native state](../crates/an-agent-host/NATIVE-STATE.md) and
-[Python/binary inputs](../crates/an-agent-host/NATIVE-PYTHON.md).
+See [native spool](native-spool.md),
+[native events](native-events.md),
+[native state](native-state.md) and
+[Python/binary inputs](native-spool.md).
 
 ## P1: daily local event operation
 
@@ -43,7 +43,7 @@ collection**: identify registered references, release them explicitly, and defin
 what unmanaged readers mean before deleting bytes. Admission retirement is not
 proof that all old references have expired. The native per-run catalogs do not
 have a global reference census; absence of a reader or an acknowledgement is not
-deletion authority. See [native storage](../crates/an-agent-host/NATIVE-STORAGE.md).
+deletion authority. See [native storage](native-storage.md).
 
 After that bounded contract, qualify the combined local headless path rather
 than adding another sequence of isolated features: concurrent instances,

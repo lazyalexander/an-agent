@@ -72,7 +72,7 @@ not decide domain algorithms or automatically rewrite a failing kit. Mature codi
 tools may perform the edits; their own context/tape remains theirs unless a separate
 integration explicitly provides host tracing. Domain glue never belongs in core.
 
-The first [native spool implementation](../crates/an-agent-host/NATIVE-SPOOL.md)
+The first [native spool implementation](native-spool.md)
 qualifies between-run kit edits and fixed snapshot execution. Runtime self-editing,
 weaver integration and checkpoint continuation of adapted kits remain future work.
 
@@ -113,4 +113,4 @@ against instance, release, generation and original-content preconditions. It is
 not the future Weaver task preparer or reviewer. Existing `weaver` module/CLI,
 schemas, capability and stored-ticket names remain compatibility identities.
 Revocation closes result admission without proving an external agent stopped.
-See [the native contract](../crates/an-agent-host/NATIVE-SPOOL.md).
+See [the native contract](native-spool.md).
