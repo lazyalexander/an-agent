@@ -18,7 +18,7 @@ fn phase_identity_is_separate_and_context_binds_both_endpoints() {
 
 #[test]
 fn reply_cannot_accept_a_missing_execution_receipt() {
-    let missing = std::env::temp_dir().join(uuid::Uuid::new_v4().to_string());
+    let missing = std::env::current_exe().unwrap().join("missing-receipt");
     let record = json!({"plan":{"target":{"root":missing}}});
     assert!(result(&missing, &record, "request").is_err());
 }
