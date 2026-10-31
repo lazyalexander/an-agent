@@ -4,10 +4,13 @@ mod delivery;
 mod dispatch;
 mod dispatch_reconcile;
 pub use dispatch_reconcile::reconcile_dispatch;
+mod facts;
 mod monitor;
 mod publication;
 mod replacement;
 pub use replacement::replace;
+#[cfg(test)]
+mod observation_tests;
 mod settlement;
 mod space;
 mod subscription;

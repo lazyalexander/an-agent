@@ -163,11 +163,35 @@ state selection, daemon, batch authorization or business graph is introduced.
 A monitor failure is not permission to reclaim, and an observation is not an
 authoritative transaction across concurrently changing instance evidence.
 
+Observation uses a strict, bounded in-memory copy of the workspace log. Pending,
+show and watch do not acquire `host.lock`, initialize workspace files, repair the
+environment projection or sync writes. All route/control/history checks within
+one observation use that fixed log. The additive `observation` field includes its
+hash and `log_unchanged_at_end`: false means the log or workspace metadata changed
+during the scan. It does not assert external instance/revocation evidence was
+atomic even when true. Changed views grant no action; mutation APIs still acquire
+the original locks and revalidate exact authority/currentness. A torn or malformed
+log fails closed without emitting a fabricated empty/complete view or retrying.
+
 The real event CLI acceptance qualifies pending/accepted/consumed and blocked
 rows, monitoring while an actual headless delivery holds the instance lock,
 changed evidence after revocation, observation cancellation without execution
 cancellation, deadline exit, and monitor restart with missing result evidence
-without creating another attempt. Rust tests cover torn logs and output faults.
+without creating another attempt. Rust tests cover torn logs and output faults,
+frozen-view currentness, read-only handles and observation during a held writer
+lock. `native_monitor.py` then runs 144 distinct approved revocations with 0/1/4
+observers across 2/8 events and 12 routes. It checks every mutation and observer
+outcome, projection identity and absence of observer lock/write timing events.
+No failed command is retried and the original event-test timing is unchanged.
+
+On the local debug host, the original matrix refused 48/144 controls and 14/20
+observers exited nonzero. The revised matrix completed 144/144 controls and all
+20 observers; control medians across cells were 24.79–26.20 ms. Single-observer
+original scans held the control lock for median 199.86/860.94 ms (2/8 events);
+new observers never acquire it. These are small synthetic, warm local samples
+with diagnostic overhead, not a latency SLA or production failure probability.
+The original four-observer/8-event cell had no control failures because all its
+observers died; observer survival is a separate acceptance condition.
 
 ## Finite approved dispatch
 

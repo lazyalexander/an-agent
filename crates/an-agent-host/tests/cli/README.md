@@ -109,3 +109,11 @@ confirmation after closure. It checks unrelated/new versions, private collection
 confirmed cancellation, preserved bytes and a torn retirement record without
 retry. This qualifies admission closure, not formal payload deletion or revocation
 of independent copies. Unit tests own concurrent-reader and marker-fault checks.
+
+`native_monitor.py` consumes a freshly completed `native_events.py` fixture and
+creates independent measured workspaces. It adds six real producer rounds, then
+runs 144 unique revocations under 0/1/4 observers with no retries. Run it once per
+fresh fixture; a failed/unknown scenario must not reuse the same round IDs. It
+records every command, watcher outcome and opt-in timing, and rejects observation
+writes, control refusal or watcher failure. It does not weaken stale-approval,
+cancellation or reclamation assertions in the preceding real event suite.
