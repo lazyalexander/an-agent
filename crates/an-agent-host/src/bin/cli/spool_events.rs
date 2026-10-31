@@ -20,6 +20,18 @@ pub(super) fn dispatch(command: &str, args: &[String]) -> Result<Value> {
         ("spool-event-deliver", [root, event, name]) => super::with_cancellation(|cancelled| {
             events::deliver(Path::new(root), event, name, approved, &cancelled)
         }),
+        ("spool-event-deliver", [root, event, name, flag, revision]) if flag == "--state" => {
+            super::with_cancellation(|cancelled| {
+                events::deliver_with_state(
+                    Path::new(root),
+                    event,
+                    name,
+                    revision,
+                    approved,
+                    &cancelled,
+                )
+            })
+        }
         ("spool-event-complete", [root, event, name]) => {
             events::complete(Path::new(root), event, name, approved)
         }

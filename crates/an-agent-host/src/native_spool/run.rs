@@ -1,9 +1,15 @@
 //! Fixed-code start plans and instance-bound custody; domain sequencing stays in silk.
+use super::inputs::Input;
 use super::*;
 use crate::workspace_job;
 use std::sync::atomic::AtomicBool;
 
-fn profile(root: &Path, bundle: &bundle::Bundle, input: &Path, seconds: u64) -> Result<Value> {
+fn profile(
+    root: &Path,
+    bundle: &bundle::Bundle,
+    selected: &inputs::Selection,
+    seconds: u64,
+) -> Result<Value> {
     if !(1..=300).contains(&seconds) {
         return Err("invalid run deadline".into());
     }
@@ -20,17 +26,15 @@ fn profile(root: &Path, bundle: &bundle::Bundle, input: &Path, seconds: u64) -> 
             entry = Some(index);
         }
     }
-    let input_index = inputs.len();
-    inputs.push(input.canonicalize()?);
     let args = vec![format!("{{input:{}}}", entry.ok_or("missing silk entry")?)];
     let mut profile = json!({"schema":"an-workspace-job-v2","executable":"/bin/bash","args":args,
-        "environment":{"AN_SPOOL_SILK_DIR":"{inputs}","AN_SPOOL_KIT_DIR":"{inputs}",
-            "AN_SPOOL_INPUT":format!("{{input:{input_index}}}")},
+        "environment":{"AN_SPOOL_SILK_DIR":"{inputs}","AN_SPOOL_KIT_DIR":"{inputs}"},
         "readonly":[],"inputs":inputs,"outputs":bundle.manifest.outputs,
         "wall_seconds":seconds,"trusted_process_group":true});
     if !bundle.manifest.binary_outputs.is_empty() {
         profile["binary_outputs"] = json!(bundle.manifest.binary_outputs);
     }
+    selected.configure(bundle, &mut profile)?;
     runtime::profile(root, bundle, &mut profile)?;
     Ok(profile)
 }
@@ -73,17 +77,31 @@ pub fn start_state(
     )
 }
 
-enum Input<'a> {
-    File(&'a Path),
-    State(&'a str),
-    Event(&'a Value),
+/// Bind one accepted business artifact and one explicitly selected checkpoint.
+pub fn start_data_state(
+    path: &Path,
+    name: &str,
+    selection: &Path,
+    seconds: u64,
+    approved: Option<&str>,
+    cancelled: &AtomicBool,
+) -> Result<Value> {
+    start_selected(
+        path,
+        name,
+        Input::DataState(selection),
+        seconds,
+        approved,
+        cancelled,
+        |_| Ok(()),
+    )
 }
 
 /// The host event adapter checks its grant and records intent at start admission.
 pub(super) fn start_event(
     path: &Path,
     name: &str,
-    selected: &Value,
+    selected: inputs::EventInput<'_>,
     seconds: u64,
     approved: Option<&str>,
     cancelled: &AtomicBool,
@@ -120,21 +138,8 @@ fn start_selected(
     if dir.join("job").exists() {
         return Err("run identity already used; no implicit retry".into());
     }
-    let selected = match input {
-        Input::File(path) => json!({"path":path.canonicalize()?}),
-        Input::State(revision) => checkpoint::selection(&root, revision)?,
-        Input::Event(selected) => selected.clone(),
-    };
-    let mut profile = profile(
-        &root,
-        &bundle,
-        Path::new(selected["path"].as_str().ok_or("input")?),
-        seconds,
-    )?;
-    if selected.get("binding").is_some() {
-        profile["artifact_inputs"] = json!([{"path":selected["path"],"catalog":selected["catalog"],
-            "revision":selected["binding"]["revision"]}]);
-    }
+    let selected = inputs::select(&root, &bundle, input)?;
+    let profile = profile(&root, &bundle, &selected, seconds)?;
     let bytes = serde_json::to_vec_pretty(&profile)?;
     // Preview may persist a bounded plan, but never launches or grants execution.
     store::directory(&dir)?;
@@ -161,11 +166,7 @@ fn start_selected(
     let mut plan = json!({"schema":"an-native-spool-start-v1","instance":instance["instance"],
         "release":bundle.release,"run":name,"workspace":preview["plan"],
         "authority":"reviewed native tools only; no detached workers or network; no hostile-agent claim"});
-    if let Some(event) = selected.get("event_input") {
-        plan["event_input"] = event.clone();
-    } else if selected.get("binding").is_some() {
-        plan["state_input"] = selected;
-    }
+    selected.bind_plan(&mut plan);
     round_control::bind(&mut plan, &root, &instance)?;
     let (hash, execute) = approval(&plan, approved)?;
     if !execute {

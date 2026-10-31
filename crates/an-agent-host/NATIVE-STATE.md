@@ -1,6 +1,6 @@
 # Explicit state for native spools
 
-Status: qualified for the reviewed headless macOS shell profile. This adapts the
+Status: qualified for the reviewed headless macOS shell and selected Python profiles. This adapts the
 existing artifact revision store, fixed-input workspace snapshots, accepted-output
 evidence and per-instance lock. It does not reuse the legacy file-kit instance
 registration, interpret business state, add a backend or change a release format.
@@ -26,9 +26,9 @@ Initialize, start, accept and commit require their own preview and exact approva
 The preview never executes a process or changes HEAD. An initial state is explicitly
 operator-seeded, not claimed to be a prior accepted run. Initialization selects one
 existing output slot; undeclared outputs are refused. State uses the existing
-64 KiB text revision limit. The native profile still has one input: `AN_SPOOL_INPUT`
-is the selected state document. A domain needing fresh data must include it in an
-explicit domain input design; this slice adds no second input or implicit context.
+64 KiB text revision limit; a declared binary output cannot be selected as state.
+The legacy state-only profile has one input: `AN_SPOOL_INPUT` is the selected state
+document. The opt-in v3 composition below separates business data from that state.
 Selected code and the state input must retain distinct snapshot basenames under
 the existing native input naming rule.
 
@@ -42,6 +42,58 @@ mapping. The existing workspace machinery reads that immutable revision into an
 attempt-private read-only snapshot. The workload cannot read or write the state
 catalog, HEAD, approval records or sibling attempts. A plain `spool-start` with
 identical bytes is not a state-bound run and cannot commit through this API.
+
+## Independent business data and state
+
+Native v3 requirements may declare `state_input`, a portable snapshot filename,
+separate from the one `inputs` business-data slot and all code basenames. The
+field is absent from legacy releases; their serialized contracts and behavior
+remain unchanged. An older host rejects the new field rather than silently
+mapping state into business data. No new VM, domain parser or state format is added.
+
+For this opted-in entry, `AN_SPOOL_INPUT` names one fixed business artifact and
+`AN_SPOOL_STATE` names one explicitly selected committed checkpoint. Both are
+read-only attempt-private copies, with distinct declared filenames even when
+their catalogs store payloads as `content.txt`. Code, business data and state
+share the owning spool attempt's existing supervision and authority boundary.
+Plain or legacy-state-only starts refuse the opted-in entry; state is required
+explicitly, never inherited or guessed from HEAD.
+
+```text
+spool-start-data-state INSTANCE RUN SELECTION_JSON SECONDS [--approve HASH]
+spool-event-deliver WORKSPACE EVENT SUBSCRIPTION --state REVISION [--approve HASH]
+```
+
+All commands use an-agent-host. The strict operator selection JSON is:
+
+```json
+{"schema":"an-native-data-state-v1","data":{"catalog":"/selected/catalog","revision":"EXACT_DATA_REVISION"},"state_revision":"EXACT_COMMITTED_STATE_REVISION"}
+```
+
+The host verifies both catalogs/revisions and binds the full references into the
+start approval and workspace input inventory. The workload receives files, not
+the selector, catalog access or authority records. Direct selection verifies the
+chosen object's bytes/provenance; it does not certify its author or infer producer
+business success. The event path still requires formal producer acceptance.
+A direct run's first preview
+freezes its selection; changing it needs a fresh run identity. The event adapter
+retains one delivery identity per event/subscription: an explicit state change
+cannot create another execution. A different state on an existing delivery is
+refused; omitting --state can only observe an existing delivery, never start a
+stateful one. Before admission, a prepared event run also freezes its selection;
+changing it needs a new explicitly authorized subscription, not overwriting
+the prepared profile. Unknown results remain fenced with zero automatic retries.
+
+State commit verifies the exact ordered pair of business/state input bindings,
+the accepted state output and the expected checkpoint HEAD. A later business
+version never changes that pair; an older committed state may be evaluated but
+its output cannot overwrite a newer HEAD. Acceptance, state commit and event
+consumption completion remain separate explicit operations. Completion confirms
+accepted output, not implicit checkpoint promotion; callers decide when to
+publish after a conflict. The qualified example commits state before completion.
+Accepted reports from conflicting runs remain formal products, without becoming
+committed checkpoints. Work/private snapshot collection preserves both formal
+input catalogs, accepted products, checkpoint history and diagnostic evidence.
 
 ## Publication and interruption
 
@@ -99,3 +151,8 @@ execution/cancellation, stale competing commits, a filesystem staging failure
 after publication, orphan refusal, explicit commit confirmation, scratch mutation
 after acceptance, reclaim-before-commit and a fresh instance with restored kit
 baseline. No model, synthetic execution receipt or new host domain rule is used.
+`native_data_state.py` additionally qualifies direct and event-bound composition,
+fixed old business versions, stale approval/commit refusal, unknown-delivery
+fencing, actual cancellation/retention and explicit continuation in a fresh
+Python instance. Record-loss cases are controlled evidence injections after
+known execution, not arbitrary crash or power-loss qualification.

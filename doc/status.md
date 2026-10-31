@@ -27,8 +27,10 @@ and CI are retained. This documentation does not add a new platform or backend.
 The immediate event-first slice is now qualified: workspace artifact facts can
 drive explicit native delivery, acceptance and causal result confirmation. Keep
 business control flow in silk/kit. Real XLSX/PPTX handoff now uses explicit binary
-outputs and operator-selected Python through the same event contract. Multiple
-data inputs alongside selected state, broader environment support and daily
+outputs and operator-selected Python through the same event contract. A separate
+explicit state slot now combines one fixed business artifact with one committed
+checkpoint, including event delivery and stale-commit refusal. Multiple business
+inputs, broader environment support and daily
 subscription/lifecycle/retention management remain separate work. Low-latency
 channels require an actual high-frequency consumer. The runtime milestones below
 remain an inventory, not a host business-graph roadmap.

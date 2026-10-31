@@ -106,6 +106,10 @@ def main():
         assert loaded["execution_granted"] is False
     seed = root / "seed.dat"
     seed.write_bytes(b"first\x00\xff")
+    text_state = root / "invalid-state.txt"
+    text_state.write_text("0\n")
+    call("spool-state-init", a, "report.bin", text_state, refused=True)
+    assert not (a / "checkpoints").exists()
     preview = call("spool-start", a, "first", seed, 15)
     module.write_bytes(b"SUFFIX = b'changed'\n")
     call("spool-start", a, "first", seed, 15, "--approve", preview["approval_sha256"], refused=True)

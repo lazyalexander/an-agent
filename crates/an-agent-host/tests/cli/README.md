@@ -57,6 +57,14 @@ retained products after the selected runtime disappears. Only Python's standard
 library is needed by this host-owned refusal suite. The separate Loom document
 suite installs its example dependencies and validates editable XLSX/PPTX.
 
+`native_data_state.py` uses the same --host/--evidence arguments. It qualifies
+separate fixed business/checkpoint inputs through direct and event starts,
+stale commits after scratch collection, unknown-delivery fencing and changed
+state refusal on an existing delivery. Real cancellation refuses collection
+before termination confirmation, then preserves formal data/state/products while
+collecting private files. A fresh Python instance explicitly seeded from retained
+state verifies the second qualified runtime. Business arithmetic is a test fixture.
+
 Each command has a bounded wait and records stdout/stderr and its exit status.
 On a client deadline the runner requests host cancellation; unknown termination
 fails the suite and keeps evidence. It never automatically reruns an execution.

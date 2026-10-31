@@ -6,6 +6,7 @@ mod bundle;
 pub mod checkpoint;
 mod event_contract;
 pub mod events;
+mod inputs;
 pub mod kit_proposal;
 mod lifecycle;
 mod reconcile;
@@ -28,7 +29,7 @@ use crate::{
 /// Legacy module alias; wire schemas and stored tickets retain their identities.
 pub use kit_proposal as weaver;
 pub use lifecycle::{load, load_runtime, reset_kit, show, unload, update_kit};
-pub use run::{accept, reclaim, start, start_state};
+pub use run::{accept, reclaim, start, start_data_state, start_state};
 use serde_json::{Value, json};
 pub use status::status;
 use std::{

@@ -143,21 +143,6 @@ pub(super) fn profile(root: &Path, bundle: &bundle::Bundle, profile: &mut Value)
         profile["environment"]["PYTHONDONTWRITEBYTECODE"] = json!("1");
         profile["environment"]["HOME"] = json!("{work}");
         profile["environment"]["AN_SPOOL_RUNTIME_SHA256"] = instance["runtime_sha256"].clone();
-        let mut layout: Vec<_> = bundle
-            .payload
-            .keys()
-            .map(|p| p.rsplit('/').next().unwrap_or(p).to_owned())
-            .collect();
-        layout.push(
-            bundle
-                .manifest
-                .requirements
-                .as_ref()
-                .ok_or("requirements")?
-                .inputs[0]
-                .clone(),
-        );
-        profile["input_layout"] = json!(layout);
     }
     Ok(())
 }
