@@ -3,7 +3,7 @@
 This file is the discipline every agent working in this repo follows. It
 is shorter than the design docs on purpose: it covers how code moves,
 not what the code means. For public architecture and implementation contracts, start at
-[`doc/README.md`](doc/README.md) and follow the linked crate-local documents.
+[`doc/README.md`](doc/README.md) and follow the linked contracts.
 Private collaboration/design notes are supplementary and must not be copied
 into the public repository.
 
@@ -105,7 +105,7 @@ watch, it belongs to the lab.
 2. `cargo clippy --workspace --all-targets` — zero warnings.
 3. `cargo fmt --all` — applied.
 4. `cargo arch` — green against the target branch. Do not reset or raise the
-   baseline to make a feature pass. See `ARCHITECTURE-GATES.md`.
+   baseline to make a feature pass. See [quality gates](doc/quality.md).
 
 The architecture checker is a separate Cargo workspace. Product workspace
 checks and `cargo arch` do not run its own tests. Before every PR push, also run:
@@ -153,3 +153,16 @@ Cargo success alone is not full acceptance. Migration must preserve assertions,
 cancellation/cleanup evidence and CI gates, and must not add production debug
 APIs just to expose private test seams. Measure build and execution separately;
 unknown execution outcomes must not be automatically retried.
+
+## Documentation ownership
+
+Keep architecture, operation contracts and public qualification recipes in `doc/`.
+A package/directory README provides orientation, entry points and links; it must
+not become a second contract or chronological progress log. Root `AGENTS.md` is
+the contributor instruction exception. Preserve executable schemas and necessary
+failure boundaries while removing obsolete plans and duplicate explanations.
+`documentation-policy.toml` sets document count/length budgets; `cargo arch` checks
+placement, budgets and local file links. Update existing topics before adding a
+page. Budget increases or exceptions need an explicit review rationale, never a
+silent reset. Keep the public `.gitignore` allowlist narrow; do not publish ignored
+private notes to satisfy a link check. No blanket archive directory.

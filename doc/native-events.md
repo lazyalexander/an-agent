@@ -1,7 +1,7 @@
 # Native workspace artifact events
 
 Status: bounded, explicit headless delivery under the
-[qualified native workspace backend](../../doc/platforms.md). An accepted output can become
+[qualified native workspace backend](platforms.md). An accepted output can become
 a workspace fact, activate a separately approved receiver, and produce a causal
 result event after formal acceptance. This is not a business graph engine,
 background listener, low-latency channel or arbitrary agent sandbox.
@@ -25,7 +25,7 @@ duplicates and unknown fields refuse. V1/v2 cannot carry this object; their byte
 and ordinary behavior remain compatible. Older hosts reject v3. Roles describe
 interfaces, not peer access, subscriptions, model services or network grants.
 The reviewed macOS policy and one-input profile apply. Optional v3
-[binary products and operator-selected Python](NATIVE-PYTHON.md) use the same
+[binary products and operator-selected Python](native-spool.md) use the same
 delivery/confirmation protocol. V1/v2 and existing text packages are unchanged.
 The local control store remains trusted against same-user tampering. Hashes bind
 bytes and identities, not publisher authentication or a remote trust protocol.
@@ -52,7 +52,7 @@ All commands use `an-agent-host`. Init creates no execution grant. Mutations
 preview exact plans before approval. Delivery previews may prepare a bounded
 native profile but create neither a delivery intent nor an execution attempt.
 For a v3 release declaring a separate state input, delivery additionally requires
-`--state REVISION`. The [data/state contract](NATIVE-STATE.md#independent-business-data-and-state)
+`--state REVISION`. The [data/state contract](native-state.md#independent-business-data-and-state)
 pins it independently of the event's business artifact. The delivery identity
 does not change with state, so another selection cannot force a second attempt.
 The host-facing foreground caller chooses which event/subscription to dispatch;

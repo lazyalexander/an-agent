@@ -2,8 +2,10 @@
 /ARCHITECTURE.toml @lazyalexander
 /architecture-baseline.toml @lazyalexander
 /architecture-policy.toml @lazyalexander
-/ARCHITECTURE-GATES.md @lazyalexander
+/doc/quality.md @lazyalexander
 /tools/archcheck/ @lazyalexander
 /.cargo/ @lazyalexander
 /.github/ @lazyalexander
 /Cargo.toml @lazyalexander
+
+/documentation-policy.toml @lazyalexander

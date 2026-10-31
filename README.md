@@ -20,7 +20,7 @@ current delivery focus. OpenShell remains an optional, replaceable backend with
 expansion paused; application shuttles remain host-authorized external bridges.
 Headless does not imply trusted code, and insufficient isolation must refuse
 execution rather than fall back to a weaker backend.
-See the [implementation audit and staged migration](crates/an-agent-host/SPOOL-BOUNDARY.md).
+See the [implementation audit and staged migration](doc/architecture.md).
 OpenShell's bounded file profile does not provide the native spool state/event/artifact contract.
 
 The [spool code contract](doc/spool-code.md) distinguishes **silks**, the stable pipeline
@@ -42,7 +42,7 @@ Start with the [public documentation](doc/README.md) for architecture, spool/sil
 execution boundaries, state/artifact ownership and implementation status. Detailed
 contracts remain beside the crates that implement them.
 
-The [native workspace event contract](crates/an-agent-host/NATIVE-EVENTS.md)
+The [native workspace event contract](doc/native-events.md)
 connects accepted file versions to explicitly approved headless spool deliveries.
 Business workflows stay inside silks/kits; the host adds no business graph DSL.
 
@@ -50,7 +50,7 @@ Business workflows stay inside silks/kits; the host adds no business graph DSL.
 
 The host application owns the workspace, user interaction, and execution of application-specific effects. Today, spools are embedded capability bodies with declared contracts and configuration. The target packaging model is a reusable workflow package containing stages, silks, configuration and documentation; it requests shuttle capabilities rather than necessarily containing a shuttle. A spool carries domain knowledge, business rules, skills and domain acceptance criteria; the host supplies generic execution and artifact management rather than absorbing those rules. Package identity, a workflow run and an individual stage are distinct. The existing descriptor and mounting APIs are not changed by this design direction.
 
-Loom owns development and packaging. The an-agent host owns workflow admission, scoped context/model services and accepted artifacts; an execution backend enforces isolation and owns VM/process lifecycle. Shuttles remain application-side bridges, not unrestricted host shells. See [the responsibility and permission boundaries](crates/an-agent-host/ARCHITECTURE.md) and [the local VM direction and capability limits](crates/an-agent-host/LOCAL-VM.md). Local execution is the priority; no remote orchestration platform is required.
+Loom owns development and packaging. The an-agent host owns workflow admission, scoped context/model services and accepted artifacts; an execution backend enforces isolation and owns VM/process lifecycle. Shuttles remain application-side bridges, not unrestricted host shells. See [the responsibility and permission boundaries](doc/architecture.md) and [the local VM direction and capability limits](doc/openshell.md). Local execution is the priority; no remote orchestration platform is required.
 
 - **Workspace integration:** events, configuration, environment snapshots, and registration provide the host-facing context. The workspace is the interaction center; its durable documents and assets remain essential inputs.
 - **Agent execution:** `AgentControl` coordinates mounted bodies, model and tool boundaries, hooks, and recorded outcomes. The host supplies model clients and native integrations.
@@ -60,10 +60,10 @@ Loom owns development and packaging. The an-agent host owns workflow admission, 
 - **Bounded CLI hosting:** `an-agent-host` independently registers hash-bound deployments and runs an explicit stdio-only capability through admission, the qualified native backend restrictions, and retained receipts. Development and packaging tools are not runtime dependencies. See [the host execution contract](crates/an-agent-host/README.md) and [platform support matrix](doc/platforms.md).
 
 Release-bound native spools also support explicit workspace-event handoff and
-[operator-selected Python with binary products](crates/an-agent-host/NATIVE-PYTHON.md).
+[operator-selected Python with binary products](doc/native-spool.md).
 The headless log-report example produces editable XLSX/PPTX through the same
 supervision and custody boundary; document rules remain in spool code.
-An optional [separate state input](crates/an-agent-host/NATIVE-STATE.md#independent-business-data-and-state)
+An optional [separate state input](doc/native-state.md#independent-business-data-and-state)
 binds a fixed business artifact and committed checkpoint without implicit HEAD
 selection; expected-version commit and cancellation retention remain host-owned.
 
@@ -103,7 +103,7 @@ cargo arch
 
 The toolchain is pinned via `rust-toolchain.toml`. Experiments stay outside the product dependency graph. Promote a proven integration through a tested implementation, rather than treating a successful standalone demo as a kernel guarantee.
 
-See [architecture gates](ARCHITECTURE-GATES.md) for the TOML rules, existing-debt
+See [architecture gates](doc/quality.md) for the TOML rules, existing-debt
 baseline, dependency boundaries and the separately locked SPACE-based checker.
 
 The [implementation boundary audit](doc/architecture.md#implementation-boundary-audit) maps current modules to developer, host, and backend responsibilities and records the remaining limits.

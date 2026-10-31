@@ -22,10 +22,10 @@ downgrade to native execution or weaken a declaration to fit it.
 | Surface | macOS | Linux | Other platforms | Evidence and limits |
 | --- | --- | --- | --- | --- |
 | Core, package/record validation and host logic | Workspace CI | Workspace CI | Unqualified | Unit/contract checks are not an enforcement claim |
-| Registered stdio and fixed-file profiles | Existing native enforcement | Existing Landlock/seccomp enforcement | Refused/unqualified | `execution` and `file_runtime` tests; [Linux prerequisites](../crates/an-agent-host/LINUX-VALIDATION.md); missing enforcement refuses |
+| Registered stdio and fixed-file profiles | Existing native enforcement | Existing Landlock/seccomp enforcement | Refused/unqualified | `execution` and `file_runtime` tests; [Linux prerequisites](qualification.md); missing enforcement refuses |
 | Reviewed workspace execution and native shell/Python spool lifecycle | Real headless CLI acceptance | Execution remains unsupported | Execution remains unsupported | [Host CI](../.github/workflows/host.yml), [CLI cases](../crates/an-agent-host/tests/cli/README.md); reviewed tools, no arbitrary hostile-agent claim |
-| Isolated Rust build recipe | Existing narrow build/file acceptance | No Linux build adapter | Unqualified | [Build/file contract](../crates/an-agent-host/FILE-JOBS.md); separate from running an already-built file program |
-| Optional OpenShell adapter | Operator-selected control/transport | Selected backend environment, independently qualified | Unqualified | [Historical live evidence](../crates/an-agent-host/OPENSHELL.md); opt-in real-VM test is not implied by ordinary CI |
+| Isolated Rust build recipe | Existing narrow build/file acceptance | No Linux build adapter | Unqualified | [Build/file contract](workspace-jobs.md); separate from running an already-built file program |
+| Optional OpenShell adapter | Operator-selected control/transport | Selected backend environment, independently qualified | Unqualified | [Historical live evidence](openshell.md); opt-in real-VM test is not implied by ordinary CI |
 | GPU workers, GUI shuttles, live memory suspension | Separate qualification required | Separate qualification required | Separate qualification required | Neither CPU success nor a native binary establishes these capabilities |
 
 CI runner architecture, selected binary/toolchain and runtime dependencies are

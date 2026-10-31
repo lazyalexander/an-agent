@@ -1,5 +1,6 @@
 //! Thin fail-closed project gate over the pinned SPACE checker.
 mod base;
+mod documents;
 mod policy;
 use pplx_space_archcheck::{
     Context, Mode, check,
@@ -43,6 +44,7 @@ fn run() -> Result<()> {
     if !skipped.is_empty() {
         return Err(format!("incomplete comparison: {}", skipped.join("; ")).into());
     }
+    documents::inspect(&root, base)?;
     policy::inspect(&root, &policy, &ctx)?;
     if findings.iter().any(|f| f.mode == Mode::Required) {
         return Err("required architecture findings".into());
