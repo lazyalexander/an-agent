@@ -191,9 +191,10 @@ readable; an `unregistered` observation is not proof that no consumer exists.
 
 The consumer writes a durable registration intent, then acquires each source claim
 under the existing catalog write lock and finally confirms registration. Native
-starts have at most two managed input slots. Source claim history is bounded to
-512 entries per revision, including release records; exhaustion refuses acquisition
-without pruning history. Only one source lock is held at a time, inside the
+starts have at most two managed input slots. Acquisition refuses when a revision
+already has 512 history entries, counting claims and release records; existing
+owners can still record releases, so retained history can grow to 1,024 entries.
+No history is pruned to make room. Only one source lock is held at a time, inside the
 consumer's existing instance operation. Read-only inspection takes neither lock;
 it cannot authorize deletion and may fail if it captures incomplete publication.
 Catalog write contention remains an explicit refusal, without retry or queuing.
