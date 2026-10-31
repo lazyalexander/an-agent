@@ -14,11 +14,13 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--host", type=Path, required=True)
     parser.add_argument("--evidence", type=Path, required=True)
+    parser.add_argument("--legacy-host", type=Path)
     args = parser.parse_args()
     if platform.system() != "Darwin":
         raise SystemExit("Real macOS enforcement required; no fallback")
     host, root = args.host.resolve(strict=True), args.evidence.resolve()
     root.mkdir(mode=0o700)
+    legacy = args.legacy_host.resolve(strict=True) if args.legacy_host else None
     calls = []
 
     def spawn(*args):
@@ -117,6 +119,32 @@ def main():
     req = request("normal-batch", "normal", initial)
     preview = call("spool-events-dispatch", ws, req)
     ids = runs(preview)
+    if legacy:
+        subprocess.run([str(legacy), "spool-events-show", str(ws)], capture_output=True, check=True)
+        old_preview = subprocess.run([str(legacy), "spool-events-dispatch", str(ws), str(req)],
+                                     capture_output=True, text=True, check=True)
+        assert json.loads(old_preview.stdout)["approval_sha256"] == preview["approval_sha256"]
+    pause_preview = call("spool-event-pause", ws, "normal")
+    assert json.loads((ws / "native-events.json").read_text())["schema"] == "an-native-event-workspace-v1"
+    call("spool-event-pause", ws, "normal", "--approve", "0" * 64, success=False)
+    call("spool-event-pause", ws, "normal", "--approve", pause_preview["approval_sha256"])
+    assert json.loads((ws / "native-events.json").read_text())["schema"] == "an-native-event-workspace-v2"
+    if legacy:
+        refused = subprocess.run([str(legacy), "spool-events-show", str(ws)], capture_output=True, text=True)
+        assert refused.returncode != 0 and "unsupported native event workspace" in refused.stderr
+    row = call("spool-events-pending", ws)["deliveries"][0]
+    assert row["phase"] == "blocked" and row["subscription_control"]["mode"] == "paused"
+    call("spool-events-dispatch", ws, req, "--approve", preview["approval_sha256"], success=False)
+    approved("spool-event-resume", ws, "normal")
+    call("spool-event-pause", ws, "normal", "--approve", pause_preview["approval_sha256"], success=False)
+    call("spool-events-dispatch", ws, req, "--approve", preview["approval_sha256"], success=False)
+    entry = preview["plan"]["entries"][0]
+    call("spool-event-deliver", ws, events[0], "normal", "--state", initial,
+         "--approve", entry["approval_sha256"], success=False)
+    assert all(not (normal / "runs" / run / "job").exists() for run in ids)
+    preview = call("spool-events-dispatch", ws, req)
+    assert preview["plan"]["entries"][0]["plan"]["subscription_control"]["generation"] == 2
+    assert ids == runs(preview)  # Control never creates a second delivery identity.
     assert not (ws / "dispatches").exists()
     assert all(not (normal / "runs" / run / "job").exists() for run in ids)
     call("spool-events-dispatch", ws, req, "--approve", "0" * 64, success=False)
@@ -191,6 +219,50 @@ def main():
     assert call("spool-events-dispatch-show", ws, "fault-batch", success=False)["status"] == "uncertain"
     assert not (faulted / "runs" / failed_ids[1] / "job").exists()
 
+    # Pausing an admitted route does not cancel its current entry or block custody.
+    gated, state = consumer("gated", 3)
+    gated_req = request("gated-batch", "gated", state)
+    gated_preview = call("spool-events-dispatch", ws, gated_req)
+    gated_ids = runs(gated_preview)
+    process = spawn("spool-events-dispatch", ws, gated_req, "--approve", gated_preview["approval_sha256"])
+    try:
+        wait_ready(process, gated, gated_ids[0])
+        approved("spool-event-pause", ws, "gated")
+        gated_result = finish(process, False)
+    finally:
+        if process.poll() is None:
+            process.send_signal(signal.SIGINT)
+            finish(process, False)
+    assert gated_result["attempted_entries"] == 2  # Second admission is refused, not launched.
+    assert call("spool-status", gated, gated_ids[0])["execution_status"] == "succeeded"
+    assert not (gated / "runs" / gated_ids[1] / "job").exists()
+    approved("spool-accept", gated, gated_ids[0])
+    approved("spool-state-commit", gated, state, gated_ids[0])
+    approved("spool-event-complete", ws, events[0], "gated")
+    approved("spool-event-resume", ws, "gated")
+    call("spool-events-dispatch", ws, gated_req, success=False)
+    assert not (gated / "runs" / gated_ids[1] / "job").exists()
+    # A fresh approval is required for known unadmitted work after resume.
+    remaining = json.loads(gated_req.read_text())
+    remaining["name"] = "gated-remaining"
+    remaining["entries"] = remaining["entries"][1:]
+    remaining_path = root / "gated-remaining.json"
+    remaining_path.write_text(json.dumps(remaining))
+    assert approved("spool-events-dispatch", ws, remaining_path)["reason"] == "completed"
+    # Revocation is permanent; reversible controls cannot resurrect the route.
+    approved("spool-event-revoke", ws, "gated")
+    call("spool-event-pause", ws, "gated", success=False)
+    call("spool-event-resume", ws, "gated", success=False)
+
+    invalidated, _ = consumer("invalidated")
+    approved("spool-event-pause", ws, "invalidated")
+    approved("spool-pause", invalidated)
+    approved("spool-resume", invalidated)
+    call("spool-event-resume", ws, "invalidated", success=False)
+    control = next(row["control"] for row in call("spool-events-show", ws)["subscriptions"]
+                   if row["name"] == "invalidated")
+    assert control["mode"] == "paused" and control["generation"] == 1
+
     cancelled, state = consumer("cancelled", 20)
     req = request("cancel-batch", "cancelled", state)
     preview = call("spool-events-dispatch", ws, req)
@@ -234,7 +306,8 @@ def main():
         "host_sha256": hashlib.sha256(host.read_bytes()).hexdigest(), "fixed_state": True,
         "stale_commit_refused": True, "stop_drained_one_entry": True,
         "cancel_termination_confirmed": True, "unknown_retried": False, "real_ledger_write_failure_fenced": True,
-        "automatic_retries": 0, "model_invoked": False}
+        "automatic_retries": 0, "model_invoked": False, "subscription_control_qualified": True,
+        "old_approval_refused_after_resume": True, "legacy_host_refusal_checked": legacy is not None}
     (root / "acceptance.json").write_text(json.dumps(summary, indent=2))
     print(json.dumps(summary))
 

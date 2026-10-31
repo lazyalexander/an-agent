@@ -31,10 +31,12 @@ now reuses those identities for 1..16
 selected existing deliveries with fixed state selectors, drain-stop, cancellation
 and an exclusive no-resume intent. Per-entry confirmed success gates the next
 selection; acceptance/state commit/completion remain explicit. Subscription
-changes must preserve instance/generation fencing.
+admission pause/resume is now explicit and generation-bound, with stale approvals
+refused and already-admitted custody retained. It does not replace route targets;
+instance/generation fencing and permanent revocation remain in force.
 Do not introduce implicit latest-state selection, automatic retries, domain
 branch/loop routing, a second Loom scheduler or another execution backend.
-Background admission, ongoing subscription updates and retention retirement
+Background admission, route replacement and retention retirement
 remain separate unqualified operations. This is a staged local operational path,
 not a claim that all P1 daily operation is complete.
 

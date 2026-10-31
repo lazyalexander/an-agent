@@ -9,6 +9,7 @@ fn observation(space: &Space, event: &Value, route: &Value) -> Result<Value> {
     store::no_links(&dir)?;
     let refusal = space.check_active(route).err().map(|e| e.to_string());
     let mut row = json!({"context":ctx,"event":event["id"],"subscription":route["name"],
+        "subscription_control":control::current(space,route)?,
         "phase":if refusal.is_some() {"blocked"} else {"awaiting-authorization"},
         "admission_refusal":refusal,"automatic_retries":0});
     if dir.exists() {

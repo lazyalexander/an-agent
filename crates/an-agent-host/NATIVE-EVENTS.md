@@ -236,3 +236,52 @@ blocked cleanup during execution, retained state/products, an actual ledger writ
 failure after execution, incomplete intent and missing receipt/summary observation
 without replay. Evidence-loss injection follows known execution; it is not a
 claim of arbitrary process-kill or power-loss recovery.
+
+## Subscription admission pause and resume
+
+`spool-event-pause WORKSPACE NAME [--approve HASH]` and
+`spool-event-resume WORKSPACE NAME [--approve HASH]` control admission for an
+existing immutable subscription. Both preview first and bind the exact previous
+control generation in their approval. Repeating a transition or using an old
+approval refuses; inspect `spool-events-show` for the current mode/generation.
+Resume verifies the same loaded target identity and round-control generation;
+it cannot rebind a reloaded instance or repair an outdated route. Revocation
+remains permanent and neither operation can undo it.
+
+Pause does not signal a running process, accept products, modify checkpoint
+HEAD or prevent explicit completion of already admitted work. It fences new
+admission under the existing workspace lock. Resume enables new review, never
+reuses a pre-pause approval: every later delivery plan binds the current control
+generation, and admission checks it again under that lock. Delivery identity
+remains workspace/event/subscription; control transitions cannot create another
+attempt for the same pair. A finite dispatch crossing a pause or pause/resume
+stops at the next refused admission. Repeating that recorded batch never resumes
+it. Still-unadmitted work needs a fresh finite selection and approval; unknown
+work remains fenced.
+
+Control records use the existing immutable workspace configuration snapshots and
+log, with predecessor bindings and at most 32 transitions per subscription under
+the existing 512-record workspace limit. Transition snapshots and the log are
+synced before success is reported. Missing snapshots and duplicate, reordered or changed
+committed control records refuse. An error can leave a committed transition;
+inspect rather than automatically retrying. The 16-subscription bound counts
+route declarations, not control records.
+
+First use explicitly upgrades workspace metadata from
+`an-native-event-workspace-v1` to `an-native-event-workspace-v2`. It preserves the
+workspace identity, routes, event facts and historical delivery records. V1
+workspaces without controls retain their existing format and pre-control delivery
+approval shape. Earlier hosts reject v2 on open instead of ignoring pause records.
+Do not concurrently operate an upgraded workspace with an older already-running
+host; mixed host versions and filesystem rollback are not qualified. A crash
+between metadata upgrade and control commit may leave v2 with no transition;
+metadata alone is not evidence that pause completed. No automatic downgrade or
+historical record rewrite is provided.
+
+Pending/watch inventory includes subscription control and admission refusal.
+It still grants no execution or collection. Real headless acceptance covers
+pause/resume of direct and batch admission, rejection of pre-pause approvals,
+unchanged delivery identity, pausing during a running batch, explicit custody
+while paused, no batch replay after resume and permanent revocation. Local
+qualification also invokes the previous host binary to verify v2 refusal;
+CI checks the v2 marker and current-host contract without building a second host.

@@ -80,3 +80,8 @@ NDJSON, whereas ordinary host commands return one JSON value.
 approved stateful headless dispatch. It covers exact inputs, no implicit state
 chaining, stale commits, drain-stop versus cancellation, confirmed-only cleanup,
 actual dispatch-ledger write failure and interrupted observation without replay.
+
+The dispatch suite also qualifies subscription admission pause/resume, old direct
+and batch approval refusal, running-work custody and no replay after resume.
+Optionally pass `--legacy-host OLD_HOST` to invoke a previous v1-only binary and
+verify upgrade refusal. Its summary distinguishes whether this extra check ran.

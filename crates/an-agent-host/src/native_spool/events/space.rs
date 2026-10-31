@@ -4,6 +4,7 @@ use super::*;
 pub(super) struct Space {
     pub root: PathBuf,
     pub id: String,
+    pub version: u8,
     pub facts: Workspace,
 }
 impl Space {
@@ -11,9 +12,11 @@ impl Space {
         let root = native::location(path)?;
         let meta: Value =
             serde_json::from_slice(&regular(&root.join("native-events.json"), 65536)?)?;
-        if meta["schema"] != "an-native-event-workspace-v1" {
-            return Err("unsupported native event workspace".into());
-        }
+        let version = match meta["schema"].as_str() {
+            Some("an-native-event-workspace-v1") => 1,
+            Some("an-native-event-workspace-v2") => 2,
+            _ => return Err("unsupported native event workspace".into()),
+        };
         let id = text(&meta, "workspace")?.to_owned();
         uuid::Uuid::parse_str(&id)?;
         for name in [
@@ -33,7 +36,12 @@ impl Space {
         if facts.log()?.len() > 512 {
             return Err("native event workspace record limit exceeded".into());
         }
-        Ok(Self { root, id, facts })
+        Ok(Self {
+            root,
+            id,
+            version,
+            facts,
+        })
     }
     pub fn event(&self, id: &str) -> Result<Value> {
         self.find_event(id)?
@@ -119,6 +127,12 @@ impl Space {
     }
     pub fn check_active(&self, route: &Value) -> Result<()> {
         self.not_revoked(route)?;
+        if control::current(self, route)?["mode"] != "active" {
+            return Err("subscription admission is paused".into());
+        }
+        self.check_target(route)
+    }
+    pub fn check_target(&self, route: &Value) -> Result<()> {
         let root = Path::new(text(&route["target"], "root")?);
         let (instance, _) = native::active(root)?;
         if identity(root)? != route["target"]
@@ -176,6 +190,7 @@ pub fn inspect(path: &Path) -> Result<Value> {
         {
             let route = space.route(name)?;
             subscriptions.push(json!({"name":name,"subscription":hash(&route)?,
+                "control":control::current(&space,&route)?,
                 "admission_refusal":space.check_active(&route).err().map(|e|e.to_string())}));
         }
     }
