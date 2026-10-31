@@ -21,9 +21,29 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - uses: dtolnay/rust-toolchain@stable
+      - name: Install repository-pinned Rust toolchain
+        run: |
+          active="$(rustup show active-toolchain | awk '{print $1}')"
+          rustup default "$active"
+          # Hosted runners can carry different unused stable versions. rust-cache
+          # keys all installed toolchains; keep only the selected one in this job.
+          while read -r toolchain _; do
+            if [ "$toolchain" != "$active" ]; then
+              rustup toolchain uninstall "$toolchain"
+            fi
+          done < <(rustup toolchain list --quiet)
+          rustc --version --verbose
+          cargo --version
+      - name: Restore Rust dependency caches
+        id: rust-cache
+        uses: Swatinem/rust-cache@e9d7b9f1e587218970671bac74e5511ed9506e6a # v2
         with:
-          components: clippy, rustfmt
+          prefix-key: host-deps-v1
+          key: ${{ runner.os }}-${{ runner.arch }}
+          workspaces: |
+            . -> target
+            tools/archcheck -> target
+          cache-bin: false
       - run: cargo fmt --all -- --check
       - name: Compile all workspace test binaries
         run: cargo test --workspace --locked --no-run
@@ -37,6 +57,29 @@ jobs:
         with:
           name: native-lifecycle-${{ matrix.os }}
           path: ${{ runner.temp }}/native-concurrency
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Native spool state CLI acceptance
+        if: runner.os == 'macOS'
+        run: python3 crates/an-agent-host/tests/cli/native_state.py --host target/debug/an-agent-host --evidence "$RUNNER_TEMP/native-state"
+      - name: Native release review and independent continuation
+        if: runner.os == 'macOS'
+        run: python3 -B crates/an-agent-host/tests/cli/native_release.py --host target/debug/an-agent-host --evidence "$RUNNER_TEMP/native-state/release-review"
+      - name: Native workspace event delivery and cancellation
+        if: runner.os == 'macOS'
+        run: python3 -B crates/an-agent-host/tests/cli/native_events.py --host target/debug/an-agent-host --evidence "$RUNNER_TEMP/native-state/events"
+      - name: Native Python runtime and binary event custody
+        if: runner.os == 'macOS'
+        run: python3 -B crates/an-agent-host/tests/cli/native_binary.py --host target/debug/an-agent-host --evidence "$RUNNER_TEMP/native-state/binary"
+      - name: Independent business data and state with cancellation retention
+        if: runner.os == 'macOS'
+        run: python3 -B crates/an-agent-host/tests/cli/native_data_state.py --host target/debug/an-agent-host --evidence "$RUNNER_TEMP/native-state/data-state"
+      - name: Retain native state evidence
+        if: always() && runner.os == 'macOS'
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-state-${{ matrix.os }}
+          path: ${{ runner.temp }}/native-state
           if-no-files-found: warn
           retention-days: 14
       - run: cargo clippy --workspace --all-targets --locked -- -D warnings
@@ -53,3 +96,10 @@ jobs:
           base="${PR_BASE:-$PUSH_BASE}"
           test -n "$base"
           cargo arch --base "$base"
+      - name: Record cache observation
+        if: always()
+        env:
+          CACHE_HIT: ${{ steps.rust-cache.outputs.cache-hit }}
+        run: |
+          printf 'Rust dependency cache exact hit: `%s`\n' "$CACHE_HIT" >> "$GITHUB_STEP_SUMMARY"
+          printf 'Both workspace target directories are covered; all validation steps still run.\n' >> "$GITHUB_STEP_SUMMARY"

@@ -98,3 +98,40 @@ fn artifact_snapshot_reads_the_pinned_revision_not_the_editable_checkout() -> Re
     );
     Ok(())
 }
+
+#[test]
+fn nested_layout_preserves_tree_and_rejects_aliases_and_prefix_collisions() -> Result<()> {
+    let (_temp, mut plan, attempt) = fixture()?;
+    plan["inputs"][0]["name"] = json!("project/kit/selected.txt");
+    prepare(&plan, &attempt, &AtomicBool::new(false))?;
+    assert_eq!(
+        fs::read(attempt.join("snapshot/inputs/project/kit/selected.txt"))?,
+        b"approved"
+    );
+    for name in [
+        "../escape",
+        "/absolute",
+        "a//b",
+        "a/./b",
+        "a\\b",
+        "{input:0}",
+    ] {
+        assert!(validate_name(name, &[]).is_err(), "{name}");
+    }
+    for (a, b) in [("a", "a"), ("a", "a/b"), ("a/b", "a")] {
+        assert!(validate_name(b, &[json!({"name":a})]).is_err());
+    }
+    Ok(())
+}
+
+#[test]
+fn nested_snapshot_refuses_existing_parent_symlink() -> Result<()> {
+    let (temp, mut plan, attempt) = fixture()?;
+    plan["inputs"][0]["name"] = json!("project/selected.txt");
+    fs::create_dir_all(attempt.join("snapshot/inputs"))?;
+    #[cfg(unix)]
+    std::os::unix::fs::symlink(temp.path(), attempt.join("snapshot/inputs/project"))?;
+    #[cfg(unix)]
+    assert!(prepare(&plan, &attempt, &AtomicBool::new(false)).is_err());
+    Ok(())
+}

@@ -20,12 +20,18 @@ pub(super) struct Profile {
     pub environment: BTreeMap<String, String>,
     pub readonly: Vec<PathBuf>,
     pub inputs: Vec<PathBuf>,
+    /// Optional relative snapshot paths, in input order. Empty preserves basenames.
+    #[serde(default)]
+    input_layout: Vec<String>,
     pub outputs: Vec<String>,
     #[serde(default)]
     binary_outputs: Vec<String>,
     #[serde(default)]
     artifact_inputs: Vec<ArtifactInput>,
     pub wall_seconds: u64,
+    /// Operator headroom requests may raise, but never lower, the native floor.
+    #[serde(default)]
+    minimum_free_bytes: u64,
     trusted_process_group: bool,
 }
 
@@ -67,9 +73,12 @@ impl Profile {
         if exe.starts_with(root) {
             return Err("selected executable must be outside the job".into());
         }
+        if !p.input_layout.is_empty() && p.input_layout.len() != p.inputs.len() {
+            return Err("input layout must name every selected input".into());
+        }
         let mut inputs = Vec::new();
         let mut total = 0usize;
-        for file in &p.inputs {
+        for (index, file) in p.inputs.iter().enumerate() {
             let path = file.canonicalize()?;
             if path == exe || path.starts_with(root) || roots.iter().any(|r| path.starts_with(r)) {
                 return Err(
@@ -80,9 +89,12 @@ impl Profile {
                 .file_name()
                 .and_then(|n| n.to_str())
                 .ok_or("input requires a UTF-8 basename")?;
-            if name.contains(['{', '}']) || inputs.iter().any(|i: &Value| i["name"] == name) {
-                return Err("selected inputs require unique basenames".into());
-            }
+            let name = p
+                .input_layout
+                .get(index)
+                .map(String::as_str)
+                .unwrap_or(name);
+            super::snapshot::validate_name(name, &inputs)?;
             let bytes = regular(&path, 64 * 1024 * 1024)?;
             total += bytes.len();
             if total > 100 * 1024 * 1024 {
@@ -107,6 +119,11 @@ impl Profile {
         {
             return Err("binary outputs must be unique declared outputs".into());
         }
+        let minimum_free = p.minimum_free_bytes.max(
+            super::capacity::RESERVE
+                .checked_add(total as u64)
+                .ok_or("storage estimate overflow")?,
+        );
         let artifacts = super::inputs::bind(&p.artifact_inputs, &inputs, &roots, &work)?;
         let resolve = |s: &str| s.replace("{work}", &work.to_string_lossy());
         let args: Vec<_> = p.args.iter().map(|a| resolve(a)).collect();
@@ -151,7 +168,7 @@ impl Profile {
             "executable":exe,"executable_sha256":executable_hash,"args":args,"environment":env,
             "inputs":inputs,"readonly":roots,"outputs":outputs,"root":root,
             "predecessor":predecessor,"scratch_before":if work.exists(){inventory::scan(&work)?}else{json!({})},
-            "wall_seconds":p.wall_seconds,"network":false,"automatic_retries":0,
+            "wall_seconds":p.wall_seconds,"minimum_free_bytes":minimum_free,"network":false,"automatic_retries":0,
             "scope":"reviewed local tools without daemonization; not hostile process-tree containment"});
         if !binary.is_empty() {
             plan["binary_outputs"] = json!(binary);
@@ -171,6 +188,10 @@ pub(super) fn verify_inputs(plan: &Value) -> Result<()> {
     if store::digest(&regular(exe, 20 * 1024 * 1024)?) != plan["executable_sha256"] {
         return Err("selected runtime executable changed".into());
     }
+    verify_payloads(plan)
+}
+
+pub(super) fn verify_payloads(plan: &Value) -> Result<()> {
     for input in plan["inputs"].as_array().ok_or("missing selected inputs")? {
         let path = Path::new(input["path"].as_str().ok_or("invalid input path")?);
         if store::digest(&regular(path, 64 * 1024 * 1024)?) != input["sha256"] {
@@ -179,3 +200,7 @@ pub(super) fn verify_inputs(plan: &Value) -> Result<()> {
     }
     Ok(())
 }
+
+#[cfg(all(test, unix))]
+#[path = "profile_tests.rs"]
+mod tests;

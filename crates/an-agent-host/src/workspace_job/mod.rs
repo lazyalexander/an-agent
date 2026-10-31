@@ -1,4 +1,5 @@
 //! Host custody for a reviewed local workflow's scratch and selected outputs.
+pub(crate) mod capacity;
 mod custody;
 mod inputs;
 mod inventory;
@@ -7,6 +8,8 @@ mod profile;
 mod publication;
 mod snapshot;
 mod snapshot_clone;
+mod snapshot_retention;
+pub(crate) use snapshot_retention::reclaim as reclaim_snapshots_managed;
 
 use crate::{
     execution::{Result, sandbox, store},
@@ -41,6 +44,17 @@ pub(super) fn attempt(root: &Path, id: &str) -> Result<PathBuf> {
 
 pub(super) fn record(root: &Path, id: &str) -> Result<(PathBuf, Value)> {
     record_inner(root, id, false)
+}
+
+/// Reconcile a completed native execution without launching or changing custody.
+pub(crate) fn verified_execution_record(root: &Path, id: &str) -> Result<(Value, Value)> {
+    let (dir, receipt) = record(root, id)?;
+    if receipt["schema"] != "an-workspace-receipt-v1" {
+        return Err("execution reconciliation requires a completed process receipt".into());
+    }
+    let plan: Value = serde_json::from_slice(&regular(&dir.join("plan.json"), 2 * 1024 * 1024)?)?;
+    snapshot::verified(&dir, &plan, &receipt)?;
+    Ok((plan, receipt))
 }
 
 /// Read settlement after explicit collection; never authorizes another execution.

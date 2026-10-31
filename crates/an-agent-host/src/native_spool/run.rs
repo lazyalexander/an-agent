@@ -1,9 +1,15 @@
 //! Fixed-code start plans and instance-bound custody; domain sequencing stays in silk.
+use super::inputs::Input;
 use super::*;
 use crate::workspace_job;
 use std::sync::atomic::AtomicBool;
 
-fn profile(root: &Path, bundle: &bundle::Bundle, input: &Path, seconds: u64) -> Result<Value> {
+fn profile(
+    root: &Path,
+    bundle: &bundle::Bundle,
+    selected: &inputs::Selection,
+    seconds: u64,
+) -> Result<Value> {
     if !(1..=300).contains(&seconds) {
         return Err("invalid run deadline".into());
     }
@@ -20,16 +26,17 @@ fn profile(root: &Path, bundle: &bundle::Bundle, input: &Path, seconds: u64) -> 
             entry = Some(index);
         }
     }
-    let input_index = inputs.len();
-    inputs.push(input.canonicalize()?);
     let args = vec![format!("{{input:{}}}", entry.ok_or("missing silk entry")?)];
-    Ok(
-        json!({"schema":"an-workspace-job-v2","executable":"/bin/bash","args":args,
-        "environment":{"AN_SPOOL_SILK_DIR":"{inputs}","AN_SPOOL_KIT_DIR":"{inputs}",
-            "AN_SPOOL_INPUT":format!("{{input:{input_index}}}")},
+    let mut profile = json!({"schema":"an-workspace-job-v2","executable":"/bin/bash","args":args,
+        "environment":{"AN_SPOOL_SILK_DIR":"{inputs}","AN_SPOOL_KIT_DIR":"{inputs}"},
         "readonly":[],"inputs":inputs,"outputs":bundle.manifest.outputs,
-        "wall_seconds":seconds,"trusted_process_group":true}),
-    )
+        "wall_seconds":seconds,"trusted_process_group":true});
+    if !bundle.manifest.binary_outputs.is_empty() {
+        profile["binary_outputs"] = json!(bundle.manifest.binary_outputs);
+    }
+    selected.configure(bundle, &mut profile)?;
+    runtime::profile(root, bundle, &mut profile)?;
+    Ok(profile)
 }
 
 pub fn start(
@@ -39,6 +46,86 @@ pub fn start(
     seconds: u64,
     approved: Option<&str>,
     cancelled: &AtomicBool,
+) -> Result<Value> {
+    start_selected(
+        path,
+        name,
+        Input::File(input),
+        seconds,
+        approved,
+        cancelled,
+        |_| Ok(()),
+    )
+}
+
+pub fn start_state(
+    path: &Path,
+    name: &str,
+    revision: &str,
+    seconds: u64,
+    approved: Option<&str>,
+    cancelled: &AtomicBool,
+) -> Result<Value> {
+    start_selected(
+        path,
+        name,
+        Input::State(revision),
+        seconds,
+        approved,
+        cancelled,
+        |_| Ok(()),
+    )
+}
+
+/// Bind one accepted business artifact and one explicitly selected checkpoint.
+pub fn start_data_state(
+    path: &Path,
+    name: &str,
+    selection: &Path,
+    seconds: u64,
+    approved: Option<&str>,
+    cancelled: &AtomicBool,
+) -> Result<Value> {
+    start_selected(
+        path,
+        name,
+        Input::DataState(selection),
+        seconds,
+        approved,
+        cancelled,
+        |_| Ok(()),
+    )
+}
+
+/// The host event adapter checks its grant and records intent at start admission.
+pub(super) fn start_event(
+    path: &Path,
+    name: &str,
+    selected: inputs::EventInput<'_>,
+    seconds: u64,
+    approved: Option<&str>,
+    cancelled: &AtomicBool,
+    before_start: impl FnOnce(&Value) -> Result<()>,
+) -> Result<Value> {
+    start_selected(
+        path,
+        name,
+        Input::Event(selected),
+        seconds,
+        approved,
+        cancelled,
+        before_start,
+    )
+}
+
+fn start_selected(
+    path: &Path,
+    name: &str,
+    input: Input<'_>,
+    seconds: u64,
+    approved: Option<&str>,
+    cancelled: &AtomicBool,
+    before_start: impl FnOnce(&Value) -> Result<()>,
 ) -> Result<Value> {
     bundle::identifier(name)?;
     let root = location(path)?;
@@ -51,7 +138,8 @@ pub fn start(
     if dir.join("job").exists() {
         return Err("run identity already used; no implicit retry".into());
     }
-    let profile = profile(&root, &bundle, input, seconds)?;
+    let selected = inputs::select(&root, &bundle, input)?;
+    let profile = profile(&root, &bundle, &selected, seconds)?;
     let bytes = serde_json::to_vec_pretty(&profile)?;
     // Preview may persist a bounded plan, but never launches or grants execution.
     store::directory(&dir)?;
@@ -75,9 +163,11 @@ pub fn start(
     }
     let preview =
         workspace_job::run_managed(&profile_path, &dir.join("job"), None, None, cancelled)?;
-    let plan = json!({"schema":"an-native-spool-start-v1","instance":instance["instance"],
+    let mut plan = json!({"schema":"an-native-spool-start-v1","instance":instance["instance"],
         "release":bundle.release,"run":name,"workspace":preview["plan"],
         "authority":"reviewed native tools only; no detached workers or network; no hostile-agent claim"});
+    selected.bind_plan(&mut plan);
+    round_control::bind(&mut plan, &root, &instance)?;
     let (hash, execute) = approval(&plan, approved)?;
     if !execute {
         return Ok(json!({"plan":plan,"approval_sha256":hash,"executed":false}));
@@ -85,6 +175,7 @@ pub fn start(
     if cancelled.load(std::sync::atomic::Ordering::Acquire) {
         return Ok(json!({"status":"cancelled","executed":false,"process_started":false}));
     }
+    before_start(&plan)?;
     write_json(&dir.join("start.json"), &plan)?;
     let receipt = workspace_job::run_managed(
         &profile_path,
@@ -132,6 +223,27 @@ pub(super) fn settled(root: &Path, name: &str) -> Result<Value> {
     Ok(result)
 }
 
+/// A round boundary requires every started job to have confirmed termination.
+pub(super) fn settled_runs(root: &Path) -> Result<Vec<Value>> {
+    let mut runs = Vec::new();
+    for entry in fs::read_dir(root.join("runs"))? {
+        let path = entry?.path();
+        store::no_links(&path)?;
+        if path.join("job").exists() {
+            runs.push(settled(
+                root,
+                path.file_name()
+                    .and_then(|s| s.to_str())
+                    .ok_or("invalid run")?,
+            )?);
+        } else if path.join("start.json").exists() || path.join("result.json").exists() {
+            return Err("started spool run lacks workspace settlement evidence".into());
+        }
+    }
+    runs.sort_by_key(|r| r["run"].as_str().unwrap_or_default().to_owned());
+    Ok(runs)
+}
+
 pub fn accept(path: &Path, name: &str, approved: Option<&str>) -> Result<Value> {
     custody(path, name, approved, false)
 }
@@ -142,6 +254,10 @@ fn custody(path: &Path, name: &str, approved: Option<&str>, collect: bool) -> Re
     let root = location(path)?;
     let _lock = store::lock(&root)?;
     let result = settled(&root, name)?;
+    if !collect {
+        let (instance, bundle) = state(&root)?;
+        runtime::verify(&root, &instance, &bundle)?;
+    }
     let job = root.join("runs").join(name).join("job");
     let id = result["workspace"]["attempt"]
         .as_str()

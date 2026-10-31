@@ -20,6 +20,12 @@ pub(super) struct Manifest {
     pub entry: String,
     pub files: BTreeMap<String, String>,
     pub outputs: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub binary_outputs: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub requirements: Option<super::requirements::Requirements>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub events: Option<super::event_contract::Interface>,
 }
 
 pub(super) fn identifier(text: &str) -> Result<()> {
@@ -44,12 +50,23 @@ pub(super) struct Bundle {
 }
 
 pub(super) fn read(root: &Path) -> Result<Bundle> {
+    let bundle = inspect(root)?;
+    super::requirements::validate(&bundle.manifest)?;
+    Ok(bundle)
+}
+
+/// Verify release bytes for inspection without admitting their runtime requests.
+pub(super) fn inspect(root: &Path) -> Result<Bundle> {
     let bytes = regular(&root.join(FILE), 65536)?;
     let m: Manifest = serde_json::from_slice(&bytes)?;
     identifier(&m.name)?;
     identifier(&m.version)?;
-    if m.schema != "an-native-spool-v1"
-        || m.files.is_empty()
+    super::requirements::schema(&m)?;
+    super::event_contract::validate(&m)?;
+    if !matches!(
+        m.schema.as_str(),
+        "an-native-spool-v1" | "an-native-spool-v2" | "an-native-spool-v3"
+    ) || m.files.is_empty()
         || m.files.len() > 12
         || m.outputs.is_empty()
         || m.outputs.len() > 16
@@ -80,6 +97,13 @@ pub(super) fn read(root: &Path) -> Result<Bundle> {
         if matches!(output.as_str(), "kit" | "tmp") || !outputs.insert(output) {
             return Err("invalid or duplicate output slot".into());
         }
+    }
+    let binary: BTreeSet<_> = m.binary_outputs.iter().collect();
+    if (!binary.is_empty() && m.schema != "an-native-spool-v3")
+        || binary.len() != m.binary_outputs.len()
+        || binary.iter().any(|name| !outputs.contains(*name))
+    {
+        return Err("binary outputs require unique declared v3 output slots".into());
     }
     // No unregistered files, links or nested directories travel with the release.
     let mut expected: BTreeSet<_> = m.files.keys().cloned().collect();

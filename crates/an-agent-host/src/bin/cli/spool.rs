@@ -4,16 +4,59 @@ use an_agent_host::native_spool as spool;
 
 pub(super) fn dispatch(command: &str, args: &[String]) -> Result<Value> {
     match (command, args) {
-        ("spool-weaver-request", [root, name]) => spool::weaver::request(Path::new(root), name),
-        ("spool-weaver-revoke", [root, id]) => spool::weaver::revoke(Path::new(root), id),
-        ("spool-weaver-apply", [root, response]) => {
-            spool::weaver::apply(Path::new(root), Path::new(response), None)
+        ("spool-release-diff", [previous, candidate]) => {
+            spool::compare_releases(Path::new(previous), Path::new(candidate))
         }
-        ("spool-weaver-apply", [root, response, flag, hash]) if flag == "--approve" => {
-            spool::weaver::apply(Path::new(root), Path::new(response), Some(hash))
+        ("spool-storage", [root]) => spool::storage(Path::new(root)),
+        ("spool-reclaim-snapshots", [root, run]) => {
+            spool::reclaim_snapshots(Path::new(root), run, None)
+        }
+        ("spool-reclaim-snapshots", [root, run, flag, hash]) if flag == "--approve" => {
+            spool::reclaim_snapshots(Path::new(root), run, Some(hash))
+        }
+        ("spool-pause" | "spool-resume", [root]) => control(command, root, None),
+        ("spool-pause" | "spool-resume", [root, flag, hash]) if flag == "--approve" => {
+            control(command, root, Some(hash))
+        }
+        ("spool-suspend", [root, revision]) => spool::suspend(Path::new(root), revision, None),
+        ("spool-suspend", [root, revision, flag, hash]) if flag == "--approve" => {
+            spool::suspend(Path::new(root), revision, Some(hash))
+        }
+        ("spool-reconcile-run", [root, run]) => spool::reconcile_run(Path::new(root), run, None),
+        ("spool-reconcile-run", [root, run, flag, hash]) if flag == "--approve" => {
+            spool::reconcile_run(Path::new(root), run, Some(hash))
+        }
+        ("spool-reconcile-accept", [root, run]) => {
+            spool::reconcile_accept(Path::new(root), run, None)
+        }
+        ("spool-reconcile-accept", [root, run, flag, hash]) if flag == "--approve" => {
+            spool::reconcile_accept(Path::new(root), run, Some(hash))
+        }
+        ("spool-status", [root, run]) => spool::status(Path::new(root), run),
+        ("spool-artifacts", [root, run]) => spool::artifacts(Path::new(root), run),
+        ("spool-kit-proposal-request" | "spool-weaver-request", [root, name]) => {
+            spool::kit_proposal::request(Path::new(root), name)
+        }
+        ("spool-kit-proposal-revoke" | "spool-weaver-revoke", [root, id]) => {
+            spool::kit_proposal::revoke(Path::new(root), id)
+        }
+        ("spool-kit-proposal-apply" | "spool-weaver-apply", [root, response]) => {
+            spool::kit_proposal::apply(Path::new(root), Path::new(response), None)
+        }
+        ("spool-kit-proposal-apply" | "spool-weaver-apply", [root, response, flag, hash])
+            if flag == "--approve" =>
+        {
+            spool::kit_proposal::apply(Path::new(root), Path::new(response), Some(hash))
         }
         ("spool-load", [package, root]) => spool::load(Path::new(package), Path::new(root)),
+        ("spool-load", [package, root, flag, runtime]) if flag == "--runtime" => {
+            spool::load_runtime(Path::new(package), Path::new(root), Path::new(runtime))
+        }
         ("spool-show", [root]) => spool::show(Path::new(root)),
+        ("spool-kit-reset", [root, name]) => spool::reset_kit(Path::new(root), name, None),
+        ("spool-kit-reset", [root, name, flag, hash]) if flag == "--approve" => {
+            spool::reset_kit(Path::new(root), name, Some(hash))
+        }
         ("spool-kit-update", [root, name, source]) => {
             spool::update_kit(Path::new(root), name, Path::new(source), None)
         }
@@ -32,7 +75,16 @@ pub(super) fn dispatch(command: &str, args: &[String]) -> Result<Value> {
         ("spool-accept" | "spool-reclaim", [root, name, flag, hash]) if flag == "--approve" => {
             custody(command, root, name, Some(hash))
         }
-        _ => Err("invalid native spool arguments; pause and suspend are not implemented".into()),
+        _ => Err(
+            "invalid native spool arguments; live process pause/suspension is unsupported".into(),
+        ),
+    }
+}
+fn control(command: &str, root: &str, approved: Option<&str>) -> Result<Value> {
+    if command == "spool-pause" {
+        spool::pause(Path::new(root), approved)
+    } else {
+        spool::resume(Path::new(root), approved)
     }
 }
 fn start(

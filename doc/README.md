@@ -31,6 +31,11 @@ them or turn a design requirement into an implemented guarantee.
 | Native process ownership | [Process lifecycle](../crates/an-agent-host/PROCESS-LIFECYCLE.md) |
 | Optional OpenShell backend | [Adapter contract](../crates/an-agent-host/OPENSHELL.md), [recovery limits](../crates/an-agent-host/OPENSHELL-RECOVERY.md) |
 | Release-bound native spool | [First macOS package lifecycle](../crates/an-agent-host/NATIVE-SPOOL.md) |
+| Native round control | [Pause admission, checkpoint suspension and explicit resume](../crates/an-agent-host/NATIVE-CONTROL.md) |
+| Native storage | [Observation, private snapshot collection and admission pressure](../crates/an-agent-host/NATIVE-STORAGE.md) |
+| Native release review | [Verified changes and independent continuation](../crates/an-agent-host/NATIVE-RELEASES.md) |
+| Native workspace events | [Artifact facts, static subscriptions and explicit delivery](../crates/an-agent-host/NATIVE-EVENTS.md) |
+| Native Python and binary products | [Operator selection, dependency inventory and byte custody](../crates/an-agent-host/NATIVE-PYTHON.md) |
 | Reviewed operator workflows | [Workspace jobs](../crates/an-agent-host/WORKSPACE-JOBS.md) |
 | CLI handoff pressure and input references | [Measurements and bounded decision](../crates/an-agent-host/HANDOFF-PRESSURE.md) |
 | Fixed external inputs without full copying | [Filesystem clone qualification](../crates/an-agent-host/INPUT-CLONES.md) |
@@ -41,6 +46,7 @@ them or turn a design requirement into an implemented guarantee.
 | Environment input identity | [Committed environment generations](../crates/an-agent-core/ENVIRONMENT.md) |
 | Model/context services | [Model/context](../crates/an-agent-host/MODEL-CONTEXT.md), [model CLI](../crates/an-agent-host/MODEL-CLI.md) |
 | Semantic assessment | [Semantic crate](../crates/an-agent-semantic/README.md) |
+| Test ownership and paired verification | [Testing contract](testing.md) |
 | Repository gates | [Architecture gates](../ARCHITECTURE-GATES.md) |
 
 Documentation is English. Link to existing contracts instead of duplicating CLI
@@ -51,3 +57,6 @@ migration changes them. Do not copy private deployment notes into public docs.
 Code-role terminology follows [the spool code contract](spool-code.md).
 Silk is the stable core; kit is adaptable glue. Preserve legacy wire/API names
 and distinguish target contracts from implemented runtime guarantees.
+
+[Weaver and independent development](weaver.md) describes reviewed domain inputs
+and the boundary between zero-mount iteration and managed execution.

@@ -24,8 +24,17 @@ user follows the user's language.
 
 Rules:
 
-- The user clicks merge. Always. Open the PR, state what it carries,
-  stop.
+- Agents may merge PRs into `dev-advance` after reviewing the diff, completing
+  applicable local/real acceptance and passing every CI gate on the selected head.
+  Suspected private data, credentials, transcripts or unclear publication scope
+  require user review before publication or merge. Never bypass a gate.
+- Notify the user after every dev merge with the repository, PR, target branch,
+  resulting commit and a short description. Main promotion still requires the
+  user's decision and merge; dev authorization does not extend to main.
+- Keep each PR scoped. After handoff, add only fixes or review responses, not
+  unrelated features. Independent work branches from current dev; dependent
+  follow-ups may stay local, with their base PR/commit recorded, then be based
+  on verified merged dev before publication. Avoid long stacked chains.
 - PR base is `dev-advance`, not another feature branch. If a follow-up
   depends on an unmerged PR, note "stacks on #N" in the body — and the
   moment #N merges, retarget the base (`gh pr edit M --base
@@ -36,6 +45,10 @@ Rules:
   PR heads only. Delete a head when its PR merges
   (`git push origin --delete <branch>`). Local branches may be kept
   freely.
+- Local cleanup deletes only branches older than seven days, merged into
+  development and not checked out in any worktree. Keep main/dev-advance and
+  unmerged work; verify ancestry and use safe deletion. Do not detach a worktree
+  just to make its branch eligible.
 - After any merge you expected to land on `dev-advance`, verify with
   `git log origin/dev-advance --oneline -5` that it actually did. Do
   not trust the PR page.
@@ -113,3 +126,22 @@ Plus the discipline-specific checks:
 Code-role terminology follows [the spool code contract](doc/spool-code.md).
 Silk is the stable core; kit is adaptable glue. Preserve legacy wire/API names
 and distinguish target contracts from implemented runtime guarantees.
+
+## Test ownership and language
+
+Follow [the testing contract](doc/testing.md). Keep Rust tests for internal
+invariants and fault windows; prefer Python for new black-box CLI/process/file
+acceptance, and TS only where browser integration benefits from it. Existing
+Rust acceptance is valid; migrate selectively with equivalent coverage.
+
+The host owns lifecycle, authorization and artifact-custody guarantees. Loom
+owns authoring, packaging and evidence reception, with narrow paired host smoke
+tests. Build binaries once per selected revision/target/configuration and pass
+explicit paths to external suites; do not rebuild inside each scenario.
+
+The verification commands above remain required. Also run affected non-Rust
+suites and documented real-host acceptance before claiming their guarantees.
+Cargo success alone is not full acceptance. Migration must preserve assertions,
+cancellation/cleanup evidence and CI gates, and must not add production debug
+APIs just to expose private test seams. Measure build and execution separately;
+unknown execution outcomes must not be automatically retried.

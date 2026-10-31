@@ -14,6 +14,8 @@ doc/
 !/doc/execution.md
 !/doc/state-and-artifacts.md
 !/doc/status.md
+!/doc/testing.md
+!/doc/weaver.md
 docs/
 .notes/
 .superpowers/

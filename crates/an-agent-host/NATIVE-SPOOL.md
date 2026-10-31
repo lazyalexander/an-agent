@@ -1,10 +1,35 @@
 # Release-bound native spool: first macOS slice
 
-Status: implemented for reviewed local shell tools. This is a bounded spool
+Status: implemented for reviewed local shell tools and explicitly selected
+[native Python environments](NATIVE-PYTHON.md). This is a bounded spool
 facade over the existing workspace supervisor, snapshots and custody machinery.
 It is not an arbitrary agent sandbox, general dependency resolver or replacement
 for trusted in-process `SpoolBeat` mounting. No core or Loom runtime dependency is
 introduced. Domain sequencing remains in the entry silk.
+
+Optional [explicit native state](NATIVE-STATE.md) binds a selected checkpoint to a
+run and commits an accepted state output with an expected-version check. It uses
+the same release and one-input execution contract; ordinary runs stay stateless.
+
+[Round-boundary control](NATIVE-CONTROL.md) pauses admission after confirmed
+settlement, pins a checkpoint for suspension and explicitly reopens admission.
+It does not pause or restore a running process.
+
+[Native storage](NATIVE-STORAGE.md) separates work collection from private input
+snapshot collection and formal state/artifact retention. It also adds native
+workspace admission headroom without a runtime filesystem quota.
+
+[Release review](NATIVE-RELEASES.md) compares exact verified package bytes and
+requested contracts without authorizing an update. Candidate continuation uses
+a fresh independently approved instance; old releases and state remain retained.
+
+[Native workspace events](NATIVE-EVENTS.md) adds explicit v3 event interfaces and
+host-owned artifact delivery. V1/v2 releases remain unchanged and do not acquire
+event rights implicitly. Business sequencing stays inside silk/kit.
+
+[Native Python and binary products](NATIVE-PYTHON.md) adds operator-selected,
+inventory-bound dependencies and explicit byte outputs to v3. V1/v2 and existing
+shell packages retain their behavior; no package performs dependency installation.
 
 ## Contract and layout
 
@@ -33,6 +58,8 @@ INSTANCE/
   instance.json
   release/native-spool.json, release/silk/*, release/kit/*
   kit/*                         # edit between runs through host approval
+  round-control.json            # optional admission mode and generation
+  round-control/*               # immutable transition evidence and staging
   runs/RUN/
     profile.json, start.json, result.json
     accepted.json, reclaimed.json   # bound custody results when present
@@ -51,8 +78,13 @@ per instance. A used run name is never automatically retried.
 ```text
 an-agent-host spool-load PACKAGE NEW_INSTANCE
 an-agent-host spool-show INSTANCE
+an-agent-host spool-reconcile-run INSTANCE RUN [--approve DIGEST]
 an-agent-host spool-kit-update INSTANCE BASENAME SOURCE [--approve DIGEST]
+an-agent-host spool-kit-reset INSTANCE BASENAME [--approve DIGEST]
 an-agent-host spool-start INSTANCE RUN INPUT SECONDS [--approve DIGEST]
+an-agent-host spool-pause INSTANCE [--approve DIGEST]
+an-agent-host spool-suspend INSTANCE STATE_REVISION [--approve DIGEST]
+an-agent-host spool-resume INSTANCE [--approve DIGEST]
 an-agent-host spool-accept INSTANCE RUN [--approve DIGEST]
 an-agent-host spool-reclaim INSTANCE RUN [--approve DIGEST]
 an-agent-host spool-unload INSTANCE [--approve DIGEST]
@@ -137,14 +169,14 @@ unloads and loads a fresh instance. Neither repository links the other's runtime
 Managed runs carry a `spool-owner.json` marker. Public standalone workspace run, acceptance, and reclamation commands reject these jobs; callers must use the owning spool commands so the instance operation lock and ownership checks remain in force. This is an API lifecycle fence, not protection against a host user modifying the control store.
 
 
-## Optional weaver proposal slot
+## Optional kit proposal slot
 
 The host now exposes a file exchange slot, not a model loop or plugin launcher:
 
 ```text
-spool-weaver-request INSTANCE KIT_BASENAME
-spool-weaver-apply INSTANCE PROPOSAL_JSON [--approve HASH]
-spool-weaver-revoke INSTANCE REQUEST_UUID
+spool-kit-proposal-request INSTANCE KIT_BASENAME
+spool-kit-proposal-apply INSTANCE PROPOSAL_JSON [--approve HASH]
+spool-kit-proposal-revoke INSTANCE REQUEST_UUID
 ```
 
 A request returns `request` and `request_sha256`. The selected request carries the
@@ -192,3 +224,127 @@ the worker and reports its result. When `AN_AGENT_ACCEPTANCE_DIR` is set, per-ca
 ready/settled evidence is retained under `clone-handoff/` by the existing CI artifact
 step. File size, fixed-version assertions, cancellation checks, and production
 deadlines are unchanged. Preparation performance remains measurable follow-up work.
+
+The canonical module is `native_spool::kit_proposal`. The old `weaver` module,
+`spool-weaver-*` commands, `weaver_proposal_slot` capability, on-disk `weaver/`
+tickets and v1 schemas remain compatible. `kit_proposal_slot` advertises the
+canonical name. This slot receives edits; it does not prepare harness tasks,
+review generated code or launch an agent. Those future roles use the Weaver name.
+
+## Explicit native v2 requirements
+
+The host also accepts `an-native-spool-v2`, with the v1 fields plus a required
+`requirements` object. V1 with requirements and v2 without requirements refuse.
+The initial admitted values are runtime `macos-native-process-v1`, OS `macos`,
+architecture `portable-source`, interaction `headless`, GPU `none`, one portable
+text input-slot name, no additional dependencies, and exactly the capability
+requests `read-input` and `write-declared-outputs`. Editable paths must be unique
+selected kit paths; unlike legacy v1, a kit payload is not implicitly editable.
+
+Admission happens before instance creation and is checked again when the release
+is read for execution. Unsupported target/GPU/application requirements, unknown
+capabilities and unresolved dependencies refuse; they never select a weaker
+backend. Show reports requested requirements, while start approval binds the
+actual fixed workspace policy. Capability labels do not grant authority.
+V2 is currently macOS-only. Linux packaging and future backend contracts must
+not be confused with qualified execution. GPU CLI execution and shuttle-mediated
+application interaction are separate capabilities; neither is implemented here.
+
+## Discovering accepted artifact versions
+
+`spool-artifacts INSTANCE RUN` is a read-only host query returning instance,
+release, run, artifact catalog and fixed output revision bindings. It requires
+confirmed settlement and matching native/workspace acceptance records, validates
+the accepted inventory and each retained revision's bytes and provenance, and
+never promotes scratch files. It remains available after scratch reclamation
+and instance unload. Use existing artifact-checkout to materialize a selected
+version for a downstream input. No mutable latest pointer is introduced.
+
+Loom continues to declare outputs in the release and owns no runtime catalog.
+The command works for both native v1 and v2. Missing acceptance, uncertain
+termination, foreign records and changed content refuse. An existing filename or
+a successful exit alone does not establish a formal artifact.
+
+## Run monitoring
+
+`spool-status INSTANCE RUN` is an observation-only query. It returns a stable
+phase (`prepared`, `unconfirmed`, `running-or-unconfirmed`, `settled`, `accepted`,
+`reclaimed`), execution outcome, termination confirmation and separate artifact
+status. Missing, inconsistent or racing settlement remains uncertain. Collection
+requires verified workspace evidence; an outer marker alone cannot establish it.
+Accepted output bindings use the same evidence checks as spool-artifacts and survive unload.
+Partial acceptance is reported as unconfirmed rather than a clean pending state.
+
+The query never acquires, writes or clears the instance execution lock, including
+when verifying accepted outputs. A busy or stale lock alone does not make valid
+artifact evidence unconfirmed. The query never infers liveness from a PID or a
+lock file. A missing receipt cannot
+distinguish running work from interrupted bookkeeping. All mutation/custody
+commands independently revalidate and retain their existing locks and approvals.
+The response is a bounded observation, not an atomic scheduling decision.
+Headless CPU is qualified first. Common scheduling/monitoring identities may be
+reused for future GPU/application backends, whose actual supported lifecycle and
+external settlement must be separately qualified. No pause or suspend support is
+implied by these state names.
+
+## Reconciling an interrupted acceptance handoff
+
+If workspace acceptance completed but recording the instance-bound accepted.json
+failed, status reports unconfirmed custody and ordinary acceptance is not retried.
+`spool-reconcile-accept INSTANCE RUN [--approve HASH]` previews a repair, validates
+confirmed settlement, complete workspace acceptance, exact output inventory and
+all retained versions/provenance, then writes only the missing instance record.
+A matching existing record is an explicitly verified no-op. Conflicting, partial,
+foreign or changed evidence refuses; existing records are never overwritten.
+
+The approval binds the complete recovered acceptance binding. No workload is
+restarted and no artifact is republished. Query and downstream checkout work again
+using the original revisions. This does not recover an incomplete workspace
+acceptance or missing execution result, clear uncertain termination, or infer an
+external worker stopped. Those states remain fenced for later reconciliation.
+The filesystem failure acceptance test exercises actual publication followed by
+a failed facade write; it is not a claim of arbitrary power-loss durability.
+
+
+## Restoring an editable kit baseline
+
+`spool-kit-reset` restores one declared editable working copy from the verified
+release baseline without changing instance identity, retained products or other
+kits. Preview and approval use the existing edit plan and its before/after
+digests. It shares the same instance lock, editable-path checks and edit receipt
+as update-kit; active execution and unloaded instances refuse. Protected silk or
+noneditable v2 kit paths remain forbidden. The immutable release is not modified.
+
+When reset changes kit bytes, earlier start approvals for different bytes are
+invalid. Every approved reset records an edit generation, so old proposals stay
+stale even after an edit-away/edit-back cycle. It grants no execution. Inspect and separately approve the
+next start. Existing load/unload/fresh-directory baseline restoration still works.
+
+
+## Reconciling a missing execution result
+
+`spool-reconcile-run INSTANCE RUN [--approve DIGEST]` explicitly repairs a missing
+outer result.json when one intact workspace attempt already confirms process
+termination. It verifies instance/release/run ownership, the original start plan,
+profile identity, workspace intent, receipt, execution mapping and snapshot bytes.
+It writes only the derived result record after approval. Matching existing records
+are a verified no-op; conflicting records are never overwritten.
+
+Attempt discovery requires exactly one canonical UUID directory. A regular
+`.DS_Store` file is left untouched and listed in the repair approval's
+`ignored_attempt_entries`; it is not an attempt. Other unexpected entries, links,
+noncanonical UUID names and a directory named `.DS_Store` refuse with a diagnostic
+naming the entry. Multiple real attempts remain ambiguous and refuse. No blanket
+metadata or editor-file exclusion is applied.
+
+This does not launch, retry, accept output, clear locks or infer termination from
+a PID. Missing/uncertain receipts, unstarted attempts, multiple attempts, changed
+snapshots, foreign bindings and reclaimed workspaces refuse. Preserve those
+states for investigation. A repaired successful run still requires explicit
+spool-accept; a failed/cancelled run remains ineligible for acceptance. Normal
+reclamation/unload become available only under their existing evidence checks.
+
+Real filesystem-failure tests complete successful and failed workloads while a
+directory blocks the final result write. They then verify explicit repair, no
+additional attempt or publication, negative evidence cases and normal custody.
+This is not arbitrary crash recovery or a power-loss durability claim.

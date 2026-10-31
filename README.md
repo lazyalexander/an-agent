@@ -39,6 +39,10 @@ Start with the [public documentation](doc/README.md) for architecture, spool/sil
 execution boundaries, state/artifact ownership and implementation status. Detailed
 contracts remain beside the crates that implement them.
 
+The [native workspace event contract](crates/an-agent-host/NATIVE-EVENTS.md)
+connects accepted file versions to explicitly approved headless spool deliveries.
+Business workflows stay inside silks/kits; the host adds no business graph DSL.
+
 ## Architecture and current capabilities
 
 The host application owns the workspace, user interaction, and execution of application-specific effects. Today, spools are embedded capability bodies with declared contracts and configuration. The target packaging model is a reusable workflow package containing stages, silks, configuration and documentation; it requests shuttle capabilities rather than necessarily containing a shuttle. A spool carries domain knowledge, business rules, skills and domain acceptance criteria; the host supplies generic execution and artifact management rather than absorbing those rules. Package identity, a workflow run and an individual stage are distinct. The existing descriptor and mounting APIs are not changed by this design direction.
@@ -51,6 +55,14 @@ Loom owns development and packaging. The an-agent host owns workflow admission, 
 - **Supervision:** operations requiring review can yield to a live supervisor. Approvals are bound to the exact operation and current authority; explicit denial or missing capabilities cannot be bypassed through approval. Changes to relevant live state invalidate affected reviews.
 - **Audit and limited recovery:** append-only tapes retain execution evidence, while session APIs support bounded recovery with required inputs available. Dependency checks can quarantine stale model results rather than treating them as current work.
 - **Bounded CLI hosting:** `an-agent-host` independently registers hash-bound deployments and runs an explicit stdio-only capability through admission, native macOS restrictions, and retained receipts. Development and packaging tools are not runtime dependencies. See [the host execution contract](crates/an-agent-host/README.md).
+
+Release-bound native spools also support explicit workspace-event handoff and
+[operator-selected Python with binary products](crates/an-agent-host/NATIVE-PYTHON.md).
+The headless log-report example produces editable XLSX/PPTX through the same
+supervision and custody boundary; document rules remain in spool code.
+An optional [separate state input](crates/an-agent-host/NATIVE-STATE.md#independent-business-data-and-state)
+binds a fixed business artifact and committed checkpoint without implicit HEAD
+selection; expected-version commit and cancellation retention remain host-owned.
 
 Semantic assessment and execution enforcement are distinct. The host or supervising agent decides how to respond to findings; trusted execution boundaries enforce permissions. A declaration or a recorded receipt is not, by itself, an operating-system sandbox.
 
@@ -92,3 +104,6 @@ See [architecture gates](ARCHITECTURE-GATES.md) for the TOML rules, existing-deb
 baseline, dependency boundaries and the separately locked SPACE-based checker.
 
 The [implementation boundary audit](doc/architecture.md#implementation-boundary-audit) maps current modules to developer, host, and backend responsibilities and records the remaining limits.
+
+See [Weaver and independent spool development](doc/weaver.md) for the separation
+between standalone iteration and platform-managed execution.

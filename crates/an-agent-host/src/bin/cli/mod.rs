@@ -7,6 +7,8 @@ mod instance;
 mod model;
 mod retention;
 mod spool;
+mod spool_events;
+mod spool_state;
 mod workspace;
 
 use an_agent_host::execution::Result;
@@ -45,6 +47,18 @@ fn with_cancellation(
 pub(super) fn run(args: Vec<String>) -> Result<()> {
     let (command, args) = args.split_first().ok_or("missing command")?;
     let result = match command.as_str() {
+        "spool-events-init"
+        | "spool-events-show"
+        | "spool-event-publish"
+        | "spool-event-subscribe"
+        | "spool-event-revoke"
+        | "spool-event-deliver"
+        | "spool-event-complete" => spool_events::dispatch(command, args)?,
+        "spool-state-init"
+        | "spool-state-show"
+        | "spool-state-commit"
+        | "spool-start-state"
+        | "spool-start-data-state" => spool_state::dispatch(command, args)?,
         "instance-init" | "instance-show" | "instance-run" | "instance-commit" => {
             instance::dispatch(command, args)?
         }
@@ -57,12 +71,26 @@ pub(super) fn run(args: Vec<String>) -> Result<()> {
             workspace::dispatch(command, args)?
         }
         "spool-load"
+        | "spool-release-diff"
         | "spool-show"
+        | "spool-storage"
+        | "spool-reclaim-snapshots"
+        | "spool-status"
+        | "spool-artifacts"
+        | "spool-kit-reset"
         | "spool-kit-update"
         | "spool-start"
         | "spool-accept"
+        | "spool-reconcile-run"
+        | "spool-reconcile-accept"
         | "spool-reclaim"
         | "spool-unload"
+        | "spool-pause"
+        | "spool-suspend"
+        | "spool-resume"
+        | "spool-kit-proposal-request"
+        | "spool-kit-proposal-apply"
+        | "spool-kit-proposal-revoke"
         | "spool-weaver-request"
         | "spool-weaver-apply"
         | "spool-weaver-revoke" => spool::dispatch(command, args)?,
