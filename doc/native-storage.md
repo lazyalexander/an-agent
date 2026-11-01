@@ -324,6 +324,33 @@ another consumer stays retained. Removing the consumer completion receipt does n
 turn that marker into a completed-release guarantee. Malformed source evidence
 refuses, and all original payload hashes remain unchanged.
 
+## Reviewing a retired output before collection
+
+```text
+spool-artifacts PRODUCER RUN --review-retirement OUTPUT [CONSUMER_ROOT ...]
+```
+
+Retire the exact accepted revision first. Supply only consumer instance directories
+whose local records may be opened. With no consumer arguments the command reads
+only the producer. The normal `--references` view keeps its source-only contract.
+
+The review distinguishes checkpoint pins, attempt claims without release, and
+source markers whose consumer was not selected. For a selected released attempt,
+it checks the exact reference slot and original registration against the start,
+the settled receipt and termination evidence, the digest of the immutable release
+intent, and the matching consumer completion. A missing or foreign receipt yields
+`release-unconfirmed`. `release-confirmed` verifies that historical release for
+this one reference. It does not grant a new release or reauthorize a delivery.
+No consumer root is discovered by opening a path from a source claim. The original
+per-run registration is checked locally without traversing its other catalogs.
+
+The limit is 16 selected consumers and 64 source claims. Malformed source evidence
+refuses review. Results are non-atomic: an unconfirmed result can be inspected
+again, but never triggers repair or execution. Even a retired output with zero
+claims reports `collection_authorized: false`; existing catalogs can have unmanaged
+and legacy readers. The real shared-source CLI test removes and exchanges completion
+receipts and verifies that other checkpoint pins and source bytes remain intact.
+
 ## Remaining formal payload collection contract
 
 The generic instance checkpoint/delivery ledger already has explicit retention,
@@ -338,7 +365,14 @@ unmanaged readers have released a version. Native input claims now record new
 managed consumers; formal collection still needs successful-owner release, explicit
 checkpoint dependency retirement/reconciliation and a defined boundary for unmanaged/legacy readers.
 Opaque state references cannot be inferred by scanning text.
-The current operations reduce private-copy accumulation and close selected new
-uses while preserving formal bytes. Loom may describe intended retention, but
+A future delete operation needs a storage format that fences mixed/legacy readers
+from publication, plus a distinction between historical metadata and payload reads.
+Today the native acceptance verifier reads every declared output to validate a run.
+Unlinking one output in place would also break inspection of its intact siblings.
+Before enabling deletion, qualify a run with two outputs: retire and delete one,
+verify its immutable provenance and deletion receipt, refuse its content checkout,
+and continue to verify and read its sibling. Missing bytes without a matching
+deletion receipt must remain uncertain. The existing per-run catalogs retain their
+formal bytes. Loom may describe intended retention, but
 cannot supply runtime deletion authority. General native formal-product/state GC
 remains unimplemented.

@@ -85,6 +85,8 @@ def attempt_claim(record, run):
 
 
 call('spool-artifacts', producer, 'first', '--references', 'unknown.txt', success=False)
+review = ['spool-artifacts', producer, 'first', '--review-retirement', 'batch.txt']
+call(*review, success=False)  # Admission is still open.
 initial_view = incoming()
 checkpoint = json.loads((fixture / 'acceptance.json').read_text())['committed_state']
 checkpoint_pin, = [c for c in initial_view['claims']
@@ -190,12 +192,33 @@ for claim in claims:
     assert hashlib.sha256(payload.read_bytes()).hexdigest() == ref['binding']['content_sha256']
 complete = consumer / 'runs/held/input-released.json'
 saved = complete.read_bytes()
+def disposition(report, owner):
+    item, = [c for c in report['claims'] if c['owner'] == owner]
+    return item['disposition']
+
+
+held_owner = active['plan']['owner']
+assert disposition(call(*review), held_owner) == 'consumer-not-selected'
+checked = call(*review, consumer, succeeded)
+assert not checked['collection_authorized'] and not checked['reference_census_complete']
+assert disposition(checked, held_owner) == 'release-confirmed'
+assert disposition(checked, checkpoint_pin['reference']['owner']) == 'checkpoint-held'
+assert disposition(checked, original['plan']['owner']) == 'attempt-held-or-unconfirmed'
+assert checked['confirmed_releases'] >= 2  # Includes the successful A/B consumer.
 complete.unlink()
+assert disposition(call(*review, consumer), held_owner) == 'release-unconfirmed'
+assert not complete.exists()
 call('spool-input-release', consumer, 'held', '--approve', preview['approval_sha256'], success=False)
 assert call('spool-input-references', consumer, 'held')['claims'] == claims
 assert not complete.exists()
 assert incoming() == released_view  # A source marker cannot prove consumer completion.
+other, = [c['reference']['owner']['run'] for c in released_view['claims']
+          if c['reference']['schema'] == 'an-native-input-reference-v1'
+          and c['reference']['owner']['root'] == str(succeeded) and c['release'] is not None]
+complete.write_bytes((succeeded / 'runs' / other / 'input-released.json').read_bytes())
+assert disposition(call(*review, consumer), held_owner) == 'release-unconfirmed'
 complete.write_bytes(saved)
+assert call(*review, consumer, succeeded) == checked
 assert call('spool-input-release', consumer, 'held')['already_released'] is True
 partial_claim = next(p for p in source_claims.glob('*.json')
                      if json.loads(p.read_text()).get('owner', {}).get('run') == 'partial')
@@ -205,7 +228,13 @@ call('spool-artifacts', producer, 'first', '--references', 'batch.txt', success=
 assert partial_claim.read_bytes() == b'{torn'
 partial_claim.write_bytes(saved_claim)
 assert incoming() == released_view
-summary = dict(passed=True, host_sha256=hashlib.sha256(host.read_bytes()).hexdigest(),
+approve('spool-start', producer, 'unclaimed', seed, 15)
+approve('spool-accept', producer, 'unclaimed')
+approve('spool-artifact-retire', producer, 'unclaimed', 'batch.txt')
+empty = call('spool-artifacts', producer, 'unclaimed', '--review-retirement', 'batch.txt')
+assert empty['registered_claims'] == 0 and not empty['collection_authorized']
+assert not empty['reference_census_complete']
+summary = dict(consumer_release_receipts_verified=True, passed=True, host_sha256=hashlib.sha256(host.read_bytes()).hexdigest(),
                cancelled_references_released=True, successful_references_retained=True,
                partial_acquisition_retained=True, lost_confirmation_not_retried=True,
                source_observation_without_control_locks=True, source_markers_not_consumer_completion=True,
