@@ -66,8 +66,8 @@ pub fn declare(path: &Path, revision: &str, file: &Path, approved: Option<&str>)
         if !seen.insert((catalog.to_owned(), source.revision.clone())) {
             return Err("duplicate checkpoint dependency".into());
         }
-        let (_, binding) =
-            artifact_versions::admission::read_input(Path::new(catalog), &source.revision)?;
+        let binding =
+            artifact_versions::registered::pinnable(Path::new(catalog), &source.revision)?;
         if binding["revision"] != output["binding"]["revision"]
             || binding["content_sha256"] != output["binding"]["content_sha256"]
             || binding["bytes"] != output["binding"]["bytes"]

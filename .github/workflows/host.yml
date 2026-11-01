@@ -82,6 +82,9 @@ jobs:
       - name: Independent business data and state with cancellation retention
         if: matrix.native_workspace
         run: python3 -B crates/an-agent-host/tests/cli/native_data_state.py --host target/debug/an-agent-host --evidence "$RUNNER_TEMP/native-state/data-state"
+      - name: Registered publication and transactional payload collection
+        if: matrix.native_workspace
+        run: python3 -B crates/an-agent-host/tests/cli/registered_collection.py --host target/debug/an-agent-host --evidence "$RUNNER_TEMP/native-state/registered-collection"
       - name: Native input references and confirmed cancelled-owner release
         if: matrix.native_workspace
         run: python3 -B crates/an-agent-host/tests/cli/native_input_references.py --host target/debug/an-agent-host --fixture "$RUNNER_TEMP/native-state/data-state" --evidence "$RUNNER_TEMP/native-state/input-references"

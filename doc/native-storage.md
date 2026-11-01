@@ -371,28 +371,68 @@ claims reports `collection_authorized: false`; existing catalogs can have unmana
 and legacy readers. The real shared-source CLI test removes and exchanges completion
 receipts and verifies that other checkpoint pins and source bytes remain intact.
 
-## Remaining formal payload collection contract
+## Registered copies and explicit payload deletion
 
-The generic instance checkpoint/delivery ledger already has explicit retention,
-recipient acknowledgements and registered state-reference checks. Native outputs
-also live in per-run artifact catalogs and can be selected from independently
-located instances. That usage is not a closed global reference inventory. Do not
-apply generic `product-reclaim` to a native catalog or infer deletion consent from
-observing no current reader or receiving an event acknowledgement.
+At first acceptance the operator may select `spool-accept INSTANCE RUN --registered`.
+Preview and approve this operation separately. All outputs of that new per-run
+catalog receive a distinct registered text or binary revision schema. The immutable
+acceptance intent records the profile. The host stages the bytes and empty reader
+ledger together before publishing the revision. Ordinary acceptance keeps its
+existing format. An existing catalog cannot be adopted, upgraded or collected
+through this command.
 
-Closing admission does not prove that existing consumers, state references or
-unmanaged readers have released a version. Native input claims now record new
-managed consumers; formal collection still needs successful-owner release, explicit
-checkpoint dependency retirement/reconciliation and a defined boundary for unmanaged/legacy readers.
-Opaque state references cannot be inferred by scanning text.
-A future delete operation needs a storage format that fences mixed/legacy readers
-from publication, plus a distinction between historical metadata and payload reads.
-Selected read-only inspection now verifies intact siblings independently; whole-run
-acceptance and custody still require all payloads.
-Before enabling deletion, qualify a run with two outputs: retire and delete one,
-verify its immutable provenance and deletion receipt, refuse its content checkout,
-and continue to verify and read its sibling. Missing bytes without a matching
-deletion receipt must remain uncertain. The existing per-run catalogs retain their
-formal bytes. Loom may describe intended retention, but
-cannot supply runtime deletion authority. General native formal-product/state GC
-remains unimplemented.
+Each version has a private SQLite database bound to its canonical catalog and
+revision. SQLite serializes admission, pin creation, copy completion, release and
+closure. The host validates the ledger digest and the content hash. Old readers
+refuse the new schema. The generic checkout/edit, event input and direct
+revision-input paths cannot export its bytes. For a reviewed headless workload,
+make a registered copy outside the producer instance and pass that file as its
+ordinary input. Host verification reads only return metadata. A checkpoint
+dependency uses the existing declaration command and acquires a permanent version
+pin in the same authoritative ledger before registration completes.
+
+```text
+spool-managed show INSTANCE RUN OUTPUT REVISION
+spool-managed checkout INSTANCE RUN OUTPUT REVISION READER NEW_FILE [--approve HASH]
+spool-managed close INSTANCE RUN OUTPUT REVISION [--approve HASH]
+spool-managed release INSTANCE RUN OUTPUT REVISION READER [--approve HASH]
+spool-managed delete INSTANCE RUN OUTPUT REVISION [--approve HASH]
+```
+
+Every mutation requires its own preview digest. A copy reader reserves its name
+before receiving bytes. Successful exclusive creation and sync of its independent
+file precede the durable completion. An explicit reader release requires that
+completion. Interrupted copies retain their reservation, even if the destination
+exists. Closing admission fences new readers and stale checkout approvals. It
+allows an already admitted reader to finish and release. Reader identities are
+single-use, bounded to 128 per version including checkpoint pins. Closing admission
+does not release checkpoint dependencies. Pin retirement is outside this profile.
+
+Delete requires confirmed closure, valid releases for every admitted reader and
+verified bytes for that exact accepted output. It first commits a single-use
+intent. A second transaction removes the BLOB and commits its matching receipt
+together. Database contention or an interrupted operation returns for explicit
+inspection; there is no automatic replay or intent repair. Show reports
+`deleted` only after verifying absence of the BLOB, the intent, release evidence
+and the matching receipt. Missing bytes, a missing database or damaged records
+cannot attest deletion. A durable intent without a final receipt stays
+`deletion-unconfirmed`. Whole-run historical evidence and selected intact siblings
+remain verifiable. Content requests for a deleted revision fail. The receipt
+records logical bytes removed. Filesystem snapshots, exported copies and backups
+have independent retention.
+
+The reader census covers application handoffs through the reviewed local host with
+exclusive custody of its private store. The current host refuses the database as
+a raw input, and its native workspace policy denies access to backing files and
+SQLite sidecars even under a broader runtime read root. Administrators with direct
+filesystem access, privileged external software, an older host given raw store
+access, and in-place rollback of a live store are outside this trust boundary.
+Keep catalogs private. An ordinary legacy directory never qualifies for deletion
+from an empty observed reference list.
+
+The real macOS headless suite uses a binary payload and a text sibling. A retained
+checkpoint and a registered copy reader each block deletion. After closure and
+confirmed release it deletes the binary version, reads the retained copy in a
+second spool and verifies the sibling and historical inventory. The suite injects
+a lost copy completion, a missing payload and a failure between BLOB removal and
+receipt publication; the transaction rolls back and the intent fences replay.

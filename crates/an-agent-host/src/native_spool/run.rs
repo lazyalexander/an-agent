@@ -326,15 +326,25 @@ pub(super) fn settled_runs(root: &Path) -> Result<Vec<Value>> {
 }
 
 pub fn accept(path: &Path, name: &str, approved: Option<&str>) -> Result<Value> {
-    custody(path, name, approved, false)
+    custody(path, name, approved, Custody::Accept)
 }
 pub fn reclaim(path: &Path, name: &str, approved: Option<&str>) -> Result<Value> {
-    custody(path, name, approved, true)
+    custody(path, name, approved, Custody::Reclaim)
 }
-fn custody(path: &Path, name: &str, approved: Option<&str>, collect: bool) -> Result<Value> {
+pub fn accept_registered(path: &Path, name: &str, approved: Option<&str>) -> Result<Value> {
+    custody(path, name, approved, Custody::Registered)
+}
+enum Custody {
+    Accept,
+    Registered,
+    Reclaim,
+}
+
+fn custody(path: &Path, name: &str, approved: Option<&str>, mode: Custody) -> Result<Value> {
     let root = location(path)?;
     let _lock = store::lock(&root)?;
     let result = settled(&root, name)?;
+    let collect = matches!(mode, Custody::Reclaim);
     if !collect {
         let (instance, bundle) = state(&root)?;
         runtime::verify(&root, &instance, &bundle)?;
@@ -343,10 +353,10 @@ fn custody(path: &Path, name: &str, approved: Option<&str>, collect: bool) -> Re
     let id = result["workspace"]["attempt"]
         .as_str()
         .ok_or("missing attempt")?;
-    let operation = if collect {
-        workspace_job::reclaim_managed
-    } else {
-        workspace_job::accept_managed
+    let operation = match mode {
+        Custody::Reclaim => workspace_job::reclaim_managed,
+        Custody::Registered => workspace_job::accept_registered,
+        Custody::Accept => workspace_job::accept_managed,
     };
     let preview = operation(&job, id, None)?;
     let plan = json!({"instance":result["instance"],"release":result["release"],"run":name,

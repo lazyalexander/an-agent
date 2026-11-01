@@ -16,7 +16,7 @@ use crate::{
     file_job::regular,
 };
 pub use custody::{accept, reclaim};
-pub(crate) use custody::{accept_managed, reclaim_managed};
+pub(crate) use custody::{accept_managed, accept_registered, reclaim_managed};
 use serde_json::{Value, json};
 use std::{
     path::{Path, PathBuf},

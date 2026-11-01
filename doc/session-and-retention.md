@@ -2,7 +2,7 @@
 
 Status: accepted development direction, with the first native input-reference
 slice implemented in [native storage](native-storage.md).
-Formal payload deletion remains planned. A bounded native session/dispatch adapter
+Registered-copy outputs support explicit payload deletion after admission closure. A bounded native session/dispatch adapter
 is implemented below; general model-session coordination remains planned. The qualified boundary
 remains reviewed headless CLI spools; see the [platform matrix](platforms.md).
 GUI/TUI, new backends and process-memory restoration are deferred.
@@ -11,7 +11,7 @@ GUI/TUI, new backends and process-memory restoration are deferred.
 
 | Existing implementation | Reuse and limit |
 | --- | --- |
-| [Native storage](native-storage.md) | Settled scratch/snapshot collection, capacity observations and new-input retirement; no formal native payload deletion |
+| [Native storage](native-storage.md) | Settled scratch/snapshot collection, capacity observations and new-input retirement; explicit collection of newly registered-copy versions |
 | [Artifact admission](../crates/an-agent-host/src/artifact_versions/admission.rs) | Monotonic closure with concurrent immutable readers; no reference inventory |
 | [Checkpoint retention](../crates/an-agent-host/src/instance/checkpoint/retention.rs) | Explicit recipients/state references in a closed store; not a global census of native catalogs |
 | [Core session](../crates/an-agent-core/src/agent/session.rs) and [session control](../crates/an-agent-core/src/control/session.rs) | Private tape/files, seal, finished-thread release and identity-checked resume; not a native-spool session coordinator or whole-machine recovery |
@@ -422,7 +422,7 @@ savings from prompt caching or summaries before measuring quality and actual use
 
 | Slice | Deliverable and end condition |
 | --- | --- |
-| A: native artifact ownership | New managed outputs acquire/release explicit pins through real producer/two-consumer execution; active and unknown owners, retained checkpoint dependencies and legacy catalogs block deletion; no payload deletion yet |
+| A: native artifact ownership | New managed outputs acquire/release explicit pins through real producer/two-consumer execution; active and unknown owners, retained checkpoint dependencies and legacy catalogs block deletion; legacy outputs stay retained |
 | B: formal payload collection | Closed admission plus released pins permits exact approved deletion; retained provenance remains inspectable, content reads fail clearly, unrelated outputs/checkpoints survive; race, cancellation and lost deletion receipt refuse unsafe progress |
 | C: runtime ownership | Foreground dispatch groups and generation-bound peer waits run through explicit host commands. Old/unknown work cannot claim new work. Explicit file/state/data-state starts have per-attempt independent supervision; event/session/peer dispatch remains foreground |
 | D: bounded context handoff and combined qualification | Reuse explicit packets/export across authorized participants; unrelated data excluded, incorrect audience refused, oversized input explicit, missing source reported; combine lifecycle, pins, collection and interruption in one real headless run |
@@ -439,7 +439,7 @@ accepted outputs and private collection. Successful combined data/state event ow
 after approval of exhaustive coverage tied to the committed checkpoint. Partial
 registrations and old/unmanaged readers remain retained. Explicit checkpoint dependency declarations now acquire non-releasable source pins;
 missing registration evidence blocks selection. Other successful-owner paths, dependency
-retirement/reconciliation and a mixed-host version fence remain required before slice B. No current reference query authorizes deletion.
+retirement/reconciliation and a mixed-host version fence remain outside the opt-in registered-copy collection profile. No current reference query authorizes deletion.
 The producer-side `spool-artifacts ... --references OUTPUT` observation now exposes
 registered consumers without control locks. Source release markers are reported
 separately from consumer completion; an empty view is never a complete census.

@@ -150,6 +150,14 @@ pub(super) fn dispatch(command: &str, args: &[String]) -> Result<Value> {
         ("spool-unload", [root, flag, hash]) if flag == "--approve" => {
             spool::unload(Path::new(root), Some(hash))
         }
+        ("spool-accept", [root, name, flag]) if flag == "--registered" => {
+            spool::accept_registered(Path::new(root), name, None)
+        }
+        ("spool-accept", [root, name, flag, approve, hash])
+            if flag == "--registered" && approve == "--approve" =>
+        {
+            spool::accept_registered(Path::new(root), name, Some(hash))
+        }
         ("spool-accept" | "spool-reclaim", [root, name]) => custody(command, root, name, None),
         ("spool-accept" | "spool-reclaim", [root, name, flag, hash]) if flag == "--approve" => {
             custody(command, root, name, Some(hash))

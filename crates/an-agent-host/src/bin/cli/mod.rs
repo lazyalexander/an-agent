@@ -6,6 +6,7 @@ mod host;
 mod instance;
 mod model;
 mod peer;
+mod registered;
 mod retention;
 mod session;
 mod spool;
@@ -87,6 +88,7 @@ pub(super) fn run(args: Vec<String>) -> Result<()> {
         "workspace-run" | "workspace-resume" | "workspace-accept" | "workspace-reclaim" => {
             workspace::dispatch(command, args)?
         }
+        "spool-managed" => registered::dispatch(args)?,
         "spool-load"
         | "spool-release-diff"
         | "spool-show"
