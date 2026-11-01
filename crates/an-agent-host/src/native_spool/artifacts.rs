@@ -36,11 +36,15 @@ pub fn artifacts(path: &Path, name: &str) -> Result<Value> {
 
 /// Verify one payload and the complete acceptance inventory. No custody authority.
 pub fn artifact_output(path: &Path, name: &str, output: &str) -> Result<Value> {
-    Ok(verify_scope(&location(path)?, name, true, Some(output))?.0)
+    Ok(verify_scope(&location(path)?, name, true, Some(output), false)?.0)
 }
 
 pub(super) fn verified(root: &Path, name: &str, require_bound: bool) -> Result<(Value, Value)> {
-    verify_scope(root, name, require_bound, None)
+    verify_scope(root, name, require_bound, None, false)
+}
+
+pub(super) fn selected_metadata(root: &Path, name: &str, output: &str) -> Result<Value> {
+    Ok(verify_scope(root, name, true, Some(output), true)?.0)
 }
 
 fn verify_scope(
@@ -48,6 +52,7 @@ fn verify_scope(
     name: &str,
     require_bound: bool,
     selected: Option<&str>,
+    metadata_only: bool,
 ) -> Result<(Value, Value)> {
     let settled = run::settled(root, name)?;
     if settled["status"] != "succeeded" {
@@ -124,7 +129,13 @@ fn verify_scope(
             if selected.is_some() {
                 selected_output = Some(output);
             }
-            crate::artifact_versions::read(&catalog, revision)?.1
+            if selected.is_none() {
+                crate::artifact_versions::registered::verify_or_deleted(&catalog, revision)?
+            } else if metadata_only {
+                crate::artifact_versions::metadata(&catalog, revision)?
+            } else {
+                crate::artifact_versions::registered::verify(&catalog, revision)?
+            }
         } else {
             crate::artifact_versions::metadata(&catalog, revision)?
         };
@@ -133,7 +144,9 @@ fn verify_scope(
             .find(|p| p["path"] == name)
             .ok_or("unaccepted artifact")?;
         let binary = bundle.manifest.binary_outputs.iter().any(|p| p == name);
-        if (version["encoding"] == "bytes") != binary
+        if version["reader_profile"] != intent["reader_profile"]
+            || version["reader_profile"] != output["binding"]["reader_profile"]
+            || (version["encoding"] == "bytes") != binary
             || (candidate["encoding"] == "bytes") != binary
             || (output["binding"]["encoding"] == "bytes") != binary
             || version["content_sha256"] != output["binding"]["content_sha256"]
@@ -154,7 +167,7 @@ fn verify_scope(
         return Ok((
             json!({"schema":"an-native-selected-artifact-v1","instance":settled["instance"],
             "release":settled["release"],"run":name,"catalog":catalog,"output":output,
-            "payload_verified":true,"inventory_metadata_verified":true}),
+            "payload_verified":!metadata_only,"inventory_metadata_verified":true}),
             accepted,
         ));
     }

@@ -279,7 +279,7 @@ future reconciliation action. Fully recorded declarations cannot be rewritten.
 Existing checkpoints without declarations report `undeclared`, not dependency-free.
 This optional declaration is not a complete dependency census. An acknowledged
 stateful event needs a spool-emitted, accepted input policy and separately approved [coverage statement](native-storage.md)
-to release its own input claims. Native payload deletion remains unsupported. Older
+to release its own input claims. Registered-copy outputs have a separate explicit deletion gate; a checkpoint pin blocks it. Older
 hosts do not understand these sidecars; mixed-version operation is unqualified.
 
 Real headless qualification extends both explicit-state supervisor suites: accepted

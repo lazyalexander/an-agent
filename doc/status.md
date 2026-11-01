@@ -39,14 +39,8 @@ See [native spool](native-spool.md),
 | Completed-summary repair | Explicit reconstruction from every original entry/start/delivery and confirmed-success receipt; no execution or partial-batch resume |
 | Private capacity maintenance | Explicit finite work/snapshot collection through original ownership/settlement gates; four real 8 MiB rounds and consumer progress qualified |
 | Artifact input retirement | One accepted output can close new revision-based acquisition; admitted work, independent checkpoints, original bytes and causal evidence remain retained |
-| Native input ownership | Exact managed claims; explicit cancelled-owner or acknowledged stateless-success release after private collection; explicit immutable checkpoint pins; stateful event release after approved exhaustive input coverage; uncertain owners retained; retirement review checks explicitly selected consumer receipts; no complete reader census or payload deletion |
-
-P1 is not closed. The remaining required capacity contract is **formal payload
-collection**: identify registered references, release them explicitly, and define
-what unmanaged readers mean before deleting bytes. Admission retirement is not
-proof that all old references have expired. The native per-run catalogs do not
-have a global reference census; absence of a reader or an acknowledgement is not
-deletion authority. See [native storage](native-storage.md).
+| Native input ownership | Exact managed claims; explicit cancelled-owner or acknowledged stateless-success release after private collection; explicit immutable checkpoint pins; stateful event release after approved exhaustive input coverage; uncertain owners retained; retirement review checks explicitly selected consumer receipts; legacy reader census remains incomplete |
+| Registered publication | New `--registered` acceptance records every qualified copy reader and checkpoint pin from first publication. Explicit exact-version collection requires closure and verified reader releases. Legacy catalogs stay retained. See [native storage](native-storage.md#registered-copies-and-explicit-payload-deletion). |
 
 After that bounded contract, qualify the combined local headless path rather
 than adding another sequence of isolated features: concurrent instances,
@@ -57,7 +51,7 @@ is the P1 closure direction, not a requirement to build a daemon or graph engine
 The next [session and retention plan](session-and-retention.md) makes the
 remaining storage work explicit, then proposes a small session/thread coordination
 layer over existing attempts. Its first foreground session/finite-thread adapter is
-implemented; general model-context threads and formal payload collection remain
+implemented; general model-context threads and cross-profile payload collection remain
 unimplemented. See the plan for exact commands and concurrency limits.
 GUI and TUI are deferred; no new user interface is required for qualification.
 

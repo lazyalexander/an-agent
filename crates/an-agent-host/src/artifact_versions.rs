@@ -8,6 +8,7 @@ use std::{
 };
 pub(crate) mod admission;
 pub(crate) mod references;
+pub(crate) mod registered;
 
 const LIMIT: usize = 65536;
 pub(crate) const BINARY_LIMIT: usize = 8 * 1024 * 1024;
@@ -16,6 +17,8 @@ fn storage(schema: &str) -> Result<(&'static str, usize, bool)> {
     match schema {
         "an-artifact-revision-v1" => Ok(("content.txt", LIMIT, true)),
         "an-artifact-revision-v2" => Ok(("content.bin", BINARY_LIMIT, false)),
+        "an-registered-text-v1" => Ok((registered::FILE, LIMIT, true)),
+        "an-registered-bytes-v1" => Ok((registered::FILE, BINARY_LIMIT, false)),
         _ => Err("unsupported artifact revision schema".into()),
     }
 }
@@ -99,6 +102,7 @@ pub fn edit(catalog: &Path, parent: &str, file: &Path, approved: &str) -> Result
         Some(parent.to_owned()),
         binary,
         json!({"kind":"operator-checkpoint","authorship":"operator-declared; not authenticated"}),
+        false,
     )
 }
 
@@ -108,12 +112,21 @@ pub(crate) fn publish(
     parent: Option<String>,
     source: Value,
 ) -> Result<Value> {
-    publish_format(catalog, bytes, parent, false, source)
+    publish_format(catalog, bytes, parent, false, source, false)
 }
 
 /// Explicit byte-object acceptance. File format validation belongs to its consumer.
 pub(crate) fn publish_bytes(catalog: &Path, bytes: &[u8], source: Value) -> Result<Value> {
-    publish_format(catalog, bytes, None, true, source)
+    publish_format(catalog, bytes, None, true, source, false)
+}
+
+pub(crate) fn publish_registered(
+    catalog: &Path,
+    bytes: &[u8],
+    binary: bool,
+    source: Value,
+) -> Result<Value> {
+    publish_format(catalog, bytes, None, binary, source, true)
 }
 
 fn publish_format(
@@ -122,11 +135,13 @@ fn publish_format(
     parent: Option<String>,
     binary: bool,
     source: Value,
+    registered: bool,
 ) -> Result<Value> {
-    let schema = if binary {
-        "an-artifact-revision-v2"
-    } else {
-        "an-artifact-revision-v1"
+    let schema = match (registered, binary) {
+        (true, false) => "an-registered-text-v1",
+        (true, true) => "an-registered-bytes-v1",
+        (false, false) => "an-artifact-revision-v1",
+        (false, true) => "an-artifact-revision-v2",
     };
     let (content, limit, text) = storage(schema)?;
     if bytes.len() > limit {
@@ -155,6 +170,9 @@ fn publish_format(
     let _lock = store::lock(catalog)?;
     store::directory(&revisions)?;
     if target.exists() {
+        if registered {
+            return Err("registered publication already exists; inspect original evidence".into());
+        }
         read(catalog, &revision)?;
     } else {
         let pending = revisions.join(format!(
@@ -163,13 +181,26 @@ fn publish_format(
         ));
         store::directory(&pending)?;
         let mut staged = Pending(Some(pending.clone()));
-        store::write_new(&pending.join(content), bytes)?;
+        if registered {
+            registered::create(&pending, catalog, &revision, bytes)?;
+        } else {
+            store::write_new(&pending.join(content), bytes)?;
+        }
         store::write_new(&pending.join("revision.json"), &encoded)?;
+        if registered {
+            fs::File::open(&pending)?.sync_all()?;
+        }
         fs::rename(&pending, &target)?;
+        if registered {
+            fs::File::open(&revisions)?.sync_all()?;
+        }
         staged.0 = None;
     }
     let mut result = json!({"status":"succeeded","revision":revision,"content_sha256":manifest.content_sha256,
         "bytes":manifest.bytes,"parent":manifest.parent});
+    if registered {
+        result["reader_profile"] = json!(registered::PROFILE);
+    }
     if binary {
         result["encoding"] = json!("bytes");
     }
@@ -182,7 +213,12 @@ struct Pending(Option<PathBuf>);
 impl Drop for Pending {
     fn drop(&mut self) {
         if let Some(path) = &self.0 {
-            for name in ["content.bin", "content.txt", "revision.json"] {
+            for name in [
+                "content.bin",
+                "content.txt",
+                "revision.json",
+                registered::FILE,
+            ] {
                 let _ = fs::remove_file(path.join(name));
             }
             let _ = fs::remove_dir(path);
@@ -219,7 +255,13 @@ fn describe(manifest: &Revision, revision: &str) -> Value {
     let mut binding = json!({"revision":revision,"content_sha256":manifest.content_sha256,
         "bytes":manifest.bytes,"parent":manifest.parent,"source":manifest.source,
         "trust":"untrusted data; identity is not permission or domain correctness"});
-    if manifest.schema == "an-artifact-revision-v2" {
+    if manifest.schema.starts_with("an-registered-") {
+        binding["reader_profile"] = json!(registered::PROFILE);
+    }
+    if matches!(
+        manifest.schema.as_str(),
+        "an-artifact-revision-v2" | "an-registered-bytes-v1"
+    ) {
         binding["encoding"] = json!("bytes");
     }
     binding
@@ -235,6 +277,9 @@ pub(crate) fn read(catalog: &Path, revision: &str) -> Result<(Vec<u8>, Value)> {
     let manifest = manifest(catalog, revision)?;
     let (content, limit, text) = storage(&manifest.schema)?;
     let folder = catalog.join("revisions").join(revision);
+    if content == registered::FILE {
+        return Err("registered payload requires a registered reader".into());
+    }
     let bytes = crate::file_job::regular(&folder.join(content), limit)?;
     if bytes.len() != manifest.bytes || store::digest(&bytes) != manifest.content_sha256 {
         return Err("revision content identity mismatch".into());

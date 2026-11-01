@@ -39,6 +39,12 @@ pub(crate) fn inspect(reference: &Value) -> Result<Value> {
         return Err("input reference ownership changed".into());
     }
     store::no_links(&released)?;
+    if reference["binding"]["reader_profile"] == registered::PROFILE {
+        registered::check_pin(
+            Path::new(reference["catalog"].as_str().ok_or("catalog")?),
+            reference,
+        )?;
+    }
     let release = if released.try_exists()? {
         if reference["schema"] == "an-native-checkpoint-reference-v1" {
             return Err("checkpoint reference has an unsupported release record".into());
@@ -66,7 +72,7 @@ pub(crate) fn acquire(reference: &Value) -> Result<()> {
     let revision = reference["binding"]["revision"]
         .as_str()
         .ok_or("revision")?;
-    let (_, binding) = admission::read_input(catalog, revision)?;
+    let binding = registered::pinnable(catalog, revision)?;
     if binding != reference["binding"] {
         return Err("input reference no longer binds selected bytes".into());
     }
@@ -74,6 +80,9 @@ pub(crate) fn acquire(reference: &Value) -> Result<()> {
     store::directory(directory)?;
     if fs::read_dir(directory)?.take(512).count() >= 512 {
         return Err("native input reference history is full".into());
+    }
+    if binding["reader_profile"] == registered::PROFILE {
+        registered::pin(catalog, reference)?;
     }
     // Even an identical existing claim is not permission to retry an uncertain start.
     store::write_new(&claim, &serde_json::to_vec(reference)?)?;

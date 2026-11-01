@@ -13,8 +13,21 @@ pub fn accept(path: &Path, id: &str, approved: Option<&str>) -> Result<Value> {
 }
 
 pub(crate) fn accept_managed(path: &Path, id: &str, approved: Option<&str>) -> Result<Value> {
+    accept_mode(path, id, approved, false)
+}
+
+pub(crate) fn accept_registered(path: &Path, id: &str, approved: Option<&str>) -> Result<Value> {
+    accept_mode(path, id, approved, true)
+}
+
+fn accept_mode(path: &Path, id: &str, approved: Option<&str>, registered: bool) -> Result<Value> {
     let root = root(path)?;
     let _lock = store::lock(&root)?;
+    if registered && root.join("artifacts").try_exists()? {
+        return Err(
+            "registered publication requires a fresh per-run catalog; never adopt or retry".into(),
+        );
+    }
     let (dir, receipt) = record(&root, id)?;
     if receipt["status"] != "succeeded" || receipt["exit_code"] != 0 {
         return Err("only successful terminated attempts may publish outputs".into());
@@ -53,9 +66,12 @@ pub(crate) fn accept_managed(path: &Path, id: &str, approved: Option<&str>) -> R
         candidates.push(candidate);
         payloads.push(bytes);
     }
-    let plan = json!({"schema":"an-workspace-accept-v1","attempt":id,
+    let mut plan = json!({"schema":"an-workspace-accept-v1","attempt":id,
         "receipt_sha256":store::digest(&regular(&dir.join("receipt.json"), 2 * 1024 * 1024)?),
         "outputs":candidates});
+    if registered {
+        plan["reader_profile"] = json!(crate::artifact_versions::registered::PROFILE);
+    }
     let (digest, execute) = approval(&plan, approved)?;
     if !execute {
         return Ok(json!({"plan":plan,"approval_sha256":digest,"executed":false}));
@@ -73,7 +89,14 @@ pub(crate) fn accept_managed(path: &Path, id: &str, approved: Option<&str>) -> R
                     .collect::<Vec<_>>()
             );
         }
-        let revision = if item["encoding"] == "bytes" {
+        let revision = if registered {
+            crate::artifact_versions::publish_registered(
+                &root.join("artifacts"),
+                bytes,
+                item["encoding"] == "bytes",
+                source,
+            )?
+        } else if item["encoding"] == "bytes" {
             crate::artifact_versions::publish_bytes(&root.join("artifacts"), bytes, source)?
         } else {
             crate::artifact_versions::publish(&root.join("artifacts"), bytes, None, source)?
@@ -107,7 +130,7 @@ pub(crate) fn reclaim_managed(path: &Path, id: &str, approved: Option<&str>) -> 
             .as_array()
             .ok_or("missing accepted bindings")?
         {
-            crate::artifact_versions::read(
+            crate::artifact_versions::registered::verify_or_deleted(
                 &root.join("artifacts"),
                 output["binding"]["revision"]
                     .as_str()

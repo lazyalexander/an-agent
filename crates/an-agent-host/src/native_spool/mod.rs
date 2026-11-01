@@ -13,6 +13,7 @@ mod lifecycle;
 mod maintenance;
 pub mod peer;
 pub use maintenance::collect_private;
+pub mod managed_output;
 mod reconcile;
 mod release_review;
 mod requirements;
@@ -38,7 +39,7 @@ use crate::{
 /// Legacy module alias; wire schemas and stored tickets retain their identities.
 pub use kit_proposal as weaver;
 pub use lifecycle::{load, load_runtime, reset_kit, show, unload, update_kit};
-pub use run::{accept, reclaim, start, start_data_state, start_state};
+pub use run::{accept, accept_registered, reclaim, start, start_data_state, start_state};
 use serde_json::{Value, json};
 pub use status::status;
 use std::{
