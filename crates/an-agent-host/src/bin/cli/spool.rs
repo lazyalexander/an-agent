@@ -67,6 +67,33 @@ pub(super) fn dispatch(command: &str, args: &[String]) -> Result<Value> {
                 Some(hash),
             )
         }
+        (
+            "spool-input-release",
+            [
+                root,
+                run,
+                flag,
+                workspace,
+                subscription,
+                scope,
+                file,
+                rest @ ..,
+            ],
+        ) if flag == "--delivery" && scope == "--coverage" => {
+            let approved = match rest {
+                [] => None,
+                [flag, hash] if flag == "--approve" => Some(hash.as_str()),
+                _ => return Err("invalid stateful release approval".into()),
+            };
+            spool::input_references::release_checkpoint(
+                Path::new(root),
+                run,
+                Path::new(workspace),
+                subscription,
+                Path::new(file),
+                approved,
+            )
+        }
         ("spool-status", [root, run]) => spool::status(Path::new(root), run),
         ("spool-artifacts", [root, run]) => spool::artifacts(Path::new(root), run),
         ("spool-artifacts", [root, run, flag, output]) if flag == "--references" => {

@@ -3,6 +3,7 @@ use super::*;
 use crate::artifact_versions;
 mod dependencies;
 pub use dependencies::declare;
+pub(super) use dependencies::inspect as registered_dependencies;
 
 fn catalog(root: &Path) -> PathBuf {
     root.join("checkpoints/catalog")

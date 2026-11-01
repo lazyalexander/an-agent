@@ -435,9 +435,10 @@ suspend and automatic state migration remain out of scope.
 Slice A is partial: new native starts register exact artifact/checkpoint inputs.
 Confirmed cancelled owners can release after private collection; successful
 stateless event consumers can release after original consumption acknowledgement,
-accepted outputs and private collection. Successful stateful owners, partial
+accepted outputs and private collection. Successful combined data/state event owners may release their temporary claims
+after approval of exhaustive coverage tied to the committed checkpoint. Partial
 registrations and old/unmanaged readers remain retained. Explicit checkpoint dependency declarations now acquire non-releasable source pins;
-missing registration evidence blocks selection. Stateful-owner release, dependency
+missing registration evidence blocks selection. Other successful-owner paths, dependency
 retirement/reconciliation and a mixed-host version fence remain required before slice B. No current reference query authorizes deletion.
 The producer-side `spool-artifacts ... --references OUTPUT` observation now exposes
 registered consumers without control locks. Source release markers are reported

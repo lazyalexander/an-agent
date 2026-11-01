@@ -223,11 +223,9 @@ exit or an accepted output alone cannot release the claim. A missing acknowledge
 refuses rather than invoking acknowledgement repair. Release is explicit, not a
 side effect of collection or observation.
 
-This bounded success path requires exactly one managed event input and no explicit
-state/data selection, checkpoint store or pending checkpoint initialization. State
-is opaque and does not yet declare all external dependencies: successful stateful
-runs retain all input claims, even after state commit, acknowledgement and private
-collection. Unstarted or partially registered failures also stay retained pending
+Without `--coverage`, the successful release path requires exactly one managed event input and no explicit
+state/data selection, checkpoint store or pending checkpoint initialization. Stateful runs retain their inputs until an operator separately approves exhaustive
+coverage for their specific committed checkpoint. Unstarted or partially registered failures also stay retained pending
 a separate reconciliation contract. The command deletes **no payload** and grants
 no collection authority. A source marker without the matching final consumer
 receipt remains uncertain; release cannot reconstruct that receipt or replay work.
@@ -236,6 +234,50 @@ readers, opaque checkpoint dependencies and legacy catalogs prevent treating the
 claims as a complete reference census. Do not infer GC permission from zero claims
 or from release records alone.
 
+A successful event consuming business data and a parent checkpoint can use:
+
+```text
+spool-input-release INSTANCE RUN --delivery WORKSPACE SUBSCRIPTION --coverage FILE [--approve HASH]
+```
+
+The spool must declare and emit the text output `checkpoint-input-policy.json`
+in the **same attempt** as its state output. The qualified policy names the two
+managed roles and exhaustively describes direct checkpoint dependencies within
+that inventory. For example, a counter retaining its batch for audit emits:
+
+```json
+{"schema":"an-native-checkpoint-managed-input-policy-v1","state_output":"state.txt","data":"checkpoint-pin","parent_state":"not-required"}
+```
+
+The host reads the immutable accepted policy revision through the delivery receipt.
+An operator cannot substitute a later file for this output. All pins in the
+checkpoint declaration must refer to these managed inputs. A missing or contrary
+policy refuses release, even when the operator statement and positive pins agree.
+
+`FILE` attests under `schema: an-checkpoint-exhaustive-input-coverage-v1` that the
+named checkpoint declaration exhausts the new checkpoint's direct retention needs.
+It supplies the exact `checkpoint`, `declaration_sha256` and ordered `inputs`.
+Each input names its original `catalog`, `revision` and explicit `disposition`:
+`checkpoint-pin` or `not-required`. Preview is read-only. Approval binds this
+attestation, the original registered inputs, commit and consumption evidence.
+
+The host verifies the committed ancestor was produced by this run/attempt from
+this parent, rechecks its commit intent and independent checkpoint pins, and
+requires an exact classification of **both** registered inputs. A retained input
+must have a matching pin. A `not-required` decision conflicting with a pin is
+refused. The spool author supplies the semantic completeness judgment in its accepted policy
+for opaque state. The host verifies recorded identities and exhaustiveness over
+this attempt's managed reads. Undeclared external dependencies cannot be proven
+absent from opaque bytes. The attestation conveys no payload deletion authority.
+
+In the counter fixture, A is the accepted batch retained as provenance for the
+new total, and B is the prior subtotal checkpoint. B's contribution is materialized
+in the new total. After consumption acknowledgement and private collection, both
+attempt claims release; the independent new checkpoint pin still protects A.
+A mismatched or missing input, commitment, pin, acknowledgement or release
+completion refuses. Unknown work is never replayed. Existing parent checkpoint
+history and other owners retain their products independently.
+
 Real headless acceptance uses one producer, a successful consumer and a separate
 cancelled consumer. It qualifies live/unknown-owner refusal, work/snapshot ordering,
 explicit release, unrelated retained claims, partial acquisition, lost completion
@@ -243,8 +285,7 @@ and unchanged source payloads. The host owns this fault matrix; Loom only checks
 the packaged producer/consumer handoff. No model or formal payload deletion runs.
 The event case also qualifies successful stateless release with a second retained
 consumer, missing acknowledgement/result/release receipts, stale approval and partial
-state initialization. The state case verifies that committed state still blocks
-success release. Unsupported isolation/runtime/network requirements refuse before
+state initialization. The state case requires explicit coverage for successful stateful release. Unsupported isolation/runtime/network requirements refuse before
 native loading; no backend downgrade is used to make these cases pass.
 
 ## Observing a product's registered consumers

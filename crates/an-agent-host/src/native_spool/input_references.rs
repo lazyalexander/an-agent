@@ -1,6 +1,7 @@
 //! Explicit source claims for native inputs; no deletion or global GC authority.
 use super::*;
 use crate::artifact_versions::references;
+mod coverage;
 mod success;
 
 fn owner(root: &Path, name: &str) -> Result<Value> {
@@ -133,26 +134,43 @@ pub fn release_succeeded(
     subscription: &str,
     approved: Option<&str>,
 ) -> Result<Value> {
-    release(path, name, Some((workspace, subscription)), approved)
+    release(path, name, Some((workspace, subscription, None)), approved)
+}
+
+pub fn release_checkpoint(
+    path: &Path,
+    name: &str,
+    workspace: &Path,
+    subscription: &str,
+    coverage: &Path,
+    approved: Option<&str>,
+) -> Result<Value> {
+    release(
+        path,
+        name,
+        Some((workspace, subscription, Some(coverage))),
+        approved,
+    )
 }
 
 fn release(
     path: &Path,
     name: &str,
-    delivery: Option<(&Path, &str)>,
+    delivery: Option<(&Path, &str, Option<&Path>)>,
     approved: Option<&str>,
 ) -> Result<Value> {
     let root = location(path)?;
     let _lock = store::lock(&root)?;
     let (registration, claims) = registered(&root, name)?;
     let result = run::settled(&root, name)?;
-    let completion = if let Some((workspace, subscription)) = delivery {
+    let completion = if let Some((workspace, subscription, coverage)) = delivery {
         Some(success::evidence(
             &root,
             name,
             &result,
             workspace,
             subscription,
+            coverage,
         )?)
     } else {
         None

@@ -99,7 +99,7 @@ pub fn declare(path: &Path, revision: &str, file: &Path, approved: Option<&str>)
     Ok(json!({"status":"succeeded","dependencies":inspect(&root, revision)?}))
 }
 
-pub(super) fn inspect(root: &Path, revision: &str) -> Result<Value> {
+pub(in super::super) fn inspect(root: &Path, revision: &str) -> Result<Value> {
     let dir = directory(root, revision)?;
     if !dir.try_exists()? {
         return Ok(
