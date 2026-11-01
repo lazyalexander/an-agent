@@ -39,7 +39,7 @@ See [native spool](native-spool.md),
 | Completed-summary repair | Explicit reconstruction from every original entry/start/delivery and confirmed-success receipt; no execution or partial-batch resume |
 | Private capacity maintenance | Explicit finite work/snapshot collection through original ownership/settlement gates; four real 8 MiB rounds and consumer progress qualified |
 | Artifact input retirement | One accepted output can close new revision-based acquisition; admitted work, independent checkpoints, original bytes and causal evidence remain retained |
-| Native input ownership | Exact managed claims; explicit cancelled-owner or acknowledged stateless-success release after private collection; explicit immutable checkpoint pins; stateful event release after approved exhaustive input coverage; uncertain owners retained; producer-side observations, no complete reader census or payload deletion |
+| Native input ownership | Exact managed claims; explicit cancelled-owner or acknowledged stateless-success release after private collection; explicit immutable checkpoint pins; stateful event release after approved exhaustive input coverage; uncertain owners retained; retirement review checks explicitly selected consumer receipts; no complete reader census or payload deletion |
 
 P1 is not closed. The remaining required capacity contract is **formal payload
 collection**: identify registered references, release them explicitly, and define

@@ -99,6 +99,11 @@ pub(super) fn dispatch(command: &str, args: &[String]) -> Result<Value> {
         ("spool-artifacts", [root, run, flag, output]) if flag == "--references" => {
             spool::artifact_references(Path::new(root), run, output)
         }
+        ("spool-artifacts", [root, run, flag, output, consumers @ ..])
+            if flag == "--review-retirement" =>
+        {
+            spool::review(Path::new(root), run, output, consumers)
+        }
         ("spool-artifact-retire", [root, run, output]) => {
             spool::retire_artifact(Path::new(root), run, output, None)
         }

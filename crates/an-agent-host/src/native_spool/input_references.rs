@@ -57,7 +57,7 @@ pub(super) fn acquire(root: &Path, name: &str, start: &Value) -> Result<()> {
     Ok(())
 }
 
-fn registered(root: &Path, name: &str) -> Result<(Value, Vec<Value>)> {
+pub(super) fn registration(root: &Path, name: &str) -> Result<Value> {
     bundle::identifier(name)?;
     let dir = root.join("runs").join(name);
     let plan = read(&dir.join("input-references.json"))?;
@@ -68,7 +68,6 @@ fn registered(root: &Path, name: &str) -> Result<(Value, Vec<Value>)> {
     if selected.is_empty() || selected.len() > 2 {
         return Err("invalid input reference count".into());
     }
-    let mut claims = Vec::new();
     for (slot, reference) in selected.iter().enumerate() {
         if reference["owner"] != plan["owner"]
             || reference["start_sha256"] != plan["start_sha256"]
@@ -76,7 +75,6 @@ fn registered(root: &Path, name: &str) -> Result<(Value, Vec<Value>)> {
         {
             return Err("input reference identity mismatch".into());
         }
-        claims.push(references::inspect(reference)?);
     }
     if read(&dir.join("input-references-registered.json"))?
         != json!({"schema":"an-native-input-references-registered-v1","plan_sha256":digest(&plan)?})
@@ -98,6 +96,17 @@ fn registered(root: &Path, name: &str) -> Result<(Value, Vec<Value>)> {
     {
         return Err("input reference selection changed".into());
     }
+    Ok(plan)
+}
+
+fn registered(root: &Path, name: &str) -> Result<(Value, Vec<Value>)> {
+    let plan = registration(root, name)?;
+    let claims = plan["references"]
+        .as_array()
+        .ok_or("reference list")?
+        .iter()
+        .map(references::inspect)
+        .collect::<Result<Vec<_>>>()?;
     Ok((plan, claims))
 }
 
