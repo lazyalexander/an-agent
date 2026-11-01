@@ -324,6 +324,26 @@ another consumer stays retained. Removing the consumer completion receipt does n
 turn that marker into a completed-release guarantee. Malformed source evidence
 refuses, and all original payload hashes remain unchanged.
 
+## Verify one accepted output
+
+```text
+spool-artifacts INSTANCE RUN --output OUTPUT
+```
+
+This inspection verifies the original settlement, execution, instance ownership,
+acceptance intent and the full declared output inventory. It checks **every revision
+manifest** against its content address, expected path, size, content digest and
+attempt provenance. It then reads and hashes the selected payload. The result
+identifies one output under `an-native-selected-artifact-v1`. Availability of
+other payloads is outside this result. The source reference view and retirement
+review use the same selected-output verification.
+
+A missing or damaged sibling payload leaves the selected output inspectable. A
+missing or damaged selected payload refuses inspection. Corrupt shared acceptance
+evidence or sibling revision metadata still invalidates the inventory. Missing
+bytes alone supply no evidence of authorized deletion. Whole-run inspection and
+operations that require whole-run evidence retain their full payload checks.
+
 ## Reviewing a retired output before collection
 
 ```text
@@ -367,8 +387,8 @@ checkpoint dependency retirement/reconciliation and a defined boundary for unman
 Opaque state references cannot be inferred by scanning text.
 A future delete operation needs a storage format that fences mixed/legacy readers
 from publication, plus a distinction between historical metadata and payload reads.
-Today the native acceptance verifier reads every declared output to validate a run.
-Unlinking one output in place would also break inspection of its intact siblings.
+Selected read-only inspection now verifies intact siblings independently; whole-run
+acceptance and custody still require all payloads.
 Before enabling deletion, qualify a run with two outputs: retire and delete one,
 verify its immutable provenance and deletion receipt, refuse its content checkout,
 and continue to verify and read its sibling. Missing bytes without a matching
