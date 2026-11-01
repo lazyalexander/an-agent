@@ -190,8 +190,8 @@ impl Drop for Pending {
     }
 }
 
-/// Read a specific immutable revision; never resolve a mutable latest pointer.
-pub(crate) fn read(catalog: &Path, revision: &str) -> Result<(Vec<u8>, Value)> {
+// Check the manifest bytes against the selected content address.
+fn manifest(catalog: &Path, revision: &str) -> Result<Revision> {
     if !store::valid_digest(revision) {
         return Err("revision must be a full SHA-256 digest".into());
     }
@@ -202,14 +202,39 @@ pub(crate) fn read(catalog: &Path, revision: &str) -> Result<(Vec<u8>, Value)> {
         return Err("revision manifest digest mismatch".into());
     }
     let manifest: Revision = serde_json::from_slice(&encoded)?;
-    let (content, limit, text) = storage(&manifest.schema)?;
-    if manifest
-        .parent
-        .as_ref()
-        .is_some_and(|p| !store::valid_digest(p))
+    let (_, limit, _) = storage(&manifest.schema)?;
+    if manifest.bytes > limit
+        || !store::valid_digest(&manifest.content_sha256)
+        || manifest
+            .parent
+            .as_ref()
+            .is_some_and(|p| !store::valid_digest(p))
     {
         return Err("invalid revision manifest".into());
     }
+    Ok(manifest)
+}
+
+fn describe(manifest: &Revision, revision: &str) -> Value {
+    let mut binding = json!({"revision":revision,"content_sha256":manifest.content_sha256,
+        "bytes":manifest.bytes,"parent":manifest.parent,"source":manifest.source,
+        "trust":"untrusted data; identity is not permission or domain correctness"});
+    if manifest.schema == "an-artifact-revision-v2" {
+        binding["encoding"] = json!("bytes");
+    }
+    binding
+}
+
+/// Verify immutable metadata only. This does not establish payload availability.
+pub(crate) fn metadata(catalog: &Path, revision: &str) -> Result<Value> {
+    Ok(describe(&manifest(catalog, revision)?, revision))
+}
+
+/// Read a specific immutable revision; never resolve a mutable latest pointer.
+pub(crate) fn read(catalog: &Path, revision: &str) -> Result<(Vec<u8>, Value)> {
+    let manifest = manifest(catalog, revision)?;
+    let (content, limit, text) = storage(&manifest.schema)?;
+    let folder = catalog.join("revisions").join(revision);
     let bytes = crate::file_job::regular(&folder.join(content), limit)?;
     if bytes.len() != manifest.bytes || store::digest(&bytes) != manifest.content_sha256 {
         return Err("revision content identity mismatch".into());
@@ -217,13 +242,7 @@ pub(crate) fn read(catalog: &Path, revision: &str) -> Result<(Vec<u8>, Value)> {
     if text {
         std::str::from_utf8(&bytes)?;
     }
-    let mut binding = json!({"revision":revision,"content_sha256":manifest.content_sha256,
-        "bytes":manifest.bytes,"parent":manifest.parent,"source":manifest.source,
-        "trust":"untrusted data; identity is not permission or domain correctness"});
-    if !text {
-        binding["encoding"] = json!("bytes");
-    }
-    Ok((bytes, binding))
+    Ok((bytes, describe(&manifest, revision)))
 }
 
 /// Create a separate editable copy, never overwrite a revision or existing file.

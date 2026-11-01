@@ -3,14 +3,8 @@ use super::*;
 
 /// Observe incoming ownership without taking a producer or consumer control lock.
 pub fn artifact_references(path: &Path, name: &str, output: &str) -> Result<Value> {
-    let root = location(path)?;
-    let (report, _) = verified(&root, name, true)?;
-    let selected = report["outputs"]
-        .as_array()
-        .ok_or("outputs")?
-        .iter()
-        .find(|item| item["path"] == output)
-        .ok_or("unknown accepted output")?;
+    let report = artifact_output(path, name, output)?;
+    let selected = &report["output"];
     let mut observation = crate::artifact_versions::references::observe(
         Path::new(report["catalog"].as_str().ok_or("catalog")?),
         selected["binding"]["revision"].as_str().ok_or("revision")?,
@@ -40,7 +34,21 @@ pub fn artifacts(path: &Path, name: &str) -> Result<Value> {
     Ok(report)
 }
 
+/// Verify one payload and the complete acceptance inventory. No custody authority.
+pub fn artifact_output(path: &Path, name: &str, output: &str) -> Result<Value> {
+    Ok(verify_scope(&location(path)?, name, true, Some(output))?.0)
+}
+
 pub(super) fn verified(root: &Path, name: &str, require_bound: bool) -> Result<(Value, Value)> {
+    verify_scope(root, name, require_bound, None)
+}
+
+fn verify_scope(
+    root: &Path,
+    name: &str,
+    require_bound: bool,
+    selected: Option<&str>,
+) -> Result<(Value, Value)> {
     let settled = run::settled(root, name)?;
     if settled["status"] != "succeeded" {
         return Err("only successful accepted runs have formal artifacts".into());
@@ -104,15 +112,22 @@ pub(super) fn verified(root: &Path, name: &str, require_bound: bool) -> Result<(
         return Err("formal output inventory mismatch".into());
     }
     let mut seen = std::collections::BTreeSet::new();
+    let mut selected_output = None;
+    let catalog = dir.join("job/artifacts");
     for output in outputs {
         let name = output["path"].as_str().ok_or("output path")?;
         if !bundle.manifest.outputs.iter().any(|p| p == name) || !seen.insert(name) {
             return Err("undeclared or duplicate artifact".into());
         }
-        let (_, version) = crate::artifact_versions::read(
-            &dir.join("job/artifacts"),
-            output["binding"]["revision"].as_str().ok_or("revision")?,
-        )?;
+        let revision = output["binding"]["revision"].as_str().ok_or("revision")?;
+        let version = if selected.is_none() || selected == Some(name) {
+            if selected.is_some() {
+                selected_output = Some(output);
+            }
+            crate::artifact_versions::read(&catalog, revision)?.1
+        } else {
+            crate::artifact_versions::metadata(&catalog, revision)?
+        };
         let candidate = candidates
             .iter()
             .find(|p| p["path"] == name)
@@ -133,6 +148,15 @@ pub(super) fn verified(root: &Path, name: &str, require_bound: bool) -> Result<(
         {
             return Err("artifact version or provenance mismatch".into());
         }
+    }
+    if selected.is_some() {
+        let output = selected_output.ok_or("unknown accepted output")?;
+        return Ok((
+            json!({"schema":"an-native-selected-artifact-v1","instance":settled["instance"],
+            "release":settled["release"],"run":name,"catalog":catalog,"output":output,
+            "payload_verified":true,"inventory_metadata_verified":true}),
+            accepted,
+        ));
     }
     let report = json!({"schema":"an-native-spool-artifacts-v1","instance":settled["instance"],
         "release":settled["release"],"run":name,"catalog":dir.join("job/artifacts"),"outputs":outputs});
