@@ -1,7 +1,11 @@
 //! Observation takes no control locks; closure rechecks original execution evidence.
 use super::*;
 
-pub(super) fn settled(space: &Space, record: &Value, path: &Path) -> Result<Value> {
+pub(in crate::native_spool::events) fn settled(
+    space: &Space,
+    record: &Value,
+    path: &Path,
+) -> Result<Value> {
     let intent = read(&path.join("intent.json"))?;
     let plan = &intent["plan"];
     if plan["session"] != *record
@@ -10,6 +14,13 @@ pub(super) fn settled(space: &Space, record: &Value, path: &Path) -> Result<Valu
         || plan["request_sha256"] != store::digest(&regular(&path.join("request.json"), 65536)?)
     {
         return Err("thread identity mismatch".into());
+    }
+    if plan.get("supervision").is_some() {
+        coordinator::completion(
+            path,
+            &intent,
+            coordinator::Scope::Thread(text(record, "name")?, text(plan, "thread")?),
+        )?;
     }
     let receipt = read(&path.join("result.json"))?;
     if receipt["approval_sha256"] != intent["approval_sha256"] {
@@ -36,25 +47,10 @@ pub(super) fn settled(space: &Space, record: &Value, path: &Path) -> Result<Valu
     if observed["status"] == "uncertain" {
         return Err("dispatch outcome unresolved".into());
     }
-    let entries = observed["entries"].as_array().ok_or("dispatch entries")?;
-    let selected = original["plan"]["entries"]
-        .as_array()
-        .ok_or("dispatch selection")?;
-    let mut attempts = Vec::new();
-    for (index, entry) in entries.iter().enumerate() {
-        let expected = &selected.get(index).ok_or("extra dispatch entry")?["plan"];
-        let target = Path::new(text(&expected["route"]["target"], "root")?);
-        let run = text(&expected["context"], "delivery")?;
-        let result = native::run::settled(target, run)?;
-        if result["workspace"]["termination_confirmed"] != true
-            || entry["result"]["result"] != result
-            || read(&target.join("runs").join(run).join("start.json"))? != expected["start"]
-        {
-            return Err("thread termination evidence mismatch".into());
-        }
-        attempts.push(json!({"target":expected["route"]["target"],"run":run,
-            "context":expected["context"],"status":result["status"],"termination_confirmed":true}));
-    }
+    let attempts = dispatch::settled_entries(
+        &original["plan"],
+        observed["entries"].as_array().ok_or("dispatch entries")?,
+    )?;
     Ok(
         json!({"thread":plan["thread"],"settled":true,"attempts":attempts,
         "dispatch":{"name":dispatch_name,"status":observed["status"],"reason":observed["reason"],

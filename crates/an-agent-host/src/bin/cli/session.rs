@@ -17,13 +17,14 @@ pub(super) fn dispatch(command: &str, args: &[String]) -> Result<Value> {
             sessions::change(Path::new(root), name, mode, approved)
         }
         ("session-run", [root, name, thread, request]) => super::with_cancellation(|cancel| {
-            sessions::run(
+            sessions::run_supervised(
                 Path::new(root),
                 name,
                 thread,
                 Path::new(request),
                 approved,
                 &cancel,
+                &std::env::current_exe()?,
             )
         }),
         _ => Err("invalid native session arguments".into()),

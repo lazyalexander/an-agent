@@ -16,7 +16,8 @@ P0 is qualified for reviewed local CLI spools, not arbitrary untrusted agents:
 - One fixed business input combined with one explicitly selected opaque committed
   checkpoint; stale-state conflict refusal and confirmed-cancellation retention.
 - Explicit per-attempt supervision for file, checkpoint and combined data/state
-  starts survives client loss; event/session/peer dispatch remains foreground.
+  starts survives client loss. Native CLI event deliveries and both peer phases
+  use the same attempt owner. A finite controller owns each approved batch or thread.
   Confirmed prelaunch cancellation can close a round without granting custody.
 - Explicit reconciliation of complete original execution/acceptance evidence.
   Missing termination or uncertain execution never authorizes a rerun.
@@ -45,16 +46,17 @@ See [native spool](native-spool.md),
 The local headless P1 path is qualified across three producer rounds and two
 consumers. A fixed event feeds both consumers after a newer version exists. A
 stateful consumer commits while its peer is active, and the producer can collect
-a released version after confirmed cancellation. Losing the submitting CLI leaves
-one held attempt. Paired qualification records disk use and the exact bytes removed.
+a released version after confirmed cancellation. A new client can cancel after the submitting CLI exits. Losing the attempt
+owner leaves one held execution. Paired qualification records disk use and the exact bytes removed.
 Enrolled checkpoints can now close admission and explicitly release their own
 pins after reader settlement. Legacy reader histories keep their pins. See
 [checkpoint retirement](native-state.md#explicit-checkpoint-retirement).
-Independent supervision of event clients remains open.
+The routed supervision suite also qualifies client, controller and attempt-owner
+loss separately. See [execution ownership](session-and-retention.md#routed-execution-ownership).
 
 The next [session and retention plan](session-and-retention.md) makes the
 remaining storage work explicit, then proposes a small session/thread coordination
-layer over existing attempts. Its first foreground session/finite-thread adapter is
+layer over existing attempts. Its finite session/thread adapter is
 implemented; general model-context threads and cross-profile payload collection remain
 unimplemented. See the plan for exact commands and concurrency limits.
 GUI and TUI are deferred; no new user interface is required for qualification.

@@ -526,5 +526,7 @@ XLSX/PPTX products. No GUI, model, GPU or new backend is claimed.
 For client-independent execution of a native file-input attempt, use
 `spool-supervisor start`. Its separate worker retains the original deadline and
 process ownership after abrupt client exit. The [supervision contract](session-and-retention.md#independent-attempt-supervisor)
-defines durable launch/cancellation, uncertain-result retention and the narrower
-migration scope. Ordinary `spool-start` retains its foreground behavior.
+defines durable launch, cancellation and uncertain-result retention. Native CLI
+event deliveries, session threads and peer phases also use independent
+[execution owners](session-and-retention.md#routed-execution-ownership). Ordinary
+`spool-start` retains its foreground behavior.

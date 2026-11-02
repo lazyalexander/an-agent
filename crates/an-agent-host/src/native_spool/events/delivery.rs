@@ -62,7 +62,7 @@ pub fn deliver(
     approved: Option<&str>,
     cancelled: &AtomicBool,
 ) -> Result<Value> {
-    deliver_selected(path, event_id, name, None, approved, cancelled)
+    deliver_selected(path, event_id, name, None, approved, cancelled, None)
 }
 
 /// An explicit state selection does not create a second delivery identity.
@@ -77,17 +77,57 @@ pub fn deliver_with_state(
     if !store::valid_digest(revision) {
         return Err("state revision must be a full digest".into());
     }
-    deliver_selected(path, event_id, name, Some(revision), approved, cancelled)
+    deliver_selected(
+        path,
+        event_id,
+        name,
+        Some(revision),
+        approved,
+        cancelled,
+        None,
+    )
 }
 
-fn deliver_selected(
+pub(super) struct Owner<'a> {
+    pub executable: &'a Path,
+    pub parent: Option<Value>,
+}
+
+pub fn deliver_supervised(
+    path: &Path,
+    event: &str,
+    name: &str,
+    revision: Option<&str>,
+    approved: Option<&str>,
+    cancel: &AtomicBool,
+    executable: &Path,
+) -> Result<Value> {
+    deliver_selected(
+        path,
+        event,
+        name,
+        revision,
+        approved,
+        cancel,
+        Some(Owner {
+            executable,
+            parent: None,
+        }),
+    )
+}
+
+pub(super) fn deliver_selected(
     path: &Path,
     event_id: &str,
     name: &str,
     state_revision: Option<&str>,
     approved: Option<&str>,
     cancelled: &AtomicBool,
+    owner: Option<Owner<'_>>,
 ) -> Result<Value> {
+    if state_revision.is_some_and(|rev| !store::valid_digest(rev)) {
+        return Err("invalid checkpoint revision".into());
+    }
     let space = Space::open(path)?;
     let (event, route, ctx, control) = {
         let _lock = store::lock(&space.root)?;
@@ -113,6 +153,12 @@ fn deliver_selected(
     let root = Path::new(text(&route["target"], "root")?);
     let run = text(&ctx, "delivery")?;
     let input = selected(&event, &ctx)?;
+    let supervision = owner.map(|owner| -> Result<Value> {
+        let exe = crate::execution::supervisor_process::host_executable(owner.executable)?;
+        let mut route = json!({"kind":"event","executable":exe,"workspace":space.root,"event":event_id,"subscription":name});
+        if let Some(parent) = owner.parent {route["parent"] = parent;}
+        Ok(route)
+    }).transpose()?;
     let seconds = route["wall_seconds"].as_u64().ok_or("wall seconds")?;
     let preview = native::run::start_bound(
         root,
@@ -120,6 +166,7 @@ fn deliver_selected(
         native::inputs::BoundInput {
             artifact: &input,
             state_revision,
+            supervision: supervision.as_ref(),
         },
         seconds,
         None,
@@ -141,6 +188,7 @@ fn deliver_selected(
         native::inputs::BoundInput {
             artifact: &input,
             state_revision,
+            supervision: supervision.as_ref(),
         },
         seconds,
         preview["approval_sha256"].as_str(),
@@ -186,4 +234,19 @@ fn deliver_selected(
         }
         Err(error) => Err(error),
     }
+}
+
+pub(in crate::native_spool) fn verify_supervised(
+    root: &Path,
+    start: &Value,
+    route: &Value,
+) -> Result<()> {
+    let space = Space::observe(Path::new(text(route, "workspace")?))?;
+    let event = space.event(text(route, "event")?)?;
+    let subscription = space.route(text(route, "subscription")?)?;
+    let original = intent(&space, &event, &subscription)?;
+    if subscription["target"]["root"] != json!(root) || original["plan"]["start"] != *start {
+        return Err("supervisor start differs from the original event admission".into());
+    }
+    coordinator::verify_parent(&space, route, &original["plan"])
 }

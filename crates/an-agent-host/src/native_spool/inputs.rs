@@ -19,6 +19,7 @@ struct Request {
 pub(super) struct BoundInput<'a> {
     pub artifact: &'a Value,
     pub state_revision: Option<&'a str>,
+    pub supervision: Option<&'a Value>,
 }
 pub(super) enum Input<'a> {
     File(&'a Path),

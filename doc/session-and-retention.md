@@ -194,7 +194,7 @@ separate operation; the first artifact collector must not delete committed state
 
 ## Implemented native session slice
 
-The foreground event adapter exposes the following host commands. `WORKSPACE` is
+The native event adapter exposes the following host commands. `WORKSPACE` is
 an existing native event workspace, not a directory granted to spool processes.
 
 ```sh
@@ -212,8 +212,8 @@ the runner finishes its current entry and prevents the next. Control responses
 acknowledge publication, not a synchronous barrier across all runners; an entry
 concurrently crossing admission may still start. It remains owned and must settle.
 Reopen permits new threads, never resumes a partial dispatch.
-Cancel is permanent admission closure and asks each live session runner to forward
-cancellation through its existing supervisor. Close requires retained thread
+Cancel permanently closes admission. Each active supervised entry observes its
+session cancellation even if the finite controller has exited. Close requires retained thread
 completion and original confirmed attempt evidence. Closure never accepts products,
 commits state, releases references, unloads instances or deletes bytes.
 
@@ -228,7 +228,7 @@ are deferred. No release field or Loom runtime dependency is introduced.
 Inspection returns compact identities and outcome metadata; full dispatch evidence
 stays available through `spool-events-dispatch-show`, not copied into every summary.
 The session lock covers short admission/control publication only. Observation and
-execution do not hold it. A foreground runner polls its bounded control history
+execution do not hold it. The finite controller polls its bounded control history
 at 25 ms intervals; this is not a cancellation-latency guarantee. A read error
 requests cancellation, not successful settlement. Reopening records after a host
 crash is read-only inspection: missing receipts remain unknown, and no daemon
@@ -342,22 +342,58 @@ selector replacement/removal after reservation cannot retarget it. A retired inp
 fails closed, with no fallback or new attempt. A deterministic real-execution test
 covers selector removal and retirement between reservation and worker claim.
 
-This slice covers explicit supervised file, checkpoint and combined input starts.
-Existing foreground starts, event/session dispatch and peer phases retain their
-existing lifecycle.
-Their migration needs ownership-specific qualification. Before-launch uncertain
-reservations remain retained; no automatic lock repair or process adoption is
-implemented. Local host records and the installed supervisor binary are trusted.
-A permanently running host-wide service awaits a separate scheduling requirement.
-Loom packages the release and receives verified evidence; the host owns execution
-and control. Platform detachment remains in the execution backend.
+## Routed execution ownership
+
+The normal native CLI gives each approved event delivery or peer execution
+phase the same single-use attempt supervisor as supervised file and state
+starts. The approval includes the installed host executable, delivery or
+peer-phase identity, exact artifact/state selections and any owning finite
+dispatch or session thread. A standalone event requires its own approval.
+Direct Rust embedding functions can retain caller-owned execution. The narrow
+supervised CLI path uses the installed host itself to run the worker.
+
+One additional short-lived controller owns each explicitly approved batch or
+session thread. A session reuses its thread controller for its nested batch.
+The controller reads the admitted selection, checks each original entry grant,
+and starts one attempt supervisor at a time. The submitting CLI waits for the
+original outcome. After an owner starts, it enforces the deadline and accepts
+control even if the client exits. A crash between reservation and owner startup
+leaves the original reservation unresolved and held for inspection. Removing the
+operator's original selection file cannot change the admitted list. Waiting for a peer reply creates no worker.
+A peer request and its response each require their own execution approval.
+
+```text
+spool-supervisor show RECEIVER_INSTANCE RUN
+spool-supervisor cancel RECEIVER_INSTANCE RUN [--approve HASH]
+spool-supervisor dispatch WORKSPACE BATCH show|stop|cancel [--approve HASH]
+spool-supervisor thread WORKSPACE SESSION THREAD show|stop|cancel [--approve HASH]
+```
+
+Show takes no approval. Stop drains the active entry and closes the remainder
+of the list. Cancel also signals the admitted attempt. The session-wide control
+command retains its existing scope. An attempt observes its parent's durable
+cancellation directly. Peer protocol cancellation closes future request/reply
+admission. The receiving host can cancel an active peer phase by its instance
+and run. A control acknowledgement confirms publication of the request.
+
+A missing controller completion keeps the batch or thread unresolved. An already
+admitted child retains its deadline and can still be cancelled. No successor
+controller resumes the remaining entries. Losing the attempt owner leaves the
+process group unconfirmed; custody requires the bound native receipt **and**
+the routed owner's original completion. A verified timeout or program failure
+ends the finite selection with that outcome. Session closure, artifact acceptance
+and event acknowledgement remain distinct operations.
+
+The real headless suite kills submitting CLIs during an event, batch, session and
+both peer phases. It also kills a controller and an attempt owner independently.
+The tests cover timeout, scoped cancel, drain-stop, stale grants, missing receipts
+and refusal to continue uncertain work. The foreground `spool-start` fault case
+continues to qualify the limits of that entrypoint. Local supervisor records and
+the installed host are trusted. Automatic recovery after a host restart is outside
+this contract.
 
 ## Runtime control and legacy session compatibility
 
-Keep inspectable records and explicit CLI actions. The current foreground adapter
-does not transfer supervisor ownership when its caller disappears. A future
-caller-independent supervisor must retain backend ownership and reconcile actual
-execution before accepting control; reopening metadata is insufficient.
 The target activation record binds one instance/release, generation, owned attempt
 references, endpoint references and operator-owned limits. Reuse existing attempt
 identities rather than adding a second execution ledger or OS-thread scheduler.
@@ -424,7 +460,7 @@ savings from prompt caching or summaries before measuring quality and actual use
 | --- | --- |
 | A: native artifact ownership | New managed outputs acquire/release explicit pins through real producer/two-consumer execution; active and unknown owners, retained checkpoint dependencies and legacy catalogs block deletion; legacy outputs stay retained |
 | B: formal payload collection | Closed admission plus released pins permits exact approved deletion; retained provenance remains inspectable, content reads fail clearly, unrelated outputs/checkpoints survive; race, cancellation and lost deletion receipt refuse unsafe progress |
-| C: runtime ownership | Foreground dispatch groups and generation-bound peer waits run through explicit host commands. Old/unknown work cannot claim new work. Explicit file/state/data-state starts have per-attempt independent supervision; event/session/peer dispatch remains foreground |
+| C: runtime ownership | Explicit supervised inputs, routed attempts and finite controllers preserve approved work across client loss. Missing original ownership evidence fences execution and custody. |
 | D: bounded context handoff and combined qualification | Reuse explicit packets/export across authorized participants; unrelated data excluded, incorrect audience refused, oversized input explicit, missing source reported; combine lifecycle, pins, collection and interruption in one real headless run |
 
 A and B close the remaining P1 storage contract. C and D are the next small

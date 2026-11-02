@@ -3,7 +3,8 @@
 use super::*;
 mod execution;
 mod publication;
-pub use execution::execute;
+pub(super) use execution::bound_phase;
+pub use execution::{execute, execute_supervised};
 pub use publication::{cancel, reply, request};
 
 fn text<'a>(v: &'a Value, key: &str) -> Result<&'a str> {
@@ -105,6 +106,7 @@ fn phase_started(dir: &Path, record: &Value, phase: &str) -> Result<bool> {
     for evidence in [
         dir.join(format!("{phase}-start.json")),
         dir.join(format!("{phase}-result.json")),
+        run.join("supervisor"),
         run.join("start.json"),
         run.join("result.json"),
         run.join("job"),
@@ -155,7 +157,7 @@ pub fn inspect(path: &Path, name: &str) -> Result<Value> {
                 match result(&dir, &record, phase) {
                     Ok(v) => json!({"settled":true,"outcome":v["status"],"run":v["run"]}),
                     Err(e) => {
-                        json!({"settled":false,"outcome":"unknown","diagnostic":e.to_string()})
+                        json!({"settled":false,"outcome":"unknown","run":run_name(&record,phase)?,"diagnostic":e.to_string()})
                     }
                 }
             } else {
