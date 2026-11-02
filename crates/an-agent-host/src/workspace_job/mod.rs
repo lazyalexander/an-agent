@@ -2,6 +2,7 @@
 pub(crate) mod capacity;
 mod custody;
 mod inputs;
+pub(crate) use inputs::NativeInput;
 mod inventory;
 mod not_started;
 mod profile;
@@ -129,18 +130,34 @@ pub fn run(
     cancelled: &AtomicBool,
 ) -> Result<Value> {
     standalone(path)?;
-    run_managed(profile_path, path, previous, approved, cancelled)
+    run_inner(
+        profile_path,
+        path,
+        previous,
+        approved,
+        cancelled,
+        None,
+        |_, _| {},
+    )
 }
 
 /// The enclosing spool facade has already acquired instance ownership.
 pub(crate) fn run_managed(
     profile_path: &Path,
     path: &Path,
-    previous: Option<&str>,
+    reader: Option<NativeInput<'_>>,
     approved: Option<&str>,
     cancelled: &AtomicBool,
 ) -> Result<Value> {
-    run_inner(profile_path, path, previous, approved, cancelled, |_, _| {})
+    run_inner(
+        profile_path,
+        path,
+        None,
+        approved,
+        cancelled,
+        reader,
+        |_, _| {},
+    )
 }
 
 fn standalone(path: &Path) -> Result<()> {
@@ -161,6 +178,7 @@ fn run_inner(
     previous: Option<&str>,
     approved: Option<&str>,
     cancelled: &AtomicBool,
+    reader: Option<NativeInput<'_>>,
     mut boundary: impl FnMut(not_started::Boundary, &Path),
 ) -> Result<Value> {
     let root = root(path)?;
@@ -182,7 +200,7 @@ fn run_inner(
         return Err("operator profile must be outside the workspace job".into());
     }
     let bytes = regular(profile_path, 65536)?;
-    let (_, plan) = profile::Profile::plan(&bytes, &root, &predecessor)?;
+    let (_, plan) = profile::Profile::plan(&bytes, &root, &predecessor, reader)?;
     let (digest, execute) = approval(&plan, approved)?;
     if !execute {
         return Ok(json!({"plan":plan,"approval_sha256":digest,"executed":false}));
@@ -229,7 +247,7 @@ fn run_inner(
         )?;
     }
     boundary(not_started::Boundary::IntentPersisted, &dir);
-    let prepared = snapshot::prepare(&plan, &dir, cancelled).and_then(|execution| {
+    let prepared = snapshot::prepare(&plan, &dir, cancelled, reader).and_then(|execution| {
         let bytes = regular(&dir.join("execution.json"), 2 * 1024 * 1024)?;
         Ok((execution, bytes))
     });

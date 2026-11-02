@@ -99,7 +99,7 @@ pub(crate) fn reclaim(path: &Path, id: &str, approved: Option<&str>) -> Result<V
     // Registered state/artifact roots must remain readable independently of this copy.
     if let Some(inputs) = plan["artifact_inputs"].as_array() {
         for input in inputs {
-            let (_, binding) = crate::artifact_versions::read(
+            let binding = crate::artifact_versions::registered::verify(
                 Path::new(input["catalog"].as_str().ok_or("input catalog")?),
                 input["binding"]["revision"]
                     .as_str()

@@ -14,12 +14,13 @@ pub(crate) fn operate(
     binding: &Value,
     owner: Value,
     action: Operation<'_>,
+    confirm_attempt: fn(&Value) -> Result<()>,
     approved: Option<&str>,
 ) -> Result<Value> {
     match action {
         Operation::Show => transaction(catalog, binding, false, |tx, l| inspect(tx, l, binding)),
         Operation::Checkout(name, dest) => checkout(catalog, binding, &owner, name, dest, approved),
-        Operation::Delete => delete(catalog, binding, &owner, approved),
+        Operation::Delete => delete(catalog, binding, &owner, approved, confirm_attempt),
         Operation::Close | Operation::Release(_) => {
             transaction(catalog, binding, approved.is_some(), |tx, l| {
                 if l.intent.is_some() {
@@ -138,30 +139,19 @@ fn checkout(
     Ok(json!({"status":"succeeded","copy":plan,"approval_sha256":digest}))
 }
 
-fn deletion_plan(l: &Ledger, owner: &Value, binding: &Value) -> Result<Value> {
+fn deletion_plan(
+    l: &Ledger,
+    owner: &Value,
+    binding: &Value,
+    confirm: Option<super::attempts::Confirm>,
+) -> Result<Value> {
     let closed = l.closure.as_ref().ok_or("close reader admission first")?;
-    if l.readers
-        .values()
-        .any(|r| r.phase != "copied" || r.release.is_none())
-    {
-        return Err("registered checkpoint or unreleased/uncertain reader blocks deletion".into());
-    }
-    // A checkpoint pin is recorded in this ledger before its source-side mirror.
-    // Contradictory external evidence must never turn an empty ledger into deletion authority.
-    let mirrors = l
-        .catalog
-        .join("revisions")
-        .join(&l.revision)
-        .join("native-input-references");
-    store::no_links(&mirrors)?;
-    if mirrors.try_exists()? && fs::read_dir(&mirrors)?.next().is_some() {
-        return Err("additional source reference evidence blocks deletion".into());
-    }
+    let releases = super::attempts::released(l, binding, confirm)?;
     let close_plan = json!({"operation":"close-readers","owner":owner,"revision":l.revision});
     if *closed != json!({"plan":close_plan,"approval_sha256":hash(&close_plan)?}) {
         return Err("registered closure evidence mismatch".into());
     }
-    for (name, reader) in &l.readers {
+    for (name, reader) in l.readers.iter().filter(|(_, r)| r.phase != "attempt") {
         let release_plan = json!({"operation":"release-reader","owner":owner,"copy":reader.plan,"revision":l.revision});
         if reader.plan["operation"] != "registered-copy"
             || reader.plan["owner"] != *owner
@@ -172,20 +162,28 @@ fn deletion_plan(l: &Ledger, owner: &Value, binding: &Value) -> Result<Value> {
             return Err("registered reader completion evidence mismatch".into());
         }
     }
-    Ok(
-        json!({"schema":"an-native-registered-delete-v1","owner":owner,"binding":binding,
-        "closure":closed,"reader_evidence_sha256":hash(&l.readers)?,"registered_readers":l.readers.len()}),
-    )
+    let mut plan = json!({"schema":"an-native-registered-delete-v1","owner":owner,"binding":binding,
+        "closure":closed,"reader_evidence_sha256":hash(&l.readers)?,"registered_readers":l.readers.len()});
+    if !releases.is_empty() {
+        plan["attempt_releases_sha256"] = json!(hash(&releases)?);
+    }
+    Ok(plan)
 }
 
-fn delete(catalog: &Path, binding: &Value, owner: &Value, approved: Option<&str>) -> Result<Value> {
+fn delete(
+    catalog: &Path,
+    binding: &Value,
+    owner: &Value,
+    approved: Option<&str>,
+    confirm: super::attempts::Confirm,
+) -> Result<Value> {
     let plan = transaction(catalog, binding, approved.is_some(), |tx, l| {
         if l.intent.is_some() || l.receipt.is_some() {
             return Err(
                 "collection already submitted; inspect original receipt, never replay".into(),
             );
         }
-        let plan = deletion_plan(l, owner, binding)?;
+        let plan = deletion_plan(l, owner, binding, Some(confirm))?;
         payload(tx, binding)?;
         let (digest, execute) = approval(&plan, approved)?;
         if execute {
@@ -201,7 +199,7 @@ fn delete(catalog: &Path, binding: &Value, owner: &Value, approved: Option<&str>
         let intent = json!({"plan":plan,"approval_sha256":digest});
         if l.intent.as_ref() != Some(&intent)
             || l.receipt.is_some()
-            || deletion_plan(l, owner, binding)? != plan
+            || deletion_plan(l, owner, binding, Some(confirm))? != plan
         {
             return Err("collection evidence changed; retain original intent".into());
         }
@@ -217,7 +215,7 @@ fn delete(catalog: &Path, binding: &Value, owner: &Value, approved: Option<&str>
 pub(super) fn inspect(tx: &Transaction<'_>, l: &Ledger, binding: &Value) -> Result<Value> {
     let phase = if let Some(receipt) = &l.receipt {
         let intent = l.intent.as_ref().ok_or("missing deletion intent")?;
-        let plan = deletion_plan(l, &intent["plan"]["owner"], binding)?;
+        let plan = deletion_plan(l, &intent["plan"]["owner"], binding, None)?;
         let digest = hash(&plan)?;
         let absent: bool =
             tx.query_row("SELECT payload IS NULL FROM custody WHERE id=1", [], |r| {

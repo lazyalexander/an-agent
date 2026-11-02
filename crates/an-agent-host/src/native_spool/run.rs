@@ -234,8 +234,15 @@ fn start_selected(
     } else {
         store::write_new(&profile_path, &bytes)?;
     }
-    let preview =
-        workspace_job::run_managed(&profile_path, &dir.join("job"), None, None, cancelled)?;
+    let preview = workspace_job::run_managed(
+        &profile_path,
+        &dir.join("job"),
+        selected
+            .registered()
+            .map(workspace_job::NativeInput::preview),
+        None,
+        cancelled,
+    )?;
     let mut plan = json!({"schema":"an-native-spool-start-v1","instance":instance["instance"],
         "release":bundle.release,"run":name,"workspace":preview["plan"],
         "authority":"reviewed native tools only; no detached workers or network; no hostile-agent claim"});
@@ -249,12 +256,16 @@ fn start_selected(
         return Ok(json!({"status":"cancelled","executed":false,"process_started":false}));
     }
     before_start(&plan)?;
-    super::input_references::acquire(&root, name, &plan)?;
+    let claims = super::input_references::acquire(&root, name, &plan)?;
+    let reader = selected
+        .registered()
+        .map(|data| workspace_job::NativeInput::admitted(data, &claims))
+        .transpose()?;
     write_json(&dir.join("start.json"), &plan)?;
     let receipt = workspace_job::run_managed(
         &profile_path,
         &dir.join("job"),
-        None,
+        reader,
         preview["approval_sha256"].as_str(),
         cancelled,
     )?;

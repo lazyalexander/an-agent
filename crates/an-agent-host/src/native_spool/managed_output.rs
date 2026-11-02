@@ -26,5 +26,12 @@ pub fn manage(
         Operation::Checkout(name, _) | Operation::Release(name) => bundle::identifier(name)?,
         _ => {}
     };
-    registered::operate(catalog, &binding, owner, op, approved)
+    registered::operate(
+        catalog,
+        &binding,
+        owner,
+        op,
+        super::retention_review::confirm_registered,
+        approved,
+    )
 }

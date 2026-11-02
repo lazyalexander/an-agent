@@ -19,12 +19,12 @@ fn read(path: &Path) -> Result<Value> {
 }
 
 /// Called once after exact approval, before the attempt can use disposable inputs.
-pub(super) fn acquire(root: &Path, name: &str, start: &Value) -> Result<()> {
+pub(super) fn acquire(root: &Path, name: &str, start: &Value) -> Result<Vec<Value>> {
     let Some(inputs) = start["workspace"]["artifact_inputs"].as_array() else {
-        return Ok(());
+        return Ok(Vec::new());
     };
     if inputs.is_empty() {
-        return Ok(());
+        return Ok(Vec::new());
     }
     if inputs.len() > 2 {
         return Err("native input reference limit exceeded".into());
@@ -54,7 +54,7 @@ pub(super) fn acquire(root: &Path, name: &str, start: &Value) -> Result<()> {
         &json!({"schema":"an-native-input-references-registered-v1","plan_sha256":digest(&plan)?}),
     )?;
     fs::File::open(&dir)?.sync_all()?;
-    Ok(())
+    Ok(selected)
 }
 
 pub(super) fn registration(root: &Path, name: &str) -> Result<Value> {

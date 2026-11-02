@@ -110,6 +110,11 @@ pub fn complete(path: &Path, event_id: &str, name: &str, approved: Option<&str>)
     // Reconstructing a lost acknowledgement from an existing result fact grants no execution.
     if published.is_none() {
         space.not_revoked(&route)?;
+        if proof["result_event"]["event"]["artifact"]["binding"]["reader_profile"]
+            == crate::artifact_versions::registered::PROFILE
+        {
+            publication::admission(&proof["result_event"])?;
+        }
     } else if published.as_ref() != Some(&proof["result_event"]) {
         return Err("result event changed".into());
     }

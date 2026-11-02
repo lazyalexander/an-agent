@@ -71,6 +71,9 @@ fn artifact(root: &Path, run: &str, output: &str) -> Result<Value> {
         .iter()
         .find(|v| v["path"] == output)
         .ok_or("peer output must be formally accepted")?;
+    if selected["binding"]["reader_profile"] == crate::artifact_versions::registered::PROFILE {
+        return Err("registered inputs require native data/state or event admission".into());
+    }
     let value = inputs::artifact(
         Path::new(text(&report, "catalog")?),
         text(&selected["binding"], "revision")?,

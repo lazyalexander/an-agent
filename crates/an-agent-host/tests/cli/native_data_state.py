@@ -98,6 +98,21 @@ def main():
         event = approved("spool-event-publish", ws, a, name, "batch.txt")["event"]
         return artifact, event
 
+    # Direct supervised data/state uses the same private native snapshot grant as event delivery.
+    seed.write_text("7\n")
+    approved("spool-start", a, "enrolled", seed, 15)
+    approved("spool-accept", a, "enrolled", "--registered")
+    enrolled = call("spool-artifacts", a, "enrolled")
+    enrollment = enrolled["outputs"][0]["binding"]["revision"]
+    selection = root / "enrolled-selection.json"
+    selection.write_text(json.dumps({"schema": "an-native-data-state-v1", "state_revision": initial,
+        "data": {"catalog": enrolled["catalog"], "revision": enrollment}}))
+    checked = approved("spool-supervisor", "start-data-state", b, "enrolled", selection, 15)
+    assert checked["workspace"]["termination_confirmed"] is True
+    assert (b / "runs/enrolled/job/work/report.txt").read_text() == "17\n"
+    assert [c["reference"]["binding"]["revision"] for c in
+            call("spool-input-references", b, "enrolled")["claims"]] == [enrollment, initial]
+
     first, event = produce("first", "2\n3\n")
     newer, audit_event = produce("newer", "100\n")
     old = first["outputs"][0]["binding"]["revision"]

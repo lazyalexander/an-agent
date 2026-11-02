@@ -12,7 +12,8 @@ pub(super) fn candidate(space: &Space, root: &Path, run: &str, output: &str) -> 
         .iter()
         .find(|v| v["path"] == output)
         .ok_or("event must select an accepted declared output")?;
-    let (_, binding) = crate::artifact_versions::read(
+    // The verified inventory has already checked this payload or its exact deletion receipt.
+    let binding = crate::artifact_versions::metadata(
         Path::new(text(&artifacts, "catalog")?),
         text(&selected["binding"], "revision")?,
     )?;
@@ -61,9 +62,9 @@ pub(super) fn verify(space: &Space, event: &Value) -> Result<()> {
 
 pub(super) fn admission(event: &Value) -> Result<()> {
     let artifact = &event["event"]["artifact"];
-    crate::artifact_versions::admission::ensure_active(
+    crate::artifact_versions::registered::admission_open(
         Path::new(text(artifact, "catalog")?),
-        text(&artifact["binding"], "revision")?,
+        &artifact["binding"],
     )
 }
 
