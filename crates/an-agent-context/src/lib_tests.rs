@@ -381,7 +381,7 @@ fn thread_cut_is_written_by_the_host_and_a_hit_does_not_rewrite() {
     control.advance(id, "hello from the host").unwrap();
     let cut = summarize_thread(&control, id, "the summary").unwrap();
     let md = fs::read(&cut.path).unwrap();
-    let first = assemble_thread(&control, id, AssembleMode::Continue, 10_000).unwrap();
+    let first = assemble_context(&control, id, AssembleMode::Continue, 10_000).unwrap();
     assert!(
         first
             .context

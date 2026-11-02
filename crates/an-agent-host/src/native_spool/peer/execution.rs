@@ -60,7 +60,7 @@ fn execute_phase(
     } else {
         publication::confirmed_reply(&dir, &record)?
     };
-    data["peer_input"] = context(&record, phase);
+    data["peer_input"] = phase_binding(&record, phase);
     let role = if phase == "request" {
         "target"
     } else {
@@ -131,7 +131,7 @@ pub(in crate::native_spool) fn bound_phase<'a>(
     let marker = read(&dir.join(format!("{phase}-start.json")))?;
     if marker != json!({"request":record["approval_sha256"],"start":start})
         || record["plan"][role]["root"] != json!(receiver)
-        || start["peer_input"] != context(&record, phase)
+        || start["peer_input"] != phase_binding(&record, phase)
         || start["run"] != run_name(&record, phase)?
     {
         return Err("supervisor start differs from the original peer admission".into());

@@ -1,7 +1,7 @@
 //! One event/subscription admits at most one attempt, with a durable start fence.
 use super::*;
 
-pub(super) fn context(space: &Space, event: &Value, route: &Value) -> Result<Value> {
+pub(super) fn binding(space: &Space, event: &Value, route: &Value) -> Result<Value> {
     let mut value = json!({"workspace":space.id,"event":event["id"],"subscription":hash(route)?});
     value["delivery"] = json!(hash(&value)?);
     Ok(value)
@@ -14,7 +14,7 @@ pub(super) fn directory(space: &Space, context: &Value) -> Result<PathBuf> {
     Ok(space.root.join("deliveries").join(id))
 }
 pub(super) fn intent(space: &Space, event: &Value, route: &Value) -> Result<Value> {
-    let ctx = context(space, event, route)?;
+    let ctx = binding(space, event, route)?;
     let value: Value = serde_json::from_slice(&regular(
         &directory(space, &ctx)?.join("intent.json"),
         2 * 1024 * 1024,
@@ -134,7 +134,7 @@ pub(super) fn deliver_selected(
         let event = space.event(event_id)?;
         let route = space.route(name)?;
         routed(&space, &event, &route)?;
-        let ctx = context(&space, &event, &route)?;
+        let ctx = binding(&space, &event, &route)?;
         if directory(&space, &ctx)?.exists() {
             if let Some(revision) = state_revision {
                 let prior = intent(&space, &event, &route)?;

@@ -2,7 +2,7 @@
 
 Status: accepted development direction, with the first native input-reference
 slice implemented in [native storage](native-storage.md).
-Registered-copy outputs support explicit payload deletion after admission closure. A bounded native session/dispatch adapter
+Registered-copy outputs support explicit payload deletion after admission closure. A bounded native cohort adapter
 is implemented below; general model-session coordination remains planned. The qualified boundary
 remains reviewed headless CLI spools; see the [platform matrix](platforms.md).
 GUI/TUI, new backends and process-memory restoration are deferred.
@@ -18,13 +18,19 @@ GUI/TUI, new backends and process-memory restoration are deferred.
 | [Native events](native-events.md) | Fixed versions, finite approved dispatch, admission controls and explicit reconciliation; no background agent loop |
 | [Model/context](model-services.md) and [bounded export](model-services.md) | Explicit audience/clip selection, receipt-linked excerpts and byte limits; no token estimator, automatic compaction or cross-thread authorization service |
 
-Do not rename existing core sessions, thread UUIDs, tape records or wire formats.
-Use qualified names in new interfaces. A **core session** stores one agent's private
-tape and files. A **core thread** is the mounted agent addressed by `AgentControl`.
-A **dispatch group** and **dispatch** are the native CLI's existing `SESSION` and
-`THREAD` control records. A **spool activation** binds the instance, release and
-round generation. A backend worker is an actual thread or process. None of those
-identifiers implicitly selects a conversation or conveys disclosure authority.
+## Vocabulary
+
+| General term | Meaning | Specialized name to use |
+| --- | --- | --- |
+| Session | A period of interaction with its own continuity, such as a core agent's private tape and files | A **cohort** groups finite work under one admission and cancellation policy |
+| Thread | A thread of execution, or a conversation thread when explicitly identified as such | A cohort member is a **dispatch**. `AgentControl::open_agent` opens a mounted **agent** by card ID |
+| Context | Material selected for a recipient to use | A **delivery binding** or **phase binding** identifies a protocol operation. The transmitted text is a **context packet** |
+| Workspace | The environment where participants work with materials and versions | The core **workspace ledger** (`WorkspaceLedger`) records facts and projections. The workspace object store owns versioned trees and files |
+
+A cohort can span spool instances. Dispatch membership controls work. A peer
+grant binds disclosure to an exact spool activation. A worker or conversation
+handle grants neither. The core session and workspace object store keep their
+existing names.
 
 ## Ownership and identity
 
@@ -38,7 +44,7 @@ identifiers implicitly selects a conversation or conveys disclosure authority.
 | Artifact reference | Exact managed version and declared reason for retaining bytes | A mutable path, implicit latest or permission to execute |
 
 Use the instance activation for peer addressing. A pause and resume advances
-the generation and fences old grants. The native [session CLI](../crates/an-agent-host/src/native_spool/events/sessions.rs)
+the generation and fences old grants. The native [cohort adapter](../crates/an-agent-host/src/native_spool/events/cohorts.rs)
 groups finite dispatches across instances. Closing the group checks their
 settlement. It leaves activations, private conversation tapes and independently
 held artifact references under their respective owners. Each attempt retains
@@ -214,42 +220,47 @@ operations settle, and qualify tombstone-aware history inspection. Do not weaken
 content verification globally to make deletion pass. Checkpoint payload GC is a
 separate operation; the first artifact collector must not delete committed state.
 
-## Implemented native session slice
+<a id="implemented-native-session-slice"></a>
 
-The native event adapter exposes the following host commands. `WORKSPACE` is
-an existing native event workspace, not a directory granted to spool processes.
+## Native dispatch cohorts
 
 ```sh
-an-agent-host session-create WORKSPACE SESSION
-an-agent-host session-run WORKSPACE SESSION THREAD dispatch-request.json
-an-agent-host session-run WORKSPACE SESSION THREAD dispatch-request.json --approve HASH
-an-agent-host session-show WORKSPACE SESSION
-an-agent-host session-control WORKSPACE SESSION paused
-an-agent-host session-control WORKSPACE SESSION paused --approve HASH
+an-agent-host cohort create WORKSPACE COHORT
+an-agent-host cohort run WORKSPACE COHORT DISPATCH dispatch-request.json
+an-agent-host cohort run WORKSPACE COHORT DISPATCH dispatch-request.json --approve HASH
+an-agent-host cohort show WORKSPACE COHORT
+an-agent-host cohort control WORKSPACE COHORT paused
+an-agent-host cohort control WORKSPACE COHORT paused --approve HASH
 ```
+
+Existing `session-create`, `session-run`, `session-show`, and `session-control`
+are aliases. Either spelling can approve the other's preview. Both return the
+same JSON, including historical `session`, `thread`, and `threads` fields.
+Existing directory names, hashes, tape tags and receipts keep their identities.
+The Rust entrypoint is `events::cohorts`; `events::sessions` remains an alias.
 
 Control modes are `open`, `paused`, `cancelled` and `closed`. Each control change
 requires a fresh digest-bound preview. Pause requests drain-stop: once observed,
 the runner finishes its current entry and prevents the next. Control responses
 acknowledge publication, not a synchronous barrier across all runners; an entry
 concurrently crossing admission may still start. It remains owned and must settle.
-Reopen permits new threads, never resumes a partial dispatch.
+Reopen permits new dispatches, never resumes a partial dispatch.
 Cancel permanently closes admission. Each active supervised entry observes its
-session cancellation even if the finite controller has exited. Close requires retained thread
+cohort cancellation even if the finite controller has exited. Close requires retained dispatch
 completion and original confirmed attempt evidence. Closure never accepts products,
 commits state, releases references, unloads instances or deletes bytes.
 
-A thread is one immutable finite dispatch (1..16 explicitly selected event/route/
-state entries). It has a session-scoped identity and a durable pre-execution intent.
-Changing source request bytes or session generation invalidates approval. Thread
+A cohort member is one immutable finite dispatch (1..16 explicitly selected event/route/
+state entries). It has a cohort-scoped identity and a durable pre-execution intent.
+Changing source request bytes or cohort generation invalidates approval. Dispatch
 names cannot be reused, including after cancellation or missing results. The host
 keeps only selected artifact/state context, not another harness's conversation tape.
-Parents, cross-thread model packets and general multi-attempt thread continuation
+Parents, cross-thread model packets and general multi-attempt continuation
 are deferred. No release field or Loom runtime dependency is introduced.
 
 Inspection returns compact identities and outcome metadata; full dispatch evidence
 stays available through `spool-events-dispatch-show`, not copied into every summary.
-The session lock covers short admission/control publication only. Observation and
+The cohort lock covers short admission/control publication only. Observation and
 execution do not hold it. The finite controller polls its bounded control history
 at 25 ms intervals; this is not a cancellation-latency guarantee. A read error
 requests cancellation, not successful settlement. Reopening records after a host
@@ -259,15 +270,15 @@ forward a new cancellation; original backend reconciliation remains necessary.
 
 Existing event admission locks remain fail-fast. Simultaneous admissions in the
 same workspace can refuse; the qualified case explicitly admits independent
-threads and then overlaps their execution. It does not claim a queue or conflict-free
+dispatches and then overlaps their execution. It does not claim a queue or conflict-free
 parallel admission. Neither refusal nor unknown execution is automatically retried.
-Limits are 32 sessions per workspace, 32 threads per session and 128 control records.
-Legacy executables do not manage these new session records; operator-issued direct
+Limits are 32 cohorts per workspace, 32 dispatches per cohort and 128 control records.
+Legacy executables do not manage these cohort records; operator-issued direct
 commands remain separate authority and are not retroactively governed by sessions.
 
 `tests/cli/native_sessions.py` under the host crate qualifies independent overlapping
 execution, scoped cancellation, drain-stop, stale generation/request refusal,
-multiple logical threads, pinned input/state, products after close and injected
+multiple named dispatches, pinned input/state, products after close and injected
 lost-receipt refusal after real execution. It uses zero model calls. Session
 closure rechecks native evidence; formal payload GC remains blocked by its separate
 unfinished retention contract.
@@ -370,12 +381,12 @@ The normal native CLI gives each approved event delivery or peer execution
 phase the same single-use attempt supervisor as supervised file and state
 starts. The approval includes the installed host executable, delivery or
 peer-phase identity, exact artifact/state selections and any owning finite
-dispatch or session thread. A standalone event requires its own approval.
+dispatch or cohort. A standalone event requires its own approval.
 Direct Rust embedding functions can retain caller-owned execution. The narrow
 supervised CLI path uses the installed host itself to run the worker.
 
 One additional short-lived controller owns each explicitly approved batch or
-session thread. A session reuses its thread controller for its nested batch.
+cohort dispatch. A cohort dispatch reuses its controller for its nested batch.
 The controller reads the admitted selection, checks each original entry grant,
 and starts one attempt supervisor at a time. The submitting CLI waits for the
 original outcome. After an owner starts, it enforces the deadline and accepts
@@ -388,17 +399,18 @@ A peer request and its response each require their own execution approval.
 spool-supervisor show RECEIVER_INSTANCE RUN
 spool-supervisor cancel RECEIVER_INSTANCE RUN [--approve HASH]
 spool-supervisor dispatch WORKSPACE BATCH show|stop|cancel [--approve HASH]
-spool-supervisor thread WORKSPACE SESSION THREAD show|stop|cancel [--approve HASH]
+spool-supervisor dispatch WORKSPACE COHORT DISPATCH show|stop|cancel [--approve HASH]
 ```
 
+The old `spool-supervisor thread` spelling remains valid for a cohort member.
 Show takes no approval. Stop drains the active entry and closes the remainder
-of the list. Cancel also signals the admitted attempt. The session-wide control
+of the list. Cancel also signals the admitted attempt. The cohort-wide control
 command retains its existing scope. An attempt observes its parent's durable
 cancellation directly. Peer protocol cancellation closes future request/reply
 admission. The receiving host can cancel an active peer phase by its instance
 and run. A control acknowledgement confirms publication of the request.
 
-A missing controller completion keeps the batch or thread unresolved. An already
+A missing controller completion keeps the batch or cohort dispatch unresolved. An already
 admitted child retains its deadline and can still be cancelled. No successor
 controller resumes the remaining entries. Losing the attempt owner leaves the
 process group unconfirmed; custody requires the bound native receipt **and**
@@ -431,7 +443,7 @@ Use the following lifecycle distinctions rather than one overloaded status:
   visible and prevents a successful closed result. Archiving its view is not
   permission to kill processes or delete products.
 
-A session-wide stop closes admission before forwarding cancellation to an exact,
+A cohort-wide stop closes admission before forwarding cancellation to an exact,
 generation-bound set of owned active attempts. Stop and cancel remain separate:
 stop drains existing work; cancel requests termination. Two sessions must remain
 independent. A causal protocol link alone cannot cancel another session's work.

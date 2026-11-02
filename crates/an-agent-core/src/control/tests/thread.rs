@@ -4,11 +4,11 @@ use super::*;
 use super::{card, gate_ctor, shared_gate};
 
 #[test]
-fn open_thread_births_one_tape() {
+fn opening_an_agent_through_either_name_shares_one_tape() {
     let tmp = TempDir::new("control-open");
     let control = AgentControl::open(tmp.path(), &bash_registry()).unwrap();
     let id = control
-        .open_thread(&card(
+        .open_agent(&card(
             "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
             "bash",
             Permit::Deny,

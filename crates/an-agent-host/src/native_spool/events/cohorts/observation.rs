@@ -19,7 +19,7 @@ pub(in crate::native_spool::events) fn settled(
         coordinator::completion(
             path,
             &intent,
-            coordinator::Scope::Thread(text(record, "name")?, text(plan, "thread")?),
+            coordinator::Scope::in_cohort(text(record, "name")?, text(plan, "thread")?),
         )?;
     }
     let receipt = read(&path.join("result.json"))?;
@@ -60,7 +60,7 @@ pub(in crate::native_spool::events) fn settled(
 pub fn inspect(workspace: &Path, name: &str) -> Result<Value> {
     let (space, root, record) = open(workspace, name)?;
     let current = control(&root)?;
-    let rows: Vec<Value> = threads(&root)?
+    let rows: Vec<Value> = dispatch_dirs(&root)?
         .iter()
         .map(|path| {
             settled(&space, &record, path).unwrap_or_else(|error| {

@@ -151,7 +151,7 @@ fn phase_started(dir: &Path, record: &Value, phase: &str) -> Result<bool> {
     }
     Ok(false)
 }
-fn context(record: &Value, phase: &str) -> Value {
+fn phase_binding(record: &Value, phase: &str) -> Value {
     json!({"schema":"an-native-peer-input-v1","request":record["approval_sha256"],
         "source":record["plan"]["source"],"target":record["plan"]["target"],"phase":phase})
 }
@@ -171,7 +171,7 @@ fn result(dir: &Path, record: &Value, phase: &str) -> Result<Value> {
         || receipt["request"] != record["approval_sha256"]
         || intent["request"] != record["approval_sha256"]
         || intent["start"] != start
-        || start["peer_input"] != context(record, phase)
+        || start["peer_input"] != phase_binding(record, phase)
         || settled["workspace"]["termination_confirmed"] != true
     {
         return Err("peer completion lacks bound termination evidence".into());

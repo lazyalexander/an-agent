@@ -37,6 +37,10 @@ pub enum Scope<'a> {
     Thread(&'a str, &'a str),
 }
 impl<'a> Scope<'a> {
+    /// Address one named dispatch inside its cohort.
+    pub fn in_cohort(cohort: &'a str, dispatch: &'a str) -> Self {
+        Self::Thread(cohort, dispatch)
+    }
     fn names(self) -> (&'a str, Option<&'a str>) {
         match self {
             Self::Dispatch(name) => (name, None),
@@ -192,7 +196,7 @@ pub fn execute(path: &Path, scope: Scope<'_>, grant: &str, cancel: &AtomicBool) 
                 &|| native::supervisor::poll_control(&owner, Some(&stop), cancel),
             ),
             Scope::Thread(..) => {
-                sessions::run_thread(&space.root, &dir, plan, &stop, cancel, Some(&exe))
+                cohorts::run_dispatch(&space.root, &dir, plan, &stop, cancel, Some(&exe))
             }
         });
     let evidence = match &result {
@@ -248,7 +252,7 @@ fn verified_result(space: &Space, dir: &Path, record: &Value, scope: Scope<'_>) 
                 }
             }
             Scope::Thread(..) => {
-                sessions::settled(space, &record["plan"]["session"], dir)?;
+                cohorts::settled(space, &record["plan"]["session"], dir)?;
             }
         }
     }

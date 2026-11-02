@@ -12,7 +12,7 @@ pub(in crate::native_spool) fn confirmed_input_consumption(
     let space = Space::observe(path)?;
     let route = space.route(subscription)?;
     let event = space.event(text(&start["event_input"], "event")?)?;
-    let ctx = delivery::context(&space, &event, &route)?;
+    let ctx = delivery::binding(&space, &event, &route)?;
     if ctx != start["event_input"] || ctx["delivery"] != run || route["target"] != identity(target)?
     {
         return Err("input release delivery identity mismatch".into());
@@ -52,7 +52,7 @@ fn receipt(space: &Space, event: &Value, route: &Value) -> Result<Value> {
     )
 }
 pub(super) fn observe(space: &Space, event: &Value, route: &Value) -> Result<Value> {
-    let ctx = delivery::context(space, event, route)?;
+    let ctx = delivery::binding(space, event, route)?;
     let dir = delivery::directory(space, &ctx)?;
     let evidence = (|| -> Result<Value> {
         delivery::intent(space, event, route)?;

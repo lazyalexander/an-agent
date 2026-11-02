@@ -18,18 +18,25 @@ pub(super) fn dispatch(args: &[String]) -> Result<Value> {
         }
         [op, root, name, thread, hash] if op == "coordinator-worker" && approved.is_none() => {
             super::with_cancellation(|cancel| {
-                coordinator::execute(Path::new(root), Scope::Thread(name, thread), hash, &cancel)
+                coordinator::execute(
+                    Path::new(root),
+                    Scope::in_cohort(name, thread),
+                    hash,
+                    &cancel,
+                )
             })
         }
         [op, root, name, action] if op == "dispatch" => {
             coordinator::control(Path::new(root), Scope::Dispatch(name), action, approved)
         }
-        [op, root, name, thread, action] if op == "thread" => coordinator::control(
-            Path::new(root),
-            Scope::Thread(name, thread),
-            action,
-            approved,
-        ),
+        [op, root, name, thread, action] if matches!(op.as_str(), "dispatch" | "thread") => {
+            coordinator::control(
+                Path::new(root),
+                Scope::in_cohort(name, thread),
+                action,
+                approved,
+            )
+        }
         [operation, root, name, input, seconds]
             if matches!(
                 operation.as_str(),

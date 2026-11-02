@@ -3,7 +3,7 @@ use super::*;
 use an_agent_core::workspace::WorkspaceRecord;
 
 pub(super) enum Facts {
-    Live(Workspace),
+    Live(WorkspaceLedger),
     Observed(Vec<WorkspaceRecord>),
 }
 impl Facts {
@@ -28,7 +28,7 @@ impl Facts {
             Self::Observed(records) => Ok(records.clone()),
         }
     }
-    pub fn writable(&self) -> Result<&Workspace> {
+    pub fn writable(&self) -> Result<&WorkspaceLedger> {
         match self {
             Self::Live(space) => Ok(space),
             Self::Observed(_) => Err("observation cannot mutate workspace facts".into()),

@@ -214,7 +214,7 @@ fn invoke(
         env: vec![],
     })?;
     control.set_model_client(Arc::new(connection));
-    let thread = control.open_thread(&AgentCard {
+    let thread = control.open_agent(&AgentCard {
         v: 1,
         id,
         model: spec,

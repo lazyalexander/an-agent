@@ -113,9 +113,9 @@ impl Session {
     }
 }
 
-/// Recoverable head of one session: the thread directory plus the workspace
+/// Recoverable head of one session: the private session directory plus the workspace
 /// generation it was sealed against. The file is rewritten on each seal.
-/// Each seal is also appended to the thread tape.
+/// Each seal is also appended to the session tape.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SessionManifest {
     pub id: Uuid,

@@ -77,7 +77,7 @@ impl ParentCancel {
             return Ok(true);
         }
         match &self.session {
-            Some(root) => Ok(sessions::control(root)?["mode"] == "cancelled"),
+            Some(root) => Ok(cohorts::control(root)?["mode"] == "cancelled"),
             None => Ok(false),
         }
     }

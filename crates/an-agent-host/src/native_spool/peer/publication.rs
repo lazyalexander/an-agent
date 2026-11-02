@@ -96,7 +96,7 @@ pub(super) fn reply_plan(dir: &Path, record: &Value) -> Result<Value> {
         text(&record["plan"], "reply_output")?,
     )?;
     let plan = json!({"operation":"peer-reply","request":record["approval_sha256"],
-        "context":context(record,"response"),"result_sha256":hash(&settled)?,"data":data});
+        "context":phase_binding(record,"response"),"result_sha256":hash(&settled)?,"data":data});
     Ok(plan)
 }
 

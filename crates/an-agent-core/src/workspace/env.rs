@@ -2,7 +2,7 @@
 use super::*;
 use std::io;
 
-impl Workspace {
+impl WorkspaceLedger {
     pub(super) fn committed_env(
         &self,
     ) -> Result<(Option<WorkspaceRecord>, String), WorkspaceError> {
