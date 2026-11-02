@@ -94,7 +94,7 @@ host-store/
     program                         selected executable
     stdout.txt, stderr.txt          bounded results
     receipt.json                    identities, outcome, evidence paths
-    agent/                          workspace events and thread tape
+    agent/                          workspace events and agent tape
     audit.json                      readable tape snapshot
 ```
 

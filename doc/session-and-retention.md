@@ -14,7 +14,7 @@ GUI/TUI, new backends and process-memory restoration are deferred.
 | [Native storage](native-storage.md) | Settled scratch/snapshot collection, capacity observations and new-input retirement; explicit collection of newly registered-copy versions |
 | [Artifact admission](../crates/an-agent-host/src/artifact_versions/admission.rs) | Monotonic closure with concurrent immutable readers; no reference inventory |
 | [Checkpoint retention](../crates/an-agent-host/src/instance/checkpoint/retention.rs) | Explicit recipients/state references in a closed store; not a global census of native catalogs |
-| [Core session](../crates/an-agent-core/src/agent/session.rs) and [session control](../crates/an-agent-core/src/control/session.rs) | Private tape/files, seal, finished-thread release and identity-checked resume; not a native-spool session coordinator or whole-machine recovery |
+| [Core session](../crates/an-agent-core/src/agent/session.rs) and [session control](../crates/an-agent-core/src/control/session.rs) | Private tape/files, seal, finished-agent release and identity-checked resume; not a native dispatch coordinator or whole-machine recovery |
 | [Native events](native-events.md) | Fixed versions, finite approved dispatch, admission controls and explicit reconciliation; no background agent loop |
 | [Model/context](model-services.md) and [bounded export](model-services.md) | Explicit audience/clip selection, receipt-linked excerpts and byte limits; no token estimator, automatic compaction or cross-thread authorization service |
 
@@ -109,7 +109,7 @@ or private participant inside the receiver requires separate authority.
 | No implicit private-note delivery | `native_material_boundary.py`: real read/write denials, unchanged fact log, no delivery, declared outputs only | No model ingestion tested; this is a foreground adapter, not an automatic watcher |
 | Private contents remain outside another attempt | Same suite checks another instance's output/identity and workspace log | Native policy allows file metadata; it does not hide existence or provide hostile-code containment |
 | Cancel one owner without cancelling another | `native_sessions.py`: overlapping real execution | Verified after client loss by `routed_supervision.py`; a missing owner receipt keeps the attempt held |
-| Unknown execution cannot release materials | `native_data_state.py`, lost-receipt session cases | Missing receipts are injected after execution; arbitrary crash recovery is not proved |
+| Unknown execution cannot release materials | `native_data_state.py`, lost-receipt cohort cases | Missing receipts are injected after execution; arbitrary crash recovery is not proved |
 | Old delivery cannot become new-instance work | `native_route_successor.py`; `native_peer.py` refuses stale reply admission after pause/resume | Peer endpoints use instance identity and round generation, not a separate session manager |
 | Waiting A leaves B able to execute | `native_peer.py`: B runs while A has independent active work; the wait has no process or held execution lock | No general blocking IPC waiter, fairness guarantee or global scheduler |
 
@@ -187,7 +187,7 @@ Proposed bounded sequence:
    it must never permit deleting live input.
 3. Close new input admission using the existing monotonic retirement operation.
 4. Explicitly release each eligible pin after its owner no longer needs bytes.
-   Process exit alone, an acknowledgement, session closure, elapsed time or an
+   Process exit alone, an acknowledgement, cohort closure, elapsed time or an
    absent heartbeat cannot release it. Unknown execution/delivery stays pinned.
 5. Preview and approve collection only in a declared closed managed scope with
    no remaining pins. Revalidate closure, pins, ownership and exact inventory
@@ -274,12 +274,12 @@ dispatches and then overlaps their execution. It does not claim a queue or confl
 parallel admission. Neither refusal nor unknown execution is automatically retried.
 Limits are 32 cohorts per workspace, 32 dispatches per cohort and 128 control records.
 Legacy executables do not manage these cohort records; operator-issued direct
-commands remain separate authority and are not retroactively governed by sessions.
+commands remain separate authority and are not retroactively governed by cohorts.
 
 `tests/cli/native_sessions.py` under the host crate qualifies independent overlapping
 execution, scoped cancellation, drain-stop, stale generation/request refusal,
 multiple named dispatches, pinned input/state, products after close and injected
-lost-receipt refusal after real execution. It uses zero model calls. Session
+lost-receipt refusal after real execution. It uses zero model calls. Cohort
 closure rechecks native evidence; formal payload GC remains blocked by its separate
 unfinished retention contract.
 
@@ -415,10 +415,10 @@ admitted child retains its deadline and can still be cancelled. No successor
 controller resumes the remaining entries. Losing the attempt owner leaves the
 process group unconfirmed; custody requires the bound native receipt **and**
 the routed owner's original completion. A verified timeout or program failure
-ends the finite selection with that outcome. Session closure, artifact acceptance
+ends the finite selection with that outcome. Cohort closure, artifact acceptance
 and event acknowledgement remain distinct operations.
 
-The real headless suite kills submitting CLIs during an event, batch, session and
+The real headless suite kills submitting CLIs during an event, batch, cohort dispatch and
 both peer phases. It also kills a controller and an attempt owner independently.
 The tests cover timeout, scoped cancel, drain-stop, stale grants, missing receipts
 and refusal to continue uncertain work. The foreground `spool-start` fault case
@@ -439,7 +439,7 @@ Use the following lifecycle distinctions rather than one overloaded status:
 - Admission is open or paused/closed; pausing prevents new work only.
 - Execution is running, settling, positively settled or unknown, derived from
   original attempt evidence. Requesting cancellation is not confirmation.
-- A session can close after its owned work is settled; unresolved work remains
+- A cohort can close after its owned work is settled; unresolved work remains
   visible and prevents a successful closed result. Archiving its view is not
   permission to kill processes or delete products.
 

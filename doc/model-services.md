@@ -35,19 +35,19 @@ The caller still authorizes disclosure and spending. No retries are automatic.
 ### Context wire contract
 
 `an-context-v1` is one JSON object with exactly `schema`, `audience`, `source`,
-`text`, and `sha256`. Audience is the destination runtime thread UUID. SHA-256
+`text`, and `sha256`. Audience is the destination agent UUID for a model import. SHA-256
 covers the exact UTF-8 text bytes; source is a bounded attribution label.
 The whole JSON packet must fit 4096 bytes. Unknown fields, wrong audience,
 invalid source, changed text and invalid hashes are refused.
 
-`context_exchange::import(control, thread, bytes)` appends one untrusted data
+`context_exchange::import(control, agent_id, bytes)` appends one untrusted data
 clip and returns its exact ID. Select that ID in `BeatStep::InvokeModel`; do not
 select the newest arbitrary clip. It never writes environment/system guidance,
 opens referenced files, shares other sessions, or executes returned instructions.
 The normal core path provides admission, request/response evidence and usage.
 Do not use an infallible output sink to claim a fallible file write succeeded.
 
-`an-agent-host context-check THREAD PACKET` validates without importing, granting
+`an-agent-host context-check AUDIENCE_UUID PACKET` validates without importing, granting
 authority or calling a model. The legacy Waver `context-packet` command produced
 this wire format; this is not a claim that current Loom exposes that command.
 The [one-shot model CLI](model-services.md) now runs explicitly approved requests
@@ -118,8 +118,8 @@ Inputs must be regular files with no symlink ancestors. The output parent must
 exist; the run directory must not. Concurrent execution at the same destination
 is refused by exclusive directory creation. No previous result is overwritten.
 
-The packet audience becomes the new thread identity inside that isolated run.
-It does not attach to an existing thread or inherit its history. The host imports
+The packet audience becomes the new agent identity inside that isolated run.
+It does not attach to an existing agent or inherit its history. The host imports
 one data clip, selects its exact ID, and uses the declared model capability
 through AgentControl. The operator profile owns system instructions. Model output
 is an artifact, never an executable command or a capability grant.
@@ -229,8 +229,8 @@ core changes.
 ### Use
 
 ```sh
-an-agent-host context-export RUN stdout THREAD_UUID 1024 NEW_CONTEXT_DIRECTORY
-an-agent-host context-check THREAD_UUID NEW_CONTEXT_DIRECTORY/context.json
+an-agent-host context-export RUN stdout AUDIENCE_UUID 1024 NEW_CONTEXT_DIRECTORY
+an-agent-host context-check AUDIENCE_UUID NEW_CONTEXT_DIRECTORY/context.json
 an-agent-host model PROFILE NEW_CONTEXT_DIRECTORY/context.json NEW_MODEL_OUTPUT
 ## Inspect the preview, then approve its exact digest using the existing model CLI.
 ```
@@ -239,7 +239,7 @@ Choose exactly one source: `artifact`, `stdout`, `stderr`, or `model`. The last 
 `output.txt` from a successful model run. Kit failure outputs may be selected
 for diagnosis; their original status is preserved in the source label.
 
-For a file kit, use `context-export RUN artifact THREAD_UUID 1024 NEW_OUTPUT`.
+For a file kit, use `context-export RUN artifact AUDIENCE_UUID 1024 NEW_OUTPUT`.
 This selects only the host's accepted `artifact.txt`, never `work/output.txt`
 or diagnostic stdout. The receipt must report success, exit zero and a reaped
 process, and bind the fixed artifact path, exact byte count and SHA-256. A failed

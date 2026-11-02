@@ -33,7 +33,7 @@ fn route(name: &str, spools: Vec<String>) -> EventRoute {
 /// Carries the admission identity until the receipt and audit are settled.
 pub(super) struct Admitted {
     control: AgentControl,
-    thread: Uuid,
+    agent_id: Uuid,
     reply: SpoolReply,
     directory: PathBuf,
     pub request_event: String,
@@ -66,7 +66,7 @@ pub(super) fn admit(
             yaml: spec.body.clone(),
         },
     )?;
-    let thread = control.open_agent(&AgentCard {
+    let agent_id = control.open_agent(&AgentCard {
         v: 1,
         id: run_id,
         model: ModelSpec {
@@ -81,15 +81,15 @@ pub(super) fn admit(
         supersedes: None,
     })?;
     let event = control.push_event("kit.request", text)?;
-    let outcome = control.offer_on(thread, &spec.name, &event.id)?;
+    let outcome = control.offer_on(agent_id, &spec.name, &event.id)?;
     let DeliveryOutcome::Reply(reply) = outcome else {
         control.finish(
-            thread,
+            agent_id,
             "Admission halted or requires review; no process started",
         )?;
         write_new(
             &run_dir.join("audit.json"),
-            &serde_json::to_vec_pretty(&control.events(thread)?)?,
+            &serde_json::to_vec_pretty(&control.events(agent_id)?)?,
         )?;
         return Err("admission halted or requires review; no process started".into());
     };
@@ -101,11 +101,11 @@ pub(super) fn admit(
     {
         return Err("unexpected admitted intent; no process started".into());
     }
-    control.validate_reply(thread, &reply)?;
+    control.validate_reply(agent_id, &reply)?;
     let intent = control.push_event("kit.execute", text)?;
     Ok(Admitted {
         control,
-        thread,
+        agent_id,
         reply,
         directory: run_dir.to_path_buf(),
         request_event: event.id,
@@ -123,7 +123,7 @@ impl Admitted {
     pub fn finish(self, status: &str, receipt: &Value) -> Result<()> {
         let Self {
             control,
-            thread,
+            agent_id,
             reply,
             directory: run_dir,
             ..
@@ -137,12 +137,12 @@ impl Admitted {
             &receipt.to_string(),
         )?;
         if status == "succeeded" {
-            control.applied(thread, &reply, "CLI output and receipt committed")?;
+            control.applied(agent_id, &reply, "CLI output and receipt committed")?;
         }
-        control.finish(thread, &format!("CLI execution settled: {status}"))?;
+        control.finish(agent_id, &format!("CLI execution settled: {status}"))?;
         write_new(
             &run_dir.join("audit.json"),
-            &serde_json::to_vec_pretty(&control.events(thread)?)?,
+            &serde_json::to_vec_pretty(&control.events(agent_id)?)?,
         )?;
         // Only published after receipt, kernel finish and audit are all committed.
         // A crash before this marker is not authority to reclaim or grant a request.
