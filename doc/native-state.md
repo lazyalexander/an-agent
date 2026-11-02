@@ -17,11 +17,11 @@ execution authorization and serialized publication. A state version is not a
 process image, automatic restore instruction or authorization for external effects.
 
 ```text
-an-agent-host spool-state-init INSTANCE STATE_OUTPUT INITIAL_FILE [--approve HASH]
+an-agent-host spool-state-init INSTANCE STATE_OUTPUT INITIAL_FILE [--registered] [--approve HASH]
 an-agent-host spool-state-show INSTANCE [REVISION]
 an-agent-host spool-start-state INSTANCE RUN REVISION SECONDS [--approve HASH]
 an-agent-host spool-accept INSTANCE RUN [--approve HASH]
-an-agent-host spool-state-commit INSTANCE EXPECTED_REVISION RUN [--approve HASH]
+an-agent-host spool-state-commit INSTANCE EXPECTED_REVISION RUN [--registered] [--approve HASH]
 ```
 
 Initialize, start, accept and commit require their own preview and exact approval.
@@ -35,8 +35,8 @@ Selected code and the state input must retain distinct snapshot basenames under
 the existing native input naming rule.
 
 `spool-state-show` reports HEAD and a fixed committed selection, including its
-catalog/path/binding, without dumping state contents. Only HEAD and up to 1023
-ancestors are selectable; uncommitted candidates are not state. An older committed
+catalog/path/binding, without dumping state contents. New selections require open admission and a committed version within HEAD and
+its 1023 nearest ancestors. An older committed
 version may be evaluated explicitly, but cannot replace a newer HEAD.
 
 Start records the exact state revision, selected-code hashes and attempt input
@@ -241,3 +241,91 @@ approvals, explicitly seeds independent state, rejects a failed candidate's
 partial output and continues the original instance with its prior approval.
 It is not a generic migration or power-loss recovery test. Evidence is retained
 privately; no agent/model, new backend or domain rule is added to the host.
+
+## Explicit checkpoint artifact dependencies
+
+```text
+an-agent-host spool-state-dependencies INSTANCE REVISION REQUEST_JSON [--approve DIGEST]
+```
+
+The optional request uses schema `an-native-checkpoint-dependencies-v1` and an
+`artifacts` array of 1..16 entries. Each entry names a producer `instance` path,
+`run`, declared `output` and exact accepted `revision`. For example:
+
+```json
+{"schema":"an-native-checkpoint-dependencies-v1","artifacts":[
+  {"instance":"./producer","run":"build","output":"report.txt","revision":"<full digest>"}
+]}
+```
+
+The host previews a plan binding the committed checkpoint, instance/release,
+activation generation and verified accepted source versions. Approval records an
+immutable declaration and acquires source-side checkpoint pins through the existing
+reference store. Duplicate entries, unaccepted or retired sources, wrong versions
+and stale approvals refuse. This is retention authority only: it neither adds a
+runtime input/file grant nor interprets the checkpoint's domain content.
+
+`spool-state-show` includes dependency registration status. The producer's existing
+`spool-artifacts ... --references OUTPUT` view includes the checkpoint owners.
+Checkpoint pins cannot be released through attempt cleanup. HEAD advancement,
+private work collection, unloading and cancelled-attempt input release leave them
+intact. Older checkpoints retain their pins until explicit release. Each successor owns
+its own dependency declaration.
+
+A declaration directory fences one registration. Missing intent/completion or
+source claims refuse selection of that checkpoint; partial source pins stay
+retained, with no automatic repair or retry. Inspect evidence before deciding a
+future reconciliation action. Fully recorded declarations cannot be rewritten.
+Existing checkpoints without declarations report `undeclared`, not dependency-free.
+This optional declaration is not a complete dependency census. An acknowledged
+stateful event needs a spool-emitted, accepted input policy and separately approved [coverage statement](native-storage.md)
+to release its own input claims. Registered-copy outputs have a separate explicit deletion gate; a checkpoint pin blocks it. Older
+hosts do not understand these sidecars; mixed-version operation is unqualified.
+
+Real headless qualification extends both explicit-state supervisor suites: accepted
+producer output, wrong/duplicate version refusal, old checkpoint with newer HEAD,
+client/supervisor loss, cancellation and private collection. Checkpoint pins survive
+cancelled-attempt reference release; missing registration completion blocks further
+execution. Unknown execution remains uncollected and is never replayed. Internal
+reference tests also reject attempt-style release and fabricated release markers.
+
+## Explicit checkpoint retirement
+
+Use `--registered` when initializing state or committing a new successor to
+register the readers of that version from publication. A registered parent
+passes the reader policy to successors. Domain authors continue to declare
+each checkpoint's own dependencies. A legacy parent can produce a registered
+successor. Its own reader history stays legacy.
+
+```text
+spool-state-retire INSTANCE REVISION [--approve HASH]
+spool-state-release INSTANCE REVISION [--approve HASH]
+spool-state-show INSTANCE REVISION
+```
+
+Retire first closes admission for the exact committed revision. Existing input
+snapshots remain usable. A fresh start, event delivery, supervisor reservation
+or suspension cannot select the closed version. A known delivery can still be
+inspected. Closing HEAD leaves HEAD in place. A run admitted against that parent
+can finish and commit its successor under the ordinary expected-version check.
+The enrolled state's displayed path identifies its manifest. A workload receives
+the state bytes in its private input snapshot. An independent copy of a state
+output has its own custody.
+
+Release requires a second approval covering the original declaration, its exact
+pins and the drained reader inventory. The host checks each reader's source
+release and owning execution's termination and final release receipt. A submitted
+supervisor reservation before reader acquisition requires positive no-launch
+settlement. A missing receipt, unresolved execution, successful run without
+qualified input-release evidence or partial acquisition keeps the pins.
+Legacy checkpoints can close admission when the instance writer lock is available.
+Their pins stay held because their original readers cannot be enumerated.
+
+The host persists the release intent, writes each source marker and then issues
+one receipt for the whole declaration. The receipt identifies the checkpoint,
+declaration and released claims. Source collection verifies the owning receipt
+before deleting a registered version. Interrupted release is visible as
+`release-unconfirmed` and is never replayed. An independent checkpoint's pin
+continues protecting a shared artifact. Releasing pins keeps checkpoint bytes,
+artifact payloads and history in place. Payload deletion remains a separate
+operator action under the [storage contract](native-storage.md).

@@ -92,9 +92,11 @@ def main():
             request.write_text(json.dumps({'schema': 'an-native-event-dispatch-request-v1', 'name': name,
                 'entries': [{'event': e, 'subscription': name, 'state_revision': revision} for e in events]}))
             requests[name] = request
-            call('session-create', ws, name)
+            call('cohort', 'create', ws, name)
+            call('session-create', ws, name, success=False)
         a = call('session-run', ws, 'alpha', 'one', requests['alpha'])
-        b = call('session-run', ws, 'beta', 'one', requests['beta'])
+        b = call('cohort', 'run', ws, 'beta', 'one', requests['beta'])
+        assert b == call('session-run', ws, 'beta', 'one', requests['beta'])
         changed = requests['beta'].read_bytes()
         value = json.loads(changed)
         value['entries'] = value['entries'][:1]
@@ -129,17 +131,22 @@ def main():
                 assert time.monotonic() < deadline, 'no actual readiness'
                 time.sleep(.02)
         started = time.monotonic()
-        approve('session-control', ws, 'alpha', 'cancelled')
+        cancel_grant = call('session-control', ws, 'alpha', 'cancelled')['approval_sha256']
+        call('cohort', 'control', ws, 'alpha', 'cancelled', '--approve', cancel_grant)
         cancelled = finish(running['alpha'], success=False)
         latency = time.monotonic() - started
         assert cancelled['result']['status'] == 'cancelled', cancelled
         assert finish(running['beta'])['result']['status'] == 'succeeded'
         for name in ['alpha', 'beta']:
             view = call('session-show', ws, name)
+            assert view == call('cohort', 'show', ws, name)
             assert view['threads'][0]['settled'], view
+            assert call('spool-supervisor', 'dispatch', ws, name, 'one', 'show') == call(
+                'spool-supervisor', 'thread', ws, name, 'one', 'show')
             call('session-run', ws, name, 'one', requests[name], success=False)
             if name == 'beta':
-                second = approve('session-run', ws, name, 'two', requests['delta'])
+                call('cohort', 'run', ws, name, 'one', requests[name], success=False)
+                second = approve('cohort', 'run', ws, name, 'two', requests['delta'])
                 assert second['result']['status'] == 'succeeded'
                 assert len(call('session-show', ws, name)['threads']) == 2
             approve('session-control', ws, name, 'closed')

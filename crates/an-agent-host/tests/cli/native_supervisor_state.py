@@ -9,6 +9,7 @@ import signal
 import subprocess
 import time
 from host_qualification import require_native_workspace
+import checkpoint_dependencies as dependencies
 
 
 def main():
@@ -131,6 +132,7 @@ printf 'late-output\n' > report.txt
             instance = root / (name + '-state')
             call('spool-load', state_package, instance)
             revision = approved('spool-state-init', instance, 'report.txt', work_input)['state']['revision']
+            dependency_request = dependencies.declare(call, approved, a, original, instance, revision)
             selection = root / (name + '-selection.json')
             operation, selected = 'start-state', revision
             if args.combined:
@@ -188,6 +190,7 @@ printf 'late-output\n' > report.txt
                 assert work.exists()
                 assert call('spool-state-show', instance, revision)['selected'] == checkpoint
                 assert len(list((run / 'job/attempts').iterdir())) == 1
+                dependencies.retained(call, a, instance, revision)
                 cases[name] = {'termination_confirmed': False, 'replayed': False, 'collected': False}
                 continue
 
@@ -212,11 +215,23 @@ printf 'late-output\n' > report.txt
             assert not group_members(group)
             call('spool-accept', instance, name, success=False)
             approved('spool-reclaim', instance, name)
+            if expected == 'cancelled':
+                approved('spool-reclaim-snapshots', instance, name)
+                approved('spool-input-release', instance, name)
             assert call('spool-state-show', instance)['head'] == newer
             assert call('spool-state-show', instance, revision)['selected'] == checkpoint
             call('spool-supervisor', operation, instance, name, selected, seconds, success=False)
+            dependencies.retained(call, a, instance, revision)
+            if args.combined:
+                select(selection, original, revision)
+            dependencies.incomplete(call, instance, revision, dependency_request, operation, selected)
             cases[name] = {'outcome': expected, 'termination_confirmed': True,
                            'signal_to_observation_seconds': time.monotonic() - changed_at}
+        approved('spool-reclaim', a, 'baseline')
+        for state_name in ('deadline', 'cancel', 'client-cancel', 'owner-lost'):
+            state_root = root / (state_name + '-state')
+            dependency_plan = next((state_root / 'checkpoints/dependencies').iterdir())
+            dependencies.retained(call, a, state_root, dependency_plan.name)
         # A torn prelaunch reservation is uncertain, not a fresh run.
         c = root / 'torn'
         call('spool-load', package, c)
@@ -232,7 +247,7 @@ printf 'late-output\n' > report.txt
         (root / 'report.json').write_text(json.dumps({
             'passed': True, 'host_sha256': hashlib.sha256(host.read_bytes()).hexdigest(),
             'cases': cases, 'formal_output_preserved': True, 'automatic_retries': 0,
-            'model_calls': 0, 'scope': 'explicit old state with newer HEAD; independent supervision', 'fixed_old_state': True, 'combined_data_state': args.combined
+            'model_calls': 0, 'scope': 'explicit old state with newer HEAD; independent supervision', 'checkpoint_pins_retained': True, 'incomplete_declaration_refused': True, 'fixed_old_state': True, 'combined_data_state': args.combined
         }, indent=2))
     finally:
         for child in children:

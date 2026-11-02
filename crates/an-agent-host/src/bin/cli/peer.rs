@@ -12,7 +12,14 @@ pub(super) fn dispatch(args: &[String]) -> Result<Value> {
             peer::request(Path::new(root), name, Path::new(file), approved)
         }
         [op, root, name, phase] if op == "run" => super::with_cancellation(|cancel| {
-            peer::execute(Path::new(root), name, phase, approved, &cancel)
+            peer::execute_supervised(
+                Path::new(root),
+                name,
+                phase,
+                approved,
+                &cancel,
+                &std::env::current_exe()?,
+            )
         }),
         [op, root, name] if op == "reply" => peer::reply(Path::new(root), name, approved),
         [op, root, name] if op == "cancel" => peer::cancel(Path::new(root), name, approved),

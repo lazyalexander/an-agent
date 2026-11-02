@@ -55,6 +55,8 @@ pub(crate) fn policy(
             quoted(source)?
         ));
     }
+    // Keep the registered store and its SQLite sidecars outside even broad runtime read roots.
+    policy.push_str(r#"(deny file-read-data file-write* (regex #"/[Rr][Ee][Vv][Ii][Ss][Ii][Oo][Nn][Ss]/[^/]+/[Rr][Ee][Gg][Ii][Ss][Tt][Ee][Rr][Ee][Dd]-[Cc][Uu][Ss][Tt][Oo][Dd][Yy][.][Ss][Qq][Ll][Ii][Tt][Ee]3"))"#);
     Ok(policy)
 }
 

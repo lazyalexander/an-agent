@@ -55,7 +55,7 @@ For a v3 release declaring a separate state input, delivery additionally require
 `--state REVISION`. The [data/state contract](native-state.md#independent-business-data-and-state)
 pins it independently of the event's business artifact. The delivery identity
 does not change with state, so another selection cannot force a second attempt.
-The host-facing foreground caller chooses which event/subscription to dispatch;
+The operator chooses the exact event/subscription to dispatch;
 there is no automatic discovery, global cursor, recursive drain or daemon.
 
 The operator-owned route JSON has strict schema `an-native-artifact-route-v1`,
@@ -130,6 +130,12 @@ delivery, lost confirmation, cancellation and missing facade results. Missing
 record tests inject evidence loss after known execution, not arbitrary crash or
 power-loss recovery. Loom separately qualifies actual v3 packaging and handoff.
 No model, GUI, new backend or business workflow interpreter is introduced.
+
+Approved CLI delivery runs under an independent native attempt supervisor.
+The preview identifies the receiver in `plan.route.target.root` and the run in
+`plan.context.delivery`. An explicit finite list or cohort dispatch also binds
+its parent in the start plan. A client exit grants no new delivery and
+acknowledges no product. See [routed ownership and controls](session-and-retention.md#routed-execution-ownership).
 
 ## Delivery inventory and foreground monitoring
 

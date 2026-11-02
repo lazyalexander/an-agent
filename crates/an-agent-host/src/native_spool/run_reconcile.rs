@@ -68,9 +68,10 @@ pub fn reconcile_run(path: &Path, name: &str, approved: Option<&str>) -> Result<
     {
         return Err("run reconciliation workspace intent mismatch".into());
     }
-    let result = json!({"schema":"an-native-spool-run-v1","instance":instance["instance"],
+    let mut result = json!({"schema":"an-native-spool-run-v1","instance":instance["instance"],
         "release":instance["release"],"run":name,"profile_sha256":plan["profile_sha256"],
         "status":receipt["status"],"workspace":receipt});
+    super::supervisor::reconcile_binding(&root, name, &start, &mut result)?;
     let target = dir.join("result.json");
     let existing = match fs::symlink_metadata(&target) {
         Ok(_) => {

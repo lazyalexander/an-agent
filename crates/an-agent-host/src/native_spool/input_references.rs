@@ -1,6 +1,7 @@
 //! Explicit source claims for native inputs; no deletion or global GC authority.
 use super::*;
 use crate::artifact_versions::references;
+mod coverage;
 mod success;
 
 fn owner(root: &Path, name: &str) -> Result<Value> {
@@ -18,12 +19,12 @@ fn read(path: &Path) -> Result<Value> {
 }
 
 /// Called once after exact approval, before the attempt can use disposable inputs.
-pub(super) fn acquire(root: &Path, name: &str, start: &Value) -> Result<()> {
+pub(super) fn acquire(root: &Path, name: &str, start: &Value) -> Result<Vec<Value>> {
     let Some(inputs) = start["workspace"]["artifact_inputs"].as_array() else {
-        return Ok(());
+        return Ok(Vec::new());
     };
     if inputs.is_empty() {
-        return Ok(());
+        return Ok(Vec::new());
     }
     if inputs.len() > 2 {
         return Err("native input reference limit exceeded".into());
@@ -53,10 +54,10 @@ pub(super) fn acquire(root: &Path, name: &str, start: &Value) -> Result<()> {
         &json!({"schema":"an-native-input-references-registered-v1","plan_sha256":digest(&plan)?}),
     )?;
     fs::File::open(&dir)?.sync_all()?;
-    Ok(())
+    Ok(selected)
 }
 
-fn registered(root: &Path, name: &str) -> Result<(Value, Vec<Value>)> {
+pub(super) fn registration(root: &Path, name: &str) -> Result<Value> {
     bundle::identifier(name)?;
     let dir = root.join("runs").join(name);
     let plan = read(&dir.join("input-references.json"))?;
@@ -67,7 +68,6 @@ fn registered(root: &Path, name: &str) -> Result<(Value, Vec<Value>)> {
     if selected.is_empty() || selected.len() > 2 {
         return Err("invalid input reference count".into());
     }
-    let mut claims = Vec::new();
     for (slot, reference) in selected.iter().enumerate() {
         if reference["owner"] != plan["owner"]
             || reference["start_sha256"] != plan["start_sha256"]
@@ -75,7 +75,6 @@ fn registered(root: &Path, name: &str) -> Result<(Value, Vec<Value>)> {
         {
             return Err("input reference identity mismatch".into());
         }
-        claims.push(references::inspect(reference)?);
     }
     if read(&dir.join("input-references-registered.json"))?
         != json!({"schema":"an-native-input-references-registered-v1","plan_sha256":digest(&plan)?})
@@ -97,6 +96,17 @@ fn registered(root: &Path, name: &str) -> Result<(Value, Vec<Value>)> {
     {
         return Err("input reference selection changed".into());
     }
+    Ok(plan)
+}
+
+fn registered(root: &Path, name: &str) -> Result<(Value, Vec<Value>)> {
+    let plan = registration(root, name)?;
+    let claims = plan["references"]
+        .as_array()
+        .ok_or("reference list")?
+        .iter()
+        .map(references::inspect)
+        .collect::<Result<Vec<_>>>()?;
     Ok((plan, claims))
 }
 
@@ -133,26 +143,43 @@ pub fn release_succeeded(
     subscription: &str,
     approved: Option<&str>,
 ) -> Result<Value> {
-    release(path, name, Some((workspace, subscription)), approved)
+    release(path, name, Some((workspace, subscription, None)), approved)
+}
+
+pub fn release_checkpoint(
+    path: &Path,
+    name: &str,
+    workspace: &Path,
+    subscription: &str,
+    coverage: &Path,
+    approved: Option<&str>,
+) -> Result<Value> {
+    release(
+        path,
+        name,
+        Some((workspace, subscription, Some(coverage))),
+        approved,
+    )
 }
 
 fn release(
     path: &Path,
     name: &str,
-    delivery: Option<(&Path, &str)>,
+    delivery: Option<(&Path, &str, Option<&Path>)>,
     approved: Option<&str>,
 ) -> Result<Value> {
     let root = location(path)?;
     let _lock = store::lock(&root)?;
     let (registration, claims) = registered(&root, name)?;
     let result = run::settled(&root, name)?;
-    let completion = if let Some((workspace, subscription)) = delivery {
+    let completion = if let Some((workspace, subscription, coverage)) = delivery {
         Some(success::evidence(
             &root,
             name,
             &result,
             workspace,
             subscription,
+            coverage,
         )?)
     } else {
         None

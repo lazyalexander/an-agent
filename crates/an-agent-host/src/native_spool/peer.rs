@@ -3,8 +3,39 @@
 use super::*;
 mod execution;
 mod publication;
-pub use execution::execute;
+pub(super) use execution::bound_phase;
+pub use execution::{execute, execute_supervised};
 pub use publication::{cancel, reply, request};
+
+const CONTEXT_REQUEST: &str = "an-native-peer-context-request-v1";
+const ARTIFACT_REQUEST: &str = "an-native-peer-request-v1";
+
+/// Validate the exact accepted bytes against the receiver selected by the host.
+fn packet_evidence(data: &Value, target: &Value) -> Result<Value> {
+    use crate::context_exchange::{ContextPacket, MAX_PACKET_BYTES};
+    let binding = &data["binding"];
+    if binding["encoding"] == "bytes" {
+        return Err("peer context requires a text artifact".into());
+    }
+    if binding["bytes"]
+        .as_u64()
+        .ok_or("packet byte count missing")?
+        > MAX_PACKET_BYTES as u64
+    {
+        return Err("context packet exceeds 4096 bytes".into());
+    }
+    let bytes = regular(Path::new(text(data, "path")?), MAX_PACKET_BYTES)?;
+    let digest = store::digest(&bytes);
+    if binding["content_sha256"] != digest || binding["bytes"] != bytes.len() {
+        return Err("peer context differs from accepted bytes".into());
+    }
+    let audience = uuid::Uuid::parse_str(text(target, "instance")?)?;
+    let packet = ContextPacket::parse(&bytes, audience)?;
+    Ok(
+        json!({"audience_kind":"native-spool-instance","audience":audience,
+        "packet_sha256":digest,"packet_bytes":bytes.len(),"text_bytes":packet.text.len()}),
+    )
+}
 
 fn text<'a>(v: &'a Value, key: &str) -> Result<&'a str> {
     v[key]
@@ -51,7 +82,11 @@ fn open(path: &Path, name: &str) -> Result<(PathBuf, Value)> {
     store::no_links(&dir)?;
     let record = read(&dir.join("request.json"))?;
     let (instance, _) = state(&root)?;
-    if record["plan"]["schema"] != "an-native-peer-request-v1"
+    if !matches!(
+        record["plan"]["schema"].as_str(),
+        Some(ARTIFACT_REQUEST | CONTEXT_REQUEST)
+    ) || (record["plan"]["schema"] == CONTEXT_REQUEST)
+        != record["plan"].get("context_packet").is_some()
         || record["plan"]["name"] != name
         || record["plan"]["source"]["root"] != json!(root)
         || record["plan"]["source"]["instance"] != instance["instance"]
@@ -71,6 +106,9 @@ fn artifact(root: &Path, run: &str, output: &str) -> Result<Value> {
         .iter()
         .find(|v| v["path"] == output)
         .ok_or("peer output must be formally accepted")?;
+    if selected["binding"]["reader_profile"] == crate::artifact_versions::registered::PROFILE {
+        return Err("registered inputs require native data/state or event admission".into());
+    }
     let value = inputs::artifact(
         Path::new(text(&report, "catalog")?),
         text(&selected["binding"], "revision")?,
@@ -102,6 +140,7 @@ fn phase_started(dir: &Path, record: &Value, phase: &str) -> Result<bool> {
     for evidence in [
         dir.join(format!("{phase}-start.json")),
         dir.join(format!("{phase}-result.json")),
+        run.join("supervisor"),
         run.join("start.json"),
         run.join("result.json"),
         run.join("job"),
@@ -112,7 +151,7 @@ fn phase_started(dir: &Path, record: &Value, phase: &str) -> Result<bool> {
     }
     Ok(false)
 }
-fn context(record: &Value, phase: &str) -> Value {
+fn phase_binding(record: &Value, phase: &str) -> Value {
     json!({"schema":"an-native-peer-input-v1","request":record["approval_sha256"],
         "source":record["plan"]["source"],"target":record["plan"]["target"],"phase":phase})
 }
@@ -132,7 +171,7 @@ fn result(dir: &Path, record: &Value, phase: &str) -> Result<Value> {
         || receipt["request"] != record["approval_sha256"]
         || intent["request"] != record["approval_sha256"]
         || intent["start"] != start
-        || start["peer_input"] != context(record, phase)
+        || start["peer_input"] != phase_binding(record, phase)
         || settled["workspace"]["termination_confirmed"] != true
     {
         return Err("peer completion lacks bound termination evidence".into());
@@ -152,7 +191,7 @@ pub fn inspect(path: &Path, name: &str) -> Result<Value> {
                 match result(&dir, &record, phase) {
                     Ok(v) => json!({"settled":true,"outcome":v["status"],"run":v["run"]}),
                     Err(e) => {
-                        json!({"settled":false,"outcome":"unknown","diagnostic":e.to_string()})
+                        json!({"settled":false,"outcome":"unknown","run":run_name(&record,phase)?,"diagnostic":e.to_string()})
                     }
                 }
             } else {

@@ -1,13 +1,14 @@
 //! Small command-line adapter; parsers stay beside the host capability they invoke.
 mod artifact;
 mod checkpoint;
+mod cohort;
 mod context;
 mod host;
 mod instance;
 mod model;
 mod peer;
+mod registered;
 mod retention;
-mod session;
 mod spool;
 mod spool_events;
 mod spool_state;
@@ -52,8 +53,12 @@ pub(super) fn run(args: Vec<String>) -> Result<()> {
     let result = match command.as_str() {
         "spool-supervisor" => supervisor::dispatch(args)?,
         "spool-peer" => peer::dispatch(args)?,
+        "cohort" => {
+            let (action, rest) = args.split_first().ok_or("missing cohort action")?;
+            cohort::dispatch(action, rest)?
+        }
         "session-create" | "session-show" | "session-control" | "session-run" => {
-            session::dispatch(command, args)?
+            cohort::dispatch(command.trim_start_matches("session-"), args)?
         }
         "spool-events-dispatch-reconcile"
         | "spool-events-dispatch"
@@ -71,6 +76,9 @@ pub(super) fn run(args: Vec<String>) -> Result<()> {
         | "spool-event-deliver"
         | "spool-event-complete" => spool_events::dispatch(command, args)?,
         "spool-state-init"
+        | "spool-state-retire"
+        | "spool-state-release"
+        | "spool-state-dependencies"
         | "spool-state-show"
         | "spool-state-commit"
         | "spool-start-state"
@@ -86,6 +94,7 @@ pub(super) fn run(args: Vec<String>) -> Result<()> {
         "workspace-run" | "workspace-resume" | "workspace-accept" | "workspace-reclaim" => {
             workspace::dispatch(command, args)?
         }
+        "spool-managed" => registered::dispatch(args)?,
         "spool-load"
         | "spool-release-diff"
         | "spool-show"

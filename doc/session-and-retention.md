@@ -2,7 +2,7 @@
 
 Status: accepted development direction, with the first native input-reference
 slice implemented in [native storage](native-storage.md).
-Formal payload deletion remains planned. A bounded native session/dispatch adapter
+Registered-copy outputs support explicit payload deletion after admission closure. A bounded native cohort adapter
 is implemented below; general model-session coordination remains planned. The qualified boundary
 remains reviewed headless CLI spools; see the [platform matrix](platforms.md).
 GUI/TUI, new backends and process-memory restoration are deferred.
@@ -11,36 +11,44 @@ GUI/TUI, new backends and process-memory restoration are deferred.
 
 | Existing implementation | Reuse and limit |
 | --- | --- |
-| [Native storage](native-storage.md) | Settled scratch/snapshot collection, capacity observations and new-input retirement; no formal native payload deletion |
+| [Native storage](native-storage.md) | Settled scratch/snapshot collection, capacity observations and new-input retirement; explicit collection of newly registered-copy versions |
 | [Artifact admission](../crates/an-agent-host/src/artifact_versions/admission.rs) | Monotonic closure with concurrent immutable readers; no reference inventory |
 | [Checkpoint retention](../crates/an-agent-host/src/instance/checkpoint/retention.rs) | Explicit recipients/state references in a closed store; not a global census of native catalogs |
-| [Core session](../crates/an-agent-core/src/agent/session.rs) and [session control](../crates/an-agent-core/src/control/session.rs) | Private tape/files, seal, finished-thread release and identity-checked resume; not a native-spool session coordinator or whole-machine recovery |
+| [Core session](../crates/an-agent-core/src/agent/session.rs) and [session control](../crates/an-agent-core/src/control/session.rs) | Private tape/files, seal, finished-agent release and identity-checked resume; not a native dispatch coordinator or whole-machine recovery |
 | [Native events](native-events.md) | Fixed versions, finite approved dispatch, admission controls and explicit reconciliation; no background agent loop |
 | [Model/context](model-services.md) and [bounded export](model-services.md) | Explicit audience/clip selection, receipt-linked excerpts and byte limits; no token estimator, automatic compaction or cross-thread authorization service |
 
-Do not rename existing core sessions, thread UUIDs, tape records or wire formats.
-A future host adapter maps its coordination records to these identities explicitly;
-a native spool attempt need not create a core model session at all.
+## Vocabulary
 
-## Ownership and proposed identities
+| General term | Meaning | Specialized name to use |
+| --- | --- | --- |
+| Session | A period of interaction with its own continuity, such as a core agent's private tape and files | A **cohort** groups finite work under one admission and cancellation policy |
+| Thread | A thread of execution, or a conversation thread when explicitly identified as such | A cohort member is a **dispatch**. `AgentControl::open_agent` opens a mounted **agent** by card ID |
+| Context | Material selected for a recipient to use | A **delivery binding** or **phase binding** identifies a protocol operation. The transmitted text is a **context packet** |
+| Workspace | The environment where participants work with materials and versions | The core **workspace ledger** (`WorkspaceLedger`) records facts and projections. The workspace object store owns versioned trees and files |
+
+A cohort can span spool instances. Dispatch membership controls work. A peer
+grant binds disclosure to an exact spool activation. A worker or conversation
+handle grants neither. The core session and workspace object store keep their
+existing names.
+
+## Ownership and identity
 
 | Concept | Meaning | Not equivalent to |
 | --- | --- | --- |
 | Workspace | Host-controlled versioned material and fact namespace | A peer mailbox or shared model conversation |
-| Runtime session (target) | One activation generation of a spool instance, owning resource and endpoint references | A model conversation, a grant or a new isolation boundary |
+| Spool activation | Instance, release and round-control generation bound to a native endpoint | A model conversation, a grant or a new isolation boundary |
 | OS thread/process | Backend execution machinery | A context identity or a domain workflow node |
 | Spool instance | Release-bound domain identity with explicit committed state | One conversation or model session |
 | Attempt | One exact admitted execution, selected inputs/state and settlement evidence | The persistent session or an automatically resumable task |
 | Artifact reference | Exact managed version and declared reason for retaining bytes | A mutable path, implicit latest or permission to execute |
 
-The target starts with one active runtime session per instance. Reuse instance
-activation records rather than adding a parallel manager. Attempts retain their
-existing execution isolation and exact input/state identities; sharing a session
-does not merge attempt scratch or grant concurrent state writes. Reactivation
-must fence old endpoints/results with a new generation. This is not implemented
-by the current `session-*` CLI: that compatible adapter groups finite dispatches,
-and its `THREAD` argument is a one-shot dispatch identity, not an OS thread.
-Do not reinterpret historical records or delete duplicate-admission guards.
+Use the instance activation for peer addressing. A pause and resume advances
+the generation and fences old grants. The native [cohort adapter](../crates/an-agent-host/src/native_spool/events/cohorts.rs)
+groups finite dispatches across instances. Closing the group checks their
+settlement. It leaves activations, private conversation tapes and independently
+held artifact references under their respective owners. Each attempt retains
+its own isolation, scratch and fixed input/state identities.
 
 Host workers and OS threads may serve different operations over time. Bind model
 context to the authorized participant, selected materials and harness handle,
@@ -73,6 +81,26 @@ configuration, not a sink for peer messages, retrieved text or arbitrary files:
 it enters the system envelope. Context packets remain untrusted selected data;
 their hashes and audience fields do not independently authorize disclosure.
 
+### Bounded peer context
+
+For an explicit handoff, use `spool-peer request` with the request schema
+`an-native-peer-context-request-v1`. Use the same fields as the ordinary artifact
+request. Select one formally accepted text output containing a complete
+`an-context-v1` packet. Its audience is the receiving spool instance UUID.
+The enclosing peer grant binds both activations, generations, the exact artifact
+revision and digest, serialized size and request name. Request publication and
+receiver execution have separate approvals. Ordinary artifact requests and
+reply outputs retain their existing behavior.
+
+The host verifies the packet digest, actual audience and at most 4096 serialized
+bytes before publication and again before phase admission. The receiver reads
+the selected packet as ordinary untrusted input. Authors choose a short output
+or excerpt and keep the full source separately. An oversized, missing, malformed
+or changed packet is refused. This path uses the existing legacy-catalog peer
+reader. Registered-copy peer reads still require their own custody support.
+No workspace fact, core tape or model call is necessary. Disclosure to a model
+or private participant inside the receiver requires separate authority.
+
 ## Runtime acceptance matrix
 
 | Design requirement | Current evidence | Remaining gap |
@@ -80,8 +108,8 @@ their hashes and audience fields do not independently authorize disclosure.
 | Fixed authorized artifact delivery | `native_events.py`, `native_data_state.py`, `native_peer.py` | No general live IPC endpoint |
 | No implicit private-note delivery | `native_material_boundary.py`: real read/write denials, unchanged fact log, no delivery, declared outputs only | No model ingestion tested; this is a foreground adapter, not an automatic watcher |
 | Private contents remain outside another attempt | Same suite checks another instance's output/identity and workspace log | Native policy allows file metadata; it does not hide existence or provide hostile-code containment |
-| Cancel one owner without cancelling another | `native_sessions.py`: overlapping real execution | Caller-independent supervisor ownership remains unqualified |
-| Unknown execution cannot release materials | `native_data_state.py`, lost-receipt session cases | Missing receipts are injected after execution; arbitrary crash recovery is not proved |
+| Cancel one owner without cancelling another | `native_sessions.py`: overlapping real execution | Verified after client loss by `routed_supervision.py`; a missing owner receipt keeps the attempt held |
+| Unknown execution cannot release materials | `native_data_state.py`, lost-receipt cohort cases | Missing receipts are injected after execution; arbitrary crash recovery is not proved |
 | Old delivery cannot become new-instance work | `native_route_successor.py`; `native_peer.py` refuses stale reply admission after pause/resume | Peer endpoints use instance identity and round generation, not a separate session manager |
 | Waiting A leaves B able to execute | `native_peer.py`: B runs while A has independent active work; the wait has no process or held execution lock | No general blocking IPC waiter, fairness guarantee or global scheduler |
 
@@ -159,7 +187,7 @@ Proposed bounded sequence:
    it must never permit deleting live input.
 3. Close new input admission using the existing monotonic retirement operation.
 4. Explicitly release each eligible pin after its owner no longer needs bytes.
-   Process exit alone, an acknowledgement, session closure, elapsed time or an
+   Process exit alone, an acknowledgement, cohort closure, elapsed time or an
    absent heartbeat cannot release it. Unknown execution/delivery stays pinned.
 5. Preview and approve collection only in a declared closed managed scope with
    no remaining pins. Revalidate closure, pins, ownership and exact inventory
@@ -192,43 +220,48 @@ operations settle, and qualify tombstone-aware history inspection. Do not weaken
 content verification globally to make deletion pass. Checkpoint payload GC is a
 separate operation; the first artifact collector must not delete committed state.
 
-## Implemented native session slice
+<a id="implemented-native-session-slice"></a>
 
-The foreground event adapter exposes the following host commands. `WORKSPACE` is
-an existing native event workspace, not a directory granted to spool processes.
+## Native dispatch cohorts
 
 ```sh
-an-agent-host session-create WORKSPACE SESSION
-an-agent-host session-run WORKSPACE SESSION THREAD dispatch-request.json
-an-agent-host session-run WORKSPACE SESSION THREAD dispatch-request.json --approve HASH
-an-agent-host session-show WORKSPACE SESSION
-an-agent-host session-control WORKSPACE SESSION paused
-an-agent-host session-control WORKSPACE SESSION paused --approve HASH
+an-agent-host cohort create WORKSPACE COHORT
+an-agent-host cohort run WORKSPACE COHORT DISPATCH dispatch-request.json
+an-agent-host cohort run WORKSPACE COHORT DISPATCH dispatch-request.json --approve HASH
+an-agent-host cohort show WORKSPACE COHORT
+an-agent-host cohort control WORKSPACE COHORT paused
+an-agent-host cohort control WORKSPACE COHORT paused --approve HASH
 ```
+
+Existing `session-create`, `session-run`, `session-show`, and `session-control`
+are aliases. Either spelling can approve the other's preview. Both return the
+same JSON, including historical `session`, `thread`, and `threads` fields.
+Existing directory names, hashes, tape tags and receipts keep their identities.
+The Rust entrypoint is `events::cohorts`; `events::sessions` remains an alias.
 
 Control modes are `open`, `paused`, `cancelled` and `closed`. Each control change
 requires a fresh digest-bound preview. Pause requests drain-stop: once observed,
 the runner finishes its current entry and prevents the next. Control responses
 acknowledge publication, not a synchronous barrier across all runners; an entry
 concurrently crossing admission may still start. It remains owned and must settle.
-Reopen permits new threads, never resumes a partial dispatch.
-Cancel is permanent admission closure and asks each live session runner to forward
-cancellation through its existing supervisor. Close requires retained thread
+Reopen permits new dispatches, never resumes a partial dispatch.
+Cancel permanently closes admission. Each active supervised entry observes its
+cohort cancellation even if the finite controller has exited. Close requires retained dispatch
 completion and original confirmed attempt evidence. Closure never accepts products,
 commits state, releases references, unloads instances or deletes bytes.
 
-A thread is one immutable finite dispatch (1..16 explicitly selected event/route/
-state entries). It has a session-scoped identity and a durable pre-execution intent.
-Changing source request bytes or session generation invalidates approval. Thread
+A cohort member is one immutable finite dispatch (1..16 explicitly selected event/route/
+state entries). It has a cohort-scoped identity and a durable pre-execution intent.
+Changing source request bytes or cohort generation invalidates approval. Dispatch
 names cannot be reused, including after cancellation or missing results. The host
 keeps only selected artifact/state context, not another harness's conversation tape.
-Parents, cross-thread model packets and general multi-attempt thread continuation
+Parents, cross-thread model packets and general multi-attempt continuation
 are deferred. No release field or Loom runtime dependency is introduced.
 
 Inspection returns compact identities and outcome metadata; full dispatch evidence
 stays available through `spool-events-dispatch-show`, not copied into every summary.
-The session lock covers short admission/control publication only. Observation and
-execution do not hold it. A foreground runner polls its bounded control history
+The cohort lock covers short admission/control publication only. Observation and
+execution do not hold it. The finite controller polls its bounded control history
 at 25 ms intervals; this is not a cancellation-latency guarantee. A read error
 requests cancellation, not successful settlement. Reopening records after a host
 crash is read-only inspection: missing receipts remain unknown, and no daemon
@@ -237,16 +270,16 @@ forward a new cancellation; original backend reconciliation remains necessary.
 
 Existing event admission locks remain fail-fast. Simultaneous admissions in the
 same workspace can refuse; the qualified case explicitly admits independent
-threads and then overlaps their execution. It does not claim a queue or conflict-free
+dispatches and then overlaps their execution. It does not claim a queue or conflict-free
 parallel admission. Neither refusal nor unknown execution is automatically retried.
-Limits are 32 sessions per workspace, 32 threads per session and 128 control records.
-Legacy executables do not manage these new session records; operator-issued direct
-commands remain separate authority and are not retroactively governed by sessions.
+Limits are 32 cohorts per workspace, 32 dispatches per cohort and 128 control records.
+Legacy executables do not manage these cohort records; operator-issued direct
+commands remain separate authority and are not retroactively governed by cohorts.
 
 `tests/cli/native_sessions.py` under the host crate qualifies independent overlapping
 execution, scoped cancellation, drain-stop, stale generation/request refusal,
-multiple logical threads, pinned input/state, products after close and injected
-lost-receipt refusal after real execution. It uses zero model calls. Session
+multiple named dispatches, pinned input/state, products after close and injected
+lost-receipt refusal after real execution. It uses zero model calls. Cohort
 closure rechecks native evidence; formal payload GC remains blocked by its separate
 unfinished retention contract.
 
@@ -309,6 +342,17 @@ a response file or a cancellation request alone grants no custody. A supervisor
 crash leaves unresolved records and blocks collection even after observed process
 exit. A lost client can inspect the original run without restarting it.
 
+A cancellation published before worker admission is checked synchronously. The
+original worker can acknowledge `cancelled-before-launch` without rereading an
+input that is no longer available. Round closure/unload requires its matching
+request, exclusive owner and exact no-launch completion, plus absence of job,
+start, input-reference and custody records. A cancellation request alone or any
+contradictory/partial record remains uncertain. This closes an unused reservation;
+it grants neither artifact acceptance nor collection, and never permits replay.
+`native_spool::prelaunch_cancel` exercises this deterministic boundary using the
+real worker CLI, including removed input, missing/mismatched evidence, duplicate
+worker refusal and preservation of an earlier accepted product.
+
 `native_supervisor.py` qualifies client SIGKILL with continuing deadline and
 cancellation enforcement, handled client SIGTERM, duplicate-worker and stale-control
 refusal, a torn launch reservation, supervisor SIGKILL, an independent instance
@@ -331,22 +375,59 @@ selector replacement/removal after reservation cannot retarget it. A retired inp
 fails closed, with no fallback or new attempt. A deterministic real-execution test
 covers selector removal and retirement between reservation and worker claim.
 
-This slice covers explicit supervised file, checkpoint and combined input starts.
-Existing foreground starts, event/session dispatch and peer phases retain their
-existing lifecycle.
-Their migration needs ownership-specific qualification. Before-launch uncertain
-reservations remain retained; no automatic lock repair or process adoption is
-implemented. Local host records and the installed supervisor binary are trusted.
-A permanently running host-wide service awaits a separate scheduling requirement.
-Loom packages the release and receives verified evidence; the host owns execution
-and control. Platform detachment remains in the execution backend.
+## Routed execution ownership
+
+The normal native CLI gives each approved event delivery or peer execution
+phase the same single-use attempt supervisor as supervised file and state
+starts. The approval includes the installed host executable, delivery or
+peer-phase identity, exact artifact/state selections and any owning finite
+dispatch or cohort. A standalone event requires its own approval.
+Direct Rust embedding functions can retain caller-owned execution. The narrow
+supervised CLI path uses the installed host itself to run the worker.
+
+One additional short-lived controller owns each explicitly approved batch or
+cohort dispatch. A cohort dispatch reuses its controller for its nested batch.
+The controller reads the admitted selection, checks each original entry grant,
+and starts one attempt supervisor at a time. The submitting CLI waits for the
+original outcome. After an owner starts, it enforces the deadline and accepts
+control even if the client exits. A crash between reservation and owner startup
+leaves the original reservation unresolved and held for inspection. Removing the
+operator's original selection file cannot change the admitted list. Waiting for a peer reply creates no worker.
+A peer request and its response each require their own execution approval.
+
+```text
+spool-supervisor show RECEIVER_INSTANCE RUN
+spool-supervisor cancel RECEIVER_INSTANCE RUN [--approve HASH]
+spool-supervisor dispatch WORKSPACE BATCH show|stop|cancel [--approve HASH]
+spool-supervisor dispatch WORKSPACE COHORT DISPATCH show|stop|cancel [--approve HASH]
+```
+
+The old `spool-supervisor thread` spelling remains valid for a cohort member.
+Show takes no approval. Stop drains the active entry and closes the remainder
+of the list. Cancel also signals the admitted attempt. The cohort-wide control
+command retains its existing scope. An attempt observes its parent's durable
+cancellation directly. Peer protocol cancellation closes future request/reply
+admission. The receiving host can cancel an active peer phase by its instance
+and run. A control acknowledgement confirms publication of the request.
+
+A missing controller completion keeps the batch or cohort dispatch unresolved. An already
+admitted child retains its deadline and can still be cancelled. No successor
+controller resumes the remaining entries. Losing the attempt owner leaves the
+process group unconfirmed; custody requires the bound native receipt **and**
+the routed owner's original completion. A verified timeout or program failure
+ends the finite selection with that outcome. Cohort closure, artifact acceptance
+and event acknowledgement remain distinct operations.
+
+The real headless suite kills submitting CLIs during an event, batch, cohort dispatch and
+both peer phases. It also kills a controller and an attempt owner independently.
+The tests cover timeout, scoped cancel, drain-stop, stale grants, missing receipts
+and refusal to continue uncertain work. The foreground `spool-start` fault case
+continues to qualify the limits of that entrypoint. Local supervisor records and
+the installed host are trusted. Automatic recovery after a host restart is outside
+this contract.
 
 ## Runtime control and legacy session compatibility
 
-Keep inspectable records and explicit CLI actions. The current foreground adapter
-does not transfer supervisor ownership when its caller disappears. A future
-caller-independent supervisor must retain backend ownership and reconcile actual
-execution before accepting control; reopening metadata is insufficient.
 The target activation record binds one instance/release, generation, owned attempt
 references, endpoint references and operator-owned limits. Reuse existing attempt
 identities rather than adding a second execution ledger or OS-thread scheduler.
@@ -358,11 +439,11 @@ Use the following lifecycle distinctions rather than one overloaded status:
 - Admission is open or paused/closed; pausing prevents new work only.
 - Execution is running, settling, positively settled or unknown, derived from
   original attempt evidence. Requesting cancellation is not confirmation.
-- A session can close after its owned work is settled; unresolved work remains
+- A cohort can close after its owned work is settled; unresolved work remains
   visible and prevents a successful closed result. Archiving its view is not
   permission to kill processes or delete products.
 
-A session-wide stop closes admission before forwarding cancellation to an exact,
+A cohort-wide stop closes admission before forwarding cancellation to an exact,
 generation-bound set of owned active attempts. Stop and cancel remain separate:
 stop drains existing work; cancel requests termination. Two sessions must remain
 independent. A causal protocol link alone cannot cancel another session's work.
@@ -411,10 +492,10 @@ savings from prompt caching or summaries before measuring quality and actual use
 
 | Slice | Deliverable and end condition |
 | --- | --- |
-| A: native artifact ownership | New managed outputs acquire/release explicit pins through real producer/two-consumer execution; active and unknown owners, retained checkpoint dependencies and legacy catalogs block deletion; no payload deletion yet |
+| A: native artifact ownership | New managed outputs acquire/release explicit pins through real producer/two-consumer execution; active and unknown owners, retained checkpoint dependencies and legacy catalogs block deletion; legacy outputs stay retained |
 | B: formal payload collection | Closed admission plus released pins permits exact approved deletion; retained provenance remains inspectable, content reads fail clearly, unrelated outputs/checkpoints survive; race, cancellation and lost deletion receipt refuse unsafe progress |
-| C: runtime ownership | Foreground dispatch groups and generation-bound peer waits run through explicit host commands. Old/unknown work cannot claim new work. A long-lived supervisor independent of the initiating CLI is not yet qualified |
-| D: bounded context handoff and combined qualification | Reuse explicit packets/export across authorized participants; unrelated data excluded, incorrect audience refused, oversized input explicit, missing source reported; combine lifecycle, pins, collection and interruption in one real headless run |
+| C: runtime ownership | Explicit supervised inputs, routed attempts and finite controllers preserve approved work across client loss. Missing original ownership evidence fences execution and custody. |
+| D: bounded context handoff and combined qualification | Native peer requests qualify an audience-bound packet through real supervised execution. The paired packaged case combines scoped bytes with retention and interruption. Harness-internal delivery and model disclosure remain separate. |
 
 A and B close the remaining P1 storage contract. C and D are the next small
 management milestone, not permission to endlessly expand P1. GUI/TUI, general
@@ -424,10 +505,11 @@ suspend and automatic state migration remain out of scope.
 Slice A is partial: new native starts register exact artifact/checkpoint inputs.
 Confirmed cancelled owners can release after private collection; successful
 stateless event consumers can release after original consumption acknowledgement,
-accepted outputs and private collection. Successful stateful owners, partial
-registrations and old/unmanaged readers remain retained. Explicit opaque checkpoint
-dependencies, stateful-owner release and a mixed-host version fence are still
-required before slice B. No current reference query authorizes deletion.
+accepted outputs and private collection. Successful combined data/state event owners may release their temporary claims
+after approval of exhaustive coverage tied to the committed checkpoint. Partial
+registrations and old/unmanaged readers remain retained. Explicit checkpoint dependency declarations now acquire non-releasable source pins;
+missing registration evidence blocks selection. Other successful-owner paths, dependency
+retirement/reconciliation and a mixed-host version fence remain outside the opt-in registered-copy collection profile. No current reference query authorizes deletion.
 The producer-side `spool-artifacts ... --references OUTPUT` observation now exposes
 registered consumers without control locks. Source release markers are reported
 separately from consumer completion; an empty view is never a complete census.

@@ -1,5 +1,7 @@
 //! Bounded artifact events and explicit delivery, not a business workflow engine.
 mod control;
+pub mod coordinator;
+pub(super) use coordinator::ParentCancel;
 mod delivery;
 mod dispatch;
 mod dispatch_reconcile;
@@ -9,17 +11,20 @@ mod monitor;
 mod publication;
 mod replacement;
 pub use replacement::replace;
+pub mod cohorts;
 #[cfg(test)]
 mod observation_tests;
-pub mod sessions;
+/// Compatibility path for callers using the original dispatch-group API.
+pub use cohorts as sessions;
 mod settlement;
 mod space;
 mod subscription;
 #[cfg(test)]
 mod tests;
 pub use control::subscription_control;
-pub use delivery::{deliver, deliver_with_state};
-pub use dispatch::{dispatch, inspect_dispatch};
+pub(super) use delivery::verify_supervised;
+pub use delivery::{deliver, deliver_supervised, deliver_with_state};
+pub use dispatch::{dispatch, dispatch_supervised, inspect_dispatch};
 pub use monitor::{pending, watch};
 pub use publication::publish;
 pub use settlement::complete;
@@ -28,7 +33,7 @@ pub use space::{init, inspect};
 pub use subscription::{revoke, subscribe};
 
 use super::{self as native, Result, Value, json, regular, store, write_json};
-use an_agent_core::workspace::Workspace;
+use an_agent_core::workspace::WorkspaceLedger;
 use space::Space;
 use std::{
     fs,

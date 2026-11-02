@@ -67,10 +67,45 @@ pub(super) fn dispatch(command: &str, args: &[String]) -> Result<Value> {
                 Some(hash),
             )
         }
+        (
+            "spool-input-release",
+            [
+                root,
+                run,
+                flag,
+                workspace,
+                subscription,
+                scope,
+                file,
+                rest @ ..,
+            ],
+        ) if flag == "--delivery" && scope == "--coverage" => {
+            let approved = match rest {
+                [] => None,
+                [flag, hash] if flag == "--approve" => Some(hash.as_str()),
+                _ => return Err("invalid stateful release approval".into()),
+            };
+            spool::input_references::release_checkpoint(
+                Path::new(root),
+                run,
+                Path::new(workspace),
+                subscription,
+                Path::new(file),
+                approved,
+            )
+        }
         ("spool-status", [root, run]) => spool::status(Path::new(root), run),
         ("spool-artifacts", [root, run]) => spool::artifacts(Path::new(root), run),
+        ("spool-artifacts", [root, run, flag, output]) if flag == "--output" => {
+            spool::artifact_output(Path::new(root), run, output)
+        }
         ("spool-artifacts", [root, run, flag, output]) if flag == "--references" => {
             spool::artifact_references(Path::new(root), run, output)
+        }
+        ("spool-artifacts", [root, run, flag, output, consumers @ ..])
+            if flag == "--review-retirement" =>
+        {
+            spool::review(Path::new(root), run, output, consumers)
         }
         ("spool-artifact-retire", [root, run, output]) => {
             spool::retire_artifact(Path::new(root), run, output, None)
@@ -114,6 +149,14 @@ pub(super) fn dispatch(command: &str, args: &[String]) -> Result<Value> {
         ("spool-unload", [root]) => spool::unload(Path::new(root), None),
         ("spool-unload", [root, flag, hash]) if flag == "--approve" => {
             spool::unload(Path::new(root), Some(hash))
+        }
+        ("spool-accept", [root, name, flag]) if flag == "--registered" => {
+            spool::accept_registered(Path::new(root), name, None)
+        }
+        ("spool-accept", [root, name, flag, approve, hash])
+            if flag == "--registered" && approve == "--approve" =>
+        {
+            spool::accept_registered(Path::new(root), name, Some(hash))
         }
         ("spool-accept" | "spool-reclaim", [root, name]) => custody(command, root, name, None),
         ("spool-accept" | "spool-reclaim", [root, name, flag, hash]) if flag == "--approve" => {

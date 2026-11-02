@@ -169,6 +169,21 @@ fn transition(
         return Ok(json!({"status":"succeeded","round_control":summary(&head),
             "approval_sha256":hash,"executed":false,"already_recorded":true}));
     }
+    // A fresh suspend selection must pass the checkpoint admission fence too.
+    let _state = if let ("suspend", Some(revision)) = (operation, revision) {
+        let guard = checkpoint::revision_lock(&root, revision)?;
+        crate::artifact_versions::registered::admission_open(
+            Path::new(
+                selected["state"]["catalog"]
+                    .as_str()
+                    .ok_or("state catalog")?,
+            ),
+            &selected["state"]["binding"],
+        )?;
+        Some(guard)
+    } else {
+        None
+    };
     if !valid_transition(&head["mode"], &json!(operation), &json!(mode)) {
         return Err("unsupported round control transition".into());
     }

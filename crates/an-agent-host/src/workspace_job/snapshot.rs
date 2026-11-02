@@ -84,7 +84,12 @@ pub(super) fn launch(plan: &Value, attempt: &Path) -> Result<Value> {
     Ok(launch)
 }
 
-pub(super) fn prepare(plan: &Value, attempt: &Path, cancelled: &AtomicBool) -> Result<Value> {
+pub(super) fn prepare(
+    plan: &Value,
+    attempt: &Path,
+    cancelled: &AtomicBool,
+    reader: Option<super::NativeInputs<'_>>,
+) -> Result<Value> {
     if cancelled.load(std::sync::atomic::Ordering::Acquire) {
         return Err("snapshot preparation cancelled; no workload started".into());
     }
@@ -121,7 +126,14 @@ pub(super) fn prepare(plan: &Value, attempt: &Path, cancelled: &AtomicBool) -> R
         if cancelled.load(std::sync::atomic::Ordering::Acquire) {
             return Err("snapshot preparation cancelled; no workload started".into());
         }
-        let bytes = if let Some(item) = pinned {
+        let bytes = if let Some(item) = pinned.filter(|i| {
+            i["binding"]["reader_profile"] == crate::artifact_versions::registered::PROFILE
+        }) {
+            reader
+                .and_then(|r| r.at(Path::new(item["path"].as_str()?)))
+                .ok_or("registered snapshot requires native attempt admission")?
+                .snapshot(item)?
+        } else if let Some(item) = pinned {
             let (bytes, binding) = crate::artifact_versions::admission::read_input(
                 Path::new(item["catalog"].as_str().ok_or("catalog")?),
                 item["binding"]["revision"].as_str().ok_or("revision")?,

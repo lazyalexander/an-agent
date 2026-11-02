@@ -5,7 +5,7 @@ use std::collections::BTreeSet;
 pub(crate) fn observe(catalog: &Path, revision: &str) -> Result<Value> {
     store::no_links(catalog)?;
     let catalog = catalog.canonicalize()?;
-    let (_, binding) = super::super::read(&catalog, revision)?;
+    let binding = super::super::registered::verify(&catalog, revision)?;
     let directory = catalog
         .join("revisions")
         .join(revision)

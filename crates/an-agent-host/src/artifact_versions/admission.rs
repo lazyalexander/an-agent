@@ -36,6 +36,10 @@ pub(crate) fn ensure_active(catalog: &Path, revision: &str) -> Result<()> {
 }
 
 pub(crate) fn status(catalog: &Path, revision: &str) -> Result<Value> {
+    let binding = super::metadata(catalog, revision)?;
+    if binding["reader_profile"] == super::registered::PROFILE {
+        return super::registered::admission_status(catalog, &binding);
+    }
     let path = marker(catalog, revision)?;
     if !path.try_exists()? {
         return Ok(json!({"mode":"active"}));

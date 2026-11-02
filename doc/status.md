@@ -16,7 +16,9 @@ P0 is qualified for reviewed local CLI spools, not arbitrary untrusted agents:
 - One fixed business input combined with one explicitly selected opaque committed
   checkpoint; stale-state conflict refusal and confirmed-cancellation retention.
 - Explicit per-attempt supervision for file, checkpoint and combined data/state
-  starts survives client loss; event/session/peer dispatch remains foreground.
+  starts survives client loss. Native CLI event deliveries and both peer phases
+  use the same attempt owner. A finite controller owns each approved batch or thread.
+  Confirmed prelaunch cancellation can close a round without granting custody.
 - Explicit reconciliation of complete original execution/acceptance evidence.
   Missing termination or uncertain execution never authorizes a rerun.
 - Optional operator-selected Python environments and declared binary products;
@@ -38,27 +40,25 @@ See [native spool](native-spool.md),
 | Completed-summary repair | Explicit reconstruction from every original entry/start/delivery and confirmed-success receipt; no execution or partial-batch resume |
 | Private capacity maintenance | Explicit finite work/snapshot collection through original ownership/settlement gates; four real 8 MiB rounds and consumer progress qualified |
 | Artifact input retirement | One accepted output can close new revision-based acquisition; admitted work, independent checkpoints, original bytes and causal evidence remain retained |
-| Native input ownership | Exact managed claims; explicit cancelled-owner or acknowledged stateless-success release after private collection; stateful/unknown owners retained; producer-side observations, no complete reader census or payload deletion |
+| Native input ownership | Exact managed claims; explicit cancelled-owner or acknowledged stateless-success release after private collection; explicit immutable checkpoint pins; stateful event release after approved exhaustive input coverage; uncertain owners retained; retirement review checks explicitly selected consumer receipts; legacy reader census remains incomplete |
+| Registered publication | New `--registered` acceptance records native input attempts, explicit copy readers and checkpoint pins from first publication. Explicit exact-version collection requires closure and verified reader releases. Legacy catalogs stay retained. See [native storage](native-storage.md#registered-copies-and-explicit-payload-deletion). |
 
-P1 is not closed. The remaining required capacity contract is **formal payload
-collection**: identify registered references, release them explicitly, and define
-what unmanaged readers mean before deleting bytes. Admission retirement is not
-proof that all old references have expired. The native per-run catalogs do not
-have a global reference census; absence of a reader or an acknowledgement is not
-deletion authority. See [native storage](native-storage.md).
+The local headless P1 path is qualified across three producer rounds and two
+consumers. A fixed event feeds both consumers after a newer version exists. A
+stateful consumer commits while its peer is active, and the producer can collect
+a released version after confirmed cancellation. A new client can cancel after the submitting CLI exits. Losing the attempt
+owner leaves one held execution. Paired qualification records disk use and the exact bytes removed.
+Enrolled checkpoints can now close admission and explicitly release their own
+pins after reader settlement. Legacy reader histories keep their pins. See
+[checkpoint retirement](native-state.md#explicit-checkpoint-retirement).
+The routed supervision suite also qualifies client, controller and attempt-owner
+loss separately. See [execution ownership](session-and-retention.md#routed-execution-ownership).
 
-After that bounded contract, qualify the combined local headless path rather
-than adding another sequence of isolated features: concurrent instances,
-explicit inputs/state, finite event operation, interruption, retained products
-and measured capacity. Preserve unknown results without automatic replay. This
-is the P1 closure direction, not a requirement to build a daemon or graph engine.
-
-The next [session and retention plan](session-and-retention.md) makes the
-remaining storage work explicit, then proposes a small session/thread coordination
-layer over existing attempts. Its first foreground session/finite-thread adapter is
-implemented; general model-context threads and formal payload collection remain
-unimplemented. See the plan for exact commands and concurrency limits.
-GUI and TUI are deferred; no new user interface is required for qualification.
+Native cohorts control finite selections. A peer can receive one
+audience-checked context packet from a fixed, accepted text revision.
+A core agent's conversation tape remains private. See the
+[bounded handoff and identity contract](session-and-retention.md#bounded-peer-context)
+for supported sources and disclosure limits.
 
 ## Deferred scope and existing surfaces
 

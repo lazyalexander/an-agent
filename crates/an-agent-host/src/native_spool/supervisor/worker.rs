@@ -2,17 +2,6 @@
 use super::*;
 use std::sync::{Arc, atomic::Ordering};
 
-struct StopObserver<'a>(&'a AtomicBool);
-impl Drop for StopObserver<'_> {
-    fn drop(&mut self) {
-        self.0.store(true, Ordering::Release);
-    }
-}
-
-#[allow(
-    clippy::disallowed_methods,
-    reason = "bounded supervisor control observation interval"
-)]
 pub fn execute(root: &Path, name: &str, hash: &str, cancelled: Arc<AtomicBool>) -> Result<Value> {
     let (dir, record) = request(root, name)?;
     if record["approval_sha256"] != hash
@@ -30,29 +19,26 @@ pub fn execute(root: &Path, name: &str, hash: &str, cancelled: Arc<AtomicBool>) 
     let seconds = record["plan"]["seconds"]
         .as_u64()
         .ok_or("supervisor deadline")?;
-    let done = AtomicBool::new(false);
-    let result = std::thread::scope(|scope| {
-        let monitor = scope.spawn(|| {
-            while !done.load(Ordering::Acquire) {
-                match dir.join("cancel.json").try_exists() {
-                    Ok(false) => (),
-                    Ok(true) | Err(_) => {
-                        // A malformed or unreadable control record fails closed.
-                        cancelled.store(true, Ordering::Release);
-                        break;
-                    }
-                }
-                std::thread::sleep(std::time::Duration::from_millis(25));
+    let parent = events::ParentCancel::from_route(&record["plan"]["start"]["routed_supervision"])?;
+    let result = monitor(
+        || {
+            poll_control(&dir, None, &cancelled);
+            if parent
+                .as_ref()
+                .is_some_and(|p| p.cancelled().unwrap_or(true))
+            {
+                cancelled.store(true, Ordering::Release);
             }
-        });
-        let stop_observer = StopObserver(&done);
-        let outcome = run::start_supervised(root, name, seconds, &record, &cancelled);
-        drop(stop_observer);
-        monitor
-            .join()
-            .map_err(|_| "supervisor control observer panicked")?;
-        outcome
-    });
+        },
+        || {
+            if cancelled.load(Ordering::Acquire) {
+                return Ok(json!({"status":"cancelled","executed":false,"process_started":false}));
+            }
+            let result = run::start_supervised(root, name, seconds, &record, &cancelled)?;
+            finish_route(root, &record["plan"]["start"], &result)?;
+            Ok(result)
+        },
+    );
     let response = match &result {
         Ok(value) => json!({"request":hash,"result":value}),
         Err(error) => json!({"request":hash,"error":error.to_string()}),

@@ -223,11 +223,9 @@ exit or an accepted output alone cannot release the claim. A missing acknowledge
 refuses rather than invoking acknowledgement repair. Release is explicit, not a
 side effect of collection or observation.
 
-This bounded success path requires exactly one managed event input and no explicit
-state/data selection, checkpoint store or pending checkpoint initialization. State
-is opaque and does not yet declare all external dependencies: successful stateful
-runs retain all input claims, even after state commit, acknowledgement and private
-collection. Unstarted or partially registered failures also stay retained pending
+Without `--coverage`, the successful release path requires exactly one managed event input and no explicit
+state/data selection, checkpoint store or pending checkpoint initialization. Stateful runs retain their inputs until an operator separately approves exhaustive
+coverage for their specific committed checkpoint. Unstarted or partially registered failures also stay retained pending
 a separate reconciliation contract. The command deletes **no payload** and grants
 no collection authority. A source marker without the matching final consumer
 receipt remains uncertain; release cannot reconstruct that receipt or replay work.
@@ -236,6 +234,50 @@ readers, opaque checkpoint dependencies and legacy catalogs prevent treating the
 claims as a complete reference census. Do not infer GC permission from zero claims
 or from release records alone.
 
+A successful event consuming business data and a parent checkpoint can use:
+
+```text
+spool-input-release INSTANCE RUN --delivery WORKSPACE SUBSCRIPTION --coverage FILE [--approve HASH]
+```
+
+The spool must declare and emit the text output `checkpoint-input-policy.json`
+in the **same attempt** as its state output. The qualified policy names the two
+managed roles and exhaustively describes direct checkpoint dependencies within
+that inventory. For example, a counter retaining its batch for audit emits:
+
+```json
+{"schema":"an-native-checkpoint-managed-input-policy-v1","state_output":"state.txt","data":"checkpoint-pin","parent_state":"not-required"}
+```
+
+The host reads the immutable accepted policy revision through the delivery receipt.
+An operator cannot substitute a later file for this output. All pins in the
+checkpoint declaration must refer to these managed inputs. A missing or contrary
+policy refuses release, even when the operator statement and positive pins agree.
+
+`FILE` attests under `schema: an-checkpoint-exhaustive-input-coverage-v1` that the
+named checkpoint declaration exhausts the new checkpoint's direct retention needs.
+It supplies the exact `checkpoint`, `declaration_sha256` and ordered `inputs`.
+Each input names its original `catalog`, `revision` and explicit `disposition`:
+`checkpoint-pin` or `not-required`. Preview is read-only. Approval binds this
+attestation, the original registered inputs, commit and consumption evidence.
+
+The host verifies the committed ancestor was produced by this run/attempt from
+this parent, rechecks its commit intent and independent checkpoint pins, and
+requires an exact classification of **both** registered inputs. A retained input
+must have a matching pin. A `not-required` decision conflicting with a pin is
+refused. The spool author supplies the semantic completeness judgment in its accepted policy
+for opaque state. The host verifies recorded identities and exhaustiveness over
+this attempt's managed reads. Undeclared external dependencies cannot be proven
+absent from opaque bytes. The attestation conveys no payload deletion authority.
+
+In the counter fixture, A is the accepted batch retained as provenance for the
+new total, and B is the prior subtotal checkpoint. B's contribution is materialized
+in the new total. After consumption acknowledgement and private collection, both
+attempt claims release; the independent new checkpoint pin still protects A.
+A mismatched or missing input, commitment, pin, acknowledgement or release
+completion refuses. Unknown work is never replayed. Existing parent checkpoint
+history and other owners retain their products independently.
+
 Real headless acceptance uses one producer, a successful consumer and a separate
 cancelled consumer. It qualifies live/unknown-owner refusal, work/snapshot ordering,
 explicit release, unrelated retained claims, partial acquisition, lost completion
@@ -243,8 +285,7 @@ and unchanged source payloads. The host owns this fault matrix; Loom only checks
 the packaged producer/consumer handoff. No model or formal payload deletion runs.
 The event case also qualifies successful stateless release with a second retained
 consumer, missing acknowledgement/result/release receipts, stale approval and partial
-state initialization. The state case verifies that committed state still blocks
-success release. Unsupported isolation/runtime/network requirements refuse before
+state initialization. The state case requires explicit coverage for successful stateful release. Unsupported isolation/runtime/network requirements refuse before
 native loading; no backend downgrade is used to make these cases pass.
 
 ## Observing a product's registered consumers
@@ -264,7 +305,9 @@ completed its final release receipt. Partial registration, successful owners and
 unknown outcomes remain visible; this query neither reconciles nor releases them.
 It reports `consumer_receipts_checked: false`, `reference_census_complete: false`
 and `collection_authorized: false`, including when the directory is absent or empty.
-Old hosts, raw-file readers and opaque state references are outside this inventory.
+Explicit checkpoint pins now appear in this inventory and cannot use attempt-release
+markers. Old hosts, raw-file readers and undeclared opaque state references remain
+outside it. See [checkpoint dependencies](native-state.md#explicit-checkpoint-artifact-dependencies).
 
 The query checks source binding, content-addressed claim filenames and paired
 release markers. Orphan, malformed, foreign, linked or oversized records refuse
@@ -281,21 +324,123 @@ another consumer stays retained. Removing the consumer completion receipt does n
 turn that marker into a completed-release guarantee. Malformed source evidence
 refuses, and all original payload hashes remain unchanged.
 
-## Remaining formal payload collection contract
+## Verify one accepted output
 
-The generic instance checkpoint/delivery ledger already has explicit retention,
-recipient acknowledgements and registered state-reference checks. Native outputs
-also live in per-run artifact catalogs and can be selected from independently
-located instances. That usage is not a closed global reference inventory. Do not
-apply generic `product-reclaim` to a native catalog or infer deletion consent from
-observing no current reader or receiving an event acknowledgement.
+```text
+spool-artifacts INSTANCE RUN --output OUTPUT
+```
 
-Closing admission does not prove that existing consumers, state references or
-unmanaged readers have released a version. Native input claims now record new
-managed consumers; formal collection still needs successful-owner release, explicit
-checkpoint dependencies and a defined boundary for unmanaged/legacy readers.
-Opaque state references cannot be inferred by scanning text.
-The current operations reduce private-copy accumulation and close selected new
-uses while preserving formal bytes. Loom may describe intended retention, but
-cannot supply runtime deletion authority. General native formal-product/state GC
-remains unimplemented.
+This inspection verifies the original settlement, execution, instance ownership,
+acceptance intent and the full declared output inventory. It checks **every revision
+manifest** against its content address, expected path, size, content digest and
+attempt provenance. It then reads and hashes the selected payload. The result
+identifies one output under `an-native-selected-artifact-v1`. Availability of
+other payloads is outside this result. The source reference view and retirement
+review use the same selected-output verification.
+
+A missing or damaged sibling payload leaves the selected output inspectable. A
+missing or damaged selected payload refuses inspection. Corrupt shared acceptance
+evidence or sibling revision metadata still invalidates the inventory. Missing
+bytes alone supply no evidence of authorized deletion. Whole-run inspection and
+operations that require whole-run evidence retain their full payload checks.
+
+## Reviewing a retired output before collection
+
+```text
+spool-artifacts PRODUCER RUN --review-retirement OUTPUT [CONSUMER_ROOT ...]
+```
+
+Retire the exact accepted revision first. Supply only consumer instance directories
+whose local records may be opened. With no consumer arguments the command reads
+only the producer. The normal `--references` view keeps its source-only contract.
+
+The review distinguishes checkpoint pins, attempt claims without release, and
+source markers whose consumer was not selected. For a selected released attempt,
+it checks the exact reference slot and original registration against the start,
+the settled receipt and termination evidence, the digest of the immutable release
+intent, and the matching consumer completion. A missing or foreign receipt yields
+`release-unconfirmed`. `release-confirmed` verifies that historical release for
+this one reference. It does not grant a new release or reauthorize a delivery.
+No consumer root is discovered by opening a path from a source claim. The original
+per-run registration is checked locally without traversing its other catalogs.
+
+The limit is 16 selected consumers and 64 source claims. Malformed source evidence
+refuses review. Results are non-atomic: an unconfirmed result can be inspected
+again, but never triggers repair or execution. Even a retired output with zero
+claims reports `collection_authorized: false`; existing catalogs can have unmanaged
+and legacy readers. The real shared-source CLI test removes and exchanges completion
+receipts and verifies that other checkpoint pins and source bytes remain intact.
+
+## Registered copies and explicit payload deletion
+
+At first acceptance the operator may select `spool-accept INSTANCE RUN --registered`.
+Preview and approve this operation separately. All outputs of that new per-run
+catalog receive a distinct registered text or binary revision schema. The immutable
+acceptance intent records the profile. The host stages the bytes and empty reader
+ledger together before publishing the revision. Ordinary acceptance keeps its
+existing format. An existing catalog cannot be adopted, upgraded or collected
+through this command.
+
+Each version has a private SQLite database bound to its canonical catalog and
+revision. SQLite serializes admission, pin creation, copy completion, release and
+closure. A native event delivery or explicit data/state start binds the exact
+source version, including when the start is independently supervised. Preview
+returns its identity. After approval the host reserves the consuming attempt
+in the source ledger before copying its bytes into the private input snapshot.
+An admitted attempt can finish across closure. Generic workspace profiles and
+checkout/edit commands cannot read these bytes. Use registered checkout for an
+independent file. Each declared checkpoint dependency takes its own pin.
+Private peer exchanges and promotion of a registered output to a new checkpoint
+remain outside this input profile.
+
+```text
+spool-managed show INSTANCE RUN OUTPUT REVISION
+spool-managed checkout INSTANCE RUN OUTPUT REVISION READER NEW_FILE [--approve HASH]
+spool-managed close INSTANCE RUN OUTPUT REVISION [--approve HASH]
+spool-managed release INSTANCE RUN OUTPUT REVISION READER [--approve HASH]
+spool-managed delete INSTANCE RUN OUTPUT REVISION [--approve HASH]
+```
+
+Every mutation requires its own preview digest. A copy reader reserves its name
+before receiving bytes. Successful exclusive creation and sync of its independent
+file precede the durable completion. An explicit reader release requires that
+completion. Interrupted copies retain their reservation, even if the destination
+exists. Closing admission fences new readers and stale checkout approvals. It
+allows an already admitted reader to finish and release. Reader identities are
+single-use, bounded to 128 per version including checkpoint pins. Closing admission
+does not release checkpoint dependencies. A source accepts a checkpoint pin release
+only with the completed [checkpoint retirement](native-state.md#explicit-checkpoint-retirement) receipt.
+
+Delete requires confirmed closure, valid releases for every admitted reader and
+verified bytes for that exact accepted output. For a native attempt the host
+matches its source claim and release marker to the consumer's original registration,
+settlement, release intent and final receipt. A missing consumer or an interrupted
+release blocks deletion even when the source marker survived. The deletion intent
+binds the release digests so the completed receipt remains readable if the consumer
+later goes offline. It first commits a single-use
+intent. A second transaction removes the BLOB and commits its matching receipt
+together. Database contention or an interrupted operation returns for explicit
+inspection; there is no automatic replay or intent repair. Show reports
+`deleted` only after verifying absence of the BLOB, the intent, release evidence
+and the matching receipt. Missing bytes, a missing database or damaged records
+cannot attest deletion. A durable intent without a final receipt stays
+`deletion-unconfirmed`. Whole-run historical evidence and selected intact siblings
+remain verifiable. Content requests for a deleted revision fail. The receipt
+records logical bytes removed. Filesystem snapshots, exported copies and backups
+have independent retention.
+
+The reader census covers application handoffs through the reviewed local host with
+exclusive custody of its private store. The current host refuses the database as
+a raw input, and its native workspace policy denies access to backing files and
+SQLite sidecars even under a broader runtime read root. Administrators with direct
+filesystem access, privileged external software, an older host given raw store
+access, and in-place rollback of a live store are outside this trust boundary.
+Keep catalogs private. An ordinary legacy directory never qualifies for deletion
+from an empty observed reference list.
+
+The real macOS headless suite uses a binary payload and a text sibling. A retained
+checkpoint and a registered copy reader each block deletion. After closure and
+confirmed release it deletes the binary version, reads the retained copy in a
+second spool and verifies the sibling and historical inventory. The suite injects
+a lost copy completion, a missing payload and a failure between BLOB removal and
+receipt publication; the transaction rolls back and the intent fences replay.

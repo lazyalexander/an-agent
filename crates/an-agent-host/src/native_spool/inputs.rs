@@ -19,6 +19,7 @@ struct Request {
 pub(super) struct BoundInput<'a> {
     pub artifact: &'a Value,
     pub state_revision: Option<&'a str>,
+    pub supervision: Option<&'a Value>,
 }
 pub(super) enum Input<'a> {
     File(&'a Path),
@@ -37,12 +38,14 @@ pub(super) fn artifact(catalog: &Path, revision: &str) -> Result<Value> {
 fn artifact_binding(catalog: &Path, revision: &str, new_input: bool) -> Result<Value> {
     store::no_links(catalog)?;
     let catalog = catalog.canonicalize()?;
-    let (_, binding) = if new_input {
-        crate::artifact_versions::admission::read_input(&catalog, revision)?
+    let binding = if new_input {
+        crate::artifact_versions::registered::pinnable(&catalog, revision)?
     } else {
-        crate::artifact_versions::read(&catalog, revision)?
+        crate::artifact_versions::registered::verify_or_deleted(&catalog, revision)?
     };
-    let file = if binding["encoding"] == "bytes" {
+    let file = if binding["reader_profile"] == crate::artifact_versions::registered::PROFILE {
+        "revision.json"
+    } else if binding["encoding"] == "bytes" {
         "content.bin"
     } else {
         "content.txt"
@@ -93,6 +96,13 @@ pub(super) fn select(root: &Path, bundle: &bundle::Bundle, input: Input<'_>) -> 
 }
 
 impl Selection {
+    pub fn readers<'a>(
+        &'a self,
+        claims: Option<&'a [Value]>,
+    ) -> Result<Option<crate::workspace_job::NativeInputs<'a>>> {
+        crate::workspace_job::NativeInputs::select(&self.data, self.state.as_ref(), claims)
+    }
+
     pub fn configure(&self, bundle: &bundle::Bundle, profile: &mut Value) -> Result<()> {
         let inputs = profile["inputs"].as_array_mut().ok_or("profile inputs")?;
         let index = inputs.len();
@@ -117,7 +127,11 @@ impl Selection {
         let Some(r) = &bundle.manifest.requirements else {
             return Ok(());
         };
-        if r.runtime == runtime::PYTHON || self.state.is_some() {
+        if r.runtime == runtime::PYTHON
+            || self.state.is_some()
+            || self.data["binding"]["reader_profile"]
+                == crate::artifact_versions::registered::PROFILE
+        {
             let mut layout: Vec<_> = bundle
                 .payload
                 .keys()

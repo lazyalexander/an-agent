@@ -25,6 +25,7 @@ fn crash_child() -> Result<()> {
         Some(&prior),
         preview["approval_sha256"].as_str(),
         &stop,
+        None,
         |boundary, dir| {
             let hit = matches!(
                 (stage.as_str(), boundary),

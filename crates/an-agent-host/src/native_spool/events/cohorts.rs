@@ -1,9 +1,11 @@
-//! Explicit foreground coordination over existing finite dispatches, not a scheduler.
+//! Cohort admission and control for finite dispatches.
 use super::*;
 mod execution;
 mod observation;
-pub use execution::run;
+pub(super) use execution::run_dispatch;
+pub use execution::{run, run_supervised};
 pub use observation::inspect;
+pub(super) use observation::settled;
 
 fn read(path: &Path) -> Result<Value> {
     serde_json::from_slice(&regular(path, 4 * 1024 * 1024)?).map_err(Into::into)
@@ -22,7 +24,7 @@ fn open(workspace: &Path, name: &str) -> Result<(Space, PathBuf, Value)> {
     uuid::Uuid::parse_str(text(&record, "id")?)?;
     Ok((space, root, record))
 }
-fn control(root: &Path) -> Result<Value> {
+pub(super) fn control(root: &Path) -> Result<Value> {
     let mut paths = fs::read_dir(root.join("controls"))?
         .map(|e| e.map(|v| v.path()))
         .collect::<std::io::Result<Vec<_>>>()?;
@@ -49,7 +51,7 @@ fn control(root: &Path) -> Result<Value> {
     }
     read(paths.last().ok_or("missing control")?)
 }
-fn threads(root: &Path) -> Result<Vec<PathBuf>> {
+fn dispatch_dirs(root: &Path) -> Result<Vec<PathBuf>> {
     let mut paths = fs::read_dir(root.join("threads"))?
         .map(|e| e.map(|v| v.path()))
         .collect::<std::io::Result<Vec<_>>>()?;
@@ -100,7 +102,7 @@ pub fn change(workspace: &Path, name: &str, mode: &str, approved: Option<&str>) 
         return Err("session control limit reached".into());
     }
     if mode == "closed" {
-        for path in threads(&root)? {
+        for path in dispatch_dirs(&root)? {
             observation::settled(&space, &record, &path)?;
         }
     }

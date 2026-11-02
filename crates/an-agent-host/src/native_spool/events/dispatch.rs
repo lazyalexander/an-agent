@@ -56,24 +56,17 @@ fn deliver(
     selected: &Selection,
     approved: Option<&str>,
     cancel: &AtomicBool,
+    owner: Option<delivery::Owner<'_>>,
 ) -> Result<Value> {
-    match &selected.state_revision {
-        Some(revision) => delivery::deliver_with_state(
-            &space.root,
-            &selected.event,
-            &selected.subscription,
-            revision,
-            approved,
-            cancel,
-        ),
-        None => delivery::deliver(
-            &space.root,
-            &selected.event,
-            &selected.subscription,
-            approved,
-            cancel,
-        ),
-    }
+    delivery::deliver_selected(
+        &space.root,
+        &selected.event,
+        &selected.subscription,
+        selected.state_revision.as_deref(),
+        approved,
+        cancel,
+        owner,
+    )
 }
 pub(super) fn recorded(space: &Space, dir: &Path) -> Result<Value> {
     let value: Value =
@@ -140,6 +133,18 @@ pub fn inspect_dispatch(path: &Path, name: &str) -> Result<Value> {
     } else {
         json!({"status":"uncertain","reason":"submitted-not-confirmed"})
     };
+    if intent["plan"].get("supervision").is_some()
+        && matches!(
+            value["status"].as_str(),
+            Some("succeeded" | "cancelled" | "timed_out" | "failed")
+        )
+    {
+        let proof = coordinator::completion(&dir, &intent, coordinator::Scope::Dispatch(name))
+            .and_then(|_| settled_entries(&intent["plan"], &entries));
+        if let Err(error) = proof {
+            value = json!({"status":"uncertain","reason":"supervision-unconfirmed","diagnostic":error.to_string()});
+        }
+    }
     value["schema"] = json!("an-native-event-dispatch-observation-v1");
     value["entries"] = json!(entries);
     value["executed"] = json!(false);
@@ -149,6 +154,42 @@ pub fn inspect_dispatch(path: &Path, name: &str) -> Result<Value> {
     Ok(value)
 }
 
+pub(super) fn settled_entries(plan: &Value, entries: &[Value]) -> Result<Vec<Value>> {
+    let selected = plan["entries"].as_array().ok_or("dispatch selection")?;
+    let mut attempts = Vec::new();
+    for (index, entry) in entries.iter().enumerate() {
+        let expected = &selected.get(index).ok_or("extra dispatch entry")?["plan"];
+        let target = Path::new(text(&expected["route"]["target"], "root")?);
+        let run = text(&expected["context"], "delivery")?;
+        if entry["result"]["context"] != expected["context"] {
+            return Err("dispatch entry context mismatch".into());
+        }
+        if entry["result"]["result"]["process_started"] == false {
+            let cancelled =
+                native::supervisor::verify_prelaunch_start(target, run, &expected["start"])?;
+            if entry["result"]["result"] != cancelled {
+                return Err("dispatch prelaunch evidence mismatch".into());
+            }
+            attempts.push(
+                json!({"target":expected["route"]["target"],"run":run,"context":expected["context"],
+                "status":"cancelled","termination_confirmed":true,"process_started":false}),
+            );
+            continue;
+        }
+        let result = native::run::settled(target, run)?;
+        if result["workspace"]["termination_confirmed"] != true
+            || entry["result"]["result"] != result
+            || coordinator::read(&target.join("runs").join(run).join("start.json"))?
+                != expected["start"]
+        {
+            return Err("dispatch termination evidence mismatch".into());
+        }
+        attempts.push(json!({"target":expected["route"]["target"],"run":run,
+            "context":expected["context"],"status":result["status"],"termination_confirmed":true}));
+    }
+    Ok(attempts)
+}
+
 pub fn dispatch(
     path: &Path,
     request: &Path,
@@ -156,7 +197,34 @@ pub fn dispatch(
     stop: &AtomicBool,
     cancel: &AtomicBool,
 ) -> Result<Value> {
-    execute_request(path, Request::read(request)?, approved, stop, cancel)
+    execute_request(
+        path,
+        Request::read(request)?,
+        approved,
+        stop,
+        cancel,
+        coordinator::Driver::Embedded,
+        &|| {},
+    )
+}
+
+pub fn dispatch_supervised(
+    path: &Path,
+    request: &Path,
+    approved: Option<&str>,
+    stop: &AtomicBool,
+    cancel: &AtomicBool,
+    exe: &Path,
+) -> Result<Value> {
+    execute_request(
+        path,
+        Request::read(request)?,
+        approved,
+        stop,
+        cancel,
+        coordinator::Driver::Detached(exe),
+        &|| {},
+    )
 }
 
 pub(super) fn execute_request(
@@ -165,6 +233,8 @@ pub(super) fn execute_request(
     approved: Option<&str>,
     stop: &AtomicBool,
     cancel: &AtomicBool,
+    driver: coordinator::Driver<'_>,
+    before_entry: &dyn Fn(),
 ) -> Result<Value> {
     let space = Space::open(path)?;
     let dir = directory(&space, &request.name)?;
@@ -178,7 +248,13 @@ pub(super) fn execute_request(
     }
     let mut entries = Vec::new();
     for selected in &request.entries {
-        let preview = deliver(&space, selected, None, cancel)?;
+        let preview = deliver(
+            &space,
+            selected,
+            None,
+            cancel,
+            driver.event_owner(&request.name),
+        )?;
         if preview.get("plan").is_none() || preview["executed"] != false {
             return Err(
                 "dispatch selection already admitted or uncertain; reconcile explicitly".into(),
@@ -186,9 +262,16 @@ pub(super) fn execute_request(
         }
         entries.push(preview);
     }
-    let plan = json!({"schema":"an-native-event-dispatch-plan-v1","workspace":space.id,
+    let mut plan = json!({"schema":"an-native-event-dispatch-plan-v1","workspace":space.id,
         "request":request,"entries":entries,"automatic_retries":0,
         "custody":"separate acceptance, state commit and completion; no automatic continuation"});
+    let scope = coordinator::Scope::Dispatch(&request.name);
+    if let coordinator::Driver::Detached(exe) = driver {
+        plan["supervision"] = scope.descriptor(
+            &space.root,
+            &crate::execution::supervisor_process::host_executable(exe)?,
+        )?;
+    }
     let (digest, execute) = native::approval(&plan, approved)?;
     if !execute {
         return Ok(json!({"plan":plan,"approval_sha256":digest,"executed":false}));
@@ -215,10 +298,34 @@ pub(super) fn execute_request(
         )?;
         fs::File::open(&dir)?.sync_all()?;
     }
+    if let coordinator::Driver::Detached(exe) = driver {
+        return coordinator::launch(&space.root, scope, &digest, exe, stop, cancel);
+    }
+    run_entries(&space, &dir, &plan, stop, cancel, driver, before_entry)
+}
+
+pub(super) fn run_entries(
+    space: &Space,
+    dir: &Path,
+    plan: &Value,
+    stop: &AtomicBool,
+    cancel: &AtomicBool,
+    driver: coordinator::Driver<'_>,
+    before_entry: &dyn Fn(),
+) -> Result<Value> {
+    let digest = hash(plan)?;
+    let request: Request = serde_json::from_value(plan["request"].clone())?;
+    let entries = plan["entries"]
+        .as_array()
+        .ok_or("original dispatch entries")?;
+    if entries.len() != request.entries.len() || !(1..=16).contains(&entries.len()) {
+        return Err("invalid original finite selection".into());
+    }
     let mut reason = "completed";
     let mut status = "succeeded";
     let mut attempted = 0;
     for (index, selected) in request.entries.iter().enumerate() {
+        before_entry();
         // Stop finishes the selected entry; cancellation also signals its supervisor.
         if cancel.load(Ordering::Acquire) || stop.load(Ordering::Acquire) {
             reason = if cancel.load(Ordering::Acquire) {
@@ -234,10 +341,11 @@ pub(super) fn execute_request(
             break;
         }
         let result = deliver(
-            &space,
+            space,
             selected,
             entries[index]["approval_sha256"].as_str(),
             cancel,
+            driver.event_owner(&request.name),
         );
         attempted += 1;
         let result = match result {
@@ -248,15 +356,19 @@ pub(super) fn execute_request(
             &dir.join(format!("entry-{index}.json")),
             &json!({"dispatch_sha256":digest,"index":index,"result":result}),
         )?;
-        fs::File::open(&dir)?.sync_all()?;
+        fs::File::open(dir)?.sync_all()?;
         if result["status"] != "succeeded"
             || result["result"]["workspace"]["termination_confirmed"] != true
         {
             reason = "entry-not-confirmed-successful";
-            status = if result["status"] == "cancelled" {
-                "cancelled"
-            } else {
-                "uncertain"
+            let confirmed = !matches!(driver, coordinator::Driver::Embedded)
+                && result["result"]["workspace"]["termination_confirmed"] == true
+                && result["status"] == result["result"]["status"];
+            status = match result["status"].as_str() {
+                Some("cancelled") => "cancelled",
+                Some("timed_out") if confirmed => "timed_out",
+                Some("failed") if confirmed => "failed",
+                _ => "uncertain",
             };
             break;
         }
@@ -265,7 +377,7 @@ pub(super) fn execute_request(
         "dispatch_sha256":digest,"attempted_entries":attempted,"selected_entries":request.entries.len(),
         "executed":true,"automatic_retries":0,"consumed":false});
     write_json(&dir.join("result.json"), &result)?;
-    fs::File::open(&dir)?.sync_all()?;
+    fs::File::open(dir)?.sync_all()?;
     Ok(result)
 }
 

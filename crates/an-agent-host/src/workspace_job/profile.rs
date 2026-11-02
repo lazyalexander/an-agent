@@ -44,7 +44,12 @@ pub(super) struct ArtifactInput {
 }
 
 impl Profile {
-    pub fn plan(bytes: &[u8], root: &Path, predecessor: &Value) -> Result<(Self, Value)> {
+    pub fn plan(
+        bytes: &[u8],
+        root: &Path,
+        predecessor: &Value,
+        reader: Option<super::NativeInputs<'_>>,
+    ) -> Result<(Self, Value)> {
         let p: Self = serde_json::from_slice(bytes)?;
         if p.schema != "an-workspace-job-v2"
             || !p.trusted_process_group
@@ -95,12 +100,17 @@ impl Profile {
                 .map(String::as_str)
                 .unwrap_or(name);
             super::snapshot::validate_name(name, &inputs)?;
-            let bytes = regular(&path, 64 * 1024 * 1024)?;
-            total += bytes.len();
+            let (size, sha256) = if let Some(reader) = reader.and_then(|r| r.at(&path)) {
+                reader.identity()?
+            } else {
+                let bytes = regular(&path, 64 * 1024 * 1024)?;
+                (bytes.len(), store::digest(&bytes))
+            };
+            total += size;
             if total > 100 * 1024 * 1024 {
                 return Err("selected inputs exceed 100 MiB".into());
             }
-            inputs.push(json!({"path":path,"name":name,"sha256":store::digest(&bytes)}));
+            inputs.push(json!({"path":path,"name":name,"sha256":sha256}));
         }
         let mut outputs = p.outputs.clone();
         outputs.sort();
@@ -124,7 +134,7 @@ impl Profile {
                 .checked_add(total as u64)
                 .ok_or("storage estimate overflow")?,
         );
-        let artifacts = super::inputs::bind(&p.artifact_inputs, &inputs, &roots, &work)?;
+        let artifacts = super::inputs::bind(&p.artifact_inputs, &inputs, &roots, &work, reader)?;
         let resolve = |s: &str| s.replace("{work}", &work.to_string_lossy());
         let args: Vec<_> = p.args.iter().map(|a| resolve(a)).collect();
         let mut env = BTreeMap::from([

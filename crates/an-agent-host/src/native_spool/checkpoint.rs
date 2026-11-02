@@ -1,6 +1,12 @@
 //! Explicit opaque state over existing immutable artifacts and instance ownership.
 use super::*;
 use crate::artifact_versions;
+mod dependencies;
+mod retirement;
+pub use dependencies::declare;
+pub(super) use dependencies::inspect as registered_dependencies;
+pub(super) use retirement::{confirm_pin, lock as revision_lock};
+pub use retirement::{release, retire};
 
 fn catalog(root: &Path) -> PathBuf {
     root.join("checkpoints/catalog")
@@ -28,17 +34,19 @@ fn metadata(root: &Path) -> Result<(Value, String)> {
 
 pub(super) fn head_selection(root: &Path) -> Result<Value> {
     let (_, head) = metadata(root)?;
-    selection(root, &head)
+    let selected = committed(root, &head)?;
+    dependencies::inspect(root, &head)?;
+    Ok(selected)
 }
 
 /// Select only a committed ancestor, never an orphan published before HEAD moved.
-pub(super) fn selection(root: &Path, revision: &str) -> Result<Value> {
+pub(super) fn committed(root: &Path, revision: &str) -> Result<Value> {
     if !store::valid_digest(revision) {
         return Err("state revision must be a full digest".into());
     }
     let (metadata, mut cursor) = metadata(root)?;
     for _ in 0..1024 {
-        let (_, binding) = artifact_versions::read(&catalog(root), &cursor)?;
+        let binding = artifact_versions::registered::verify(&catalog(root), &cursor)?;
         if binding["source"]["instance"] != metadata["instance"]
             || binding["source"]["release"] != metadata["release"]
             || binding["source"]["output"] != metadata["output"]
@@ -47,8 +55,13 @@ pub(super) fn selection(root: &Path, revision: &str) -> Result<Value> {
             return Err("state revision ownership mismatch".into());
         }
         if cursor == revision {
+            let file = if binding["reader_profile"] == artifact_versions::registered::PROFILE {
+                "revision.json"
+            } else {
+                "content.txt"
+            };
             return Ok(json!({"catalog":catalog(root),"binding":binding,
-                "path":catalog(root).join("revisions").join(revision).join("content.txt"),
+                "path":catalog(root).join("revisions").join(revision).join(file),
                 "output":metadata["output"]}));
         }
         let Some(parent) = binding["parent"].as_str() else {
@@ -59,12 +72,30 @@ pub(super) fn selection(root: &Path, revision: &str) -> Result<Value> {
     Err("state revision is not in bounded committed history".into())
 }
 
+/// Historical inspection and previously admitted commits do not reopen state selection.
+pub(super) fn selection(root: &Path, revision: &str) -> Result<Value> {
+    let selected = committed(root, revision)?;
+    artifact_versions::registered::admission_open(&catalog(root), &selected["binding"])?;
+    dependencies::inspect(root, revision)?;
+    Ok(selected)
+}
+
 /// Seed state explicitly; the host interprets no domain fields or transitions.
 pub fn init(path: &Path, output: &str, file: &Path, approved: Option<&str>) -> Result<Value> {
+    initialize(path, output, file, false, approved)
+}
+
+pub fn initialize(
+    path: &Path,
+    output: &str,
+    file: &Path,
+    registered: bool,
+    approved: Option<&str>,
+) -> Result<Value> {
     let root = location(path)?;
     let _lock = store::lock(&root)?;
     let (instance, bundle) = active(&root)?;
-    if root.join("checkpoints").exists() {
+    if root.join("checkpoints").try_exists()? || root.join("checkpoints.pending").try_exists()? {
         return Err("state already initialized".into());
     }
     if !bundle.manifest.outputs.iter().any(|p| p == output)
@@ -76,16 +107,31 @@ pub fn init(path: &Path, output: &str, file: &Path, approved: Option<&str>) -> R
     std::str::from_utf8(&bytes)?;
     let mut plan = json!({"schema":"an-native-spool-state-init-v1","instance":instance["instance"],
         "release":bundle.release,"output":output,"content_sha256":store::digest(&bytes)});
+    if registered {
+        plan["reader_profile"] = json!(artifact_versions::registered::PROFILE);
+    }
     round_control::bind(&mut plan, &root, &instance)?;
     let (hash, execute) = approval(&plan, approved)?;
     if !execute {
         return Ok(json!({"plan":plan,"approval_sha256":hash,"executed":false}));
     }
-    let pending = root.join("checkpoints.pending");
+    // Registered ledgers bind the final canonical catalog path. HEAD publishes the seed last.
+    let pending = root.join(if registered {
+        "checkpoints"
+    } else {
+        "checkpoints.pending"
+    });
     fs::create_dir(&pending)?;
+    fs::File::open(&root)?.sync_all()?;
     let source = json!({"kind":"native-spool-state-init","instance":instance["instance"],
         "release":bundle.release,"output":output,"approval_sha256":hash});
-    let first = artifact_versions::publish(&pending.join("catalog"), &bytes, None, source)?;
+    let first = artifact_versions::publish_checkpoint(
+        &pending.join("catalog"),
+        &bytes,
+        None,
+        source,
+        registered,
+    )?;
     write_json(
         &pending.join("state.json"),
         &json!({"schema":"an-native-spool-state-v1",
@@ -95,26 +141,44 @@ pub fn init(path: &Path, output: &str, file: &Path, approved: Option<&str>) -> R
         &pending.join("HEAD"),
         first["revision"].as_str().ok_or("revision")?.as_bytes(),
     )?;
-    fs::rename(pending, root.join("checkpoints"))?;
+    fs::File::open(&pending)?.sync_all()?;
+    if !registered {
+        fs::rename(pending, root.join("checkpoints"))?;
+    }
+    fs::File::open(&root)?.sync_all()?;
     Ok(json!({"status":"succeeded","instance":instance["instance"],"state":first}))
 }
 
 /// Inspect a fixed committed state; an unloaded instance remains readable.
 pub fn inspect(path: &Path, revision: Option<&str>) -> Result<Value> {
     let root = location(path)?;
-    let _lock = store::lock(&root)?;
     let (metadata, head) = metadata(&root)?;
-    let selected = selection(&root, revision.unwrap_or(&head))?;
-    Ok(json!({"metadata":metadata,"head":head,"selected":selected}))
+    let revision = revision.unwrap_or(&head);
+    let selected = committed(&root, revision)?;
+    Ok(json!({"metadata":metadata,"head":head,"selected":selected,
+        "admission":artifact_versions::admission::status(&catalog(&root), revision)?,
+        "dependencies":dependencies::inspect(&root, revision)?}))
 }
 
 /// Commit only an accepted output of a run explicitly started from EXPECTED.
 pub fn commit(path: &Path, expected: &str, name: &str, approved: Option<&str>) -> Result<Value> {
+    commit_with_readers(path, expected, name, false, approved)
+}
+pub fn commit_with_readers(
+    path: &Path,
+    expected: &str,
+    name: &str,
+    register: bool,
+    approved: Option<&str>,
+) -> Result<Value> {
     let root = location(path)?;
     let _lock = store::lock(&root)?;
     let (instance, bundle) = active(&root)?;
     let (_, head) = metadata(&root)?;
-    let selected = selection(&root, expected)?;
+    let selected = committed(&root, expected)?;
+    dependencies::inspect(&root, expected)?;
+    let registered =
+        register || selected["binding"]["reader_profile"] == artifact_versions::registered::PROFILE;
     let (artifacts, _) = super::artifacts::verified(&root, name, true)?;
     let dir = root.join("runs").join(name);
     let start: Value = serde_json::from_slice(&regular(&dir.join("start.json"), 2 * 1024 * 1024)?)?;
@@ -152,10 +216,13 @@ pub fn commit(path: &Path, expected: &str, name: &str, approved: Option<&str>) -
     let mut plan = json!({"schema":"an-native-spool-state-commit-v1","instance":instance["instance"],
         "release":instance["release"],"expected":expected,"run":name,"attempt":attempt,
         "output":selected["output"],"artifact":binding});
+    if registered {
+        plan["reader_profile"] = json!(artifact_versions::registered::PROFILE);
+    }
     round_control::bind(&mut plan, &root, &instance)?;
     let (hash, execute) = approval(&plan, approved)?;
     if head != expected {
-        let (_, current) = artifact_versions::read(&catalog(&root), &head)?;
+        let current = artifact_versions::registered::verify(&catalog(&root), &head)?;
         if current["parent"] == expected && current["source"]["approval_sha256"] == hash {
             return Ok(json!({"status":"succeeded","revision":head,"already_committed":true}));
         }
@@ -169,6 +236,11 @@ pub fn commit(path: &Path, expected: &str, name: &str, approved: Option<&str>) -
     let checkpoints = root.join("checkpoints");
     let intent = checkpoints.join(format!("commit-{hash}.json"));
     if intent.exists() {
+        if registered {
+            return Err(
+                "registered state commit is unconfirmed; inspect the original intent".into(),
+            );
+        }
         let prior: Value = serde_json::from_slice(&regular(&intent, 65536)?)?;
         if prior != plan {
             return Err("state commit intent changed".into());
@@ -176,13 +248,14 @@ pub fn commit(path: &Path, expected: &str, name: &str, approved: Option<&str>) -
     } else {
         write_json(&intent, &plan)?;
     }
-    let next = artifact_versions::publish(
+    let next = artifact_versions::publish_checkpoint(
         &catalog(&root),
         &bytes,
         Some(expected.into()),
         json!({"kind":"native-spool-state-commit","instance":instance["instance"],
             "release":instance["release"],"output":selected["output"],"run":name,
             "attempt":attempt,"artifact":binding,"approval_sha256":hash}),
+        registered,
     )?;
     let revision = next["revision"].as_str().ok_or("revision")?;
     let pending = checkpoints.join(format!("HEAD-{hash}.pending"));
@@ -194,6 +267,7 @@ pub fn commit(path: &Path, expected: &str, name: &str, approved: Option<&str>) -
         store::write_new(&pending, revision.as_bytes())?;
     }
     fs::rename(pending, checkpoints.join("HEAD"))?;
+    fs::File::open(&checkpoints)?.sync_all()?;
     Ok(
         json!({"status":"succeeded","parent":expected,"revision":revision,"already_committed":false}),
     )

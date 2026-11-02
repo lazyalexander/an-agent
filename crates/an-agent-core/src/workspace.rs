@@ -66,14 +66,18 @@ pub struct WorkspaceCite {
     pub register_sha256: Option<String>,
 }
 
-pub struct Workspace {
+/// Append-only workspace facts and their current projections.
+pub struct WorkspaceLedger {
     root: PathBuf,
     lock: Mutex<()>,
     #[cfg(test)]
     fail_env_at: Mutex<Option<&'static str>>,
 }
 
-impl Workspace {
+/// Original public name for the workspace fact ledger.
+pub use WorkspaceLedger as Workspace;
+
+impl WorkspaceLedger {
     pub fn open(root: impl AsRef<Path>) -> Result<Self, WorkspaceError> {
         let root = root.as_ref().to_path_buf();
         fs::create_dir_all(&root)?;

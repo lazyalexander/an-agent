@@ -12,7 +12,14 @@ pub(super) fn dispatch(command: &str, args: &[String]) -> Result<Value> {
             events::reconcile_dispatch(Path::new(root), name, approved)
         }
         ("spool-events-dispatch", [root, request]) => dispatch_control(|stop, cancel| {
-            events::dispatch(Path::new(root), Path::new(request), approved, stop, cancel)
+            events::dispatch_supervised(
+                Path::new(root),
+                Path::new(request),
+                approved,
+                stop,
+                cancel,
+                &std::env::current_exe()?,
+            )
         }),
         ("spool-events-dispatch-show", [root, name]) if approved.is_none() => {
             events::inspect_dispatch(Path::new(root), name)
@@ -54,17 +61,26 @@ pub(super) fn dispatch(command: &str, args: &[String]) -> Result<Value> {
         }
         ("spool-event-revoke", [root, name]) => events::revoke(Path::new(root), name, approved),
         ("spool-event-deliver", [root, event, name]) => super::with_cancellation(|cancelled| {
-            events::deliver(Path::new(root), event, name, approved, &cancelled)
+            events::deliver_supervised(
+                Path::new(root),
+                event,
+                name,
+                None,
+                approved,
+                &cancelled,
+                &std::env::current_exe()?,
+            )
         }),
         ("spool-event-deliver", [root, event, name, flag, revision]) if flag == "--state" => {
             super::with_cancellation(|cancelled| {
-                events::deliver_with_state(
+                events::deliver_supervised(
                     Path::new(root),
                     event,
                     name,
-                    revision,
+                    Some(revision),
                     approved,
                     &cancelled,
+                    &std::env::current_exe()?,
                 )
             })
         }

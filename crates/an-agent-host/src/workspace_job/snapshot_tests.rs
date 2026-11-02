@@ -36,7 +36,15 @@ fn preparation_refuses_changed_source_and_partial_snapshot_without_overwriting()
             "manifest" => fs::create_dir(attempt.join("execution.json"))?,
             _ => (),
         }
-        assert!(prepare(&plan, &attempt, &AtomicBool::new(fault == "cancelled")).is_err());
+        assert!(
+            prepare(
+                &plan,
+                &attempt,
+                &AtomicBool::new(fault == "cancelled"),
+                None
+            )
+            .is_err()
+        );
         assert!(!attempt.join("execution.json").is_file());
         assert!(!attempt.join("intent.json").exists());
         if fault == "partial" {
@@ -53,7 +61,7 @@ fn preparation_refuses_changed_source_and_partial_snapshot_without_overwriting()
 #[test]
 fn persisted_snapshot_survives_source_removal_and_requires_exact_execution_binding() -> Result<()> {
     let (_temp, plan, attempt) = fixture()?;
-    let execution = prepare(&plan, &attempt, &AtomicBool::new(false))?;
+    let execution = prepare(&plan, &attempt, &AtomicBool::new(false), None)?;
     assert_eq!(execution["args"][0], execution["environment"]["SELECTED"]);
     fs::remove_file(plan["inputs"][0]["path"].as_str().unwrap())?;
     let bytes = fs::read(attempt.join("execution.json"))?;
@@ -91,7 +99,7 @@ fn artifact_snapshot_reads_the_pinned_revision_not_the_editable_checkout() -> Re
         plan["inputs"][0]["path"].as_str().unwrap(),
         b"edited after approval",
     )?;
-    prepare(&plan, &attempt, &AtomicBool::new(false))?;
+    prepare(&plan, &attempt, &AtomicBool::new(false), None)?;
     assert_eq!(
         fs::read(attempt.join("snapshot/inputs/selected.txt"))?,
         b"approved"
@@ -103,7 +111,7 @@ fn artifact_snapshot_reads_the_pinned_revision_not_the_editable_checkout() -> Re
 fn nested_layout_preserves_tree_and_rejects_aliases_and_prefix_collisions() -> Result<()> {
     let (_temp, mut plan, attempt) = fixture()?;
     plan["inputs"][0]["name"] = json!("project/kit/selected.txt");
-    prepare(&plan, &attempt, &AtomicBool::new(false))?;
+    prepare(&plan, &attempt, &AtomicBool::new(false), None)?;
     assert_eq!(
         fs::read(attempt.join("snapshot/inputs/project/kit/selected.txt"))?,
         b"approved"
@@ -132,6 +140,6 @@ fn nested_snapshot_refuses_existing_parent_symlink() -> Result<()> {
     #[cfg(unix)]
     std::os::unix::fs::symlink(temp.path(), attempt.join("snapshot/inputs/project"))?;
     #[cfg(unix)]
-    assert!(prepare(&plan, &attempt, &AtomicBool::new(false)).is_err());
+    assert!(prepare(&plan, &attempt, &AtomicBool::new(false), None).is_err());
     Ok(())
 }

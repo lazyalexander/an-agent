@@ -4,7 +4,7 @@ use an_agent_core::det_seam::Clock;
 use std::{sync::atomic::Ordering, time::Duration};
 
 fn observation(space: &Space, event: &Value, route: &Value) -> Result<Value> {
-    let ctx = delivery::context(space, event, route)?;
+    let ctx = delivery::binding(space, event, route)?;
     let dir = delivery::directory(space, &ctx)?;
     store::no_links(&dir)?;
     let refusal = space

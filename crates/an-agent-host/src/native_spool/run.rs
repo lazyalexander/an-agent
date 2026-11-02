@@ -56,6 +56,7 @@ pub fn start(
         RunAdmission {
             cancelled,
             supervisor: None,
+            routed: None,
         },
         |_| Ok(()),
     )
@@ -78,6 +79,7 @@ pub fn start_state(
         RunAdmission {
             cancelled,
             supervisor: None,
+            routed: None,
         },
         |_| Ok(()),
     )
@@ -101,6 +103,7 @@ pub fn start_data_state(
         RunAdmission {
             cancelled,
             supervisor: None,
+            routed: None,
         },
         |_| Ok(()),
     )
@@ -116,7 +119,8 @@ pub(super) fn start_bound(
     cancelled: &AtomicBool,
     before_start: impl FnOnce(&Value) -> Result<()>,
 ) -> Result<Value> {
-    start_selected(
+    let routed = selected.supervision;
+    let result = start_selected(
         path,
         name,
         Input::Bound(selected),
@@ -125,14 +129,20 @@ pub(super) fn start_bound(
         RunAdmission {
             cancelled,
             supervisor: None,
+            routed,
         },
         before_start,
-    )
+    )?;
+    if result["reserved"] == true {
+        return super::supervisor::launch(path, name, &result, cancelled);
+    }
+    Ok(result)
 }
 
 struct RunAdmission<'a> {
     cancelled: &'a AtomicBool,
     supervisor: Option<&'a str>,
+    routed: Option<&'a Value>,
 }
 
 pub(super) fn start_supervised(
@@ -144,7 +154,10 @@ pub(super) fn start_supervised(
 ) -> Result<Value> {
     let plan = &request["plan"];
     let start = &plan["start"];
-    let data = if plan["input_kind"] == "data-state" {
+    let routed = start.get("routed_supervision");
+    let data = if routed.is_some() {
+        Some(super::supervisor::bound_data(start)?)
+    } else if plan["input_kind"] == "data-state" {
         let data = &start["data_input"];
         Some(inputs::artifact(
             Path::new(data["catalog"].as_str().ok_or("data catalog")?),
@@ -158,11 +171,15 @@ pub(super) fn start_supervised(
     let input = match data.as_ref() {
         Some(artifact) => Input::Bound(inputs::BoundInput {
             artifact,
-            state_revision: Some(
-                start["state_input"]["binding"]["revision"]
-                    .as_str()
-                    .ok_or("state revision")?,
-            ),
+            state_revision: start
+                .get("state_input")
+                .map(|state| {
+                    state["binding"]["revision"]
+                        .as_str()
+                        .ok_or("state revision")
+                })
+                .transpose()?,
+            supervision: routed,
         }),
         None => match plan.get("state_revision") {
             Some(value) => Input::State(value.as_str().ok_or("state revision")?),
@@ -179,12 +196,13 @@ pub(super) fn start_supervised(
         RunAdmission {
             cancelled,
             supervisor: request["approval_sha256"].as_str(),
+            routed,
         },
         |observed| {
             if observed != start {
                 return Err("supervisor native plan changed".into());
             }
-            Ok(())
+            super::supervisor::verify_route(root, start)
         },
     )
 }
@@ -234,12 +252,20 @@ fn start_selected(
     } else {
         store::write_new(&profile_path, &bytes)?;
     }
-    let preview =
-        workspace_job::run_managed(&profile_path, &dir.join("job"), None, None, cancelled)?;
+    let preview = workspace_job::run_managed(
+        &profile_path,
+        &dir.join("job"),
+        selected.readers(None)?,
+        None,
+        cancelled,
+    )?;
     let mut plan = json!({"schema":"an-native-spool-start-v1","instance":instance["instance"],
         "release":bundle.release,"run":name,"workspace":preview["plan"],
         "authority":"reviewed native tools only; no detached workers or network; no hostile-agent claim"});
     selected.bind_plan(&mut plan);
+    if let Some(route) = admission.routed {
+        plan["routed_supervision"] = route.clone();
+    }
     round_control::bind(&mut plan, &root, &instance)?;
     let (hash, execute) = approval(&plan, approved)?;
     if !execute {
@@ -249,23 +275,43 @@ fn start_selected(
         return Ok(json!({"status":"cancelled","executed":false,"process_started":false}));
     }
     before_start(&plan)?;
-    super::input_references::acquire(&root, name, &plan)?;
+    if let (None, Some(route)) = (admission.supervisor, admission.routed) {
+        let request = json!({"schema":"an-native-supervisor-v1","root":root,"run":name,"input":null,
+            "input_kind":"routed","seconds":seconds,"executable":route["executable"],"start":plan});
+        return super::supervisor::reserve_locked(&root, name, request);
+    }
+    let claims = super::input_references::acquire(&root, name, &plan)?;
+    let reader = selected.readers(Some(&claims))?;
     write_json(&dir.join("start.json"), &plan)?;
     let receipt = workspace_job::run_managed(
         &profile_path,
         &dir.join("job"),
-        None,
+        reader,
         preview["approval_sha256"].as_str(),
         cancelled,
     )?;
-    let result = json!({"schema":"an-native-spool-run-v1","instance":instance["instance"],
+    let mut result = json!({"schema":"an-native-spool-run-v1","instance":instance["instance"],
         "release":bundle.release,"run":name,"profile_sha256":store::digest(&bytes),
         "status":receipt["status"],"workspace":receipt});
+    if admission.routed.is_some() {
+        result["supervisor_request"] = json!(
+            admission
+                .supervisor
+                .ok_or("missing routed supervisor owner")?
+        );
+    }
     write_json(&dir.join("result.json"), &result)?;
     Ok(result)
 }
 
 pub(super) fn settled(root: &Path, name: &str) -> Result<Value> {
+    let result = settled_native(root, name)?;
+    super::supervisor::verify_settled(root, name, &result)?;
+    Ok(result)
+}
+
+/// Native process proof is available to its owner before the final supervision receipt.
+pub(super) fn settled_native(root: &Path, name: &str) -> Result<Value> {
     bundle::identifier(name)?;
     let (instance, _) = state(root)?;
     let dir = root.join("runs").join(name);
@@ -310,10 +356,14 @@ pub(super) fn settled_runs(root: &Path) -> Result<Vec<Value>> {
                     .and_then(|s| s.to_str())
                     .ok_or("invalid run")?,
             )?);
-        } else if path.join("start.json").exists()
-            || path.join("result.json").exists()
-            || path.join("supervisor").exists()
-        {
+        } else if path.join("supervisor").exists() {
+            runs.push(super::supervisor::settled_prelaunch(
+                root,
+                path.file_name()
+                    .and_then(|s| s.to_str())
+                    .ok_or("invalid run")?,
+            )?);
+        } else if path.join("start.json").exists() || path.join("result.json").exists() {
             return Err("started spool run lacks workspace settlement evidence".into());
         }
     }
@@ -322,15 +372,25 @@ pub(super) fn settled_runs(root: &Path) -> Result<Vec<Value>> {
 }
 
 pub fn accept(path: &Path, name: &str, approved: Option<&str>) -> Result<Value> {
-    custody(path, name, approved, false)
+    custody(path, name, approved, Custody::Accept)
 }
 pub fn reclaim(path: &Path, name: &str, approved: Option<&str>) -> Result<Value> {
-    custody(path, name, approved, true)
+    custody(path, name, approved, Custody::Reclaim)
 }
-fn custody(path: &Path, name: &str, approved: Option<&str>, collect: bool) -> Result<Value> {
+pub fn accept_registered(path: &Path, name: &str, approved: Option<&str>) -> Result<Value> {
+    custody(path, name, approved, Custody::Registered)
+}
+enum Custody {
+    Accept,
+    Registered,
+    Reclaim,
+}
+
+fn custody(path: &Path, name: &str, approved: Option<&str>, mode: Custody) -> Result<Value> {
     let root = location(path)?;
     let _lock = store::lock(&root)?;
     let result = settled(&root, name)?;
+    let collect = matches!(mode, Custody::Reclaim);
     if !collect {
         let (instance, bundle) = state(&root)?;
         runtime::verify(&root, &instance, &bundle)?;
@@ -339,10 +399,10 @@ fn custody(path: &Path, name: &str, approved: Option<&str>, collect: bool) -> Re
     let id = result["workspace"]["attempt"]
         .as_str()
         .ok_or("missing attempt")?;
-    let operation = if collect {
-        workspace_job::reclaim_managed
-    } else {
-        workspace_job::accept_managed
+    let operation = match mode {
+        Custody::Reclaim => workspace_job::reclaim_managed,
+        Custody::Registered => workspace_job::accept_registered,
+        Custody::Accept => workspace_job::accept_managed,
     };
     let preview = operation(&job, id, None)?;
     let plan = json!({"instance":result["instance"],"release":result["release"],"run":name,

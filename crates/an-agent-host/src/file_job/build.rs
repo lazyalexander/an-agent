@@ -180,7 +180,7 @@ pub fn build(
             yaml: BUILD_DECLARATION.into(),
         },
     )?;
-    control.open_thread(&AgentCard {
+    control.open_agent(&AgentCard {
         v: 1,
         id: thread,
         model: ModelSpec {

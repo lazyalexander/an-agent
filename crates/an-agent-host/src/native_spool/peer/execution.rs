@@ -9,6 +9,28 @@ pub fn execute(
     approved: Option<&str>,
     cancel: &AtomicBool,
 ) -> Result<Value> {
+    execute_phase(path, name, phase, approved, cancel, None)
+}
+
+pub fn execute_supervised(
+    path: &Path,
+    name: &str,
+    phase: &str,
+    approved: Option<&str>,
+    cancel: &AtomicBool,
+    executable: &Path,
+) -> Result<Value> {
+    execute_phase(path, name, phase, approved, cancel, Some(executable))
+}
+
+fn execute_phase(
+    path: &Path,
+    name: &str,
+    phase: &str,
+    approved: Option<&str>,
+    cancel: &AtomicBool,
+    executable: Option<&Path>,
+) -> Result<Value> {
     if !matches!(phase, "request" | "response") {
         return Err("invalid peer phase".into());
     }
@@ -28,11 +50,17 @@ pub fn execute(
         if value != record["plan"]["data"] {
             return Err("peer request material changed".into());
         }
+        if record["plan"]["schema"] == CONTEXT_REQUEST
+            && packet_evidence(&value, &record["plan"]["target"])?
+                != record["plan"]["context_packet"]
+        {
+            return Err("peer context selection changed".into());
+        }
         value
     } else {
         publication::confirmed_reply(&dir, &record)?
     };
-    data["peer_input"] = context(&record, phase);
+    data["peer_input"] = phase_binding(&record, phase);
     let role = if phase == "request" {
         "target"
     } else {
@@ -40,7 +68,15 @@ pub fn execute(
     };
     let receiver = Path::new(text(&record["plan"][role], "root")?);
     let state_key = format!("{phase}_state");
+    let supervision = executable
+        .map(crate::execution::supervisor_process::host_executable)
+        .transpose()?
+        .map(|exe| {
+            json!({"kind":"peer","executable":exe,
+        "requester":record["plan"]["source"]["root"],"name":name,"phase":phase})
+        });
     let selection = inputs::BoundInput {
+        supervision: supervision.as_ref(),
         artifact: &data,
         state_revision: record["plan"][&state_key].as_str(),
     };
@@ -69,7 +105,7 @@ pub fn execute(
             current(&record)
         },
     )?;
-    if result.get("plan").is_some() || !marker.try_exists()? {
+    if supervision.is_some() || result.get("plan").is_some() || !marker.try_exists()? {
         return Ok(result);
     }
     write_json(
@@ -78,4 +114,27 @@ pub fn execute(
     )?;
     sync(&dir)?;
     Ok(result)
+}
+
+pub(in crate::native_spool) fn bound_phase<'a>(
+    receiver: &Path,
+    start: &Value,
+    route: &'a Value,
+) -> Result<(PathBuf, Value, &'a str)> {
+    let phase = text(route, "phase")?;
+    let role = match phase {
+        "request" => "target",
+        "response" => "source",
+        _ => return Err("invalid peer supervisor phase".into()),
+    };
+    let (dir, record) = open(Path::new(text(route, "requester")?), text(route, "name")?)?;
+    let marker = read(&dir.join(format!("{phase}-start.json")))?;
+    if marker != json!({"request":record["approval_sha256"],"start":start})
+        || record["plan"][role]["root"] != json!(receiver)
+        || start["peer_input"] != phase_binding(&record, phase)
+        || start["run"] != run_name(&record, phase)?
+    {
+        return Err("supervisor start differs from the original peer admission".into());
+    }
+    Ok((dir, record, phase))
 }

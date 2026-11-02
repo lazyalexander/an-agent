@@ -44,7 +44,7 @@ impl Space {
         let facts = if observing {
             super::facts::Facts::observed(&bytes)?
         } else {
-            super::facts::Facts::Live(Workspace::open(root.join("facts"))?)
+            super::facts::Facts::Live(WorkspaceLedger::open(root.join("facts"))?)
         };
         if facts.log()?.len() > 512 {
             return Err("native event workspace record limit exceeded".into());
@@ -224,7 +224,7 @@ pub fn init(path: &Path) -> Result<Value> {
         .canonicalize()?
         .join(path.file_name().ok_or("workspace name")?);
     store::directory(&root)?;
-    Workspace::open(root.join("facts"))?;
+    WorkspaceLedger::open(root.join("facts"))?;
     for dir in ["deliveries", "revocations"] {
         store::directory(&root.join(dir))?;
     }

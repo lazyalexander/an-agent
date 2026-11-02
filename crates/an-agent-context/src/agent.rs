@@ -1,4 +1,4 @@
-//! Thread-facing cuts and assembly. Tape writes go through `AgentControl`.
+//! Agent-facing cuts and assembly. Tape writes go through `AgentControl`.
 
 use std::path::Path;
 
@@ -16,44 +16,44 @@ use super::{AssembleMode, Assembly, ContextError, Cut, Piece, read_proj};
 
 /// Note a summary, cut the tail, and record the cut. The tape writes go
 /// through `AgentControl`.
-pub fn summarize_thread(
+pub fn summarize_context(
     control: &AgentControl,
-    thread: Uuid,
+    agent_id: Uuid,
     text: &str,
 ) -> Result<Cut, ContextError> {
-    control.note(thread, "summary", text)?;
-    cut_thread_since(control, thread)
+    control.note(agent_id, "summary", text)?;
+    cut_context_since(control, agent_id)
 }
 
 /// Cut the uncompressed tail when it is long enough. Short tails return
 /// `Ok(None)` and write nothing.
-pub fn cut_thread(
+pub fn cut_context(
     control: &AgentControl,
-    thread: Uuid,
+    agent_id: Uuid,
     max_chars: usize,
 ) -> Result<Option<Cut>, ContextError> {
-    let dir = control.directory(thread)?;
-    let events = control.events(thread)?;
+    let dir = control.directory(agent_id)?;
+    let events = control.events(agent_id)?;
     let Some(cut) = cut_if_long(&dir, &events, max_chars)? else {
         return Ok(None);
     };
-    control.commit_compress(thread, &cut.sha256, &cut.events)?;
-    let events = control.events(thread)?;
+    control.commit_compress(agent_id, &cut.sha256, &cut.events)?;
+    let events = control.events(agent_id)?;
     rebuild_index(&dir, &events)?;
     Ok(Some(cut))
 }
 
-/// Choose pieces for this thread. A second call with the same mode, the
+/// Choose pieces for this agent. A second call with the same mode, the
 /// same budget, and no new tape events returns the same pieces and does
 /// not rewrite markdown or the index.
-pub fn assemble_thread(
+pub fn assemble_context(
     control: &AgentControl,
-    thread: Uuid,
+    agent_id: Uuid,
     mode: AssembleMode,
     budget_chars: usize,
 ) -> Result<Assembly, ContextError> {
-    let dir = control.directory(thread)?;
-    let prompt = control.prompt(thread)?;
+    let dir = control.directory(agent_id)?;
+    let prompt = control.prompt(agent_id)?;
     let config = read_proj(&dir, "config");
     if mode == AssembleMode::Independent {
         return Ok(Assembly {
@@ -62,7 +62,7 @@ pub fn assemble_thread(
             context: Vec::new(),
         });
     }
-    let events = control.events(thread)?;
+    let events = control.events(agent_id)?;
     let cite = control.workspace_cite()?;
     if let Some(hit) = cache_hit(&dir, &events, mode, budget_chars, &cite)? {
         return Ok(Assembly {
@@ -105,17 +105,17 @@ pub fn assemble_thread(
         "pieces": assembly.context.iter().map(piece_body).collect::<Vec<_>>(),
     })
     .to_string();
-    control.commit_context(thread, &body, &refs)?;
+    control.commit_context(agent_id, &body, &refs)?;
     Ok(assembly)
 }
 
-fn cut_thread_since(control: &AgentControl, thread: Uuid) -> Result<Cut, ContextError> {
-    let dir = control.directory(thread)?;
-    let events = control.events(thread)?;
+fn cut_context_since(control: &AgentControl, agent_id: Uuid) -> Result<Cut, ContextError> {
+    let dir = control.directory(agent_id)?;
+    let events = control.events(agent_id)?;
     let span = uncompressed(&events);
     let cut = write_cut(&dir, &span)?;
-    control.commit_compress(thread, &cut.sha256, &cut.events)?;
-    let events = control.events(thread)?;
+    control.commit_compress(agent_id, &cut.sha256, &cut.events)?;
+    let events = control.events(agent_id)?;
     rebuild_index(&dir, &events)?;
     Ok(cut)
 }

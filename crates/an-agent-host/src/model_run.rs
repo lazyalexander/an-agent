@@ -214,7 +214,7 @@ fn invoke(
         env: vec![],
     })?;
     control.set_model_client(Arc::new(connection));
-    let thread = control.open_thread(&AgentCard {
+    let agent_id = control.open_agent(&AgentCard {
         v: 1,
         id,
         model: spec,
@@ -224,7 +224,7 @@ fn invoke(
         kernel: "0.1.0".into(),
         supersedes: None,
     })?;
-    let clip = context_exchange::import(control, thread, packet)?;
+    let clip = context_exchange::import(control, agent_id, packet)?;
     let descriptor = an_agent_spool::spool::parse(DESCRIPTOR)?;
     control.mount_agent_described(
         "host-model",
@@ -236,12 +236,12 @@ fn invoke(
         },
     )?;
     let event = control.push_event("model.request", "Explicitly approved model request")?;
-    let outcome = control.offer_on(thread, "host-model", &event.id)?;
+    let outcome = control.offer_on(agent_id, "host-model", &event.id)?;
     let DeliveryOutcome::Reply(reply) = outcome else {
         return Err("model admission refused".into());
     };
     let observation = control
-        .events(thread)?
+        .events(agent_id)?
         .into_iter()
         .rev()
         .filter_map(|e| serde_json::from_str::<Value>(&e.content).ok())
@@ -254,15 +254,15 @@ fn invoke(
         return Err("invalid response reference".into());
     }
     let bytes = store::read(
-        &control.directory(thread)?.join("blobs").join(sha),
+        &control.directory(agent_id)?.join("blobs").join(sha),
         1024 * 1024,
     )?;
     if store::digest(&bytes) != sha {
         return Err("model response hash mismatch".into());
     }
     std::str::from_utf8(&bytes)?;
-    control.validate_reply(thread, &reply)?;
+    control.validate_reply(agent_id, &reply)?;
     store::write_new(&output.join("output.txt"), &bytes)?;
-    control.applied(thread, &reply, "Model response artifact persisted")?;
+    control.applied(agent_id, &reply, "Model response artifact persisted")?;
     Ok(observation)
 }

@@ -9,6 +9,7 @@ license.workspace = true
 workspace = true
 
 [dependencies]
+rusqlite = { version = "0.36", features = ["bundled"] }
 an-agent-core = { path = "../an-agent-core" }
 an-agent-spool = { path = "../an-agent-spool" }
 reqwest.workspace = true
