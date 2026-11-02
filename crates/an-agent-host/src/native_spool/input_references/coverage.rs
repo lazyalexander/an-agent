@@ -63,7 +63,7 @@ pub(super) fn verify(
     if coverage.schema != "an-checkpoint-exhaustive-input-coverage-v1" {
         return Err("explicit exhaustive checkpoint dependency attestation required".into());
     }
-    let checkpoint = checkpoint::selection(root, &coverage.checkpoint)?;
+    let checkpoint = checkpoint::committed(root, &coverage.checkpoint)?;
     let binding = &checkpoint["binding"];
     let source = &binding["source"];
     let parent = start["state_input"]["binding"]["revision"]

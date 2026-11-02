@@ -12,7 +12,7 @@ pub(super) fn bind(
     inputs: &[Value],
     roots: &[std::path::PathBuf],
     work: &Path,
-    reader: Option<NativeInput<'_>>,
+    reader: Option<NativeInputs<'_>>,
 ) -> Result<Vec<Value>> {
     if requests.len() > 16 {
         return Err("too many artifact inputs".into());
@@ -39,7 +39,7 @@ pub(super) fn bind(
                 "artifact catalog must remain outside workload read and write roots".into(),
             );
         }
-        let binding = if let Some(reader) = reader.filter(|r| r.matches(&path)) {
+        let binding = if let Some(reader) = reader.and_then(|r| r.at(&path)) {
             if reader.data["catalog"] != json!(catalog)
                 || reader.data["binding"]["revision"] != request.revision
             {
@@ -57,43 +57,57 @@ pub(super) fn bind(
     Ok(result)
 }
 
-/// Only native admission constructs this handle. Workspace profiles cannot deserialize it.
+/// Only native admission supplies registered business or checkpoint slots.
 #[derive(Clone, Copy)]
-pub(crate) struct NativeInput<'a> {
+pub(crate) struct NativeInputs<'a>([Option<NativeInput<'a>>; 2]);
+
+#[derive(Clone, Copy)]
+pub(super) struct NativeInput<'a> {
     data: &'a Value,
     reference: Option<&'a Value>,
 }
 
-impl<'a> NativeInput<'a> {
-    pub(crate) fn preview(data: &'a Value) -> Self {
-        Self {
-            data,
-            reference: None,
+impl<'a> NativeInputs<'a> {
+    pub(crate) fn select(
+        data: &'a Value,
+        state: Option<&'a Value>,
+        claims: Option<&'a [Value]>,
+    ) -> Result<Option<Self>> {
+        let mut slots = [None, None];
+        for (index, role) in [Some(data), state].into_iter().enumerate() {
+            let Some(data) = role.filter(|r| {
+                r["binding"]["reader_profile"] == artifact_versions::registered::PROFILE
+            }) else {
+                continue;
+            };
+            let reference = match claims {
+                None => None,
+                Some(claims) => {
+                    let claim = claims.get(index).ok_or("missing registered input claim")?;
+                    if claim["catalog"] != data["catalog"]
+                        || claim["binding"] != data["binding"]
+                        || claim["slot"] != index
+                    {
+                        return Err("registered input claim does not match its role".into());
+                    }
+                    Some(claim)
+                }
+            };
+            slots[index] = Some(NativeInput { data, reference });
         }
+        Ok(slots.iter().any(Option::is_some).then_some(Self(slots)))
     }
 
-    pub(crate) fn admitted(data: &'a Value, claims: &'a [Value]) -> Result<Self> {
-        let claim = claims
-            .first()
-            .ok_or("missing registered business input claim")?;
-        if claim["catalog"] != data["catalog"]
-            || claim["binding"] != data["binding"]
-            || claim["slot"] != 0
-        {
-            return Err("registered business input claim mismatch".into());
-        }
-        Ok(Self {
-            data,
-            reference: Some(claim),
+    pub(super) fn at(self, path: &Path) -> Option<NativeInput<'a>> {
+        self.0.into_iter().flatten().find(|r| {
+            r.data["path"]
+                .as_str()
+                .is_some_and(|p| Path::new(p) == path)
         })
     }
+}
 
-    pub(super) fn matches(self, path: &Path) -> bool {
-        self.data["path"]
-            .as_str()
-            .is_some_and(|p| Path::new(p) == path)
-    }
-
+impl NativeInput<'_> {
     pub(super) fn identity(self) -> Result<(usize, String)> {
         let binding = &self.data["binding"];
         let catalog = Path::new(self.data["catalog"].as_str().ok_or("registered catalog")?);

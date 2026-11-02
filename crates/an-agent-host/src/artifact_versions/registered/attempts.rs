@@ -21,7 +21,7 @@ pub(super) fn released(
         if reader.phase == "copied" && reader.release.is_some() {
             continue;
         }
-        if reader.phase != "attempt" {
+        if !matches!(reader.phase.as_str(), "attempt" | "checkpoint") {
             return Err(
                 "registered checkpoint or unreleased/uncertain reader blocks deletion".into(),
             );
@@ -29,13 +29,18 @@ pub(super) fn released(
         let reference = &reader.plan;
         check_claim(l, reference)?;
         let id = hash(reference)?;
-        if key != &format!("attempt:{id}")
+        if key != &format!("{}:{id}", reader.phase)
             || reference["catalog"] != json!(l.catalog)
             || reference["binding"] != *binding
         {
             return Err("registered attempt source identity mismatch".into());
         }
         let claim = references::mirror(reference)?;
+        if reader.phase == "checkpoint" && claim["release"].is_null() {
+            return Err(
+                "registered checkpoint or unreleased/uncertain reader blocks deletion".into(),
+            );
+        }
         let approval = claim["release"]["approval_sha256"]
             .as_str()
             .ok_or("native attempt release is unconfirmed")?;

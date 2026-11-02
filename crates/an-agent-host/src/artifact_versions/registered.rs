@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 mod actions;
 mod attempts;
 pub use actions::Operation;
-pub(crate) use actions::operate;
+pub(crate) use actions::{drained, operate};
 
 pub(crate) const PROFILE: &str = "registered-copy-v1";
 pub(crate) const FILE: &str = store::REGISTERED_CUSTODY_FILE;

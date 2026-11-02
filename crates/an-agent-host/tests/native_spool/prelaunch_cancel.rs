@@ -83,3 +83,58 @@ fn cancelled_reservation_closes_without_launch_or_custody() -> Result<()> {
     assert!(dir.join("supervisor/completion.json").exists());
     Ok(())
 }
+
+#[test]
+fn closed_checkpoint_keeps_an_unlaunched_reservation_until_positive_cancellation() -> Result<()> {
+    let temp = TempDir::new("checkpoint-reservation");
+    let base = temp.path().canonicalize()?;
+    let root = base.join("owner");
+    spool::load(&package(&base)?, &root)?;
+    let input = base.join("seed.txt");
+    fs::write(&input, "seed\n")?;
+    run(&root, "source", &input, &AtomicBool::new(false))?;
+    accept(&root, "source")?;
+    let product = spool::artifacts(&root, "source")?["outputs"][0].clone();
+    let seed = |hash| spool::checkpoint::initialize(&root, "report.txt", &input, true, hash);
+    let seed_preview = seed(None)?;
+    let state = seed(seed_preview["approval_sha256"].as_str())?;
+    let revision = state["state"]["revision"].as_str().ok_or("revision")?;
+    let file = base.join("pins.json");
+    fs::write(
+        &file,
+        serde_json::to_vec(&json!({"schema":"an-native-checkpoint-dependencies-v1",
+        "artifacts":[{"instance":root,"run":"source","output":"report.txt","revision":product["binding"]["revision"]}]}))?,
+    )?;
+    let pins = spool::checkpoint::declare(&root, revision, &file, None)?;
+    spool::checkpoint::declare(&root, revision, &file, pins["approval_sha256"].as_str())?;
+    let exe = Path::new(env!("CARGO_BIN_EXE_an-agent-host")).canonicalize()?;
+    let prepare =
+        |hash| supervisor::prepare(&root, "pending", Input::State(revision), 15, &exe, hash);
+    let preview = prepare(None)?;
+    let hash = preview["approval_sha256"].as_str().ok_or("approval")?;
+    prepare(Some(hash))?;
+    let close = spool::checkpoint::retire(&root, revision, None)?;
+    spool::checkpoint::retire(&root, revision, close["approval_sha256"].as_str())?;
+    let blocked = spool::checkpoint::release(&root, revision, None).unwrap_err();
+    assert!(
+        blocked
+            .to_string()
+            .contains("reservation has no confirmed outcome")
+    );
+    let cancel = supervisor::cancel(&root, "pending", None)?;
+    supervisor::cancel(&root, "pending", cancel["approval_sha256"].as_str())?;
+    let worker = std::process::Command::new(&exe)
+        .args(["spool-supervisor", "worker"])
+        .arg(&root)
+        .args(["pending", hash])
+        .output()?;
+    let result: Value = serde_json::from_slice(&worker.stdout)?;
+    assert_eq!(result["process_started"], false);
+    let released = spool::checkpoint::release(&root, revision, None)?;
+    assert_eq!(
+        released["plan"]["verified_reservations"]["pending"]["request_sha256"],
+        hash
+    );
+    assert_eq!(released["plan"]["reader_evidence"]["registered_readers"], 0);
+    Ok(())
+}

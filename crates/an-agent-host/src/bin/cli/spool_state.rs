@@ -23,6 +23,18 @@ pub(super) fn dispatch(command: &str, args: &[String]) -> Result<Value> {
         ("spool-state-dependencies", [root, revision, request]) => {
             checkpoint::declare(Path::new(root), revision, Path::new(request), approved)
         }
+        ("spool-state-retire", [root, revision]) => {
+            checkpoint::retire(Path::new(root), revision, approved)
+        }
+        ("spool-state-release", [root, revision]) => {
+            checkpoint::release(Path::new(root), revision, approved)
+        }
+        ("spool-state-init", [root, output, file, flag]) if flag == "--registered" => {
+            checkpoint::initialize(Path::new(root), output, Path::new(file), true, approved)
+        }
+        ("spool-state-commit", [root, expected, run, flag]) if flag == "--registered" => {
+            checkpoint::commit_with_readers(Path::new(root), expected, run, true, approved)
+        }
         ("spool-state-init", [root, output, file]) => {
             checkpoint::init(Path::new(root), output, Path::new(file), approved)
         }

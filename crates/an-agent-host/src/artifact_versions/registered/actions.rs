@@ -139,7 +139,7 @@ fn checkout(
     Ok(json!({"status":"succeeded","copy":plan,"approval_sha256":digest}))
 }
 
-fn deletion_plan(
+fn reader_evidence(
     l: &Ledger,
     owner: &Value,
     binding: &Value,
@@ -151,7 +151,7 @@ fn deletion_plan(
     if *closed != json!({"plan":close_plan,"approval_sha256":hash(&close_plan)?}) {
         return Err("registered closure evidence mismatch".into());
     }
-    for (name, reader) in l.readers.iter().filter(|(_, r)| r.phase != "attempt") {
+    for (name, reader) in l.readers.iter().filter(|(_, r)| r.phase == "copied") {
         let release_plan = json!({"operation":"release-reader","owner":owner,"copy":reader.plan,"revision":l.revision});
         if reader.plan["operation"] != "registered-copy"
             || reader.plan["owner"] != *owner
@@ -162,12 +162,43 @@ fn deletion_plan(
             return Err("registered reader completion evidence mismatch".into());
         }
     }
-    let mut plan = json!({"schema":"an-native-registered-delete-v1","owner":owner,"binding":binding,
+    let mut plan = json!({"owner":owner,"binding":binding,
         "closure":closed,"reader_evidence_sha256":hash(&l.readers)?,"registered_readers":l.readers.len()});
     if !releases.is_empty() {
-        plan["attempt_releases_sha256"] = json!(hash(&releases)?);
+        let key = if l.readers.values().any(|r| r.phase == "checkpoint") {
+            "native_releases_sha256"
+        } else {
+            "attempt_releases_sha256"
+        };
+        plan[key] = json!(hash(&releases)?);
     }
     Ok(plan)
+}
+
+fn deletion_plan(
+    l: &Ledger,
+    owner: &Value,
+    binding: &Value,
+    confirm: Option<super::attempts::Confirm>,
+) -> Result<Value> {
+    let mut plan = reader_evidence(l, owner, binding, confirm)?;
+    plan["schema"] = json!("an-native-registered-delete-v1");
+    Ok(plan)
+}
+
+pub(crate) fn drained(
+    catalog: &Path,
+    binding: &Value,
+    owner: &Value,
+    confirm: Option<super::attempts::Confirm>,
+) -> Result<Value> {
+    transaction(catalog, binding, false, |tx, l| {
+        if l.intent.is_some() || l.receipt.is_some() {
+            return Err("checkpoint has conflicting collection evidence".into());
+        }
+        payload(tx, binding)?;
+        reader_evidence(l, owner, binding, confirm)
+    })
 }
 
 fn delete(

@@ -88,7 +88,7 @@ pub(super) fn prepare(
     plan: &Value,
     attempt: &Path,
     cancelled: &AtomicBool,
-    reader: Option<super::NativeInput<'_>>,
+    reader: Option<super::NativeInputs<'_>>,
 ) -> Result<Value> {
     if cancelled.load(std::sync::atomic::Ordering::Acquire) {
         return Err("snapshot preparation cancelled; no workload started".into());
@@ -130,6 +130,7 @@ pub(super) fn prepare(
             i["binding"]["reader_profile"] == crate::artifact_versions::registered::PROFILE
         }) {
             reader
+                .and_then(|r| r.at(Path::new(item["path"].as_str()?)))
                 .ok_or("registered snapshot requires native attempt admission")?
                 .snapshot(item)?
         } else if let Some(item) = pinned {
