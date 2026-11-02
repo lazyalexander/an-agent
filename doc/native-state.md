@@ -17,11 +17,11 @@ execution authorization and serialized publication. A state version is not a
 process image, automatic restore instruction or authorization for external effects.
 
 ```text
-an-agent-host spool-state-init INSTANCE STATE_OUTPUT INITIAL_FILE [--approve HASH]
+an-agent-host spool-state-init INSTANCE STATE_OUTPUT INITIAL_FILE [--registered] [--approve HASH]
 an-agent-host spool-state-show INSTANCE [REVISION]
 an-agent-host spool-start-state INSTANCE RUN REVISION SECONDS [--approve HASH]
 an-agent-host spool-accept INSTANCE RUN [--approve HASH]
-an-agent-host spool-state-commit INSTANCE EXPECTED_REVISION RUN [--approve HASH]
+an-agent-host spool-state-commit INSTANCE EXPECTED_REVISION RUN [--registered] [--approve HASH]
 ```
 
 Initialize, start, accept and commit require their own preview and exact approval.
@@ -35,8 +35,8 @@ Selected code and the state input must retain distinct snapshot basenames under
 the existing native input naming rule.
 
 `spool-state-show` reports HEAD and a fixed committed selection, including its
-catalog/path/binding, without dumping state contents. Only HEAD and up to 1023
-ancestors are selectable; uncommitted candidates are not state. An older committed
+catalog/path/binding, without dumping state contents. New selections require open admission and a committed version within HEAD and
+its 1023 nearest ancestors. An older committed
 version may be evaluated explicitly, but cannot replace a newer HEAD.
 
 Start records the exact state revision, selected-code hashes and attempt input
@@ -269,8 +269,8 @@ runtime input/file grant nor interprets the checkpoint's domain content.
 `spool-artifacts ... --references OUTPUT` view includes the checkpoint owners.
 Checkpoint pins cannot be released through attempt cleanup. HEAD advancement,
 private work collection, unloading and cancelled-attempt input release leave them
-intact. Older checkpoints remain addressable and retain their own pins; new
-checkpoints do not implicitly inherit or release another revision's declaration.
+intact. Older checkpoints retain their pins until explicit release. Each successor owns
+its own dependency declaration.
 
 A declaration directory fences one registration. Missing intent/completion or
 source claims refuse selection of that checkpoint; partial source pins stay
@@ -288,3 +288,44 @@ client/supervisor loss, cancellation and private collection. Checkpoint pins sur
 cancelled-attempt reference release; missing registration completion blocks further
 execution. Unknown execution remains uncollected and is never replayed. Internal
 reference tests also reject attempt-style release and fabricated release markers.
+
+## Explicit checkpoint retirement
+
+Use `--registered` when initializing state or committing a new successor to
+register the readers of that version from publication. A registered parent
+passes the reader policy to successors. Domain authors continue to declare
+each checkpoint's own dependencies. A legacy parent can produce a registered
+successor. Its own reader history stays legacy.
+
+```text
+spool-state-retire INSTANCE REVISION [--approve HASH]
+spool-state-release INSTANCE REVISION [--approve HASH]
+spool-state-show INSTANCE REVISION
+```
+
+Retire first closes admission for the exact committed revision. Existing input
+snapshots remain usable. A fresh start, event delivery, supervisor reservation
+or suspension cannot select the closed version. A known delivery can still be
+inspected. Closing HEAD leaves HEAD in place. A run admitted against that parent
+can finish and commit its successor under the ordinary expected-version check.
+The enrolled state's displayed path identifies its manifest. A workload receives
+the state bytes in its private input snapshot. An independent copy of a state
+output has its own custody.
+
+Release requires a second approval covering the original declaration, its exact
+pins and the drained reader inventory. The host checks each reader's source
+release and owning execution's termination and final release receipt. A submitted
+supervisor reservation before reader acquisition requires positive no-launch
+settlement. A missing receipt, unresolved execution, successful run without
+qualified input-release evidence or partial acquisition keeps the pins.
+Legacy checkpoints can close admission when the instance writer lock is available.
+Their pins stay held because their original readers cannot be enumerated.
+
+The host persists the release intent, writes each source marker and then issues
+one receipt for the whole declaration. The receipt identifies the checkpoint,
+declaration and released claims. Source collection verifies the owning receipt
+before deleting a registered version. Interrupted release is visible as
+`release-unconfirmed` and is never replayed. An independent checkpoint's pin
+continues protecting a shared artifact. Releasing pins keeps checkpoint bytes,
+artifact payloads and history in place. Payload deletion remains a separate
+operator action under the [storage contract](native-storage.md).

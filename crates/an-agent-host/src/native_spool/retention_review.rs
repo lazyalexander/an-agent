@@ -32,7 +32,16 @@ pub fn review(path: &Path, name: &str, output: &str, consumers: &[String]) -> Re
         let owner = &reference["owner"];
         let mut item = json!({"owner":owner,"reference_sha256":digest(reference)?});
         let disposition = if reference["schema"] == "an-native-checkpoint-reference-v1" {
-            "checkpoint-held"
+            if claim["release"].is_null() {
+                "checkpoint-held"
+            } else if allowed.iter().any(|r| json!(r) == owner["root"])
+                && checkpoint::confirm_pin(claim).is_ok()
+            {
+                confirmed += 1;
+                "checkpoint-release-confirmed"
+            } else {
+                "checkpoint-release-unconfirmed"
+            }
         } else if claim["release"].is_null() {
             "attempt-held-or-unconfirmed"
         } else if let Some(root) = allowed.iter().find(|root| json!(root) == owner["root"]) {
@@ -70,6 +79,9 @@ fn read(path: &Path) -> Result<Value> {
 }
 /// The registered source ledger supplies this consumer identity. Check its durable completion.
 pub(super) fn confirm_registered(claim: &Value) -> Result<()> {
+    if claim["reference"]["schema"] == "an-native-checkpoint-reference-v1" {
+        return checkpoint::confirm_pin(claim);
+    }
     let root = location(Path::new(
         claim["reference"]["owner"]["root"]
             .as_str()

@@ -18,7 +18,7 @@ struct Source {
     output: String,
     revision: String,
 }
-fn directory(root: &Path, revision: &str) -> Result<PathBuf> {
+pub(super) fn directory(root: &Path, revision: &str) -> Result<PathBuf> {
     if !store::valid_digest(revision) {
         return Err("checkpoint dependency requires an exact revision".into());
     }
@@ -26,7 +26,7 @@ fn directory(root: &Path, revision: &str) -> Result<PathBuf> {
     store::no_links(&dir)?;
     Ok(dir)
 }
-fn read(path: &Path) -> Result<Value> {
+pub(super) fn read(path: &Path) -> Result<Value> {
     Ok(serde_json::from_slice(&regular(path, 2 * 1024 * 1024)?)?)
 }
 
@@ -35,6 +35,7 @@ pub fn declare(path: &Path, revision: &str, file: &Path, approved: Option<&str>)
     let root = location(path)?;
     let _lock = store::lock(&root)?;
     let (instance, _) = active(&root)?;
+    let _revision = retirement::lock(&root, revision)?;
     let checkpoint = selection(&root, revision)?;
     let dir = directory(&root, revision)?;
     if dir.try_exists()? {
@@ -107,9 +108,32 @@ pub(in super::super) fn inspect(root: &Path, revision: &str) -> Result<Value> {
             "collection_authorized":false}),
         );
     }
+    let plan = declaration(root, revision)?;
+    if let Some(status) = retirement::outcome(root, revision, &plan)? {
+        return Ok(status);
+    }
+    let mut claims = Vec::new();
+    for pin in plan["references"]
+        .as_array()
+        .ok_or("checkpoint references")?
+    {
+        let claim = references::inspect(pin)?;
+        if !claim["release"].is_null() {
+            return Err("checkpoint pin release lacks an owning intent".into());
+        }
+        claims.push(claim);
+    }
+    Ok(
+        json!({"status":"registered","revision":revision,"approval_sha256":store::digest(&serde_json::to_vec(&plan)?),
+        "claims":claims,"reference_census_complete":false,"collection_authorized":false}),
+    )
+}
+
+pub(super) fn declaration(root: &Path, revision: &str) -> Result<Value> {
+    let dir = directory(root, revision)?;
     let plan = read(&dir.join("intent.json"))?;
     let (instance, _) = state(root)?;
-    let (_, binding) = artifact_versions::read(&catalog(root), revision)?;
+    let binding = artifact_versions::registered::verify(&catalog(root), revision)?;
     let owner = json!({"root":root,"instance":instance["instance"],
         "release":instance["release"],"checkpoint_revision":revision});
     let hash = store::digest(&serde_json::to_vec(&plan)?);
@@ -126,19 +150,14 @@ pub(in super::super) fn inspect(root: &Path, revision: &str) -> Result<Value> {
     if !(1..=16).contains(&pins.len()) {
         return Err("checkpoint reference count invalid".into());
     }
-    let mut claims = Vec::new();
+    let mut seen = BTreeSet::new();
     for pin in pins {
-        if pin["schema"] != "an-native-checkpoint-reference-v1" || pin["owner"] != owner {
-            return Err("checkpoint reference owner mismatch".into());
+        if pin["schema"] != "an-native-checkpoint-reference-v1"
+            || pin["owner"] != owner
+            || !seen.insert(serde_json::to_vec(pin)?)
+        {
+            return Err("checkpoint reference owner or inventory mismatch".into());
         }
-        let claim = references::inspect(pin)?;
-        if !claim["release"].is_null() {
-            return Err("checkpoint reference release is unsupported".into());
-        }
-        claims.push(claim);
     }
-    Ok(
-        json!({"status":"registered","revision":revision,"approval_sha256":hash,
-        "claims":claims,"reference_census_complete":false,"collection_authorized":false}),
-    )
+    Ok(plan)
 }

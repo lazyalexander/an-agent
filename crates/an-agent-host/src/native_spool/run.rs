@@ -237,9 +237,7 @@ fn start_selected(
     let preview = workspace_job::run_managed(
         &profile_path,
         &dir.join("job"),
-        selected
-            .registered()
-            .map(workspace_job::NativeInput::preview),
+        selected.readers(None)?,
         None,
         cancelled,
     )?;
@@ -257,10 +255,7 @@ fn start_selected(
     }
     before_start(&plan)?;
     let claims = super::input_references::acquire(&root, name, &plan)?;
-    let reader = selected
-        .registered()
-        .map(|data| workspace_job::NativeInput::admitted(data, &claims))
-        .transpose()?;
+    let reader = selected.readers(Some(&claims))?;
     write_json(&dir.join("start.json"), &plan)?;
     let receipt = workspace_job::run_managed(
         &profile_path,

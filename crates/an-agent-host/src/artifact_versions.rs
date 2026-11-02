@@ -129,6 +129,16 @@ pub(crate) fn publish_registered(
     publish_format(catalog, bytes, None, binary, source, true)
 }
 
+pub(crate) fn publish_checkpoint(
+    catalog: &Path,
+    bytes: &[u8],
+    parent: Option<String>,
+    source: Value,
+    registered: bool,
+) -> Result<Value> {
+    publish_format(catalog, bytes, parent, false, source, registered)
+}
+
 fn publish_format(
     catalog: &Path,
     bytes: &[u8],

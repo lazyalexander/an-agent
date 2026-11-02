@@ -4,7 +4,7 @@ use super::*;
 use std::sync::atomic::AtomicBool;
 mod prelaunch;
 mod worker;
-pub(super) use prelaunch::settled as settled_prelaunch;
+pub(super) use prelaunch::{checkpoint_reservations, settled as settled_prelaunch};
 pub use worker::execute;
 
 const LIMIT: usize = 2 * 1024 * 1024;
@@ -118,6 +118,20 @@ pub fn prepare(
     {
         return Err("supervisor activation changed before reservation".into());
     }
+    // Closing an enrolled state and accepting a supervisor reservation have one order.
+    let state = &plan["start"]["state_input"];
+    let _checkpoint =
+        if state["binding"]["reader_profile"] == crate::artifact_versions::registered::PROFILE {
+            let rev = text(&state["binding"], "revision")?;
+            let guard = checkpoint::revision_lock(&root, rev)?;
+            crate::artifact_versions::registered::admission_open(
+                Path::new(text(state, "catalog")?),
+                &state["binding"],
+            )?;
+            Some(guard)
+        } else {
+            None
+        };
     let run_dir = root.join("runs").join(name);
     if run_dir.join("job").try_exists()? || run_dir.join("start.json").try_exists()? {
         return Err("supervisor run already admitted; inspect, never replay".into());

@@ -50,11 +50,13 @@ pub(super) fn mirror(reference: &Value) -> Result<Value> {
     }
     store::no_links(&released)?;
     let release = if released.try_exists()? {
-        if reference["schema"] == "an-native-checkpoint-reference-v1" {
-            return Err("checkpoint reference has an unsupported release record".into());
-        }
+        let schema = if reference["schema"] == "an-native-checkpoint-reference-v1" {
+            "an-native-checkpoint-pin-release-v1"
+        } else {
+            "an-native-input-reference-release-v1"
+        };
         let value: Value = serde_json::from_slice(&crate::file_job::regular(&released, LIMIT)?)?;
-        if value["schema"] != "an-native-input-reference-release-v1"
+        if value["schema"] != schema
             || value["reference_sha256"] != store::digest(&serde_json::to_vec(reference)?)
             || !value["approval_sha256"]
                 .as_str()
@@ -98,6 +100,18 @@ pub(crate) fn release(reference: &Value, approval: &str) -> Result<()> {
     if reference["schema"] == "an-native-checkpoint-reference-v1" {
         return Err("checkpoint references cannot be released by attempt cleanup".into());
     }
+    write_release(reference, approval, "an-native-input-reference-release-v1")
+}
+
+/// The owning retired checkpoint has verified its closed reader census.
+pub(crate) fn release_pin(reference: &Value, approval: &str) -> Result<()> {
+    if reference["schema"] != "an-native-checkpoint-reference-v1" {
+        return Err("expected a checkpoint pin".into());
+    }
+    write_release(reference, approval, "an-native-checkpoint-pin-release-v1")
+}
+
+fn write_release(reference: &Value, approval: &str, schema: &str) -> Result<()> {
     if !store::valid_digest(approval) {
         return Err("invalid release approval".into());
     }
@@ -106,7 +120,7 @@ pub(crate) fn release(reference: &Value, approval: &str) -> Result<()> {
     if !inspect(reference)?["release"].is_null() {
         return Err("reference release already exists; inspect instead of retrying".into());
     }
-    let record = json!({"schema":"an-native-input-reference-release-v1",
+    let record = json!({"schema":schema,
         "reference_sha256":store::digest(&serde_json::to_vec(reference)?),"approval_sha256":approval});
     store::write_new(&released, &serde_json::to_vec(&record)?)?;
     fs::File::open(released.parent().ok_or("reference directory")?)?.sync_all()?;

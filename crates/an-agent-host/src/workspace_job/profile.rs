@@ -48,7 +48,7 @@ impl Profile {
         bytes: &[u8],
         root: &Path,
         predecessor: &Value,
-        reader: Option<super::NativeInput<'_>>,
+        reader: Option<super::NativeInputs<'_>>,
     ) -> Result<(Self, Value)> {
         let p: Self = serde_json::from_slice(bytes)?;
         if p.schema != "an-workspace-job-v2"
@@ -100,7 +100,7 @@ impl Profile {
                 .map(String::as_str)
                 .unwrap_or(name);
             super::snapshot::validate_name(name, &inputs)?;
-            let (size, sha256) = if let Some(reader) = reader.filter(|r| r.matches(&path)) {
+            let (size, sha256) = if let Some(reader) = reader.and_then(|r| r.at(&path)) {
                 reader.identity()?
             } else {
                 let bytes = regular(&path, 64 * 1024 * 1024)?;

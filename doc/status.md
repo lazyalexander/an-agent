@@ -47,7 +47,10 @@ consumers. A fixed event feeds both consumers after a newer version exists. A
 stateful consumer commits while its peer is active, and the producer can collect
 a released version after confirmed cancellation. Losing the submitting CLI leaves
 one held attempt. Paired qualification records disk use and the exact bytes removed.
-Checkpoint retirement and independent supervision of event clients remain open.
+Enrolled checkpoints can now close admission and explicitly release their own
+pins after reader settlement. Legacy reader histories keep their pins. See
+[checkpoint retirement](native-state.md#explicit-checkpoint-retirement).
+Independent supervision of event clients remains open.
 
 The next [session and retention plan](session-and-retention.md) makes the
 remaining storage work explicit, then proposes a small session/thread coordination

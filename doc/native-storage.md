@@ -389,7 +389,7 @@ returns its identity. After approval the host reserves the consuming attempt
 in the source ledger before copying its bytes into the private input snapshot.
 An admitted attempt can finish across closure. Generic workspace profiles and
 checkout/edit commands cannot read these bytes. Use registered checkout for an
-independent file. A declared checkpoint dependency takes its own permanent pin.
+independent file. Each declared checkpoint dependency takes its own pin.
 Private peer exchanges and promotion of a registered output to a new checkpoint
 remain outside this input profile.
 
@@ -408,7 +408,8 @@ completion. Interrupted copies retain their reservation, even if the destination
 exists. Closing admission fences new readers and stale checkout approvals. It
 allows an already admitted reader to finish and release. Reader identities are
 single-use, bounded to 128 per version including checkpoint pins. Closing admission
-does not release checkpoint dependencies. Pin retirement is outside this profile.
+does not release checkpoint dependencies. A source accepts a checkpoint pin release
+only with the completed [checkpoint retirement](native-state.md#explicit-checkpoint-retirement) receipt.
 
 Delete requires confirmed closure, valid releases for every admitted reader and
 verified bytes for that exact accepted output. For a native attempt the host

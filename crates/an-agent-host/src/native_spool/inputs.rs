@@ -95,9 +95,11 @@ pub(super) fn select(root: &Path, bundle: &bundle::Bundle, input: Input<'_>) -> 
 }
 
 impl Selection {
-    pub fn registered(&self) -> Option<&Value> {
-        (self.data["binding"]["reader_profile"] == crate::artifact_versions::registered::PROFILE)
-            .then_some(&self.data)
+    pub fn readers<'a>(
+        &'a self,
+        claims: Option<&'a [Value]>,
+    ) -> Result<Option<crate::workspace_job::NativeInputs<'a>>> {
+        crate::workspace_job::NativeInputs::select(&self.data, self.state.as_ref(), claims)
     }
 
     pub fn configure(&self, bundle: &bundle::Bundle, profile: &mut Value) -> Result<()> {
@@ -124,7 +126,11 @@ impl Selection {
         let Some(r) = &bundle.manifest.requirements else {
             return Ok(());
         };
-        if r.runtime == runtime::PYTHON || self.state.is_some() || self.registered().is_some() {
+        if r.runtime == runtime::PYTHON
+            || self.state.is_some()
+            || self.data["binding"]["reader_profile"]
+                == crate::artifact_versions::registered::PROFILE
+        {
             let mut layout: Vec<_> = bundle
                 .payload
                 .keys()

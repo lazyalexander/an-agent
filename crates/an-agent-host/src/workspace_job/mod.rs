@@ -2,7 +2,7 @@
 pub(crate) mod capacity;
 mod custody;
 mod inputs;
-pub(crate) use inputs::NativeInput;
+pub(crate) use inputs::NativeInputs;
 mod inventory;
 mod not_started;
 mod profile;
@@ -145,7 +145,7 @@ pub fn run(
 pub(crate) fn run_managed(
     profile_path: &Path,
     path: &Path,
-    reader: Option<NativeInput<'_>>,
+    reader: Option<NativeInputs<'_>>,
     approved: Option<&str>,
     cancelled: &AtomicBool,
 ) -> Result<Value> {
@@ -178,7 +178,7 @@ fn run_inner(
     previous: Option<&str>,
     approved: Option<&str>,
     cancelled: &AtomicBool,
-    reader: Option<NativeInput<'_>>,
+    reader: Option<NativeInputs<'_>>,
     mut boundary: impl FnMut(not_started::Boundary, &Path),
 ) -> Result<Value> {
     let root = root(path)?;
