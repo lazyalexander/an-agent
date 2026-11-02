@@ -7,6 +7,36 @@ pub(super) use execution::bound_phase;
 pub use execution::{execute, execute_supervised};
 pub use publication::{cancel, reply, request};
 
+const CONTEXT_REQUEST: &str = "an-native-peer-context-request-v1";
+const ARTIFACT_REQUEST: &str = "an-native-peer-request-v1";
+
+/// Validate the exact accepted bytes against the receiver selected by the host.
+fn packet_evidence(data: &Value, target: &Value) -> Result<Value> {
+    use crate::context_exchange::{ContextPacket, MAX_PACKET_BYTES};
+    let binding = &data["binding"];
+    if binding["encoding"] == "bytes" {
+        return Err("peer context requires a text artifact".into());
+    }
+    if binding["bytes"]
+        .as_u64()
+        .ok_or("packet byte count missing")?
+        > MAX_PACKET_BYTES as u64
+    {
+        return Err("context packet exceeds 4096 bytes".into());
+    }
+    let bytes = regular(Path::new(text(data, "path")?), MAX_PACKET_BYTES)?;
+    let digest = store::digest(&bytes);
+    if binding["content_sha256"] != digest || binding["bytes"] != bytes.len() {
+        return Err("peer context differs from accepted bytes".into());
+    }
+    let audience = uuid::Uuid::parse_str(text(target, "instance")?)?;
+    let packet = ContextPacket::parse(&bytes, audience)?;
+    Ok(
+        json!({"audience_kind":"native-spool-instance","audience":audience,
+        "packet_sha256":digest,"packet_bytes":bytes.len(),"text_bytes":packet.text.len()}),
+    )
+}
+
 fn text<'a>(v: &'a Value, key: &str) -> Result<&'a str> {
     v[key]
         .as_str()
@@ -52,7 +82,11 @@ fn open(path: &Path, name: &str) -> Result<(PathBuf, Value)> {
     store::no_links(&dir)?;
     let record = read(&dir.join("request.json"))?;
     let (instance, _) = state(&root)?;
-    if record["plan"]["schema"] != "an-native-peer-request-v1"
+    if !matches!(
+        record["plan"]["schema"].as_str(),
+        Some(ARTIFACT_REQUEST | CONTEXT_REQUEST)
+    ) || (record["plan"]["schema"] == CONTEXT_REQUEST)
+        != record["plan"].get("context_packet").is_some()
         || record["plan"]["name"] != name
         || record["plan"]["source"]["root"] != json!(root)
         || record["plan"]["source"]["instance"] != instance["instance"]
