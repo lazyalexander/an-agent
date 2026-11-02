@@ -2,7 +2,14 @@
 //! Host-private records authorize control; process observations grant no custody.
 use super::*;
 use std::sync::atomic::AtomicBool;
+mod client;
 mod prelaunch;
+mod routing;
+pub use client::launch;
+pub(in crate::native_spool) use client::{monitor, observe_controls, poll_control, wait};
+pub(super) use routing::{
+    bound_data, finish_route, reconcile_binding, verify_route, verify_settled,
+};
 mod worker;
 pub(super) use prelaunch::{checkpoint_reservations, settled as settled_prelaunch};
 pub use worker::execute;
@@ -36,6 +43,10 @@ fn request(root: &Path, name: &str) -> Result<(PathBuf, Value)> {
     if plan["schema"] != "an-native-supervisor-v1"
         || plan["root"] != json!(location(root)?)
         || plan["run"] != name
+        || plan["start"]["run"] != name
+        || (plan["input_kind"] == "routed") != plan["start"].get("routed_supervision").is_some()
+        || (plan["input_kind"] == "routed"
+            && plan["executable"] != plan["start"]["routed_supervision"]["executable"])
         || plan["start"]["instance"] != instance["instance"]
         || plan["start"]["release"] != instance["release"]
         || record["approval_sha256"] != store::digest(&serde_json::to_vec(plan)?)
@@ -109,8 +120,14 @@ pub fn prepare(
         return Ok(json!({"plan":plan,"approval_sha256":hash,"reserved":false,"executed":false}));
     }
     let _lock = store::lock(&root)?;
-    let (instance, _) = active(&root)?;
-    let generation = round_control::current(&root, &instance)?["generation"].clone();
+    reserve_locked(&root, name, plan)
+}
+
+/// Both explicit and routed starts hold the receiver lock through this reservation.
+pub(super) fn reserve_locked(root: &Path, name: &str, plan: Value) -> Result<Value> {
+    let hash = store::digest(&serde_json::to_vec(&plan)?);
+    let (instance, _) = active(root)?;
+    let generation = round_control::current(root, &instance)?["generation"].clone();
     if plan["start"]["instance"] != instance["instance"]
         || plan["start"]["release"] != instance["release"]
         || plan["start"]["round_generation"].as_u64().unwrap_or(0)
@@ -123,7 +140,7 @@ pub fn prepare(
     let _checkpoint =
         if state["binding"]["reader_profile"] == crate::artifact_versions::registered::PROFILE {
             let rev = text(&state["binding"], "revision")?;
-            let guard = checkpoint::revision_lock(&root, rev)?;
+            let guard = checkpoint::revision_lock(root, rev)?;
             crate::artifact_versions::registered::admission_open(
                 Path::new(text(state, "catalog")?),
                 &state["binding"],
@@ -136,7 +153,7 @@ pub fn prepare(
     if run_dir.join("job").try_exists()? || run_dir.join("start.json").try_exists()? {
         return Err("supervisor run already admitted; inspect, never replay".into());
     }
-    let dir = directory(&root, name)?;
+    let dir = directory(root, name)?;
     // Directory creation is the single-use launch reservation. A torn write
     // leaves the identity fenced rather than authorizing another launch.
     fs::create_dir(&dir)?;
@@ -191,16 +208,31 @@ pub fn cancel(root: &Path, name: &str, approved: Option<&str>) -> Result<Value> 
 pub fn inspect(root: &Path, name: &str) -> Result<Value> {
     let (dir, record) = request(root, name)?;
     let native = super::status(root, name)?;
-    Ok(
-        json!({"status":"succeeded","request":record["approval_sha256"],"run":name,
+    let mut view = json!({"status":"succeeded","request":record["approval_sha256"],"run":name,
         "owner_record_present":dir.join("owner.json").try_exists()?,
         "completion_record_present":dir.join("completion.json").try_exists()?,
         "cancellation_requested":dir.join("cancel.json").try_exists()?,
-        "native":native,"automatic_retries":0}),
-    )
+        "native":native,"automatic_retries":0});
+    if let Some(route) = record["plan"]["start"].get("routed_supervision") {
+        view["route"] = route.clone();
+    }
+    Ok(view)
 }
 
 /// A client reads only the final response bound to its one launch request.
+pub(in crate::native_spool) fn verify_prelaunch_start(
+    root: &Path,
+    run: &str,
+    expected: &Value,
+) -> Result<Value> {
+    let (_, record) = request(root, run)?;
+    if record["plan"]["start"] != *expected {
+        return Err("prelaunch supervisor selection changed".into());
+    }
+    settled_prelaunch(root, run)?;
+    completion(root, run, text(&record, "approval_sha256")?)
+}
+
 pub fn completion(root: &Path, name: &str, hash: &str) -> Result<Value> {
     let (dir, record) = request(root, name)?;
     let completion = read(&dir.join("completion.json"))?;

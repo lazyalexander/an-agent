@@ -2,8 +2,10 @@
 use super::*;
 mod execution;
 mod observation;
-pub use execution::run;
+pub(super) use execution::run_thread;
+pub use execution::{run, run_supervised};
 pub use observation::inspect;
+pub(super) use observation::settled;
 
 fn read(path: &Path) -> Result<Value> {
     serde_json::from_slice(&regular(path, 4 * 1024 * 1024)?).map_err(Into::into)
@@ -22,7 +24,7 @@ fn open(workspace: &Path, name: &str) -> Result<(Space, PathBuf, Value)> {
     uuid::Uuid::parse_str(text(&record, "id")?)?;
     Ok((space, root, record))
 }
-fn control(root: &Path) -> Result<Value> {
+pub(super) fn control(root: &Path) -> Result<Value> {
     let mut paths = fs::read_dir(root.join("controls"))?
         .map(|e| e.map(|v| v.path()))
         .collect::<std::io::Result<Vec<_>>>()?;

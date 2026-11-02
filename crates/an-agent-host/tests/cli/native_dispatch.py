@@ -122,7 +122,29 @@ def main():
         subprocess.run([str(legacy), "spool-events-show", str(ws)], capture_output=True, check=True)
         old_preview = subprocess.run([str(legacy), "spool-events-dispatch", str(ws), str(req)],
                                      capture_output=True, text=True, check=True)
-        assert json.loads(old_preview.stdout)["approval_sha256"] == preview["approval_sha256"]
+        # Compare the full older foreground contract and require a new grant for independent ownership.
+        legacy_preview = json.loads(old_preview.stdout)
+        normalized = json.loads(json.dumps(preview["plan"]))
+        assert normalized.pop("supervision")["name"] == "normal-batch"
+        def digest(value):
+            return hashlib.sha256(json.dumps(value, ensure_ascii=False, separators=(",", ":"), sort_keys=True).encode()).hexdigest()
+        # The v1-only binary also predates the registered-custody database deny rule.
+        # All other sandbox policy bytes and all other grant inputs must still match.
+        custody_deny = ('(deny file-read-data file-write* (regex #"/[Rr][Ee][Vv][Ii][Ss][Ii][Oo][Nn][Ss]/[^/]+/'
+                        '[Rr][Ee][Gg][Ii][Ss][Tt][Ee][Rr][Ee][Dd]-[Cc][Uu][Ss][Tt][Oo][Dd][Yy][.][Ss][Qq][Ll][Ii][Tt][Ee]3"))')
+        for entry, previous in zip(normalized["entries"], legacy_preview["plan"]["entries"], strict=True):
+            assert entry["plan"]["start"].pop("routed_supervision")["parent"]["dispatch"] == "normal-batch"
+            policy = entry["plan"]["start"]["workspace"]["policy"]
+            prior_policy = previous["plan"]["start"]["workspace"]["policy"]
+            assert policy.count(custody_deny) == 1
+            if custody_deny not in prior_policy:
+                assert policy == prior_policy + custody_deny
+                entry["plan"]["start"]["workspace"]["policy"] = prior_policy
+            entry["approval_sha256"] = digest(entry["plan"])
+        assert normalized == legacy_preview["plan"] and digest(normalized) == legacy_preview["approval_sha256"]
+        assert legacy_preview["approval_sha256"] != preview["approval_sha256"]
+        call("spool-events-dispatch", ws, req, "--approve", legacy_preview["approval_sha256"], success=False)
+        assert not (ws / "dispatches/normal-batch").exists()
     pause_preview = call("spool-event-pause", ws, "normal")
     assert json.loads((ws / "native-events.json").read_text())["schema"] == "an-native-event-workspace-v1"
     call("spool-event-pause", ws, "normal", "--approve", "0" * 64, success=False)

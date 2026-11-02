@@ -1,5 +1,7 @@
 //! Bounded artifact events and explicit delivery, not a business workflow engine.
 mod control;
+pub mod coordinator;
+pub(super) use coordinator::ParentCancel;
 mod delivery;
 mod dispatch;
 mod dispatch_reconcile;
@@ -18,8 +20,9 @@ mod subscription;
 #[cfg(test)]
 mod tests;
 pub use control::subscription_control;
-pub use delivery::{deliver, deliver_with_state};
-pub use dispatch::{dispatch, inspect_dispatch};
+pub(super) use delivery::verify_supervised;
+pub use delivery::{deliver, deliver_supervised, deliver_with_state};
+pub use dispatch::{dispatch, dispatch_supervised, inspect_dispatch};
 pub use monitor::{pending, watch};
 pub use publication::publish;
 pub use settlement::complete;
