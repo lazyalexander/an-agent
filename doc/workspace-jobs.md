@@ -381,7 +381,7 @@ Nothing is automatically applied to the user's original document. The original
 stdio-only-v1 permissions remain unchanged.
 
 To pass the accepted product to a subsequent model request, explicitly select
-`context-export RUN artifact THREAD_UUID TEXT_BYTE_BUDGET NEW_OUTPUT`. The host
+`context-export RUN artifact AUDIENCE_UUID TEXT_BYTE_BUDGET NEW_OUTPUT`. The host
 checks success, exit/reaping evidence, fixed path, size and digest before making
 a bounded context view. It never substitutes diagnostics or the kit's writable
 working copy. [Context export](model-services.md) and model approval remain
