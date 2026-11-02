@@ -8,12 +8,12 @@ fn phase_identity_is_separate_and_context_binds_both_endpoints() {
         run_name(&record, "request").unwrap(),
         run_name(&record, "response").unwrap()
     );
-    let initial = context(&record, "response");
+    let initial = phase_binding(&record, "response");
     record["plan"]["source"]["generation"] = json!(1);
-    assert_ne!(initial, context(&record, "response"));
+    assert_ne!(initial, phase_binding(&record, "response"));
     record["plan"]["source"]["generation"] = json!(0);
     record["plan"]["target"]["generation"] = json!(1);
-    assert_ne!(initial, context(&record, "response"));
+    assert_ne!(initial, phase_binding(&record, "response"));
 }
 
 #[test]

@@ -1,4 +1,4 @@
-//! Two-layer context for one thread tape. The tape stays the record.
+//! Two-layer context for one agent tape. The tape stays the record.
 //! Compressed markdown cites event ids. The sidecar index can be deleted
 //! and rebuilt. This crate writes `ctx/` only. `AgentControl` writes the tape.
 
@@ -55,13 +55,18 @@ pub struct Assembly {
     pub context: Vec<Piece>,
 }
 
+mod agent;
 mod assemble;
 mod index;
-mod thread;
 
+pub use agent::{assemble_context, cut_context, summarize_context};
+/// Compatibility names for the agent-scoped context operations.
+pub use agent::{
+    assemble_context as assemble_thread, cut_context as cut_thread,
+    summarize_context as summarize_thread,
+};
 pub use assemble::{assemble, cut_if_long};
 pub use index::{rebuild_index, segment_sources};
-pub use thread::{assemble_thread, cut_thread, summarize_thread};
 
 fn read_proj(session_dir: &Path, name: &str) -> String {
     fs::read_to_string(session_dir.join(name)).unwrap_or_default()

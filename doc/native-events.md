@@ -133,7 +133,7 @@ No model, GUI, new backend or business workflow interpreter is introduced.
 
 Approved CLI delivery runs under an independent native attempt supervisor.
 The preview identifies the receiver in `plan.route.target.root` and the run in
-`plan.context.delivery`. An explicit finite list or session thread also binds
+`plan.context.delivery`. An explicit finite list or cohort dispatch also binds
 its parent in the start plan. A client exit grants no new delivery and
 acknowledges no product. See [routed ownership and controls](session-and-retention.md#routed-execution-ownership).
 

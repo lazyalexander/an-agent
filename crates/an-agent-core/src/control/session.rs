@@ -6,7 +6,7 @@ use std::sync::atomic::AtomicBool;
 use tokio::sync::watch;
 use uuid::Uuid;
 
-use super::{AgentControl, ControlError, ThreadInner};
+use super::{AgentControl, AgentRunState, ControlError};
 use crate::agent::{SessionError, SessionManifest, spawn_resume};
 use crate::det_seam::Clock;
 use crate::memstream::Kind;
@@ -14,7 +14,7 @@ use crate::principal::card::AgentCard;
 use crate::seat::TreeError;
 
 impl AgentControl {
-    /// Bind this thread's directory and context index to the current
+    /// Bind this agent's directory and context index to the current
     /// workspace generation. Rewrites `session.json`. Appends one tape event.
     pub fn seal_session(&self, id: Uuid) -> Result<SessionManifest, ControlError> {
         let agent = self.mounted(id)?;
@@ -38,7 +38,7 @@ impl AgentControl {
         Ok(manifest)
     }
 
-    /// Drop a finished thread's seat. The directory stays on disk.
+    /// Drop a finished agent's seat. The directory stays on disk.
     pub fn release(&self, id: Uuid) -> Result<(), ControlError> {
         let mut state = self
             .inner
@@ -49,13 +49,13 @@ impl AgentControl {
             return Err(ControlError::Busy(id));
         }
         {
-            let threads = self
+            let agent_runs = self
                 .inner
-                .threads
+                .agent_runs
                 .lock()
                 .unwrap_or_else(|err| err.into_inner());
-            let thread = threads.get(&id).ok_or(ControlError::NotOpen(id))?;
-            if !thread.finished {
+            let run_state = agent_runs.get(&id).ok_or(ControlError::NotOpen(id))?;
+            if !run_state.finished {
                 return Err(ControlError::NotFinished(id));
             }
         }
@@ -73,7 +73,7 @@ impl AgentControl {
         drop(seats);
         seat.unmount();
         self.inner
-            .threads
+            .agent_runs
             .lock()
             .unwrap_or_else(|err| err.into_inner())
             .remove(&id);
@@ -90,7 +90,7 @@ impl AgentControl {
             .unwrap_or_else(|e| e.into_inner());
         if self
             .inner
-            .threads
+            .agent_runs
             .lock()
             .unwrap_or_else(|err| err.into_inner())
             .contains_key(&card.id)
@@ -119,12 +119,12 @@ impl AgentControl {
             .push(seat);
         let (cancel, _rx) = watch::channel(false);
         self.inner
-            .threads
+            .agent_runs
             .lock()
             .unwrap_or_else(|err| err.into_inner())
             .insert(
                 id,
-                ThreadInner {
+                AgentRunState {
                     finished: false,
                     cancelled: Arc::new(AtomicBool::new(false)),
                     cancel,

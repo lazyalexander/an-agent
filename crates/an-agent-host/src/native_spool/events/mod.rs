@@ -11,9 +11,11 @@ mod monitor;
 mod publication;
 mod replacement;
 pub use replacement::replace;
+pub mod cohorts;
 #[cfg(test)]
 mod observation_tests;
-pub mod sessions;
+/// Compatibility path for callers using the original dispatch-group API.
+pub use cohorts as sessions;
 mod settlement;
 mod space;
 mod subscription;
@@ -31,7 +33,7 @@ pub use space::{init, inspect};
 pub use subscription::{revoke, subscribe};
 
 use super::{self as native, Result, Value, json, regular, store, write_json};
-use an_agent_core::workspace::Workspace;
+use an_agent_core::workspace::WorkspaceLedger;
 use space::Space;
 use std::{
     fs,

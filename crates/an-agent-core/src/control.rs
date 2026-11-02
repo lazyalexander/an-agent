@@ -1,5 +1,5 @@
-//! Host face in this process. The host opens a thread, advances it, cancels
-//! the current beat, and finishes it. One thread has one writer and one tape.
+//! Host face in this process. The host opens an agent, advances it, cancels
+//! the current beat, and finishes it. One agent has one writer and one tape.
 //! The tape is born here.
 //!
 //! Config and env belong to the workspace. The host injects them. Config is
@@ -33,7 +33,7 @@ use crate::memstream::{AppendEvent, FromKind, Kind, Memevent, StoreError};
 use crate::principal::card::AgentCard;
 use crate::principal::factory::ToolCtor;
 use crate::seat::{Pool, PoolError, Seat, TreeError};
-use crate::workspace::Workspace;
+use crate::workspace::WorkspaceLedger;
 
 mod agent_beat;
 mod delivery;
@@ -145,7 +145,7 @@ pub enum ControlError {
     Session(#[from] SessionError),
 }
 
-struct ThreadInner {
+struct AgentRunState {
     finished: bool,
     /// Raised by `cancel`. The next beat consumes it and does no work.
     cancelled: Arc<AtomicBool>,
@@ -158,8 +158,8 @@ struct Inner {
     /// One beat at a time. This is not the context distribution pool.
     pool: Pool,
     seats: Mutex<Vec<Seat>>,
-    threads: Mutex<HashMap<Uuid, ThreadInner>>,
-    workspace: Workspace,
+    agent_runs: Mutex<HashMap<Uuid, AgentRunState>>,
+    workspace: WorkspaceLedger,
     bodies: Mutex<Vec<Mounted>>,
     hook_runner: Mutex<Option<Arc<dyn HookRunner>>>,
     model_client: Mutex<Option<Arc<dyn ModelClient>>>,
@@ -175,7 +175,7 @@ pub struct AgentControl {
 }
 
 impl AgentControl {
-    /// `registry` is the tool constructors for every thread opened here.
+    /// `registry` is the tool constructors for every agent opened here.
     /// The kernel registers none. The turn limit is one.
     pub fn open(
         sessions_root: impl AsRef<Path>,
@@ -190,8 +190,8 @@ impl AgentControl {
                     .collect(),
                 pool: Pool::new(1)?,
                 seats: Mutex::new(Vec::new()),
-                threads: Mutex::new(HashMap::new()),
-                workspace: Workspace::open(sessions_root.as_ref().join("workspace"))?,
+                agent_runs: Mutex::new(HashMap::new()),
+                workspace: WorkspaceLedger::open(sessions_root.as_ref().join("workspace"))?,
                 bodies: Mutex::new(Vec::new()),
                 hook_runner: Mutex::new(None),
                 model_client: Mutex::new(None),
@@ -201,9 +201,13 @@ impl AgentControl {
         })
     }
 
-    /// Birth one thread and its tape. The id is the card id. Opening the
-    /// same card twice is refused.
+    /// Compatibility spelling for opening a mounted agent.
     pub fn open_thread(&self, card: &AgentCard) -> Result<Uuid, ControlError> {
+        self.open_agent(card)
+    }
+
+    /// Open one agent and its private session. A mounted card ID cannot be opened twice.
+    pub fn open_agent(&self, card: &AgentCard) -> Result<Uuid, ControlError> {
         let mut state = self
             .inner
             .supervision
@@ -211,7 +215,7 @@ impl AgentControl {
             .unwrap_or_else(|e| e.into_inner());
         if self
             .inner
-            .threads
+            .agent_runs
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .contains_key(&card.id)
@@ -233,12 +237,12 @@ impl AgentControl {
             .push(seat);
         let (cancel, _rx) = watch::channel(false);
         self.inner
-            .threads
+            .agent_runs
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .insert(
                 id,
-                ThreadInner {
+                AgentRunState {
                     finished: false,
                     cancelled: Arc::new(AtomicBool::new(false)),
                     cancel,
@@ -253,7 +257,7 @@ impl AgentControl {
         Ok(id)
     }
 
-    /// One beat: record the host's text on the thread tape. A raised cancel
+    /// One beat: record the host's text on the private tape. A raised cancel
     /// flag consumes the beat and does no work. The host calls again for the
     /// next beat.
     pub fn advance(&self, id: Uuid, text: &str) -> Result<String, ControlError> {
@@ -282,7 +286,7 @@ impl AgentControl {
         )
     }
 
-    /// End the thread. Further beats and mail are refused. Refused while a
+    /// End the agent. Further beats and mail are refused. Refused while a
     /// beat holds the only slot.
     pub fn finish(&self, id: Uuid, text: &str) -> Result<String, ControlError> {
         let mut state = self
@@ -295,17 +299,21 @@ impl AgentControl {
         }
         let agent = self.live(id)?;
         let requests = state.retire(id);
-        let mut threads = self.inner.threads.lock().unwrap_or_else(|e| e.into_inner());
-        let thread = threads.get_mut(&id).ok_or(ControlError::NotOpen(id))?;
-        thread.finished = true;
-        thread.cancelled.store(false, Ordering::Relaxed);
-        let _ = thread.cancel.send(false);
-        drop(threads);
+        let mut agent_runs = self
+            .inner
+            .agent_runs
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let run_state = agent_runs.get_mut(&id).ok_or(ControlError::NotOpen(id))?;
+        run_state.finished = true;
+        run_state.cancelled.store(false, Ordering::Relaxed);
+        let _ = run_state.cancel.send(false);
+        drop(agent_runs);
         self.record_review_closures(requests, "finish")?;
         self.append(&agent, "finish", json!({ "text": text }).to_string())
     }
 
-    /// Mail between two open threads. Each tape gets one event. Does not take
+    /// Mail between two open agents. Each tape gets one event. Does not take
     /// the beat slot.
     pub fn send(&self, from: Uuid, to: Uuid, text: &str) -> Result<String, ControlError> {
         if from == to {
@@ -326,7 +334,7 @@ impl AgentControl {
         Ok(outbound)
     }
 
-    /// Run one granted tool on the thread tape. Code execution stays on this
+    /// Run one granted tool on the private tape. Code execution stays on this
     /// face. There is no sandbox here.
     pub async fn run(
         &self,
@@ -352,7 +360,7 @@ impl AgentControl {
         Ok(result)
     }
 
-    /// Read the thread tape. Not a writer.
+    /// Read the private tape. Not a writer.
     pub fn events(&self, id: Uuid) -> Result<Vec<Memevent>, ControlError> {
         let agent = self
             .inner
@@ -372,12 +380,16 @@ impl AgentControl {
     }
 
     fn live(&self, id: Uuid) -> Result<Arc<Agent>, ControlError> {
-        let threads = self.inner.threads.lock().unwrap_or_else(|e| e.into_inner());
-        let thread = threads.get(&id).ok_or(ControlError::NotOpen(id))?;
-        if thread.finished {
+        let agent_runs = self
+            .inner
+            .agent_runs
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let run_state = agent_runs.get(&id).ok_or(ControlError::NotOpen(id))?;
+        if run_state.finished {
             return Err(ControlError::Finished(id));
         }
-        drop(threads);
+        drop(agent_runs);
         self.inner
             .pool
             .tree()
@@ -400,41 +412,53 @@ impl AgentControl {
 
     /// A beat that finds the cancel flag raised does nothing and lowers it.
     fn enter_beat(&self, id: Uuid) -> Result<(), ControlError> {
-        let threads = self.inner.threads.lock().unwrap_or_else(|e| e.into_inner());
-        let thread = threads.get(&id).ok_or(ControlError::NotOpen(id))?;
-        if thread.finished {
+        let agent_runs = self
+            .inner
+            .agent_runs
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let run_state = agent_runs.get(&id).ok_or(ControlError::NotOpen(id))?;
+        if run_state.finished {
             return Err(ControlError::Finished(id));
         }
-        if thread.cancelled.swap(false, Ordering::Relaxed) {
-            let _ = thread.cancel.send(false);
+        if run_state.cancelled.swap(false, Ordering::Relaxed) {
+            let _ = run_state.cancel.send(false);
             return Err(ControlError::Cancelled(id));
         }
         Ok(())
     }
 
     fn raise_cancel(&self, id: Uuid) -> Result<(), ControlError> {
-        let threads = self.inner.threads.lock().unwrap_or_else(|e| e.into_inner());
-        let thread = threads.get(&id).ok_or(ControlError::NotOpen(id))?;
-        if thread.finished {
+        let agent_runs = self
+            .inner
+            .agent_runs
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let run_state = agent_runs.get(&id).ok_or(ControlError::NotOpen(id))?;
+        if run_state.finished {
             return Err(ControlError::Finished(id));
         }
-        thread.cancelled.store(true, Ordering::Relaxed);
-        thread.cancel.send_replace(true);
+        run_state.cancelled.store(true, Ordering::Relaxed);
+        run_state.cancel.send_replace(true);
         Ok(())
     }
 
     fn cancel_receiver(&self, id: Uuid) -> Result<watch::Receiver<bool>, ControlError> {
-        let threads = self.inner.threads.lock().unwrap_or_else(|e| e.into_inner());
-        let thread = threads.get(&id).ok_or(ControlError::NotOpen(id))?;
-        Ok(thread.cancel.subscribe())
+        let agent_runs = self
+            .inner
+            .agent_runs
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let run_state = agent_runs.get(&id).ok_or(ControlError::NotOpen(id))?;
+        Ok(run_state.cancel.subscribe())
     }
 
-    /// Private directory of the thread. Context files live under it.
+    /// Private directory of the agent. Context files live under it.
     pub fn directory(&self, id: Uuid) -> Result<PathBuf, ControlError> {
         Ok(self.mounted(id)?.session().root().to_path_buf())
     }
 
-    /// Card prompt for this thread.
+    /// Card prompt for this agent.
     pub fn prompt(&self, id: Uuid) -> Result<String, ControlError> {
         Ok(self.mounted(id)?.prompt().to_string())
     }

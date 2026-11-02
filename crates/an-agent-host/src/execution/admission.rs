@@ -66,7 +66,7 @@ pub(super) fn admit(
             yaml: spec.body.clone(),
         },
     )?;
-    let thread = control.open_thread(&AgentCard {
+    let thread = control.open_agent(&AgentCard {
         v: 1,
         id: run_id,
         model: ModelSpec {

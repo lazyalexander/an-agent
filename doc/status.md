@@ -54,7 +54,7 @@ pins after reader settlement. Legacy reader histories keep their pins. See
 The routed supervision suite also qualifies client, controller and attempt-owner
 loss separately. See [execution ownership](session-and-retention.md#routed-execution-ownership).
 
-Native dispatch groups control finite selections. A peer can receive one
+Native cohorts control finite selections. A peer can receive one
 audience-checked context packet from a fixed, accepted text revision.
 A core agent's conversation tape remains private. See the
 [bounded handoff and identity contract](session-and-retention.md#bounded-peer-context)

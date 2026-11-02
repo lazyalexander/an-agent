@@ -527,6 +527,6 @@ For client-independent execution of a native file-input attempt, use
 `spool-supervisor start`. Its separate worker retains the original deadline and
 process ownership after abrupt client exit. The [supervision contract](session-and-retention.md#independent-attempt-supervisor)
 defines durable launch, cancellation and uncertain-result retention. Native CLI
-event deliveries, session threads and peer phases also use independent
+event deliveries, cohort dispatches and peer phases also use independent
 [execution owners](session-and-retention.md#routed-execution-ownership). Ordinary
 `spool-start` retains its foreground behavior.

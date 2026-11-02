@@ -1,11 +1,11 @@
-//! Session admission fences precede dispatch; interruptions never replay a thread.
+//! Cohort admission fences each named dispatch before execution.
 use super::*;
 use std::sync::atomic::Ordering;
 
 pub fn run(
     workspace: &Path,
     name: &str,
-    thread: &str,
+    dispatch_name: &str,
     request: &Path,
     approved: Option<&str>,
     external_cancel: &AtomicBool,
@@ -13,7 +13,7 @@ pub fn run(
     prepare(
         workspace,
         name,
-        thread,
+        dispatch_name,
         request,
         approved,
         external_cancel,
@@ -24,7 +24,7 @@ pub fn run(
 pub fn run_supervised(
     workspace: &Path,
     name: &str,
-    thread: &str,
+    dispatch_name: &str,
     request: &Path,
     approved: Option<&str>,
     cancel: &AtomicBool,
@@ -33,7 +33,7 @@ pub fn run_supervised(
     prepare(
         workspace,
         name,
-        thread,
+        dispatch_name,
         request,
         approved,
         cancel,
@@ -44,15 +44,15 @@ pub fn run_supervised(
 fn prepare(
     workspace: &Path,
     name: &str,
-    thread: &str,
+    dispatch_name: &str,
     request: &Path,
     approved: Option<&str>,
     external_cancel: &AtomicBool,
     exe: Option<&Path>,
 ) -> Result<Value> {
-    native::bundle::identifier(thread)?;
+    native::bundle::identifier(dispatch_name)?;
     let (space, root, record) = open(workspace, name)?;
-    let dir = root.join("threads").join(thread);
+    let dir = root.join("threads").join(dispatch_name);
     store::no_links(&dir)?;
     if dir.exists() {
         return Err("thread already admitted or uncertain; inspect, never replay".into());
@@ -62,7 +62,7 @@ fn prepare(
         return Err("session admission is not open".into());
     }
     let mut selected = dispatch::Request::read(request)?;
-    selected.name = hash(&json!({"session":record,"thread":thread}))?;
+    selected.name = hash(&json!({"session":record,"thread":dispatch_name}))?;
     let bytes = serde_json::to_vec(&selected)?;
     let stop = AtomicBool::new(false);
     let cancel = AtomicBool::new(false);
@@ -72,15 +72,15 @@ fn prepare(
         None,
         &stop,
         &cancel,
-        coordinator::Driver::inside(exe, name, thread),
+        coordinator::Driver::inside(exe, name, dispatch_name),
         &|| {},
     )?;
     if preview.get("plan").is_none() {
         return Err("dispatch already exists; no new ownership".into());
     }
-    let mut plan = json!({"operation":"session-thread-run","session":record,"thread":thread,
+    let mut plan = json!({"operation":"session-thread-run","session":record,"thread":dispatch_name,
         "control":prior,"dispatch":preview,"request_sha256":store::digest(&bytes)});
-    let scope = coordinator::Scope::Thread(name, thread);
+    let scope = coordinator::Scope::in_cohort(name, dispatch_name);
     if let Some(exe) = exe {
         plan["supervision"] = scope.descriptor(
             &space.root,
@@ -100,7 +100,7 @@ fn prepare(
         if external_cancel.load(Ordering::Acquire) {
             return Err("cancelled before admission".into());
         }
-        if threads(&root)?.len() >= 32 {
+        if dispatch_dirs(&root)?.len() >= 32 {
             return Err("session thread limit reached".into());
         }
         fs::create_dir(&dir)?;
@@ -115,10 +115,10 @@ fn prepare(
     if let Some(exe) = exe {
         return coordinator::launch(&space.root, scope, &digest, exe, &stop, external_cancel);
     }
-    run_thread(&space.root, &dir, &plan, &stop, external_cancel, None)
+    run_dispatch(&space.root, &dir, &plan, &stop, external_cancel, None)
 }
 
-pub(in crate::native_spool::events) fn run_thread(
+pub(in crate::native_spool::events) fn run_dispatch(
     workspace: &Path,
     dir: &Path,
     plan: &Value,
@@ -128,9 +128,9 @@ pub(in crate::native_spool::events) fn run_thread(
 ) -> Result<Value> {
     let name = text(&plan["session"], "name")?;
     let (_, root, record) = open(workspace, name)?;
-    let thread = text(plan, "thread")?;
+    let dispatch_name = text(plan, "thread")?;
     if record != plan["session"]
-        || dir != root.join("threads").join(thread)
+        || dir != root.join("threads").join(dispatch_name)
         || store::digest(&regular(&dir.join("request.json"), 65536)?) != plan["request_sha256"]
     {
         return Err("session thread does not bind original request".into());
@@ -170,7 +170,7 @@ pub(in crate::native_spool::events) fn run_thread(
             preview["approval_sha256"].as_str(),
             &stop,
             &cancel,
-            coordinator::Driver::inside(exe, name, thread),
+            coordinator::Driver::inside(exe, name, dispatch_name),
             &poll,
         )
     });
@@ -188,6 +188,6 @@ pub(in crate::native_spool::events) fn run_thread(
     )?;
     fs::File::open(dir)?.sync_all()?;
     Ok(
-        json!({"session":record,"thread":thread,"status":value["status"],"result":value,"automatic_retries":0}),
+        json!({"session":record,"thread":dispatch_name,"status":value["status"],"result":value,"automatic_retries":0}),
     )
 }
