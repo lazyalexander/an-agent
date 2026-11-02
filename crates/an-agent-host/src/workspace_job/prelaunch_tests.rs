@@ -69,6 +69,7 @@ fn positively_unstarted_partial_snapshots_can_be_collected_without_retry() -> Re
             None,
             preview["approval_sha256"].as_str(),
             &stop,
+            None,
             |boundary, _| {
                 if matches!(boundary, not_started::Boundary::IntentPersisted) {
                     fs::write(&selected, b"changed after approval").unwrap();
@@ -135,6 +136,7 @@ fn cancellation_at_both_durable_boundaries_can_resume_or_reclaim_but_never_publi
                 None,
                 preview["approval_sha256"].as_str(),
                 &stop,
+                None,
                 |boundary, _| {
                     if (before_snapshot
                         && matches!(boundary, not_started::Boundary::IntentPersisted))
@@ -195,6 +197,7 @@ fn preparation_failure_settles_the_successor_and_retains_accepted_artifacts() ->
         Some(id),
         preview["approval_sha256"].as_str(),
         &stop,
+        None,
         |boundary, _| {
             if matches!(boundary, not_started::Boundary::IntentPersisted) {
                 fs::write(&selected, b"changed after approval").unwrap();
@@ -229,6 +232,7 @@ fn missing_or_contradictory_not_started_evidence_is_not_settlement() -> Result<(
         None,
         preview["approval_sha256"].as_str(),
         &stop,
+        None,
         |boundary, _| {
             if matches!(boundary, not_started::Boundary::ReadyToLaunch) {
                 stop.store(true, Ordering::Release);
@@ -291,6 +295,7 @@ fn launch_error_or_receipt_write_failure_does_not_authorize_cleanup() -> Result<
             None,
             preview["approval_sha256"].as_str(),
             &stop,
+            None,
             |boundary, dir| {
                 if matches!(boundary, not_started::Boundary::ReadyToLaunch) {
                     id = dir.file_name().unwrap().to_str().unwrap().to_owned();

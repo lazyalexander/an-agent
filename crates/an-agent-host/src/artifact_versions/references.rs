@@ -33,18 +33,22 @@ fn paths(reference: &Value) -> Result<(PathBuf, PathBuf)> {
 }
 
 pub(crate) fn inspect(reference: &Value) -> Result<Value> {
-    let (claim, released) = paths(reference)?;
-    let actual: Value = serde_json::from_slice(&crate::file_job::regular(&claim, LIMIT)?)?;
-    if actual != *reference {
-        return Err("input reference ownership changed".into());
-    }
-    store::no_links(&released)?;
     if reference["binding"]["reader_profile"] == registered::PROFILE {
         registered::check_pin(
             Path::new(reference["catalog"].as_str().ok_or("catalog")?),
             reference,
         )?;
     }
+    mirror(reference)
+}
+
+pub(super) fn mirror(reference: &Value) -> Result<Value> {
+    let (claim, released) = paths(reference)?;
+    let actual: Value = serde_json::from_slice(&crate::file_job::regular(&claim, LIMIT)?)?;
+    if actual != *reference {
+        return Err("input reference ownership changed".into());
+    }
+    store::no_links(&released)?;
     let release = if released.try_exists()? {
         if reference["schema"] == "an-native-checkpoint-reference-v1" {
             return Err("checkpoint reference has an unsupported release record".into());

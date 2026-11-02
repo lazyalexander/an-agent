@@ -68,6 +68,16 @@ fn digest(value: &Value) -> Result<String> {
 fn read(path: &Path) -> Result<Value> {
     Ok(serde_json::from_slice(&regular(path, 2 * 1024 * 1024)?)?)
 }
+/// The registered source ledger supplies this consumer identity. Check its durable completion.
+pub(super) fn confirm_registered(claim: &Value) -> Result<()> {
+    let root = location(Path::new(
+        claim["reference"]["owner"]["root"]
+            .as_str()
+            .ok_or("consumer root")?,
+    ))?;
+    confirm(&root, claim).map(drop)
+}
+
 fn confirm(root: &Path, claim: &Value) -> Result<String> {
     let reference = &claim["reference"];
     let run_name = reference["owner"]["run"].as_str().ok_or("attempt owner")?;

@@ -383,13 +383,15 @@ through this command.
 
 Each version has a private SQLite database bound to its canonical catalog and
 revision. SQLite serializes admission, pin creation, copy completion, release and
-closure. The host validates the ledger digest and the content hash. Old readers
-refuse the new schema. The generic checkout/edit, event input and direct
-revision-input paths cannot export its bytes. For a reviewed headless workload,
-make a registered copy outside the producer instance and pass that file as its
-ordinary input. Host verification reads only return metadata. A checkpoint
-dependency uses the existing declaration command and acquires a permanent version
-pin in the same authoritative ledger before registration completes.
+closure. A native event delivery or explicit data/state start binds the exact
+source version, including when the start is independently supervised. Preview
+returns its identity. After approval the host reserves the consuming attempt
+in the source ledger before copying its bytes into the private input snapshot.
+An admitted attempt can finish across closure. Generic workspace profiles and
+checkout/edit commands cannot read these bytes. Use registered checkout for an
+independent file. A declared checkpoint dependency takes its own permanent pin.
+Private peer exchanges and promotion of a registered output to a new checkpoint
+remain outside this input profile.
 
 ```text
 spool-managed show INSTANCE RUN OUTPUT REVISION
@@ -409,7 +411,12 @@ single-use, bounded to 128 per version including checkpoint pins. Closing admiss
 does not release checkpoint dependencies. Pin retirement is outside this profile.
 
 Delete requires confirmed closure, valid releases for every admitted reader and
-verified bytes for that exact accepted output. It first commits a single-use
+verified bytes for that exact accepted output. For a native attempt the host
+matches its source claim and release marker to the consumer's original registration,
+settlement, release intent and final receipt. A missing consumer or an interrupted
+release blocks deletion even when the source marker survived. The deletion intent
+binds the release digests so the completed receipt remains readable if the consumer
+later goes offline. It first commits a single-use
 intent. A second transaction removes the BLOB and commits its matching receipt
 together. Database contention or an interrupted operation returns for explicit
 inspection; there is no automatic replay or intent repair. Show reports

@@ -7,6 +7,7 @@ from pathlib import Path
 import sqlite3
 import subprocess
 from host_qualification import require_native_workspace
+from registered_delivery import qualify_delivery
 
 
 def main():
@@ -53,7 +54,7 @@ def main():
         'schema': 'an-native-spool-v3', 'name': 'collection', 'version': '1',
         'entry': 'silk/main.sh', 'files': {'silk/main.sh': hashlib.sha256(script.encode()).hexdigest()},
         'outputs': ['bulk.txt', 'state.txt'], 'binary_outputs': ['bulk.txt'],
-        'events': {'consumes': [], 'produces': ['artifact.accepted']},
+        'events': {'consumes': ['artifact.accepted'], 'produces': ['artifact.accepted']},
         'requirements': {'runtime': 'macos-native-process-v1', 'os': 'macos', 'arch': 'portable-source',
                          'interaction': 'headless', 'gpu': 'none', 'inputs': ['input.txt'],
                          'editable': [], 'dependencies': [], 'capabilities': ['read-input', 'write-declared-outputs']}}))
@@ -160,6 +161,7 @@ def main():
     call(*reader('delete'), fail='checkpoint or unreleased')
     assert (root / 'unconfirmed-copy.txt').read_text() == 'retained'
 
+    native_event_revision = qualify_delivery(root, package, producer, source, call, approve, produce)
     evidence = {}
     for run in ('missing', 'interrupted'):
         product = produce(run)
@@ -193,7 +195,7 @@ def main():
         'deleted_revision': b, 'remaining_revision': a, 'logical_bytes_removed': done['logical_bytes'],
         'database_size_before': before, 'database_size_after': db.stat().st_size,
         'uncertain_reader_blocks_delete': True, 'broad_root_raw_read_denied': True,
-        'faults': evidence, 'automatic_retries': 0, 'host_sha256': hashlib.sha256(host.read_bytes()).hexdigest()
+        'native_event_revision': native_event_revision, 'faults': evidence, 'automatic_retries': 0, 'host_sha256': hashlib.sha256(host.read_bytes()).hexdigest()
     }, indent=2))
 
 

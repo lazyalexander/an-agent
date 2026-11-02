@@ -1,8 +1,9 @@
-//! Opt-in native custody. Only the registered copy operation exports payload bytes.
+//! Opt-in native custody. Payload reads require a committed copy or native attempt reservation.
 use super::*;
 use rusqlite::{Connection, OpenFlags, Transaction, TransactionBehavior, params};
 use std::collections::BTreeMap;
 mod actions;
+mod attempts;
 pub use actions::Operation;
 pub(crate) use actions::operate;
 
@@ -152,6 +153,15 @@ fn ensure_open(ledger: &Ledger) -> Result<()> {
     Ok(())
 }
 
+/// A routing observation checks the admission fence without materializing a payload.
+pub(crate) fn admission_open(catalog: &Path, binding: &Value) -> Result<()> {
+    if binding["reader_profile"] == PROFILE {
+        transaction(catalog, binding, false, |_, ledger| ensure_open(ledger))
+    } else {
+        admission::ensure_active(catalog, binding["revision"].as_str().ok_or("revision")?)
+    }
+}
+
 pub(crate) fn verify(catalog: &Path, revision: &str) -> Result<Value> {
     let binding = metadata(catalog, revision)?;
     if binding["reader_profile"] != PROFILE {
@@ -193,22 +203,27 @@ pub(crate) fn pinnable(catalog: &Path, revision: &str) -> Result<Value> {
     })?;
     Ok(binding)
 }
-pub(crate) fn pin(catalog: &Path, reference: &Value) -> Result<()> {
-    if reference["schema"] != "an-native-checkpoint-reference-v1" {
-        return Err("unsupported registered reader".into());
+fn claim_kind(reference: &Value) -> Result<&'static str> {
+    match reference["schema"].as_str() {
+        Some("an-native-checkpoint-reference-v1") => Ok("checkpoint"),
+        Some("an-native-input-reference-v1") => Ok("attempt"),
+        _ => Err("unsupported registered reader".into()),
     }
+}
+pub(crate) fn pin(catalog: &Path, reference: &Value) -> Result<()> {
+    let kind = claim_kind(reference)?;
     let binding = &reference["binding"];
     transaction(catalog, binding, true, |tx, l| {
         ensure_open(l)?;
         payload(tx, binding)?;
-        let key = format!("checkpoint:{}", hash(reference)?);
+        let key = format!("{kind}:{}", hash(reference)?);
         if l.readers.contains_key(&key) || l.readers.len() >= 128 {
-            return Err("checkpoint claim already reserved or ledger full".into());
+            return Err("source claim already reserved or ledger full".into());
         }
         l.readers.insert(
             key,
             Reader {
-                phase: "checkpoint".into(),
+                phase: kind.into(),
                 plan: reference.clone(),
                 release: None,
             },
@@ -218,14 +233,33 @@ pub(crate) fn pin(catalog: &Path, reference: &Value) -> Result<()> {
 }
 pub(crate) fn check_pin(catalog: &Path, reference: &Value) -> Result<()> {
     transaction(catalog, &reference["binding"], false, |_, l| {
-        let record = l
-            .readers
-            .get(&format!("checkpoint:{}", hash(reference)?))
-            .ok_or("missing authoritative checkpoint pin")?;
-        if record.phase != "checkpoint" || record.plan != *reference || record.release.is_some() {
-            return Err("checkpoint pin evidence mismatch".into());
+        check_claim(l, reference)
+    })
+}
+
+fn check_claim(l: &Ledger, reference: &Value) -> Result<()> {
+    let kind = claim_kind(reference)?;
+    let record = l
+        .readers
+        .get(&format!("{kind}:{}", hash(reference)?))
+        .ok_or("missing authoritative source claim")?;
+    if record.phase != kind || record.plan != *reference || record.release.is_some() {
+        return Err("registered source claim mismatch".into());
+    }
+    Ok(())
+}
+
+pub(crate) fn snapshot(reference: &Value) -> Result<Vec<u8>> {
+    if claim_kind(reference)? != "attempt" {
+        return Err("snapshot requires a native attempt reader".into());
+    }
+    let catalog = Path::new(reference["catalog"].as_str().ok_or("registered catalog")?);
+    transaction(catalog, &reference["binding"], false, |tx, l| {
+        check_claim(l, reference)?;
+        if l.intent.is_some() || !references::mirror(reference)?["release"].is_null() {
+            return Err("released or uncertain attempt cannot acquire another snapshot".into());
         }
-        Ok(())
+        payload(tx, &reference["binding"])
     })
 }
 

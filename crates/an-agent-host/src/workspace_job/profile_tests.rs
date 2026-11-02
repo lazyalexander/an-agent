@@ -15,7 +15,14 @@ fn layout_is_optional_and_explicit_layouts_cannot_alias() -> Result<()> {
         "args":["{input:0}"],"environment":{},"readonly":[],
         "inputs":[base.join("a/main.sh")],"outputs":["result.txt"],
         "wall_seconds":1,"trusted_process_group":true});
-    let plan = |p: &Value| Profile::plan(&serde_json::to_vec(p)?, &base.join("job"), &Value::Null);
+    let plan = |p: &Value| {
+        Profile::plan(
+            &serde_json::to_vec(p)?,
+            &base.join("job"),
+            &Value::Null,
+            None,
+        )
+    };
     assert_eq!(plan(&p)?.1["inputs"][0]["name"], "main.sh");
     p["inputs"] = json!([base.join("a/main.sh"), base.join("b/main.sh")]);
     assert!(plan(&p).is_err());
