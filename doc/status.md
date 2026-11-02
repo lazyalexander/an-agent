@@ -54,12 +54,11 @@ pins after reader settlement. Legacy reader histories keep their pins. See
 The routed supervision suite also qualifies client, controller and attempt-owner
 loss separately. See [execution ownership](session-and-retention.md#routed-execution-ownership).
 
-The next [session and retention plan](session-and-retention.md) makes the
-remaining storage work explicit, then proposes a small session/thread coordination
-layer over existing attempts. Its finite session/thread adapter is
-implemented; general model-context threads and cross-profile payload collection remain
-unimplemented. See the plan for exact commands and concurrency limits.
-GUI and TUI are deferred; no new user interface is required for qualification.
+Native dispatch groups control finite selections. A peer can receive one
+audience-checked context packet from a fixed, accepted text revision.
+A core agent's conversation tape remains private. See the
+[bounded handoff and identity contract](session-and-retention.md#bounded-peer-context)
+for supported sources and disclosure limits.
 
 ## Deferred scope and existing surfaces
 

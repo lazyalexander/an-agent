@@ -188,9 +188,63 @@ def main():
         call('spool-peer', 'reply', a, 'live', success=False)
         approve('spool-reclaim', b, run)
         assert call('spool-artifacts', a, 'produce-hold')['outputs']
+        # Use separate activations so names, release equality and earlier admissions grant nothing.
+        sender, target = root / 'context-sender', root / 'context-target'
+        call('spool-load', root / 'sender-release', sender)
+        audience = call('spool-load', root / 'receiver-release', target)['instance']
+        body = 'selected line only'
+        packet = {'schema': 'an-context-v1', 'audience': audience, 'text': body,
+                  'source': 'domain:selection', 'sha256': hashlib.sha256(body.encode()).hexdigest()}
+        template = {'schema': 'an-native-peer-context-request-v1', 'source_output': 'report.txt',
+                    'target': str(target), 'reply_output': 'report.txt', 'wall_seconds': 15}
+
+        def offer(label, message):
+            data.write_text(json.dumps(message) + '\n')
+            approve('spool-start', sender, label, data, 15)
+            approve('spool-accept', sender, label)
+            spec.write_text(json.dumps(dict(template, source_run=label)))
+            return ['spool-peer', 'request', sender, label, spec]
+
+        control_space = root / 'control-space'
+        call('spool-events-init', control_space)
+        group_id = call('session-create', control_space, audience)['id']
+        for label, change in [('group-uuid', {'audience': group_id}),
+                              ('wrong', {'audience': call('spool-show', sender)['instance']}),
+                              ('large', {'text': 'x' * 4096, 'sha256': hashlib.sha256(b'x'*4096).hexdigest()}),
+                              ('role', {'role': 'system'}), ('digest', {'sha256': '0' * 64})]:
+            argv = offer(label, dict(packet, **change))
+            call(*argv, success=False)
+            assert not (sender / 'peers' / label).exists()
+        assert not list((target / 'runs').iterdir())
+
+        argv = offer('selected', packet)
+        preview = call(*argv)
+        proof = preview['plan']['context_packet']
+        assert proof['audience'] == audience and proof['packet_bytes'] == len(data.read_bytes())
+        assert body not in json.dumps(preview) and proof['text_bytes'] == len(body)
+        spec.write_text(json.dumps(dict(template, source_run='selected', schema='an-native-peer-request-v1')))
+        old = call(*argv)['approval_sha256']
+        spec.write_text(json.dumps(dict(template, source_run='selected')))
+        call(*argv, '--approve', old, success=False)
+        approve(*argv)
+        approve('spool-reclaim', sender, 'selected')
+        execute = ['spool-peer', 'run', sender, 'selected', 'request']
+        plan = call(*execute)
+        source = Path(preview['plan']['data']['path'])
+        saved = source.with_suffix('.held')
+        source.rename(saved)
+        try:
+            call(*execute, '--approve', plan['approval_sha256'], success=False)
+            assert not (sender / 'peers/selected/request-start.json').exists()
+        finally:
+            saved.rename(source)
+        done = call(*execute, '--approve', plan['approval_sha256'])
+        assert done['workspace']['termination_confirmed'] is True
+        assert (target / 'runs' / done['run'] / 'job/work/report.txt').read_text() == 'reply:' + data.read_text()
+        call(*execute, success=False)
         (root / 'report.json').write_text(json.dumps({'passed': True,
             'host_sha256': hashlib.sha256(host.read_bytes()).hexdigest(),
-            'fixed_reply': 'reply:2', 'generation_fence': True, 'unknown_replayed': False,
+            'bounded_context_received': True, 'wrong_audience_refused': True, 'dispatch_group_refused': True, 'fixed_reply': 'reply:2', 'generation_fence': True, 'unknown_replayed': False,
             'sender_busy_receiver_progress': True, 'wait_processes': 0,
             'automatic_retries': 0, 'model_calls': 0,
             'scope': 'split-phase artifact protocol; no live IPC or scheduler fairness claim'}, indent=2))

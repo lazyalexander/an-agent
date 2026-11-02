@@ -50,6 +50,12 @@ fn execute_phase(
         if value != record["plan"]["data"] {
             return Err("peer request material changed".into());
         }
+        if record["plan"]["schema"] == CONTEXT_REQUEST
+            && packet_evidence(&value, &record["plan"]["target"])?
+                != record["plan"]["context_packet"]
+        {
+            return Err("peer context selection changed".into());
+        }
         value
     } else {
         publication::confirmed_reply(&dir, &record)?

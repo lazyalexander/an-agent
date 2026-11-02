@@ -18,7 +18,9 @@ struct Request {
 pub fn request(path: &Path, name: &str, input: &Path, approved: Option<&str>) -> Result<Value> {
     bundle::identifier(name)?;
     let spec: Request = serde_json::from_slice(&regular(input, 65536)?)?;
-    if spec.schema != "an-native-peer-request-v1" || !(1..=300).contains(&spec.wall_seconds) {
+    if !matches!(spec.schema.as_str(), ARTIFACT_REQUEST | CONTEXT_REQUEST)
+        || !(1..=300).contains(&spec.wall_seconds)
+    {
         return Err("unsupported peer request".into());
     }
     for revision in [&spec.request_state, &spec.response_state]
@@ -60,10 +62,13 @@ pub fn request(path: &Path, name: &str, input: &Path, approved: Option<&str>) ->
     if parent.exists() && fs::read_dir(&parent)?.take(64).count() >= 64 {
         return Err("peer request limit reached".into());
     }
-    let plan = json!({"schema":spec.schema,"name":name,"source":source,"target":target_id,
+    let mut plan = json!({"schema":spec.schema,"name":name,"source":source,"target":target_id,
         "source_run":spec.source_run,"source_output":spec.source_output,"data":data,
         "reply_output":spec.reply_output,"wall_seconds":spec.wall_seconds,
         "request_state":spec.request_state,"response_state":spec.response_state});
+    if spec.schema == CONTEXT_REQUEST {
+        plan["context_packet"] = packet_evidence(&data, &target_id)?;
+    }
     let (digest, execute) = approval(&plan, approved)?;
     if !execute {
         return Ok(json!({"plan":plan,"approval_sha256":digest,"executed":false}));

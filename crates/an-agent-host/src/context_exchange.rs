@@ -4,6 +4,8 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
+pub(crate) const MAX_PACKET_BYTES: usize = 4096;
+
 /// No roles, paths to dereference, endpoint choices, or inherited conversation.
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -18,7 +20,7 @@ pub struct ContextPacket {
 impl ContextPacket {
     /// Check before deserializing so a caller cannot allocate unbounded input.
     pub fn parse(bytes: &[u8], audience: Uuid) -> Result<Self, String> {
-        if bytes.len() > 4096 {
+        if bytes.len() > MAX_PACKET_BYTES {
             return Err("context packet exceeds 4096 bytes".into());
         }
         let packet: Self = serde_json::from_slice(bytes).map_err(|_| "invalid context packet")?;

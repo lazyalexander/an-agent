@@ -19,28 +19,30 @@ GUI/TUI, new backends and process-memory restoration are deferred.
 | [Model/context](model-services.md) and [bounded export](model-services.md) | Explicit audience/clip selection, receipt-linked excerpts and byte limits; no token estimator, automatic compaction or cross-thread authorization service |
 
 Do not rename existing core sessions, thread UUIDs, tape records or wire formats.
-A future host adapter maps its coordination records to these identities explicitly;
-a native spool attempt need not create a core model session at all.
+Use qualified names in new interfaces. A **core session** stores one agent's private
+tape and files. A **core thread** is the mounted agent addressed by `AgentControl`.
+A **dispatch group** and **dispatch** are the native CLI's existing `SESSION` and
+`THREAD` control records. A **spool activation** binds the instance, release and
+round generation. A backend worker is an actual thread or process. None of those
+identifiers implicitly selects a conversation or conveys disclosure authority.
 
-## Ownership and proposed identities
+## Ownership and identity
 
 | Concept | Meaning | Not equivalent to |
 | --- | --- | --- |
 | Workspace | Host-controlled versioned material and fact namespace | A peer mailbox or shared model conversation |
-| Runtime session (target) | One activation generation of a spool instance, owning resource and endpoint references | A model conversation, a grant or a new isolation boundary |
+| Spool activation | Instance, release and round-control generation bound to a native endpoint | A model conversation, a grant or a new isolation boundary |
 | OS thread/process | Backend execution machinery | A context identity or a domain workflow node |
 | Spool instance | Release-bound domain identity with explicit committed state | One conversation or model session |
 | Attempt | One exact admitted execution, selected inputs/state and settlement evidence | The persistent session or an automatically resumable task |
 | Artifact reference | Exact managed version and declared reason for retaining bytes | A mutable path, implicit latest or permission to execute |
 
-The target starts with one active runtime session per instance. Reuse instance
-activation records rather than adding a parallel manager. Attempts retain their
-existing execution isolation and exact input/state identities; sharing a session
-does not merge attempt scratch or grant concurrent state writes. Reactivation
-must fence old endpoints/results with a new generation. This is not implemented
-by the current `session-*` CLI: that compatible adapter groups finite dispatches,
-and its `THREAD` argument is a one-shot dispatch identity, not an OS thread.
-Do not reinterpret historical records or delete duplicate-admission guards.
+Use the instance activation for peer addressing. A pause and resume advances
+the generation and fences old grants. The native [session CLI](../crates/an-agent-host/src/native_spool/events/sessions.rs)
+groups finite dispatches across instances. Closing the group checks their
+settlement. It leaves activations, private conversation tapes and independently
+held artifact references under their respective owners. Each attempt retains
+its own isolation, scratch and fixed input/state identities.
 
 Host workers and OS threads may serve different operations over time. Bind model
 context to the authorized participant, selected materials and harness handle,
@@ -73,6 +75,26 @@ configuration, not a sink for peer messages, retrieved text or arbitrary files:
 it enters the system envelope. Context packets remain untrusted selected data;
 their hashes and audience fields do not independently authorize disclosure.
 
+### Bounded peer context
+
+For an explicit handoff, use `spool-peer request` with the request schema
+`an-native-peer-context-request-v1`. Use the same fields as the ordinary artifact
+request. Select one formally accepted text output containing a complete
+`an-context-v1` packet. Its audience is the receiving spool instance UUID.
+The enclosing peer grant binds both activations, generations, the exact artifact
+revision and digest, serialized size and request name. Request publication and
+receiver execution have separate approvals. Ordinary artifact requests and
+reply outputs retain their existing behavior.
+
+The host verifies the packet digest, actual audience and at most 4096 serialized
+bytes before publication and again before phase admission. The receiver reads
+the selected packet as ordinary untrusted input. Authors choose a short output
+or excerpt and keep the full source separately. An oversized, missing, malformed
+or changed packet is refused. This path uses the existing legacy-catalog peer
+reader. Registered-copy peer reads still require their own custody support.
+No workspace fact, core tape or model call is necessary. Disclosure to a model
+or private participant inside the receiver requires separate authority.
+
 ## Runtime acceptance matrix
 
 | Design requirement | Current evidence | Remaining gap |
@@ -80,7 +102,7 @@ their hashes and audience fields do not independently authorize disclosure.
 | Fixed authorized artifact delivery | `native_events.py`, `native_data_state.py`, `native_peer.py` | No general live IPC endpoint |
 | No implicit private-note delivery | `native_material_boundary.py`: real read/write denials, unchanged fact log, no delivery, declared outputs only | No model ingestion tested; this is a foreground adapter, not an automatic watcher |
 | Private contents remain outside another attempt | Same suite checks another instance's output/identity and workspace log | Native policy allows file metadata; it does not hide existence or provide hostile-code containment |
-| Cancel one owner without cancelling another | `native_sessions.py`: overlapping real execution | Caller-independent supervisor ownership remains unqualified |
+| Cancel one owner without cancelling another | `native_sessions.py`: overlapping real execution | Verified after client loss by `routed_supervision.py`; a missing owner receipt keeps the attempt held |
 | Unknown execution cannot release materials | `native_data_state.py`, lost-receipt session cases | Missing receipts are injected after execution; arbitrary crash recovery is not proved |
 | Old delivery cannot become new-instance work | `native_route_successor.py`; `native_peer.py` refuses stale reply admission after pause/resume | Peer endpoints use instance identity and round generation, not a separate session manager |
 | Waiting A leaves B able to execute | `native_peer.py`: B runs while A has independent active work; the wait has no process or held execution lock | No general blocking IPC waiter, fairness guarantee or global scheduler |
@@ -461,7 +483,7 @@ savings from prompt caching or summaries before measuring quality and actual use
 | A: native artifact ownership | New managed outputs acquire/release explicit pins through real producer/two-consumer execution; active and unknown owners, retained checkpoint dependencies and legacy catalogs block deletion; legacy outputs stay retained |
 | B: formal payload collection | Closed admission plus released pins permits exact approved deletion; retained provenance remains inspectable, content reads fail clearly, unrelated outputs/checkpoints survive; race, cancellation and lost deletion receipt refuse unsafe progress |
 | C: runtime ownership | Explicit supervised inputs, routed attempts and finite controllers preserve approved work across client loss. Missing original ownership evidence fences execution and custody. |
-| D: bounded context handoff and combined qualification | Reuse explicit packets/export across authorized participants; unrelated data excluded, incorrect audience refused, oversized input explicit, missing source reported; combine lifecycle, pins, collection and interruption in one real headless run |
+| D: bounded context handoff and combined qualification | Native peer requests qualify an audience-bound packet through real supervised execution. The paired packaged case combines scoped bytes with retention and interruption. Harness-internal delivery and model disclosure remain separate. |
 
 A and B close the remaining P1 storage contract. C and D are the next small
 management milestone, not permission to endlessly expand P1. GUI/TUI, general
