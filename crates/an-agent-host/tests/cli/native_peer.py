@@ -8,6 +8,7 @@ import signal
 import subprocess
 import time
 from host_qualification import require_native_workspace
+from participant_context import OBSERVER, READER, card, qualify
 
 
 def main():
@@ -48,9 +49,14 @@ def main():
         code += f'if [ "$value" = {wait_value} ]; then sleep 60; fi\n'
         code += "printf 'reply:%s\\n' \"$value\" > report.txt\n" if receiver else 'cat "$AN_SPOOL_INPUT" > report.txt\n'
         (directory / 'silk/main.sh').write_text(code)
+        files = {'silk/main.sh': hashlib.sha256(code.encode()).hexdigest()}
+        if receiver:
+            roster = json.dumps([card(READER), card(OBSERVER)]).encode()
+            (directory / 'silk/agents.json').write_bytes(roster)
+            files['silk/agents.json'] = hashlib.sha256(roster).hexdigest()
         (directory / 'native-spool.json').write_text(json.dumps({
             'schema': 'an-native-spool-v2', 'name': name, 'version': '0.1.0',
-            'entry': 'silk/main.sh', 'files': {'silk/main.sh': hashlib.sha256(code.encode()).hexdigest()},
+            'entry': 'silk/main.sh', 'files': files,
             'outputs': ['report.txt'], 'requirements': {
                 'runtime': 'macos-native-process-v1', 'os': 'macos', 'arch': 'portable-source',
                 'interaction': 'headless', 'gpu': 'none', 'inputs': ['input.txt'],
@@ -242,11 +248,12 @@ def main():
         assert done['workspace']['termination_confirmed'] is True
         assert (target / 'runs' / done['run'] / 'job/work/report.txt').read_text() == 'reply:' + data.read_text()
         call(*execute, success=False)
+        participant = qualify(call, approve, offer, sender, target, packet, root, preview['approval_sha256'])
         (root / 'report.json').write_text(json.dumps({'passed': True,
             'host_sha256': hashlib.sha256(host.read_bytes()).hexdigest(),
             'bounded_context_received': True, 'wrong_audience_refused': True, 'dispatch_group_refused': True, 'fixed_reply': 'reply:2', 'generation_fence': True, 'unknown_replayed': False,
             'sender_busy_receiver_progress': True, 'wait_processes': 0,
-            'automatic_retries': 0, 'model_calls': 0,
+            'automatic_retries': 0, 'participant': participant,
             'scope': 'split-phase artifact protocol; no live IPC or scheduler fairness claim'}, indent=2))
     finally:
         for child in children:
