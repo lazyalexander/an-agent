@@ -157,6 +157,14 @@ config = { persona = "Aria" }
     host.control().set_model_client(model.clone());
 
     let id = host.control().open_thread(&card()).unwrap();
+    let sibling = host
+        .control()
+        .open_agent(&AgentCard {
+            id: Uuid::from_u128(2),
+            ..card()
+        })
+        .unwrap();
+    let sibling_before = host.control().events(sibling).unwrap();
     use sha2::{Digest, Sha256};
     let packet = serde_json::to_vec(&serde_json::json!({
         "schema": "an-context-v1", "audience": id,
@@ -165,9 +173,11 @@ config = { persona = "Aria" }
     }))
     .unwrap();
     assert!(an_agent_host::context_exchange::import(host.control(), Uuid::nil(), &packet).is_err());
+    assert!(an_agent_host::context_exchange::import(host.control(), sibling, &packet).is_err());
     let scene = an_agent_host::context_exchange::import(host.control(), id, &packet).unwrap();
+    assert!(model.calls.lock().unwrap().is_empty());
     host.control()
-        .push_event("scene", "a traveler enters")
+        .push_event("scene", "Selected data ready")
         .unwrap();
 
     let mut utters: Vec<String> = Vec::new();
@@ -250,6 +260,7 @@ config = { persona = "Aria" }
     )
     .unwrap();
     assert_eq!(blob, b"welcome, traveler");
+    assert_eq!(host.control().events(sibling).unwrap(), sibling_before);
     assert!(tape.iter().any(|event| {
         event.tags.iter().any(|tag| tag == "applied")
             && event

@@ -2,9 +2,11 @@
 //! These operator APIs are not credentials for untrusted spool processes.
 use super::*;
 mod execution;
+mod participant;
 mod publication;
 pub(super) use execution::bound_phase;
 pub use execution::{execute, execute_supervised};
+pub use participant::deliver_agent;
 pub use publication::{cancel, reply, request};
 
 const CONTEXT_REQUEST: &str = "an-native-peer-context-request-v1";
@@ -12,6 +14,13 @@ const ARTIFACT_REQUEST: &str = "an-native-peer-request-v1";
 
 /// Validate the exact accepted bytes against the receiver selected by the host.
 fn packet_evidence(data: &Value, target: &Value) -> Result<Value> {
+    Ok(selected_packet(data, target)?.1)
+}
+
+fn selected_packet(
+    data: &Value,
+    target: &Value,
+) -> Result<(crate::context_exchange::ContextPacket, Value)> {
     use crate::context_exchange::{ContextPacket, MAX_PACKET_BYTES};
     let binding = &data["binding"];
     if binding["encoding"] == "bytes" {
@@ -31,10 +40,9 @@ fn packet_evidence(data: &Value, target: &Value) -> Result<Value> {
     }
     let audience = uuid::Uuid::parse_str(text(target, "instance")?)?;
     let packet = ContextPacket::parse(&bytes, audience)?;
-    Ok(
-        json!({"audience_kind":"native-spool-instance","audience":audience,
-        "packet_sha256":digest,"packet_bytes":bytes.len(),"text_bytes":packet.text.len()}),
-    )
+    let evidence = json!({"audience_kind":"native-spool-instance","audience":audience,
+        "packet_sha256":digest,"packet_bytes":bytes.len(),"text_bytes":packet.text.len()});
+    Ok((packet, evidence))
 }
 
 fn text<'a>(v: &'a Value, key: &str) -> Result<&'a str> {
