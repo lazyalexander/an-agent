@@ -101,6 +101,27 @@ reader. Registered-copy peer reads still require their own custody support.
 No workspace fact, core tape or model call is necessary. Disclosure to a model
 or private participant inside the receiver requires separate authority.
 
+After the receiver phase succeeds with confirmed termination, an operator can run
+`spool-peer deliver-agent SOURCE REQUEST AGENT_UUID`. The receiver release must
+include `silk/agents.json`, a JSON array of one to eight distinct tool-free v1
+core agent cards (32 KiB total). The preview binds the exact request, receiver
+generation, run, input digest and selected card. Approve its digest to open one
+fresh local AgentControl session. Only that agent receives an untrusted clip.
+The receipt identifies the clip and its private packet file. The new packet
+retains the exact text, names the agent as audience and cites the handoff
+approval as its source. Both serializations must fit the wire limit.
+
+An exclusive receiver-owned handoff directory fences the request before import.
+If completion evidence is lost, keep the directory for inspection. Another
+delivery requires a fresh peer request. Revocation or activation rotation closes
+admission; it cannot withdraw material already delivered. The existing
+`model PROFILE PACKET OUTPUT` command previews a separate disclosure of the
+selected bytes. Inspect the receipt and approve that command's digest to send
+one request. The model engagement starts fresh under the operator's profile.
+No provider credentials or conversations are inherited. This qualification
+covers host-directed delivery; participants sharing an execution environment
+have no new security boundary between them.
+
 ## Runtime acceptance matrix
 
 | Design requirement | Current evidence | Remaining gap |
@@ -495,7 +516,7 @@ savings from prompt caching or summaries before measuring quality and actual use
 | A: native artifact ownership | New managed outputs acquire/release explicit pins through real producer/two-consumer execution; active and unknown owners, retained checkpoint dependencies and legacy catalogs block deletion; legacy outputs stay retained |
 | B: formal payload collection | Closed admission plus released pins permits exact approved deletion; retained provenance remains inspectable, content reads fail clearly, unrelated outputs/checkpoints survive; race, cancellation and lost deletion receipt refuse unsafe progress |
 | C: runtime ownership | Explicit supervised inputs, routed attempts and finite controllers preserve approved work across client loss. Missing original ownership evidence fences execution and custody. |
-| D: bounded context handoff and combined qualification | Native peer requests qualify an audience-bound packet through real supervised execution. The paired packaged case combines scoped bytes with retention and interruption. Harness-internal delivery and model disclosure remain separate. |
+| D: bounded context handoff and combined qualification | Native peer requests qualify an audience-bound packet through real supervised execution. The paired packaged case combines scoped bytes with retention and interruption. One release-declared core agent can receive the clip; the model CLI requires a separate disclosure approval. |
 
 A and B close the remaining P1 storage contract. C and D are the next small
 management milestone, not permission to endlessly expand P1. GUI/TUI, general

@@ -21,6 +21,9 @@ pub(super) fn dispatch(args: &[String]) -> Result<Value> {
                 &std::env::current_exe()?,
             )
         }),
+        [op, root, name, agent] if op == "deliver-agent" => {
+            peer::deliver_agent(Path::new(root), name, agent.parse()?, approved)
+        }
         [op, root, name] if op == "reply" => peer::reply(Path::new(root), name, approved),
         [op, root, name] if op == "cancel" => peer::cancel(Path::new(root), name, approved),
         [op, root, name] if op == "show" && approved.is_none() => {
