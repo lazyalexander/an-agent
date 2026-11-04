@@ -41,6 +41,7 @@ mod hooks;
 mod model_boundary;
 mod semantic;
 mod session;
+mod settlement;
 mod spool;
 mod supervision;
 mod tool_contract;
@@ -77,6 +78,17 @@ pub enum ControlError {
     DependencyStale(String),
     #[error("thread is not open: {0}")]
     NotOpen(Uuid),
+    #[error("agent finish is pending; retry finish before any other work: {0}")]
+    Finishing(Uuid),
+    #[error("delivery for event {event} was interrupted; reconcile retained outcomes: {source}")]
+    DeliveryInterrupted {
+        event: String,
+        ready: Vec<DeliveryOutcome>,
+        withheld: Option<Box<DeliveryOutcome>>,
+        source: Box<ControlError>,
+    },
+    #[error("delivery for event {0} is unsettled; do not replay the body")]
+    DeliveryUnsettled(String),
     #[error("thread is finished: {0}")]
     Finished(Uuid),
     #[error("thread beat was cancelled: {0}")]
@@ -147,12 +159,18 @@ pub enum ControlError {
 
 struct AgentRunState {
     finished: bool,
+    finishing: bool,
+    finish_reviews: Vec<ReviewRequest>,
+    finish_text: Option<String>,
+    failed_deliveries: std::collections::HashSet<String>,
     /// Raised by `cancel`. The next beat consumes it and does no work.
     cancelled: Arc<AtomicBool>,
     cancel: watch::Sender<bool>,
 }
 
 struct Inner {
+    #[cfg(test)]
+    fail_lifecycle_append: AtomicBool,
     root: PathBuf,
     registry: Vec<(String, ToolCtor)>,
     /// One beat at a time. This is not the context distribution pool.
@@ -183,6 +201,8 @@ impl AgentControl {
     ) -> Result<Self, ControlError> {
         Ok(Self {
             inner: Arc::new(Inner {
+                #[cfg(test)]
+                fail_lifecycle_append: AtomicBool::new(false),
                 root: sessions_root.as_ref().to_path_buf(),
                 registry: registry
                     .iter()
@@ -230,30 +250,24 @@ impl AgentControl {
             incarnation: crate::det_seam::Entropy::os().uuid_v4(),
         };
         let seat = self.inner.pool.tree().mount(Arc::clone(&agent), None)?;
-        self.inner
-            .seats
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .push(seat);
-        let (cancel, _rx) = watch::channel(false);
-        self.inner
-            .agent_runs
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .insert(
-                id,
-                AgentRunState {
-                    finished: false,
-                    cancelled: Arc::new(AtomicBool::new(false)),
-                    cancel,
-                },
-            );
-        self.append(
+        state.open(instance)?;
+        #[cfg(test)]
+        if self
+            .inner
+            .fail_lifecycle_append
+            .swap(false, Ordering::Relaxed)
+        {
+            agent.session().tape().fail_next_append();
+        }
+        if let Err(error) = self.append(
             &agent,
             "thread",
-            json!({ "thread": id.to_string(), "instance": instance }).to_string(),
-        )?;
-        state.open(instance)?;
+            json!({"thread":id.to_string(),"instance":instance}).to_string(),
+        ) {
+            state.retire(id);
+            return Err(error);
+        }
+        self.install_live(agent, seat);
         Ok(id)
     }
 
@@ -289,28 +303,7 @@ impl AgentControl {
     /// End the agent. Further beats and mail are refused. Refused while a
     /// beat holds the only slot.
     pub fn finish(&self, id: Uuid, text: &str) -> Result<String, ControlError> {
-        let mut state = self
-            .inner
-            .supervision
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-        if self.inner.pool.is_running(id) {
-            return Err(ControlError::Busy(id));
-        }
-        let agent = self.live(id)?;
-        let requests = state.retire(id);
-        let mut agent_runs = self
-            .inner
-            .agent_runs
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-        let run_state = agent_runs.get_mut(&id).ok_or(ControlError::NotOpen(id))?;
-        run_state.finished = true;
-        run_state.cancelled.store(false, Ordering::Relaxed);
-        let _ = run_state.cancel.send(false);
-        drop(agent_runs);
-        self.record_review_closures(requests, "finish")?;
-        self.append(&agent, "finish", json!({ "text": text }).to_string())
+        self.finish_session(id, text)
     }
 
     /// Mail between two open agents. Each tape gets one event. Does not take
@@ -389,6 +382,9 @@ impl AgentControl {
         if run_state.finished {
             return Err(ControlError::Finished(id));
         }
+        if run_state.finishing {
+            return Err(ControlError::Finishing(id));
+        }
         drop(agent_runs);
         self.inner
             .pool
@@ -421,6 +417,9 @@ impl AgentControl {
         if run_state.finished {
             return Err(ControlError::Finished(id));
         }
+        if run_state.finishing {
+            return Err(ControlError::Finishing(id));
+        }
         if run_state.cancelled.swap(false, Ordering::Relaxed) {
             let _ = run_state.cancel.send(false);
             return Err(ControlError::Cancelled(id));
@@ -437,6 +436,9 @@ impl AgentControl {
         let run_state = agent_runs.get(&id).ok_or(ControlError::NotOpen(id))?;
         if run_state.finished {
             return Err(ControlError::Finished(id));
+        }
+        if run_state.finishing {
+            return Err(ControlError::Finishing(id));
         }
         run_state.cancelled.store(true, Ordering::Relaxed);
         run_state.cancel.send_replace(true);

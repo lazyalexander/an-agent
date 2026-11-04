@@ -68,7 +68,7 @@ impl AgentControl {
             return Err(ControlError::NotOpen(id));
         };
         let requests = state.retire(id);
-        self.record_review_closures(requests, "release")?;
+        let audit = self.record_review_closures(requests, "release");
         let seat = seats.remove(pos);
         drop(seats);
         seat.unmount();
@@ -77,7 +77,7 @@ impl AgentControl {
             .lock()
             .unwrap_or_else(|err| err.into_inner())
             .remove(&id);
-        Ok(())
+        audit
     }
 
     /// Mount a sealed session. The card must be the one named by the manifest.
@@ -106,37 +106,141 @@ impl AgentControl {
         {
             return Err(ControlError::ManifestMismatch);
         }
+        let pending_finish = agent
+            .session()
+            .tape()
+            .read_all()?
+            .into_iter()
+            .rev()
+            .find(|e| {
+                e.tags
+                    .iter()
+                    .any(|t| t == "finish" || t == "finish_pending")
+            })
+            .filter(|e| e.tags.iter().any(|t| t == "finish_pending"))
+            .map(|e| {
+                serde_json::from_str::<serde_json::Value>(&e.content)
+                    .map_err(|e| ControlError::SemanticRecord(e.to_string()))
+                    .and_then(|v| {
+                        v["text"].as_str().map(str::to_owned).ok_or_else(|| {
+                            ControlError::SemanticRecord("invalid pending finish".into())
+                        })
+                    })
+            })
+            .transpose()?;
         let id = agent.id();
         let instance = super::InstanceRef {
             principal: id,
             incarnation: crate::det_seam::Entropy::os().uuid_v4(),
         };
         let seat = self.inner.pool.tree().mount(Arc::clone(&agent), None)?;
+        state.open(instance)?;
+        #[cfg(test)]
+        if self
+            .inner
+            .fail_lifecycle_append
+            .swap(false, std::sync::atomic::Ordering::Relaxed)
+        {
+            agent.session().tape().fail_next_append();
+        }
+        if let Err(error) = self.append(
+            &agent,
+            "resume",
+            serde_json::json!({"session":session_id.to_string(),"instance":instance}).to_string(),
+        ) {
+            state.retire(id);
+            return Err(error);
+        }
+        self.install_live(agent, seat);
+        if let Some(text) = pending_finish {
+            state.retire(id);
+            let mut runs = self
+                .inner
+                .agent_runs
+                .lock()
+                .unwrap_or_else(|e| e.into_inner());
+            let run = runs.get_mut(&id).ok_or(ControlError::NotOpen(id))?;
+            run.finishing = true;
+            run.finish_text = Some(text);
+        }
+        Ok(id)
+    }
+    pub(super) fn install_live(&self, agent: Arc<crate::agent::Agent>, seat: crate::seat::Seat) {
         self.inner
             .seats
             .lock()
-            .unwrap_or_else(|err| err.into_inner())
+            .unwrap_or_else(|e| e.into_inner())
             .push(seat);
-        let (cancel, _rx) = watch::channel(false);
+        let (cancel, _) = watch::channel(false);
         self.inner
             .agent_runs
             .lock()
-            .unwrap_or_else(|err| err.into_inner())
+            .unwrap_or_else(|e| e.into_inner())
             .insert(
-                id,
+                agent.id(),
                 AgentRunState {
                     finished: false,
+                    finishing: false,
+                    finish_reviews: Vec::new(),
+                    finish_text: None,
+                    failed_deliveries: Default::default(),
                     cancelled: Arc::new(AtomicBool::new(false)),
                     cancel,
                 },
             );
-        self.append(
+    }
+
+    pub(super) fn finish_session(&self, id: Uuid, text: &str) -> Result<String, ControlError> {
+        use std::sync::atomic::Ordering;
+        let mut state = self
+            .inner
+            .supervision
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        if self.inner.pool.is_running(id) {
+            return Err(ControlError::Busy(id));
+        }
+        let agent = self.mounted(id)?;
+        let mut runs = self
+            .inner
+            .agent_runs
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let run = runs.get_mut(&id).ok_or(ControlError::NotOpen(id))?;
+        if run.finished {
+            return Err(ControlError::Finished(id));
+        }
+        if !run.finishing {
+            // Persist intent before retiring authority. An incomplete finish is retryable,
+            // but may never admit another beat or restore a consumed approval.
+            self.append(
+                &agent,
+                "finish_pending",
+                serde_json::json!({"text":text}).to_string(),
+            )?;
+            run.finishing = true;
+            run.finish_text = Some(text.to_owned());
+            run.finish_reviews = state.retire(id);
+        }
+        let requests = run.finish_reviews.clone();
+        let text = run.finish_text.clone().ok_or(ControlError::Finishing(id))?;
+        drop(runs);
+        self.record_review_closures(requests, "finish")?;
+        let note = self.append(
             &agent,
-            "resume",
-            serde_json::json!({ "session": session_id.to_string(), "instance": instance })
-                .to_string(),
+            "finish",
+            serde_json::json!({"text":text}).to_string(),
         )?;
-        state.open(instance)?;
-        Ok(id)
+        let mut runs = self
+            .inner
+            .agent_runs
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let run = runs.get_mut(&id).ok_or(ControlError::NotOpen(id))?;
+        run.finished = true;
+        run.finishing = false;
+        run.cancelled.store(false, Ordering::Relaxed);
+        let _ = run.cancel.send(false);
+        Ok(note)
     }
 }

@@ -194,3 +194,27 @@ mod workspace;
 mod delivery_registration;
 
 mod tool_payload_boundary;
+
+fn delivery_source(error: ControlError) -> ControlError {
+    match error {
+        ControlError::DeliveryInterrupted { ready, source, .. } => {
+            assert!(
+                ready.is_empty(),
+                "legacy single-body test must not discard siblings"
+            );
+            *source
+        }
+        error => error,
+    }
+}
+
+mod lifecycle_failures;
+mod settlement;
+
+fn offer_cause(
+    control: &AgentControl,
+    id: Uuid,
+    spool: &str,
+) -> Result<DeliveryOutcome, ControlError> {
+    control.offer(id, spool).map_err(delivery_source)
+}

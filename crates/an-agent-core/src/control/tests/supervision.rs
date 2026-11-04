@@ -335,7 +335,7 @@ fn a_body_can_request_review_without_unmount_or_automatic_restart() {
         panic!("still waiting")
     };
     assert_eq!(request.id, again.id);
-    assert_eq!(control.events(child).unwrap().len(), count);
+    assert_eq!(control.events(child).unwrap().len(), count + 2); // Batch start and settlement.
     control
         .resolve_review(
             main,

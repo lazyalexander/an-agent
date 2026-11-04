@@ -58,7 +58,10 @@ impl Transport for Fake<'_> {
                 "name":"an-test","id":if step=="confirm-stop" && self.failure=="identity" {"replacement"} else {"original"},
                 "phase":if self.stopped {"Stopped"} else {"Ready"},
                 "annotations":{"an-agent.run":if self.failure=="owner" {"another-run"} else {"run"},"internal.openshell.ai/runtime-generation":if step=="confirm-stop" && self.failure=="generation" {"replacement"} else {"generation-1"}},
-                "policy":{"landlock":{"compatibility":"hard_requirement"}}
+                "policy":{"landlock":{"compatibility":"hard_requirement"},"network_policies":{},
+                    "filesystem_policy":{"include_workdir":true,
+                    "read_only":["/usr","/lib","/lib64","/etc","/proc","/dev/urandom"],
+                    "read_write":["/tmp","/dev/null"]}}
             }))?),
             "candidate" => ok(b"alpha\nbeta\n".to_vec()),
             _ => ok(vec![]),

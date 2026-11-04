@@ -17,11 +17,40 @@ critical section. The same fence covers a halt note. No user body, hook, model
 call or external callback executes under this critical section. Local tape I/O
 remains inside it to preserve ordering.
 
-A stale delivery returns `ReviewStale` and writes `delivery_stale` audit evidence;
+A stale delivery writes `delivery_stale` audit evidence and returns `ReviewStale`
+inside the interrupted-delivery error when a body has already been invoked;
 it is not a body failure and does not automatically unmount, retry or reschedule
 the body. Earlier valid model observations remain retained. After hooks may run
 arbitrary host code, so offer/dispatch validate a reply again after those hooks.
 A note published before revocation remains history; a later check cannot erase it.
+
+### Interrupted batches and lifecycle writes
+
+Before invoking a delivery batch, the agent tape records an audit-only
+`delivery_batch` start. A completed batch records `settled`. An interrupted batch
+returns `DeliveryInterrupted`: `ready` retains prior admitted, hook-checked outcomes,
+`withheld` retains any published reply that failed the final gate, and `source`
+states the failure. Ready does not mean applied; its authority must be checked
+again before explicit reconciliation. A withheld reply must never be executed.
+The included host pump returns this error without landing partial results.
+A start without settlement fences both dispatch and offer of that event for that
+agent, including after session resume. A failed write also fences the event in memory
+because failed sync can leave a complete line visible. A resumed incarnation
+refuses all prior-incarnation batches, including completed ones; schedule a new
+event for fresh work. It never automatically replays a body or model call. Schedule a distinct event only for explicitly requested fresh work.
+The fence is conservative; there is no automatic partial-batch recovery API.
+
+Open and resume keep seats local until the lifecycle note is durable, and retire
+staged supervision on failure. Finish persists `finish_pending` before revoking
+authority. A subsequent evidence failure leaves a finishing agent: new beats and
+release are refused, but finish can be retried with its original conclusion and
+closure requests. Revoked approvals are never restored to compensate for IO.
+Recorder spawn uses a pending intent and a local seat; failed cleanup fences new
+spawns. Recorder release persists intent, retires seats and cancellation leases,
+then abandons workspaces and records completion. Failed cleanup is `ReleasePending`
+and can only be continued by release; tape restoration treats it as already retired.
+These are explicit recoverable transitions, not an atomic transaction over external
+effects or a guarantee against arbitrary storage corruption.
 
 ### Host boundary
 

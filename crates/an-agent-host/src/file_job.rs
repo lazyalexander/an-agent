@@ -38,7 +38,14 @@ pub(crate) struct OutputSlot {
 }
 
 #[cfg(not(target_os = "macos"))]
-fn stages(_: &Path, _: &Toolchain, _: &Path, _: &[Vec<String>], _: &AtomicBool) -> Result<Value> {
+fn stages(
+    _: &Path,
+    _: &Toolchain,
+    _: &Path,
+    _: &[Vec<String>],
+    _: &Value,
+    _: &AtomicBool,
+) -> Result<Value> {
     Err("unsupported isolated build".into())
 }
 
@@ -76,6 +83,7 @@ fn stages(
     tools: &Toolchain,
     toolchain_root: &Path,
     commands: &[Vec<String>],
+    approved_plan: &Value,
     cancelled: &AtomicBool,
 ) -> Result<Value> {
     use std::os::unix::process::CommandExt;
@@ -85,6 +93,7 @@ fn stages(
         .as_str()
         .ok_or("missing compiler policy")?;
     for (i, args) in commands.iter().enumerate() {
+        verify_tools(tools, approved_plan)?;
         let mut command = std::process::Command::new("/usr/bin/sandbox-exec");
         command
             .args(["-p", compiler_policy])
@@ -244,5 +253,54 @@ pub(crate) fn execute_file(
     {
         let _ = (executable, work, cancelled);
         Err("file-kit-v1 is unsupported on this platform; no fallback".into())
+    }
+}
+
+#[cfg(any(target_os = "macos", test))]
+fn verify_tools(tools: &Toolchain, approved_plan: &Value) -> Result<()> {
+    if build::tool_digest(&tools.rustc)? != approved_plan["rustc_sha256"]
+        || build::tool_digest(&tools.linker)? != approved_plan["linker_sha256"]
+    {
+        return Err("approved compiler or linker changed; preview again".into());
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tool_identity_tests {
+    use super::*;
+    #[test]
+    fn approved_tools_are_checked_again_before_compilation() -> Result<()> {
+        let temp = an_agent_core::testkit::TempDir::new("approved-tool-change");
+        let tools = Toolchain {
+            rustc: temp.path().join("rustc"),
+            linker: temp.path().join("linker"),
+            sdk: temp.path().join("sdk"),
+        };
+        std::fs::write(&tools.rustc, b"approved rustc")?;
+        std::fs::write(&tools.linker, b"approved linker")?;
+        let plan = serde_json::json!({"rustc_sha256":build::tool_digest(&tools.rustc)?,
+            "linker_sha256":build::tool_digest(&tools.linker)?});
+        verify_tools(&tools, &plan)?;
+        std::fs::write(&tools.rustc, b"replaced after approval")?;
+        assert!(verify_tools(&tools, &plan).is_err());
+        std::fs::write(&tools.rustc, b"approved rustc")?;
+        std::fs::write(&tools.linker, b"replaced linker")?;
+        assert!(verify_tools(&tools, &plan).is_err());
+        #[cfg(target_os = "macos")]
+        {
+            // Invoke the actual stage entry after approval, before sandbox-exec.
+            let error = stages(
+                temp.path(),
+                &tools,
+                temp.path(),
+                &[vec!["must-not-run".into()]],
+                &plan,
+                &AtomicBool::new(false),
+            )
+            .unwrap_err();
+            assert!(error.to_string().contains("changed"));
+        }
+        Ok(())
     }
 }
