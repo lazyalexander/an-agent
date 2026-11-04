@@ -79,8 +79,6 @@ The content-addressed workspace store is not a complete document-versioning or r
 
 - `crates/an-agent-core` — the kernel: tape, admission, identity, `AgentControl`, seats, and the recorder file workspace.
 - `crates/an-agent-host` — embedding helpers, spool construction, reply-intent execution, and a model-client adapter.
-- `crates/an-agent-factory` — bash registration and `BuiltAgent` construction. `spawn` returns an `Agent` and is not the host face.
-- `crates/an-agent-context` — per-session context assembly. The shared pool is not in this crate.
 - `crates/an-agent-semantic` — transport-neutral claims, concrete attempts, version-bound assessments, grants, and execution receipts. It owns no scheduling or interruption. Core execution boundaries retain evidence and return supervisor requests for blocked operations.
 - `crates/an-agent-supervision` — transport-neutral live review state and exact one-shot approvals. It owns no tape, execution, or scheduling; core adapts trusted execution boundaries to it.
 - `crates/an-agent-spool` — capability spools: YAML descriptor admission and the append-only spool registry.

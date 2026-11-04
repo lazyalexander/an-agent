@@ -3,7 +3,6 @@
 "crates/an-agent-core/src/control/spool.rs" = 592
 
 [pattern_ratchet.command_construction]
-"crates/an-agent-factory/src/bash.rs" = 1
 "crates/an-agent-host/src/file_job.rs" = 2
 
 [crate_names]

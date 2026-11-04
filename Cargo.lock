@@ -17,19 +17,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "an-agent-context"
-version = "0.1.0"
-dependencies = [
- "an-agent-core",
- "an-agent-factory",
- "serde",
- "serde_json",
- "sha2",
- "thiserror",
- "uuid",
-]
-
-[[package]]
 name = "an-agent-core"
 version = "0.1.0"
 dependencies = [
@@ -45,18 +32,6 @@ dependencies = [
  "tokio",
  "toml",
  "ulid",
- "uuid",
-]
-
-[[package]]
-name = "an-agent-factory"
-version = "0.1.0"
-dependencies = [
- "an-agent-core",
- "async-trait",
- "libc",
- "serde_json",
- "tokio",
  "uuid",
 ]
 
