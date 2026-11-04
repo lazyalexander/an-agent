@@ -4,7 +4,7 @@ use crate::execution::{Result, store};
 use std::{fs, path::Path};
 
 pub(crate) fn regular(path: &Path, limit: usize) -> Result<Vec<u8>> {
-    store::no_links(path)?;
+    store::check_read_path(path)?;
     #[cfg(unix)]
     {
         use std::os::unix::fs::OpenOptionsExt;
@@ -145,6 +145,30 @@ mod custody_tests {
         assert!(regular(&path, 32).is_err());
         fs::remove_file(&path)?;
         assert!(read_opened(&file, 3).is_err());
+        Ok(())
+    }
+}
+
+#[cfg(all(test, unix))]
+mod registered_boundary_tests {
+    use super::*;
+    use an_agent_core::testkit::TempDir;
+    #[test]
+    fn descriptor_reads_preserve_registered_custody_and_sidecar_refusals() -> Result<()> {
+        let temp = TempDir::new("registered-descriptor-boundary");
+        let root = temp
+            .path()
+            .canonicalize()?
+            .join("revisions")
+            .join("a".repeat(64));
+        fs::create_dir_all(&root)?;
+        for suffix in ["", "-wal", "-shm", "-journal"] {
+            let path = root.join(format!("{}{suffix}", store::REGISTERED_CUSTODY_FILE));
+            fs::write(&path, b"private custody bytes")?;
+            let error = regular(&path, 65536).unwrap_err();
+            assert!(error.to_string().contains("raw access"), "{error}");
+            assert!(store::read(&path, 65536).is_err());
+        }
         Ok(())
     }
 }
