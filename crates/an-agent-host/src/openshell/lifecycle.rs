@@ -134,13 +134,7 @@ pub(super) fn drive<T: Transport>(
                 .ok_or("missing runtime generation")?
                 .to_owned(),
         );
-        if state["policy"]["landlock"]["compatibility"] != "hard_requirement"
-            || state["policy"]["network_policies"]
-                .as_object()
-                .is_some_and(|rules| !rules.is_empty())
-        {
-            return Err("sandbox policy does not match the offline file-kit boundary".into());
-        }
+        super::custody::validate_policy(&state["policy"])?;
         for (step, source, target) in [
             (
                 "upload-program",
@@ -196,10 +190,22 @@ pub(super) fn drive<T: Transport>(
         if !succeeded(&execution) {
             return Err(execution.status.into());
         }
-        // The guest never extracts an archive onto the host. Read one bounded,
-        // untrusted candidate. A guest race cannot exceed the host stream limit.
-        let output = session.control("candidate", strings(&["sandbox","exec",name,"--no-login-shell","--","/bin/sh","-c",
-            "test ! -L /sandbox/output.txt && test -f /sandbox/output.txt && exec /usr/bin/head -c 65537 -- /sandbox/output.txt"]))?;
+        // One trusted collector opens once and reads that same verified inode.
+        let output = session.control(
+            "candidate",
+            strings(&[
+                "sandbox",
+                "exec",
+                name,
+                "--no-login-shell",
+                "--",
+                "/usr/bin/python3",
+                "-I",
+                "-c",
+                super::custody::COLLECTOR,
+                "/sandbox/output.txt",
+            ]),
+        )?;
         std::str::from_utf8(&output.stdout)?;
         candidate = Some(output.stdout);
         Ok(())

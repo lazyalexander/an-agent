@@ -69,7 +69,7 @@ pub(crate) fn directory(path: &Path) -> Result<()> {
 
 pub(crate) const REGISTERED_CUSTODY_FILE: &str = "registered-custody.sqlite3";
 
-pub(crate) fn read(path: &Path, limit: usize) -> Result<Vec<u8>> {
+pub(crate) fn check_read_path(path: &Path) -> Result<()> {
     no_links(path)?;
     if path
         .file_name()
@@ -85,6 +85,11 @@ pub(crate) fn read(path: &Path, limit: usize) -> Result<Vec<u8>> {
     {
         return Err("raw access to registered host custody is refused".into());
     }
+    Ok(())
+}
+
+pub(crate) fn read(path: &Path, limit: usize) -> Result<Vec<u8>> {
+    check_read_path(path)?;
     if !fs::metadata(path)?.is_file() {
         return Err("expected regular file".into());
     }

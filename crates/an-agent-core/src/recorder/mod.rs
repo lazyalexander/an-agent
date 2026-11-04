@@ -66,6 +66,11 @@ pub enum RecorderError {
     Tree(#[from] TreeError),
     #[error(transparent)]
     Wp(#[from] WpError),
+    #[error("retirement of {id} is pending; retry release, do not restart work: {source}")]
+    ReleasePending {
+        id: Uuid,
+        source: Box<RecorderError>,
+    },
     #[error("store: {0}")]
     Store(#[from] crate::memstream::StoreError),
     #[error("io: {0}")]
@@ -131,6 +136,7 @@ pub struct Recorder {
     wp: Wp,
     bounds: Mutex<HashMap<Uuid, Charter>>,
     flags: Mutex<HashMap<Uuid, Arc<AtomicBool>>>,
+    lifecycle: Mutex<()>,
     registry: Vec<(String, crate::principal::factory::ToolCtor)>,
 }
 
@@ -211,6 +217,7 @@ impl Recorder {
                 Arc::new(AtomicBool::new(false)),
             )])),
             registry,
+            lifecycle: Mutex::new(()),
         })
     }
 

@@ -33,7 +33,11 @@ pub fn restore_seats(session_dir: &Path) -> Result<Vec<RestoredSeat>, RecorderEr
                 },
             );
         }
-        if event.tags.iter().any(|tag| tag == "release") {
+        if event
+            .tags
+            .iter()
+            .any(|tag| tag == "release" || tag == "release_pending")
+        {
             let value: Value = serde_json::from_str(&event.content)?;
             if let Some(id) = value["id"].as_str().and_then(|text| text.parse().ok()) {
                 remove_subtree(&mut nodes, id);

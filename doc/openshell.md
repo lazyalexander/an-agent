@@ -53,7 +53,7 @@ Create an operator-owned JSON profile (replace every placeholder):
 The gateway must report only the VM compute driver. CLI and gateway version are
 checked; the CLI hash is rechecked for each operation. This is deployment
 qualification, not cryptographic attestation of the gateway. Supply an approved
-digest-pinned image with `/bin/sh`, `/bin/sleep`, `/bin/chmod`, `/usr/bin/head`
+digest-pinned image with `/bin/sh`, `/bin/sleep`, `/bin/chmod`, `/usr/bin/python3`
 and the normal system runtime paths. No host directory is mounted.
 
 ```sh
@@ -68,6 +68,12 @@ to guest `/sandbox`; the fixed ABI remains `input.txt` -> `output.txt`.
 System runtime reads and guest `/tmp` are explicit backend necessities. There
 are no attached providers, forwarded ambient credentials or allowed network
 destinations. The host copies only the program and input snapshot into the VM.
+Ready must report the exact submitted filesystem policy and an explicit empty
+network-policy object. Missing, null or malformed policy fields are refused.
+The digest-pinned image must provide Python 3 for the isolated trusted collector;
+missing Python fails the run without a shell fallback. The collector opens with
+`O_NOFOLLOW | O_NONBLOCK`, verifies regular type, one link and bounded size with
+`fstat`, and reads the same descriptor. Its source digest is included in preview.
 Hard Landlock is required. These settings do not prevent a kit from computing
 or generating more code inside its authorized guest filesystem.
 

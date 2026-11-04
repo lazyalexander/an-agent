@@ -18,7 +18,7 @@ use std::{
     sync::{Arc, atomic::AtomicBool},
 };
 
-fn tool_digest(path: &Path) -> Result<String> {
+pub(super) fn tool_digest(path: &Path) -> Result<String> {
     let mut file = fs::File::open(path)?;
     if !file.metadata()?.is_file() {
         return Err("tool must be a regular file".into());
@@ -210,7 +210,7 @@ pub fn build(
         }
         control.validate_reply(thread, reply)?;
         control.push_event("build.execute", &hash)?;
-        stages(&output, &tools, toolchain_root, &commands, cancelled)
+        stages(&output, &tools, toolchain_root, &commands, &plan, cancelled)
     })();
     let (status, detail) = match result {
         Ok(v) => (v["status"].as_str().unwrap_or("failed").to_owned(), v),

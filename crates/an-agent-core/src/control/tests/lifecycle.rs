@@ -297,6 +297,7 @@ async fn retirement_revokes_every_request_even_when_one_tape_fails() {
         event.tags.iter().any(|tag| tag == "review_closed")
             && event.content.contains(&other_request.id)
     }));
+    control.finish(main, "retry retirement audit").unwrap();
     control.release(main).unwrap();
     control
         .open_thread(&card(
@@ -387,9 +388,10 @@ fn an_old_callback_cannot_remove_its_replacement_or_publish_a_stale_reply() {
             .unwrap();
         let event = control.push_event("scene", "change").unwrap();
         assert!(control.offer_on(child, "body", &event.id).is_err());
+        let fresh_event = control.push_event("scene", "explicit fresh work").unwrap();
         assert_eq!(
             control
-                .offer_on(child, "body", &event.id)
+                .offer_on(child, "body", &fresh_event.id)
                 .unwrap()
                 .reply()
                 .unwrap()

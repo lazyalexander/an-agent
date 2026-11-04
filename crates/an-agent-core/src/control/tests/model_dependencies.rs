@@ -165,7 +165,12 @@ fn changed_inputs_quarantine_success_and_request_fresh_work_not_approval() {
             },
             false,
         );
-        let request = review(control.offer(child, "npc").unwrap());
+        let request = review(
+            control
+                .offer(child, "npc")
+                .map_err(delivery_source)
+                .unwrap(),
+        );
         assert_eq!(calls.load(Ordering::SeqCst), 1);
         let (evidence, record) = quarantined(&control, child);
         assert_eq!(
@@ -214,7 +219,16 @@ fn changed_inputs_quarantine_success_and_request_fresh_work_not_approval() {
             ),
             Err(ControlError::ReviewCeiling(_))
         ));
-        assert_eq!(review(control.offer(child, "npc").unwrap()).id, request.id);
+        assert_eq!(
+            review(
+                control
+                    .offer(child, "npc")
+                    .map_err(delivery_source)
+                    .unwrap()
+            )
+            .id,
+            request.id
+        );
         assert_eq!(calls.load(Ordering::SeqCst), 1);
         control
             .resolve_review(
@@ -226,8 +240,17 @@ fn changed_inputs_quarantine_success_and_request_fresh_work_not_approval() {
             )
             .unwrap();
         let fresh_calls = install(&control, || {}, false);
+        control
+            .push_event("scene", "explicit fresh work after retirement")
+            .unwrap();
         assert_eq!(
-            said(control.offer(child, "npc").unwrap()).reply,
+            said(
+                control
+                    .offer(child, "npc")
+                    .map_err(delivery_source)
+                    .unwrap()
+            )
+            .reply,
             "retained model payload"
         );
         assert_eq!(fresh_calls.load(Ordering::SeqCst), 1);
@@ -258,7 +281,13 @@ fn unchanged_generations_and_unrelated_mounts_do_not_invalidate_results() {
         false,
     );
     assert_eq!(
-        said(control.offer(child, "npc").unwrap()).reply,
+        said(
+            control
+                .offer(child, "npc")
+                .map_err(delivery_source)
+                .unwrap()
+        )
+        .reply,
         "retained model payload"
     );
     assert_eq!(calls.load(Ordering::SeqCst), 1);
@@ -293,7 +322,9 @@ fn retired_scope_quarantines_without_attaching_a_request_to_its_replacement() {
             },
             false,
         );
-        let Err(ControlError::DependencyStale(evidence)) = control.offer(child, "npc") else {
+        let Err(ControlError::DependencyStale(evidence)) =
+            control.offer(child, "npc").map_err(delivery_source)
+        else {
             panic!("expected retired scope");
         };
         assert_eq!(quarantined(&control, child).0, evidence);
@@ -301,12 +332,21 @@ fn retired_scope_quarantines_without_attaching_a_request_to_its_replacement() {
         install(&control, || {}, false);
         if change == "cancel" {
             assert!(matches!(
-                control.offer(child, "npc"),
+                control.offer(child, "npc").map_err(delivery_source),
                 Err(ControlError::Cancelled(_))
             ));
         }
+        control
+            .push_event("scene", "explicit fresh work after retirement")
+            .unwrap();
         assert_eq!(
-            said(control.offer(child, "npc").unwrap()).reply,
+            said(
+                control
+                    .offer(child, "npc")
+                    .map_err(delivery_source)
+                    .unwrap()
+            )
+            .reply,
             "retained model payload"
         );
     }
@@ -323,7 +363,12 @@ fn failed_external_call_keeps_unknown_outcome_even_when_quarantined() {
         },
         true,
     );
-    review(control.offer(child, "npc").unwrap());
+    review(
+        control
+            .offer(child, "npc")
+            .map_err(delivery_source)
+            .unwrap(),
+    );
     let (_, record) = quarantined(&control, child);
     let receipt: Receipt = serde_json::from_value(record["receipt"].clone()).unwrap();
     assert_eq!(receipt.outcome, Outcome::Unknown);
@@ -349,7 +394,7 @@ fn audit_failure_never_publishes_stale_payload_or_retries_automatically() {
         false,
     );
     assert!(matches!(
-        control.offer(child, "npc"),
+        control.offer(child, "npc").map_err(delivery_source),
         Err(ControlError::Store(_))
     ));
     assert_eq!(calls.load(Ordering::SeqCst), 1);
@@ -391,7 +436,12 @@ fn quarantined_payload_is_absent_from_projection_and_explicit_model_clips() {
         },
         false,
     );
-    let request = review(control.offer(child, "npc").unwrap());
+    let request = review(
+        control
+            .offer(child, "npc")
+            .map_err(delivery_source)
+            .unwrap(),
+    );
     let (evidence, _) = quarantined(&control, child);
     control
         .resolve_review(
@@ -412,7 +462,7 @@ fn quarantined_payload_is_absent_from_projection_and_explicit_model_clips() {
         .unwrap();
     let calls = install(&control, || {}, false);
     assert!(
-        matches!(control.offer(child, "npc"), Err(ControlError::IneligibleClip(id)) if id == evidence)
+        matches!(control.offer(child, "npc").map_err(delivery_source), Err(ControlError::IneligibleClip(id)) if id == evidence)
     );
     assert_eq!(calls.load(Ordering::SeqCst), 0);
 }
@@ -446,7 +496,7 @@ fn stale_delivery_is_rejected_before_any_external_model_call() {
     let calls = install(&control, || {}, false);
     // Delivery now fences this mutation before model admission is reached.
     assert!(matches!(
-        control.offer(child, "npc"),
+        control.offer(child, "npc").map_err(delivery_source),
         Err(ControlError::ReviewStale(_))
     ));
     let events = control.events(child).unwrap();
@@ -474,7 +524,12 @@ fn corrupt_environment_refuses_before_any_model_call() {
         .join(cite.env_sha256.unwrap());
     std::fs::write(&blob, b"uncommitted bytes").unwrap();
     let calls = install(&control, || {}, false);
-    assert!(control.offer(child, "npc").is_err());
+    assert!(
+        control
+            .offer(child, "npc")
+            .map_err(delivery_source)
+            .is_err()
+    );
     assert_eq!(calls.load(Ordering::SeqCst), 0);
     assert!(!control.events(child).unwrap().iter().any(|event| {
         event

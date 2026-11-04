@@ -187,7 +187,7 @@ fn an_after_deny_keeps_the_reply_from_the_host() {
         .push_event("stroke", "stroke 20,20 600,40 480,700")
         .unwrap();
     assert!(matches!(
-        control.offer(id, "clip"),
+        control.offer(id, "clip").map_err(delivery_source),
         Err(ControlError::HookDenied { chain, .. }) if chain == "after"
     ));
 }
@@ -312,7 +312,7 @@ fn a_guard_deny_withholds_the_reply_and_tapes_the_rule() {
         .push_event("stroke", "stroke 20,20 600,40 480,700")
         .unwrap();
     assert!(matches!(
-        control.offer(id, "clip"),
+        control.offer(id, "clip").map_err(delivery_source),
         Err(ControlError::HookDenied { chain, .. }) if chain == "guard"
     ));
 }

@@ -79,7 +79,7 @@ fn registration_replaced_while_body_runs_fences_reply() {
     control.register(&revoked()).unwrap();
     resume.send(()).unwrap();
     assert!(matches!(
-        task.join().unwrap(),
+        task.join().unwrap().map_err(delivery_source),
         Err(ControlError::ReviewStale(_))
     ));
     assert_eq!(count_tag(&control, child, "spool"), 0);
@@ -184,7 +184,9 @@ fn registration_change_after_model_completion_fences_final_utterance() {
         .unwrap();
     let event = control.push_event("scene", "change").unwrap();
     assert!(matches!(
-        control.offer_on(child, "body", &event.id),
+        control
+            .offer_on(child, "body", &event.id)
+            .map_err(delivery_source),
         Err(ControlError::ReviewStale(_))
     ));
     let events = control.events(child).unwrap();
@@ -241,7 +243,10 @@ fn after_hook_cannot_release_a_revoked_reply_to_host() {
         } else {
             control.offer_on(child, "body", &event.id).map(|_| ())
         };
-        assert!(matches!(result, Err(ControlError::ReviewStale(_))));
+        assert!(matches!(
+            result.map_err(delivery_source),
+            Err(ControlError::ReviewStale(_))
+        ));
         assert_eq!(count_tag(&control, child, "applied"), 0);
     }
 }

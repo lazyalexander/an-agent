@@ -149,7 +149,7 @@ rules = ["stay in character", "replies under 280 characters"]
         )
         .unwrap();
 
-    let reply = said(control.offer(id, "npc").unwrap());
+    let reply = said(offer_cause(&control, id, "npc").unwrap());
     assert_eq!(reply.spool, "npc");
     assert!(reply.reply.contains("canned reply"));
     assert_eq!(reply.intents.len(), 1);
@@ -339,7 +339,7 @@ fn a_halt_is_taped_and_settled_as_silence() {
     assert_eq!(ink.spool, "ink");
 
     control.push_event("scene", "still nothing").unwrap();
-    let outcome = control.offer(id, "npc").unwrap();
+    let outcome = offer_cause(&control, id, "npc").unwrap();
     assert!(matches!(outcome, DeliveryOutcome::Halt { .. }));
 }
 
@@ -366,7 +366,7 @@ fn a_runaway_body_is_stopped_and_unmounted() {
         .unwrap();
 
     assert!(matches!(
-        control.offer(id, "npc"),
+        offer_cause(&control, id, "npc"),
         Err(ControlError::SpoolFailed { reason, .. }) if reason.contains("did not conclude")
     ));
     assert_eq!(
@@ -397,7 +397,7 @@ fn a_runaway_body_is_stopped_and_unmounted() {
         9
     );
     assert!(matches!(
-        control.offer(id, "npc"),
+        offer_cause(&control, id, "npc"),
         Err(ControlError::NotMounted(_))
     ));
 }
@@ -424,13 +424,17 @@ fn body_errors_unmount_but_infra_errors_do_not() {
         )
         .unwrap();
     assert!(matches!(
-        control.offer(id, "npc"),
+        offer_cause(&control, id, "npc"),
         Err(ControlError::ModelClientMissing)
     ));
     // Still mounted: install the client and the same body runs.
     control.set_model_client(stub_model());
     control.unmount_spool("npc").unwrap();
 
+    // Infra repair requires explicitly scheduled fresh work, not event replay.
+    control
+        .push_event("scene", "fresh unknown-clip case")
+        .unwrap();
     // An unknown clip is a driver error, not a body fault.
     control
         .mount_agent(
@@ -440,11 +444,14 @@ fn body_errors_unmount_but_infra_errors_do_not() {
         )
         .unwrap();
     assert!(matches!(
-        control.offer(id, "npc"),
+        offer_cause(&control, id, "npc"),
         Err(ControlError::UnknownClip(clip)) if clip == "no-such-clip"
     ));
     control.unmount_spool("npc").unwrap();
 
+    control
+        .push_event("scene", "fresh provider-failure case")
+        .unwrap();
     // A failing model is a model error; the body stays mounted.
     control.set_model_client(Arc::new(StubModel {
         calls: Mutex::new(Vec::new()),
@@ -458,7 +465,7 @@ fn body_errors_unmount_but_infra_errors_do_not() {
         )
         .unwrap();
     assert!(matches!(
-        control.offer(id, "npc"),
+        offer_cause(&control, id, "npc"),
         Err(ControlError::ModelFailed { spool, reason }) if spool == "npc" && reason == "model offline"
     ));
     // The failed call is closed on tape: a terminal observation citing
@@ -487,16 +494,19 @@ fn body_errors_unmount_but_infra_errors_do_not() {
     assert!(receipt.evidence.is_empty());
     control.unmount_spool("npc").unwrap();
 
+    control
+        .push_event("scene", "fresh body-failure case")
+        .unwrap();
     // A body error unmounts, like any failed spool.
     control
         .mount_agent("npc", Arc::new(Rude), &declares(&["scene"], &[]))
         .unwrap();
     assert!(matches!(
-        control.offer(id, "npc"),
+        offer_cause(&control, id, "npc"),
         Err(ControlError::SpoolFailed { reason, .. }) if reason == "forgot lines"
     ));
     assert!(matches!(
-        control.offer(id, "npc"),
+        offer_cause(&control, id, "npc"),
         Err(ControlError::NotMounted(_))
     ));
     assert!(control.events(id).unwrap().iter().any(|event| {
@@ -519,11 +529,11 @@ fn invoke_tool_is_refused_in_agent_beats() {
         .mount_agent("npc", Arc::new(Handy), &declares(&["scene"], &[]))
         .unwrap();
     assert!(matches!(
-        control.offer(id, "npc"),
+        offer_cause(&control, id, "npc"),
         Err(ControlError::SpoolFailed { reason, .. }) if reason.contains("not admitted")
     ));
     assert!(matches!(
-        control.offer(id, "npc"),
+        offer_cause(&control, id, "npc"),
         Err(ControlError::NotMounted(_))
     ));
 }
@@ -547,7 +557,7 @@ fn invoke_model_requires_the_mounted_model_face() {
     control
         .mount_agent("npc", Arc::new(Loopy(scene)), &declares(&["scene"], &[]))
         .unwrap();
-    let DeliveryOutcome::NeedsReview(request) = control.offer(id, "npc").unwrap() else {
+    let DeliveryOutcome::NeedsReview(request) = offer_cause(&control, id, "npc").unwrap() else {
         panic!("review required")
     };
     assert_eq!(request.attempt.capability.operation, "model.complete");
@@ -578,7 +588,7 @@ fn invoke_model_requires_the_mounted_model_face() {
             .any(|event| event.tags.iter().any(|tag| tag == "invoke"))
     );
     assert!(matches!(
-        control.offer(id, "npc"),
+        offer_cause(&control, id, "npc"),
         Ok(DeliveryOutcome::NeedsReview(_))
     ));
 }
@@ -709,7 +719,7 @@ fn successive_model_calls_bind_the_exact_inputs_and_workspace_generations() {
         )
         .unwrap();
     assert!(matches!(
-        control.offer(id, "npc").unwrap(),
+        offer_cause(&control, id, "npc").unwrap(),
         DeliveryOutcome::Halt { .. }
     ));
     let tape = control.events(id).unwrap();
@@ -781,7 +791,7 @@ fn agent_replies_pass_intent_admission() {
         .mount_agent("npc", Arc::new(Bard), &declares(&["scene"], &["mood"]))
         .unwrap();
 
-    let reply = said(control.offer(id, "npc").unwrap());
+    let reply = said(offer_cause(&control, id, "npc").unwrap());
     assert_eq!(reply.intents.len(), 2);
     assert!(matches!(
         &reply.intents[0],
@@ -851,7 +861,7 @@ fn byte_fuses_cap_what_crosses_a_boundary() {
         )
         .unwrap();
 
-    let reply = said(control.offer(id, "npc").unwrap());
+    let reply = said(offer_cause(&control, id, "npc").unwrap());
 
     // The clip the body saw is cut and marked; the id still names the
     // full original on tape.
@@ -923,7 +933,7 @@ gate = { type = "spool", name = "length", version = "1.0.0" }
         .mount_agent("npc", Arc::new(Bard), &declares(&["scene"], &[]))
         .unwrap();
     assert!(matches!(
-        control.offer(id, "npc"),
+        offer_cause(&control, id, "npc"),
         Err(ControlError::HookRunnerMissing)
     ));
 }

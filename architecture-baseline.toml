@@ -1,6 +1,6 @@
 # Existing debt. Only lower or remove caps after the bootstrap review.
 [file_size]
-"crates/an-agent-core/src/control/spool.rs" = 592
+"crates/an-agent-core/src/control/spool.rs" = 556
 
 [pattern_ratchet.command_construction]
 "crates/an-agent-host/src/file_job.rs" = 2
