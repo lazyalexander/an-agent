@@ -32,7 +32,7 @@ excluded by upstream inventory; the wrapper reports 600-line warnings and an
 does not enforce function length or parse Rust for type-resolved process calls.
 
 Command construction mentions are restricted to explicitly named host ownership
-boundaries. Existing factory/file-job occurrences are capped, not declared safe.
+boundaries. Existing file-job occurrences are capped, not declared safe.
 Platform adapters and the process owner remain legitimate command builders.
 The regex is a review lint: aliases, macros or indirect calls can evade it;
 strings and inline tests can count. It does not enforce sandbox permissions or

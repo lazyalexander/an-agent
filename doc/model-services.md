@@ -1,5 +1,29 @@
 # Model, context and coding-tool services
 
+## Native harness ownership
+
+Use existing coding clients for model/tool loops, shell tools, session assembly
+and compaction. The [qualified direct MCP route](https://github.com/lazyalexander/an-loom/tree/9089b0283cc9077f51447e38b32f553049948d98/examples/finite-mcp)
+uses the existing host service. Domain instructions, code and acceptance rules
+stay in the spool project; the client owns its private context and tape.
+
+The unused `an-agent-context` and `an-agent-factory` crates and the generic
+`spools/agent_loop` sample are retired. No retained runtime package depended on
+them. This removes the context sidecar/cache implementation, default Bash
+constructor, client-style timeout/cancellation code and sample ReAct policy.
+The kernel still accepts explicit tool constructors through `build_with` and
+`spawn_with`; it does not implicitly install a shell. Managed work uses the
+existing native spool/workspace execution profiles and their termination/custody
+gates. A coding client's local shell has that client's policy, not a new host grant.
+
+Existing Rust consumers of the removed crates must explicitly migrate or use
+the [last maintained source](https://github.com/lazyalexander/an-agent/tree/69f66023c12a27e97b8a4804194272fc13c4b1f0).
+Old tape, `ctx/` sidecars and published descriptors remain operator-retained
+history; no conversion, compaction or replay is performed by retirement.
+Legacy event/profile identities remain unchanged. The host's explicit context
+packets, visibility/disclosure checks, model-call admission, finite MCP tools and
+execution/artifact receipts remain separate supported services.
+
 ## Model connections and explicit context
 
 This is a host-library slice, not a new model gateway or autonomous agent.
