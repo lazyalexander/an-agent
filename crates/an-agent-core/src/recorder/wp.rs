@@ -128,6 +128,7 @@ pub struct Wp {
 
 struct WpState {
     live: BTreeMap<String, Live>,
+    retiring: BTreeMap<String, Live>,
     views: Vec<ViewRec>,
 }
 
@@ -145,6 +146,7 @@ impl Wp {
         }
         let mut state = WpState {
             live: BTreeMap::new(),
+            retiring: BTreeMap::new(),
             views: Vec::new(),
         };
         for line in fs::read_to_string(&views_path)?.lines() {
@@ -186,7 +188,12 @@ impl Wp {
 
     pub fn register(&self, worker: Uuid, session: &Path) -> Result<String, WpError> {
         let mut state = self.lock.lock().unwrap_or_else(|e| e.into_inner());
-        if state.live.values().any(|l| l.worker == worker) {
+        if state
+            .live
+            .values()
+            .chain(state.retiring.values())
+            .any(|l| l.worker == worker)
+        {
             return Err(WpError::Pending(worker.to_string()));
         }
         let id = Entropy::os().uuid_v4().to_string();
@@ -214,6 +221,7 @@ impl Wp {
         let Some(sub) = state
             .live
             .iter()
+            .chain(state.retiring.iter())
             .find(|(_, live)| live.worker == worker)
             .map(|(id, _)| id.clone())
         else {
@@ -457,8 +465,14 @@ impl Wp {
     }
 
     fn unmount_locked(&self, state: &mut WpState, sub: &str) -> Result<(), WpError> {
-        state.live.remove(sub);
-        self.append_tree(&json!({ "op": "unmount", "id": sub }))
+        if let Some(live) = state.live.remove(sub) {
+            state.retiring.insert(sub.to_owned(), live);
+        }
+        // Revoke immediately, but retain the cleanup identity until its log
+        // entry succeeds. A retry must not mistake lost bookkeeping for success.
+        self.append_tree(&json!({ "op": "unmount", "id": sub }))?;
+        state.retiring.remove(sub);
+        Ok(())
     }
 
     fn append_view(&self, rec: &ViewRec) -> Result<(), WpError> {

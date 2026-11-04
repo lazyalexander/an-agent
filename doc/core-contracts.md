@@ -49,6 +49,8 @@ Recorder spawn uses a pending intent and a local seat; failed cleanup fences new
 spawns. Recorder release persists intent, retires seats and cancellation leases,
 then abandons workspaces and records completion. Failed cleanup is `ReleasePending`
 and can only be continued by release; tape restoration treats it as already retired.
+The workspace retains retired cleanup identities until the unmount log succeeds,
+so retry cannot silently skip a failed log write and revive a worker on reopen.
 These are explicit recoverable transitions, not an atomic transaction over external
 effects or a guarantee against arbitrary storage corruption.
 

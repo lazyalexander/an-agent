@@ -442,6 +442,11 @@ fn failed_workspace_cleanup_retires_seats_and_can_be_finished_without_respawn() 
         Err(RecorderError::ReleasePending { .. })
     ));
     assert!(recorder.pool.tree().get(card.id).is_none());
+    assert!(recorder.workspace().subwp_of(card.id).is_none());
+    assert!(matches!(
+        recorder.workspace().register(card.id, tmp.path()),
+        Err(WpError::Pending(_))
+    ));
     assert!(matches!(
         recorder.spawn_worker(&card, &bound),
         Err(RecorderError::ReleasePending { .. })
@@ -452,6 +457,7 @@ fn failed_workspace_cleanup_retires_seats_and_can_be_finished_without_respawn() 
     assert!(recorder.workspace().subwp_of(card.id).is_none());
     let directory = recorder.agent().session().root().to_path_buf();
     drop(recorder);
+    assert!(Wp::open(tmp.path()).unwrap().subwp_of(card.id).is_none());
     assert!(restore_seats(&directory).unwrap().is_empty());
 }
 
@@ -477,6 +483,7 @@ fn pending_release_is_already_retired_when_restoring_the_tape() {
     assert!(recorder.pool.tree().get(card.id).is_none());
     let directory = recorder.agent().session().root().to_path_buf();
     drop(recorder);
+    assert!(Wp::open(tmp.path()).unwrap().subwp_of(card.id).is_none());
     assert!(restore_seats(&directory).unwrap().is_empty());
 }
 
