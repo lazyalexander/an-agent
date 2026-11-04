@@ -398,3 +398,119 @@ fn view_reads_linked_ids_only() {
         .unwrap();
     assert_eq!(recorder.view("main").unwrap(), vec![a, b]);
 }
+
+#[test]
+fn failed_spawn_is_unmounted_and_registration_is_compensated() {
+    let tmp = TempDir::new("recorder-failed-spawn");
+    let recorder = open_at(
+        &bare("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", Permit::Deny),
+        tmp.path(),
+        "{}",
+        "[]",
+    )
+    .unwrap();
+    let card = bare("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb", Permit::Go);
+    let bound = Charter::new(ToolTag::none_permit(Permit::Go));
+    // Persist the pending transition, then fail the final spawn note.
+    recorder.agent().session().tape().fail_append_after(1);
+    assert!(recorder.spawn_worker(&card, &bound).is_err());
+    assert!(recorder.pool.tree().get(card.id).is_none());
+    assert!(recorder.workspace().subwp_of(card.id).is_none());
+    assert!(!recorder.bounds.lock().unwrap().contains_key(&card.id));
+    recorder.spawn_worker(&card, &bound).unwrap();
+}
+
+#[test]
+fn failed_workspace_cleanup_retires_seats_and_can_be_finished_without_respawn() {
+    let tmp = TempDir::new("recorder-cleanup-fault");
+    let recorder = open_at(
+        &bare("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", Permit::Deny),
+        tmp.path(),
+        "{}",
+        "[]",
+    )
+    .unwrap();
+    let card = bare("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb", Permit::Go);
+    let bound = Charter::new(ToolTag::none_permit(Permit::Go));
+    recorder.spawn_worker(&card, &bound).unwrap();
+    let path = tmp.path().join("wp").join("tree.jsonl");
+    let backup = tmp.path().join("wp").join("tree.saved");
+    std::fs::rename(&path, &backup).unwrap();
+    std::fs::create_dir(&path).unwrap();
+    assert!(matches!(
+        recorder.release(card.id),
+        Err(RecorderError::ReleasePending { .. })
+    ));
+    assert!(recorder.pool.tree().get(card.id).is_none());
+    assert!(recorder.workspace().subwp_of(card.id).is_none());
+    assert!(matches!(
+        recorder.workspace().register(card.id, tmp.path()),
+        Err(WpError::Pending(_))
+    ));
+    assert!(matches!(
+        recorder.spawn_worker(&card, &bound),
+        Err(RecorderError::ReleasePending { .. })
+    ));
+    std::fs::remove_dir(&path).unwrap();
+    std::fs::rename(&backup, &path).unwrap();
+    recorder.release(card.id).unwrap();
+    assert!(recorder.workspace().subwp_of(card.id).is_none());
+    let directory = recorder.agent().session().root().to_path_buf();
+    drop(recorder);
+    assert!(Wp::open(tmp.path()).unwrap().subwp_of(card.id).is_none());
+    assert!(restore_seats(&directory).unwrap().is_empty());
+}
+
+#[test]
+fn pending_release_is_already_retired_when_restoring_the_tape() {
+    let tmp = TempDir::new("recorder-pending-release");
+    let recorder = open_at(
+        &bare("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", Permit::Deny),
+        tmp.path(),
+        "{}",
+        "[]",
+    )
+    .unwrap();
+    let card = bare("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb", Permit::Go);
+    recorder
+        .spawn_worker(&card, &Charter::new(ToolTag::none_permit(Permit::Go)))
+        .unwrap();
+    recorder.agent().session().tape().fail_append_after(1);
+    assert!(matches!(
+        recorder.release(card.id),
+        Err(RecorderError::ReleasePending { .. })
+    ));
+    assert!(recorder.pool.tree().get(card.id).is_none());
+    let directory = recorder.agent().session().root().to_path_buf();
+    drop(recorder);
+    assert!(Wp::open(tmp.path()).unwrap().subwp_of(card.id).is_none());
+    assert!(restore_seats(&directory).unwrap().is_empty());
+}
+
+#[test]
+fn failed_workspace_registration_leaves_only_retryable_cleanup_not_a_worker() {
+    let tmp = TempDir::new("recorder-register-fault");
+    let recorder = open_at(
+        &bare("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", Permit::Deny),
+        tmp.path(),
+        "{}",
+        "[]",
+    )
+    .unwrap();
+    let card = bare("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb", Permit::Go);
+    let bound = Charter::new(ToolTag::none_permit(Permit::Go));
+    let log = tmp.path().join("wp/tree.jsonl");
+    let saved = tmp.path().join("wp/tree.saved");
+    std::fs::rename(&log, &saved).unwrap();
+    std::fs::create_dir(&log).unwrap();
+    assert!(matches!(
+        recorder.spawn_worker(&card, &bound),
+        Err(RecorderError::ReleasePending { .. })
+    ));
+    assert!(recorder.pool.tree().get(card.id).is_none());
+    assert!(recorder.workspace().subwp_of(card.id).is_none());
+    std::fs::remove_dir(&log).unwrap();
+    std::fs::rename(&saved, &log).unwrap();
+    recorder.release(card.id).unwrap();
+    recorder.spawn_worker(&card, &bound).unwrap();
+}

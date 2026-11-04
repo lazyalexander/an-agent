@@ -130,3 +130,16 @@ separates current regression/soak evidence from future saturation and crash-faul
 tests. This is not a general registered multi-silk deployment or a hostile-code
 sandbox. Reuse the current authority boundary before designing another package
 ABI; Loom remains responsible for development and packaging only.
+
+### Artifact descriptor and tool identity checks
+
+Native file-kit collection opens with `O_NOFOLLOW | O_NONBLOCK`, then checks and
+reads the same descriptor as a bounded, singly linked regular file. Descriptor
+and ordinary reads share the registered-custody and sidecar raw-path refusal.
+Linux reads
+its original host-owned output descriptor and separately refuses pathname inode
+replacement; it never accepts bytes from a reopened replacement pathname.
+Approved Rust builds rehash the compiler and linker before each compiler stage.
+A mismatch refuses that stage without an automatic retry. This detects changes
+after approval; trusted toolchain directories must still exclude untrusted writers
+because a pathname hash is not an atomic executable launch or a full dependency hash.

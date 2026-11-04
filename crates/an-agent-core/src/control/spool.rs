@@ -380,21 +380,12 @@ impl AgentControl {
     ) -> Result<DeliveryOutcome, ControlError> {
         let turn = self.begin_beat(id)?;
         let event = self.event_by_id(event_id)?;
-        self.hooks_before(turn.agent(), &event)?;
-        let registration = self.current_registration_snapshot()?;
-        match self.invoke(turn.agent(), name, &event, &registration)? {
-            Ok(outcome) => {
-                if let DeliveryOutcome::Reply(reply) = &outcome {
-                    self.hooks_after(turn.agent(), reply)?;
-                    self.validate_reply(id, reply)?;
-                }
-                Ok(outcome)
-            }
-            Err(reason) => Err(ControlError::SpoolFailed {
-                name: name.to_string(),
-                reason,
-            }),
-        }
+        self.deliver_batch(turn.agent(), &event, Some(name))
+            .and_then(|mut outcomes| {
+                outcomes
+                    .pop()
+                    .ok_or_else(|| ControlError::NotMounted(name.into()))
+            })
     }
 
     /// One beat. The latest event goes to each spool on its route, in order.
@@ -416,39 +407,12 @@ impl AgentControl {
     ) -> Result<Vec<DeliveryOutcome>, ControlError> {
         let turn = self.begin_beat(id)?;
         let event = self.event_by_id(event_id)?;
-        self.hooks_before(turn.agent(), &event)?;
-        let event_name = event.name.clone().unwrap_or_default();
-        let (registration, route) = self.route_for(&event_name)?;
-        let mut outcomes = Vec::new();
-        for spool in route {
-            match self.invoke(turn.agent(), &spool, &event, &registration) {
-                Ok(Ok(outcome)) => match &outcome {
-                    DeliveryOutcome::Reply(reply) => match self.hooks_after(turn.agent(), reply) {
-                        Ok(()) => {
-                            self.validate_reply(id, reply)?;
-                            outcomes.push(outcome);
-                        }
-                        Err(ControlError::HookDenied { .. }) => {}
-                        Err(err) => return Err(err),
-                    },
-                    DeliveryOutcome::Halt { .. } | DeliveryOutcome::NeedsReview(_) => {
-                        outcomes.push(outcome)
-                    }
-                },
-                Ok(Err(_)) => {}
-                Err(ControlError::NotMounted(_)) => {
-                    self.note_spool(turn.agent(), &spool, &event.id, Err("missing"))?;
-                }
-                Err(err) => return Err(err),
-            }
-        }
-        drop(turn);
-        Ok(outcomes)
+        self.deliver_batch(turn.agent(), &event, None)
     }
 
     /// Deliver one event to one mounted body. A body failure unmounts the
     /// body and is returned as `Err(reason)`, never as a `ControlError`.
-    fn invoke(
+    pub(super) fn invoke(
         &self,
         agent: &Agent,
         name: &str,

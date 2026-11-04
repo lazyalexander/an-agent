@@ -1,5 +1,6 @@
 //! Optional OpenShell CLI adapter. The host owns admission and publication;
 //! OpenShell owns the VM. One invocation owns one sandbox, never a shared one.
+mod custody;
 mod lifecycle;
 mod transport;
 
@@ -76,7 +77,8 @@ impl Profile {
             "version":"0.1.5","supported":cfg!(target_os="macos"),"one_sandbox_per_run":true,
             "wall_seconds":self.wall_seconds,"control_seconds":self.control_seconds,
             "policy_sha256":store::digest(POLICY.as_bytes()),"automatic_retries":0,
-            "artifact_acceptance":"successful exec, bounded candidate, confirmed sandbox stop",
+            "artifact_acceptance":"successful exec, nofollow single-fd candidate, confirmed sandbox stop",
+            "collector_sha256":store::digest(custody::COLLECTOR.as_bytes()),
             "native_fallback":false,"retention":"stopped sandbox retained for operator cleanup"})
     }
 }

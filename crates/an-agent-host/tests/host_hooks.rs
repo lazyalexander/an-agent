@@ -300,10 +300,18 @@ fn a_guard_blocks_an_overlong_reply_and_tapes_the_rule() {
     host.control()
         .push_event("user.word", "another message that runs long")
         .unwrap();
-    assert!(matches!(
-        host.control().offer(id, "greeter"),
-        Err(ControlError::HookDenied { ref chain, .. }) if chain == "guard"
-    ));
+    let ControlError::DeliveryInterrupted {
+        ready,
+        withheld,
+        source,
+        ..
+    } = host.control().offer(id, "greeter").unwrap_err()
+    else {
+        panic!("published denial must retain its settlement")
+    };
+    assert!(ready.is_empty());
+    assert_eq!(withheld.unwrap().reply().unwrap().spool, "greeter");
+    assert!(matches!(*source, ControlError::HookDenied { ref chain, .. } if chain == "guard"));
 }
 
 /// A guard whose gate is not on the shelf — or is an mcp gate before the
@@ -334,4 +342,71 @@ gate = { type = "mcp", server = "guard", tool = "screen" }
     );
     let err = host.mount_from_config().unwrap_err();
     assert!(err.to_string().contains("mcp"), "{err}");
+}
+
+#[test]
+fn pump_returns_partial_settlement_without_landing_or_replaying_siblings() {
+    use an_agent_core::{control::SpoolBeat, workspace::WorkspaceRecord};
+    struct Revoke(AgentControl);
+    impl SpoolBeat for Revoke {
+        fn receive(&self, _: &WorkspaceRecord) -> Result<String, String> {
+            self.0
+                .register(&Registration {
+                    events: vec![EventRoute {
+                        name: "user.word".into(),
+                        spools: vec![],
+                    }],
+                    config: vec!["main".into()],
+                    env: vec![],
+                })
+                .map_err(|e| e.to_string())?;
+            Ok("revoked second reply".into())
+        }
+    }
+    let tmp = TempDir::new("host-interrupted-batch");
+    let (host, _) = setup_host(&tmp, &[("greeter", GREETER)], "");
+    host.control()
+        .register(&Registration {
+            events: vec![EventRoute {
+                name: "user.word".into(),
+                spools: vec!["greeter".into(), "breaker".into()],
+            }],
+            config: vec!["main".into()],
+            env: vec![],
+        })
+        .unwrap();
+    host.mount_from_config().unwrap();
+    let declaration = an_agent_spool::spool::parse(GREETER).unwrap().declaration();
+    host.control()
+        .mount_spool(
+            "breaker",
+            Arc::new(Revoke(host.control().clone())),
+            &declaration,
+        )
+        .unwrap();
+    let id = host.control().open_thread(&card()).unwrap();
+    let event = host.control().push_event("user.word", "hello").unwrap();
+    let mut visible = Vec::new();
+    let HostError::Control(ControlError::DeliveryInterrupted { ready, source, .. }) = host
+        .pump_on(id, &event.id, &mut |s| visible.push(s.to_owned()))
+        .unwrap_err()
+    else {
+        panic!("host must preserve the settlement error")
+    };
+    assert!(visible.is_empty());
+    assert_eq!(ready.len(), 1);
+    assert_eq!(ready[0].reply().unwrap().spool, "greeter");
+    assert!(matches!(*source, ControlError::ReviewStale(_)));
+    assert!(matches!(
+        host.pump_on(id, &event.id, &mut |_| {}),
+        Err(HostError::Control(ControlError::DeliveryUnsettled(_)))
+    ));
+    assert!(
+        !host
+            .control()
+            .events(id)
+            .unwrap()
+            .iter()
+            .any(|e| e.tags.iter().any(|t| t == "applied"))
+    );
 }
