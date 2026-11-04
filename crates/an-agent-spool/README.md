@@ -2,7 +2,7 @@
 
 Internal capabilities, wound onto spools. The kernel does not depend on this crate.
 
-**Vocabulary discipline:** a *spool* is an internal capability — it never touches the outside world directly. A *tool* touches the outside world and is realized only through MCP. Bash is the historical exception: a kernel-reserved builtin registered by `an-agent-factory`, pending the MCP slice.
+**Vocabulary discipline:** a *spool* is an internal capability — it never touches the outside world directly. External coding clients use the host's finite MCP tools. Trusted embedded tools require explicit caller-supplied constructors; the kernel registers no built-in shell.
 
 **The document is a grant envelope, not a self-description.** A spool answers four questions: how the code runs (`constructor`), the worst it can touch (`effect` ceiling), what must be present (`requires`), how to unwind it (`inverse`), and what configuration it takes (`config`). What system a spool forms at runtime is not declared — it is observed on the tape as mount/unmount acts and registrations. The document subsists in the registry; the mounted instance is its hypostasis.
 

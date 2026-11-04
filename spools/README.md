@@ -40,8 +40,6 @@ Rules of the shelf:
 
 Current entries:
 
-- `agent_loop/` — the thin loop as a policy: model proposes (bounded to
-  the requires whitelist), the policy approves by reference.
 - `echo/` — the trivial host-constructor spool, the library's hello world.
 - `chat_npc/` — a discord character (rhai beat): answers one
   `discord.message` in persona, replies become `discord.post`. One body,
@@ -50,3 +48,8 @@ Current entries:
   `discord.post` to send, produces inbound `discord.message`, net
   egress. The scripted parley case (`an-agent-spool/tests/
   discord_parley.rs`) stands in for the real bridge.
+
+The generic `agent_loop` policy is retired with the in-tree harness helpers.
+Use an existing coding harness for its model/tool loop. Domain-specific policies
+can still use the explicit embedded contract above. See
+[harness ownership and legacy source](../doc/model-services.md#native-harness-ownership).
