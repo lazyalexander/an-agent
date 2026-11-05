@@ -71,12 +71,30 @@ jobs:
           sudo mknod "$guest/root/dev/console" c 5 1
           (cd "$guest/root"; find . -print0 | cpio --null -o --format=newc) > "$guest/initramfs"
       - name: Compare recovery on the same runner
+        id: measure
         if: steps.kvm.outputs.available == 'true'
         run: |
           guest="$RUNNER_TEMP/fc04a"
           python3 lab/firecracker-04a/probe.py --firecracker "$guest/firecracker" \
             --kernel "$guest/vmlinux" --initrd "$guest/initramfs" | tee "$RUNNER_TEMP/firecracker.json"
           python3 -m json.tool "$RUNNER_TEMP/firecracker.json" > firecracker.json
+      - name: Diagnose Firecracker KVM access
+        if: failure() && steps.measure.outcome == 'failure'
+        run: |
+          guest="$RUNNER_TEMP/fc04a"
+          getfacl /dev/kvm
+          cat > "$guest/firecracker-trace" <<'SH'
+          #!/usr/bin/env bash
+          guest="$RUNNER_TEMP/fc04a"
+          exec strace --kill-on-exit -f -qq -e trace=open,openat,ioctl \
+            -o "$guest/kvm.trace" "$guest/firecracker" "$@"
+          SH
+          chmod +x "$guest/firecracker-trace"
+          if python3 lab/firecracker-04a/probe.py --samples 1 \
+            --firecracker "$guest/firecracker-trace" --kernel "$guest/vmlinux" --initrd "$guest/initramfs"; then
+            echo "Firecracker worked under tracing"
+          fi
+          grep -E '/dev/kvm|KVM_' "$guest/kvm.trace"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
