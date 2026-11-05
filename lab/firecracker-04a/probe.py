@@ -100,8 +100,8 @@ class VM:
         self.request("PUT", "/actions", {"action_type": "InstanceStart"})
 
         def ready():
-            for line in self.console.read_text(errors="replace").splitlines():
-                if line.startswith("READY ") and len(line.split()) == 2:
+            for line in self.console.read_text(errors="replace").splitlines(keepends=True):
+                if line.startswith("READY ") and line.endswith("\n") and len(line.split()) == 2:
                     return line.split()[1].encode()
             return None
 
@@ -118,8 +118,9 @@ class VM:
                     raise RuntimeError("vsock handshake failed")
                 sock.sendall(payload)
                 result = stream.readline(256)
-        if result != b"PROOF " + nonce + b" " + payload:
-            raise RuntimeError(f"unexpected proof {result!r}")
+        expected = b"PROOF " + nonce + b" " + payload
+        if result != expected:
+            raise RuntimeError(f"unexpected proof {result!r}; expected {expected!r}")
         return result
 
     def rss_kib(self):
