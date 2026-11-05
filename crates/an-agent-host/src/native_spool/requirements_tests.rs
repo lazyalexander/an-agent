@@ -105,3 +105,13 @@ fn state_slot_is_explicit_v3_and_cannot_alias_data_or_code() -> Result<()> {
     assert!(check(value).is_err());
     Ok(())
 }
+
+#[test]
+fn instruction_names_cannot_be_made_editable_even_in_legacy_kit_slots() -> Result<()> {
+    let m: bundle::Manifest = serde_json::from_value(manifest())?;
+    for name in ["AGENTS.md", "agents.MD", "agent.md", "SKILL.md", "skill.Md"] {
+        assert!(editable(&m, &format!("kit/{name}")).is_err());
+        assert!(protected_instruction(&format!("kit/{name}")));
+    }
+    Ok(())
+}

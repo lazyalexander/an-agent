@@ -4,6 +4,7 @@ mod artifacts;
 pub use artifacts::{artifact_output, artifact_references, artifacts};
 mod bundle;
 pub mod checkpoint;
+mod content_labels;
 mod event_contract;
 pub mod events;
 pub mod input_references;

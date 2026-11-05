@@ -23,6 +23,11 @@ fn load_is_nonexecuting_exclusive_and_checks_all_release_bytes() -> Result<()> {
     assert!(load(&source, &source.join("nested")).is_err());
     let loaded = load(&source, &target)?;
     assert_eq!(loaded["execution_granted"], false);
+    assert_eq!(
+        loaded["content_labels"]["baseline"]["silk/main.sh"]["label"],
+        "silk"
+    );
+    assert_eq!(loaded["content_labels"]["unregistered_work_default"], "kit");
     assert_eq!(loaded["capabilities"]["pause"], false);
     assert_eq!(
         loaded["capabilities"]["pause_between_attempts"],
@@ -79,5 +84,50 @@ fn binary_output_encoding_is_versioned_unique_and_declared() -> Result<()> {
         fs::write(&path, serde_json::to_vec(&manifest)?)?;
         assert!(bundle::inspect(&source).is_err());
     }
+    Ok(())
+}
+
+#[test]
+fn labels_follow_provenance_and_reset_does_not_promote_working_copies() -> Result<()> {
+    let temp = TempDir::new("content-labels");
+    let base = temp.path().canonicalize()?;
+    let source = fixture(&base)?;
+    fs::create_dir(source.join("kit"))?;
+    fs::write(source.join("kit/value.sh"), b"baseline")?;
+    let manifest = source.join(bundle::FILE);
+    let mut value: Value = serde_json::from_slice(&fs::read(&manifest)?)?;
+    value["files"]["kit/value.sh"] = json!(store::digest(b"baseline"));
+    fs::write(&manifest, serde_json::to_vec(&value)?)?;
+    let instance = base.join("instance");
+    let loaded = load(&source, &instance)?;
+    assert_eq!(
+        loaded["content_labels"]["baseline"]["kit/value.sh"]["label"],
+        "silk"
+    );
+    assert_eq!(
+        loaded["content_labels"]["working_copies"]["kit/value.sh"]["label"],
+        "kit"
+    );
+    let candidate = base.join("changed.sh");
+    fs::write(&candidate, b"changed")?;
+    let plan = update_kit(&instance, "value.sh", &candidate, None)?;
+    update_kit(
+        &instance,
+        "value.sh",
+        &candidate,
+        plan["approval_sha256"].as_str(),
+    )?;
+    assert_eq!(
+        fs::read(instance.join("release/kit/value.sh"))?,
+        b"baseline"
+    );
+    let plan = reset_kit(&instance, "value.sh", None)?;
+    reset_kit(&instance, "value.sh", plan["approval_sha256"].as_str())?;
+    let observed = show(&instance)?;
+    assert_eq!(
+        observed["content_labels"]["working_copies"]["kit/value.sh"]["label"],
+        "kit"
+    );
+    assert_eq!(observed["content_labels"]["execution_granted"], false);
     Ok(())
 }
