@@ -76,11 +76,10 @@ jobs:
         run: |
           guest="$RUNNER_TEMP/fc04a"
           # Keep the VMM unprivileged and inherit access from the device's group.
-          kvm_group=$(stat -c '%G' /dev/kvm)
-          test "$kvm_group" = kvm
-          runner=$(id -un)
-          sudo -u "$runner" -g "$kvm_group" id
-          sudo -u "$runner" -g "$kvm_group" python3 lab/firecracker-04a/probe.py --firecracker "$guest/firecracker" \
+          test "$(stat -c '%G' /dev/kvm)" = kvm
+          runner=(sudo -n setpriv --reuid "$(id -u)" --regid "$(stat -c '%g' /dev/kvm)" --init-groups --no-new-privs)
+          "${runner[@]}" id
+          "${runner[@]}" python3 lab/firecracker-04a/probe.py --firecracker "$guest/firecracker" \
             --kernel "$guest/vmlinux" --initrd "$guest/initramfs" | tee "$RUNNER_TEMP/firecracker.json"
           python3 -m json.tool "$RUNNER_TEMP/firecracker.json" > firecracker.json
       - name: Diagnose Firecracker KVM access
