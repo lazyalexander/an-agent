@@ -1,116 +1,90 @@
-# Spool, silk and kit code contract
+# Spool content labels: silk and kit
 
-Status: agreed target contract. This document changes vocabulary and authoring
-rules, not executable schemas or enforcement. Existing qualified profiles remain
-the limit of implementation; a general mutable-kit runtime is not implemented.
+Status: agreed definition, revision 2. Labels describe provenance and lifetime,
+not code responsibilities, language, file extension, directory or authority.
+Existing qualified profiles remain the execution limit. This revision does not
+implement arbitrary runtime editing or a general overlay filesystem.
 
-## Roles and mutability
+## Immutable baseline and mutable derivatives
 
-| Object | Role | Modification boundary |
+| Content | Label | Rule |
 | --- | --- | --- |
-| Spool release | Immutable domain package containing its pipeline, code, instructions, configuration and acceptance contracts | Selected published bytes never change in place; changes produce a new release identity |
-| Spool attempt | Host-owned execution, authority and lifecycle boundary | Explicit inputs and state; no implicit inheritance from prior scratch |
-| Silk | Core domain implementation and pipeline skeleton, including stable step contracts and domain acceptance rules | Read-only within the selected release and attempt; development changes require validation and a new release |
-| Kit | Internal glue for adaptation, conversion and connecting steps | An agent may modify explicitly editable working copies within the owning spool's grant |
+| Every selected release file, including programs, configuration, skills and AGENTS.md | silk | Immutable baseline; change through reviewed development and a new release |
+| An authorized working copy of a baseline program or configuration | kit | Separate derivative; never overwrite the selected release |
+| New files, generated programs and other uncommitted work | kit | Attempt-owned by default; not automatically retained or executable |
+| Accepted artifacts and committed state | Separate custody records | Explicit acceptance/commit and retention; never delete with scratch |
 
-These are responsibility classes, not language, file-extension or directory-name
-rules. A silk may invoke an agent or an existing CLI. A kit may be a generated
-script or a packaged component. Neither receives a separate VM or grant by default.
-A component that decides authoritative acceptance, protected sequencing or other
-core domain invariants must be treated as silk even if its author calls it glue.
-Host permissions and host acceptance cannot be redefined by either class.
+A file under a legacy `kit/` directory is still silk inside the release. Its
+working copy is kit even when its bytes match the baseline, including after reset.
+Reset restores bytes; it does not turn a mutable working copy into a release.
+File kind (program, configuration, instructions, data) is independent of the label.
+A program does not become silk merely because it implements core domain logic.
 
-## Kit origins and lifetime
+## Editing and instruction protection
 
-- **Packaged kit:** its baseline bytes are immutable parts of the spool release.
-  Adaptation edits a separate working copy, never the package or a shared baseline.
-- **Temporary kit:** generated during work, normally treated as scratch files.
-  Being executable or useful does not automatically make it state or an artifact.
+Programs and configuration may be adapted only in separately authorized working
+copies, within the selected host profile's supported editable paths. The baseline
+remains available. Record the owning instance/attempt, logical path, source release,
+base digest when present, and derivative digest. A new file has no baseline digest.
 
-Both may be repaired by an agent when they fail or drift from the assigned goal,
-within explicit editable paths and task constraints. A kit cannot edit silk,
-protected checks, the effective host policy or its own authorization. If a change
-requires those edits, request a separately authorized development task/new release.
-Silk is not immutable forever: its development source can evolve under that route.
+Skill instructions, SKILL.md, agent.md and AGENTS.md are protected during attempts.
+Updating the instruction set requires reviewed development and a new release.
+New instruction-looking files in scratch remain inert kit data: they cannot be
+loaded as instructions, widen the assignment or replace the selected instructions.
+Protect instruction resources regardless of their directory or casing. A renamed
+instruction bundle is not editable configuration merely because of its extension.
 
-Modification does not authorize execution. Before an execution uses changed code,
-bind a fixed revision/digest and the effective grant using a qualified host route.
-Do not write an executable while launching it or treat a hash as proof of safety.
-Existing selected-file snapshots do not freeze all executables or dependencies;
-unsupported enforcement remains a disclosed gap, not permission for self-update.
+Kit is a label, never a permission. Labeling a file kit does not grant editing,
+execution, dependency installation, network access or access to another attempt.
+Configuration edits that affect entrypoints, dependencies, authority or host policy
+require fresh validation/approval; package instructions cannot grant host rights.
+Before execution, bind fixed selected bytes and their effective authority using a
+qualified host route. Do not run code while it is being changed.
 
-## Retention and promotion
+## Settlement, reset and collection
 
-Unregistered temporary kits and working copies are eligible for scratch collection
-only after whole-attempt settlement is confirmed. They are not deleted merely
-because one subprocess exited. Uncertain termination fences collection. Partial
-results are not automatically promoted, inherited by the next attempt or retried.
-There is no new periodic garbage collector implied by this contract.
+Unretained kit is eligible for reset or scratch collection only after confirmed
+whole-attempt settlement. Unknown termination fences cleanup and automatic retry.
+Reset affects local working bytes, not external effects already performed.
+No background collector or automatic checkpoint inheritance is implied.
 
-If a later attempt needs an adapted kit, explicitly retain its exact bytes and
-reference them as an admitted input/checkpoint dependency. Declared input formats
-and the next grant must allow it. The host preserves selected bytes and references;
-the spool determines whether they are sufficient for business continuation.
-An accepted artifact may contain code as data; custody alone never grants execution.
+Retain a useful kit explicitly as fixed bytes and an admitted input/dependency
+for later work. Artifact custody is not execution authority. Promotion to silk
+requires review, checks and a new immutable release; changing a label is not a
+release operation. Accepted products and committed state use their own retention
+and reference rules and survive ordinary kit/scratch collection.
 
-Promote reusable changes through reviewed development, checks and packaging into
-a new immutable spool release. Keep the original release available according to
-its retention policy. Do not redefine release identity from a mutable workspace.
+## Ownership and compatibility
 
-## Division of responsibility
+The domain spool carries knowledge, instructions, programs and business acceptance
+meaning. Loom prepares bounded tasks, records protected/editable paths, checks
+candidates and packages selected bytes. The host admits execution, enforces grants,
+settles attempts and owns state/artifact/scratch custody. Backends provide isolation
+and termination evidence; Shuttle mediates authorized application interaction.
+Mature coding harnesses own their editing/model loop and native context.
 
-| Owner | Responsibility |
-| --- | --- |
-| Domain spool/developer | Silk invariants, kit interfaces, allowed adaptation points, domain tests and acceptance meaning |
-| Loom | Prepare bounded code-agent tasks with editable/protected paths; coordinate checks; package explicitly selected bytes and preserve provenance |
-| an-agent host | Admit execution, enforce authority through a qualified backend, bind selected versions, observe external effects, settle attempts and manage retained state/artifacts/scratch |
-| Backend | Enforce the admitted filesystem/process/environment boundary and provide termination evidence |
-| Shuttle | Mediate separately authorized external application interaction |
+Existing `[silk]` / `[kit]` fields, `silk/` / `kit/` paths, `Kit` aliases,
+`file-kit-v1`, `build-kit`, `kit.*` events and historical Silk communication records
+keep their wire and parsing meaning. They are compatibility bindings, not the label
+definition. Old release identities and historical receipts are never rewritten.
 
-Loom is not a runtime policy engine or a replacement coding agent. an-agent does
-not decide domain algorithms or automatically rewrite a failing kit. Mature coding
-tools may perform the edits; their own context/tape remains theirs unless a separate
-integration explicitly provides host tracing. Domain glue never belongs in core.
+The current native profile supports fixed selected files and approved between-run
+working-copy updates through legacy `kit/` slots. That restriction is a profile
+limit, not a claim that only glue can become kit. Arbitrary-path overlays, adding
+executable files or configuration slots, and runtime self-editing need a separately
+qualified host route. A new-file kit label alone must not bypass that restriction.
 
-The first [native spool implementation](native-spool.md)
-qualifies between-run kit edits and fixed snapshot execution. Runtime self-editing,
-weaver integration and checkpoint continuation of adapted kits remain future work.
+## Implemented observation and next qualification
 
-## Compatibility and next validation
+Host instance inspection reports release files as silk, existing working copies as
+kit, and unregistered generated work as kit by default. It retains the original
+`kits` digest map for compatibility. These observations grant no authority and do
+not replace artifact/state custody records.
+Loom task inventories label all baseline files silk; received candidates are kit
+with baseline provenance. Checked publication produces a new silk release.
 
-Legacy `[kit]` authoring, `Kit` aliases, `kit/` paths, `file-kit-v1`, `build-kit` and
-`kit.*` events keep their existing parsing and wire meaning. `[kit]` remains an
-alias for the existing `[silk]` declaration, not a declaration of editable glue.
-The new conceptual kit role adds no manifest field in this documentation change.
-Historical Silk/Silksong communication records retain their original schema.
-Never infer edit permissions from a legacy token or rewrite old releases/tape.
-
-The next implementation slice should use one lightweight spool: keep its silk
-read-only, adapt one kit working copy, execute the selected fixed bytes, retain
-only declared outputs, and reclaim unretained copies after confirmed settlement.
-It must also reject attempted silk/policy edits and preserve immutable release
-bytes. Reuse existing host and Loom contracts; do not introduce a generic pipeline
-engine, a new backend or blanket code-execution authority to make the example pass.
-
-## Implementation order: spool, then Weaver
-
-First qualify the spool product boundary: immutable release, independent loaded
-instances, stable silk, scoped kit working copies, selected inputs, fixed-version
-outputs, cancellation/termination fencing, safe collection and baseline reload.
-Use the existing host and Loom contracts. Record unsupported lifecycle features
-such as pause/suspend explicitly; choose later work from real product needs.
-
-Then qualify Weaver as task preparation for a mature harness and candidate review.
-Loom supplies development contracts and packaging checks; the host authorizes and
-supervises execution; the spool supplies domain instructions and acceptance rules.
-An adapter may reuse a mature external harness, whose native context remains its
-own. Do not infer code authorship from submission identity. Review exact candidate
-bytes regardless of whether a human, model or transformation produced them.
-
-The current host mechanism is named **kit proposal slot**, exposed through
-`native_spool::kit_proposal` and `spool-kit-proposal-*`. It admits a bounded edit
-against instance, release, generation and original-content preconditions. It is
-not the future Weaver task preparer or reviewer. Existing `weaver` module/CLI,
-schemas, capability and stored-ticket names remain compatibility identities.
-Revocation closes result admission without proving an external agent stopped.
-See [the native contract](native-spool.md).
+Next qualify a directory-independent overlay with explicit new-file admission:
+keep instruction resources immutable, bind configuration changes and new executable
+bytes to fresh approval, prove baseline preservation/reset, retain declared products
+and reclaim remaining kit only after confirmed settlement. Reuse current host and
+Loom contracts; do not add a generic workflow engine or infer grants from labels.

@@ -72,6 +72,7 @@ pub fn show(path: &Path) -> Result<Value> {
         "weaver":false,"weaver_proposal_slot":true,"kit_proposal_slot":true});
     record["round_control"] = round_control::summary(&round_control::current(&root, &record)?);
     record["kits"] = kit_hashes(&root, &bundle)?;
+    record["content_labels"] = content_labels::inspect(&bundle, &record["kits"]);
     let mut runs = Vec::new();
     for entry in fs::read_dir(root.join("runs"))? {
         let path = entry?.path();
@@ -106,7 +107,7 @@ pub(super) fn kit_hashes(root: &Path, bundle: &bundle::Bundle) -> Result<Value> 
     Ok(json!(kits))
 }
 
-/// Host/operator editing route; never accepts a silk path or executes the edit.
+/// Host/operator route for qualified legacy slots; never edits the release or executes the edit.
 pub fn update_kit(path: &Path, name: &str, source: &Path, approved: Option<&str>) -> Result<Value> {
     bundle::identifier(name)?;
     let root = location(path)?;

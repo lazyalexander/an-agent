@@ -98,7 +98,11 @@ pub(super) fn validate(m: &bundle::Manifest) -> Result<()> {
     }
     let mut seen = BTreeSet::new();
     for path in &r.editable {
-        if !path.starts_with("kit/") || !m.files.contains_key(path) || !seen.insert(path) {
+        if protected_instruction(path)
+            || !path.starts_with("kit/")
+            || !m.files.contains_key(path)
+            || !seen.insert(path)
+        {
             return Err("editable path must be a unique selected kit file".into());
         }
     }
@@ -106,6 +110,9 @@ pub(super) fn validate(m: &bundle::Manifest) -> Result<()> {
 }
 
 pub(super) fn editable(m: &bundle::Manifest, path: &str) -> Result<()> {
+    if protected_instruction(path) {
+        return Err("release instructions cannot be edited as working copies".into());
+    }
     if m.requirements
         .as_ref()
         .is_some_and(|r| !r.editable.iter().any(|p| p == path))
@@ -118,3 +125,10 @@ pub(super) fn editable(m: &bundle::Manifest, path: &str) -> Result<()> {
 #[cfg(test)]
 #[path = "requirements_tests.rs"]
 mod tests;
+
+fn protected_instruction(path: &str) -> bool {
+    let name = path.rsplit('/').next().unwrap_or_default();
+    ["AGENTS.md", "agent.md", "SKILL.md"]
+        .iter()
+        .any(|s| name.eq_ignore_ascii_case(s))
+}

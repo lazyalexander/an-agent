@@ -123,8 +123,9 @@ Plus the discipline-specific checks:
   skill): a split commit is a pure move, public paths stay, tests are
   moved not lost.
 
-Code-role terminology follows [the spool code contract](doc/spool-code.md).
-Silk is the stable core; kit is adaptable glue. Preserve legacy wire/API names
+Content-label terminology follows [the spool code contract](doc/spool-code.md).
+Silk labels every immutable release baseline; kit labels mutable derivatives and
+new work. Instructions stay protected; labels never grant authority. Preserve legacy wire/API names
 and distinguish target contracts from implemented runtime guarantees.
 
 ## Platform claims
