@@ -1,0 +1,74 @@
+name: Firecracker 04A lab
+
+on:
+  push:
+    branches: [dev-firecracker-04a-probe]
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - name: Measure native receipt recovery
+        run: python3 lab/firecracker-04a/probe.py | tee native.json
+      - name: Check KVM availability
+        id: kvm
+        run: |
+          uname -a
+          if [[ ! -c /dev/kvm ]]; then
+            echo "::warning::No /dev/kvm device on this runner"
+            exit 0
+          fi
+          sudo setfacl -m "u:$(id -un):rw" /dev/kvm
+          python3 - <<'PY'
+          import fcntl
+          import os
+
+          fd = os.open("/dev/kvm", os.O_RDWR)
+          assert fcntl.ioctl(fd, 0xAE00, 0) == 12, "unexpected KVM API version"
+          PY
+          echo "available=true" >> "$GITHUB_OUTPUT"
+      - name: Prepare Firecracker and diskless guest
+        if: steps.kvm.outputs.available == 'true'
+        env:
+          FIRECRACKER_VERSION: v1.17.0
+          FIRECRACKER_SHA256: 06094a1108ae9e82aa4c23a775aa92758f53f1175d422270d9d6162cb9ade558
+        run: |
+          guest="$RUNNER_TEMP/fc04a"
+          mkdir -p "$guest/root/dev"
+          curl -fLsS --retry 2 -o "$guest/firecracker.tgz" \
+            "https://github.com/firecracker-microvm/firecracker/releases/download/$FIRECRACKER_VERSION/firecracker-$FIRECRACKER_VERSION-x86_64.tgz"
+          echo "$FIRECRACKER_SHA256  $guest/firecracker.tgz" | sha256sum -c -
+          tar -xzf "$guest/firecracker.tgz" -C "$guest"
+          mv "$guest/release-$FIRECRACKER_VERSION-x86_64/firecracker-$FIRECRACKER_VERSION-x86_64" "$guest/firecracker"
+          "$guest/firecracker" --version
+
+          s3=https://s3.amazonaws.com/spec.ccfc.min
+          prefix=$(curl -fLsS --retry 2 "$s3?list-type=2&prefix=firecracker-ci/&delimiter=/" \
+            | grep -oP '(?<=<Prefix>)firecracker-ci/[0-9]{8}-[^/]+/(?=</Prefix>)' | sort | tail -1)
+          kernel=$(curl -fLsS --retry 2 "$s3?list-type=2&prefix=${prefix}x86_64/vmlinux-" \
+            | grep -oP '(?<=<Key>)firecracker-ci/[^<]+/x86_64/vmlinux-[0-9]+\.[0-9]+\.[0-9]+(?=</Key>)' \
+            | sort -V | tail -1)
+          echo "$s3/$kernel"
+          curl -fLsS --retry 2 -o "$guest/vmlinux" "$s3/$kernel"
+          sha256sum "$guest/vmlinux"
+          cc -Wall -Wextra -Werror -static -O2 lab/firecracker-04a/guest.c -o "$guest/root/init"
+          sudo mknod "$guest/root/dev/console" c 5 1
+          (cd "$guest/root"; find . -print0 | cpio --null -o --format=newc) > "$guest/initramfs"
+      - name: Compare recovery on the same runner
+        if: steps.kvm.outputs.available == 'true'
+        run: |
+          guest="$RUNNER_TEMP/fc04a"
+          python3 lab/firecracker-04a/probe.py --firecracker "$guest/firecracker" \
+            --kernel "$guest/vmlinux" --initrd "$guest/initramfs" | tee firecracker.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: firecracker-04a-measurements
+          path: |
+            native.json
+            firecracker.json
