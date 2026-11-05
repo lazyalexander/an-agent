@@ -7,6 +7,7 @@ import socket
 import sqlite3
 import statistics
 import subprocess
+import sys
 import tempfile
 import time
 
@@ -225,12 +226,13 @@ def main():
         modes.extend(("cold", "resident", "snapshot"))
 
     samples = {mode: [] for mode in modes}
-    for _ in range(args.samples):
+    for sample in range(1, args.samples + 1):
         for mode in modes:
             with tempfile.TemporaryDirectory(prefix="fc04a-", dir="/tmp") as directory:
                 try:
                     samples[mode].append(trial(mode, args, pathlib.Path(directory)))
                 except Exception:
+                    print(f"{mode} sample {sample} failed", file=sys.stderr, flush=True)
                     console = pathlib.Path(directory) / "console"
                     if console.exists():
                         print(console.read_text(errors="replace"), flush=True)
