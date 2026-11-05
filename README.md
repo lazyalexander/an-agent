@@ -1,5 +1,7 @@
 # an-agent
 
+English · [简体中文](doc/zh-CN/README.md)
+
 <p align="center">
   <img src="assets/icon.png" width="128" alt="an-agent icon">
 </p>

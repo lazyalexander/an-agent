@@ -1,5 +1,7 @@
 # det_seam
 
+English · [简体中文](../../../../doc/zh-CN/crates/an-agent-core/src/det_seam/README.md)
+
 The determinism seam — the only code allowed to touch OS time and entropy.
 
 **Admission rule:** clock/entropy sources and their injectable wrappers only. No policy, no logic that *uses* time — that belongs to callers.

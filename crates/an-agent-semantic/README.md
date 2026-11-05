@@ -1,5 +1,7 @@
 # an-agent-semantic
 
+English · [简体中文](../../doc/zh-CN/crates/an-agent-semantic/README.md)
+
 The vertical semantic plane: transport-neutral claims, concrete attempts,
 version-bound decisions, grants, and execution receipts. It contains no tools, tapes, workspaces,
 spools, host handles, or interaction loops.

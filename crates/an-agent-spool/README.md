@@ -1,5 +1,7 @@
 # an-agent-spool
 
+English · [简体中文](../../doc/zh-CN/crates/an-agent-spool/README.md)
+
 Internal capabilities, wound onto spools. The kernel does not depend on this crate.
 
 **Vocabulary discipline:** a *spool* is an internal capability — it never touches the outside world directly. External coding clients use the host's finite MCP tools. Trusted embedded tools require explicit caller-supplied constructors; the kernel registers no built-in shell.
