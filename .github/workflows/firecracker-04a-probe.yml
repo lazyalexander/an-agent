@@ -75,6 +75,9 @@ jobs:
         if: steps.kvm.outputs.available == 'true'
         run: |
           guest="$RUNNER_TEMP/fc04a"
+          # The hosted runner may reset device ACLs between steps.
+          sudo setfacl -m "u:$(id -un):rw" /dev/kvm
+          getfacl /dev/kvm
           python3 lab/firecracker-04a/probe.py --firecracker "$guest/firecracker" \
             --kernel "$guest/vmlinux" --initrd "$guest/initramfs" | tee "$RUNNER_TEMP/firecracker.json"
           python3 -m json.tool "$RUNNER_TEMP/firecracker.json" > firecracker.json
