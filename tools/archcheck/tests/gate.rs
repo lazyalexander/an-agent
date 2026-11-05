@@ -336,6 +336,25 @@ fn documentation_placement_size_count_links_and_policy_are_enforced() {
     for n in 0..24 {
         fs::remove_file(root.join(format!("doc/page-{n}.md"))).unwrap();
     }
+    let translation = root.join("doc/zh-CN/doc/topic.md");
+    fs::create_dir_all(translation.parent().unwrap()).unwrap();
+    fs::write(&translation, "[English](../../topic.md)\n").unwrap();
+    assert!(gate(root, &base).0);
+    for n in 0..23 {
+        fs::write(root.join(format!("doc/page-{n}.md")), "# Topic\n").unwrap();
+    }
+    assert!(gate(root, &base).0, "translations do not add a topic");
+    for n in 0..23 {
+        fs::remove_file(root.join(format!("doc/page-{n}.md"))).unwrap();
+    }
+    fs::write(&translation, "[missing](absent.md)\n").unwrap();
+    assert!(gate(root, &base).1.contains("missing published"));
+    fs::write(&translation, "text\n".repeat(601)).unwrap();
+    assert!(gate(root, &base).1.contains("line budget"));
+    fs::write(&translation, "# 中文\n").unwrap();
+    fs::remove_file(root.join("doc/topic.md")).unwrap();
+    assert!(gate(root, &base).1.contains("canonical English document"));
+    fs::remove_file(translation).unwrap();
     change_integer(&policy, &["max_pages"], 25);
     assert!(gate(root, &base).1.contains("budget weakening"));
     fs::remove_file(&policy).unwrap();
