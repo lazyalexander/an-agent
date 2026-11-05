@@ -1,5 +1,7 @@
 # an-agent documentation
 
+English · [简体中文](zh-CN/doc/README.md)
+
 Architecture and operational contracts live here. Package and directory READMEs
 provide orientation and links, not parallel specifications. Commands assume the
 repository root unless stated otherwise. Current guarantees are bounded by the

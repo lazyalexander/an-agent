@@ -1,5 +1,7 @@
 # causal-web
 
+English · [简体中文](../../doc/zh-CN/packages/causal-web/README.md)
+
 A memstream tape viewer. Drop in a `.jsonl` tape and the page threads utterances, actions and observations into causal lines via `refs`, then validates the tape in-page. Zero runtime dependencies, fully client-side — files never leave your machine.
 
 ## Run

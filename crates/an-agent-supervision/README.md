@@ -1,5 +1,7 @@
 # an-agent-supervision
 
+English · [简体中文](../../doc/zh-CN/crates/an-agent-supervision/README.md)
+
 Transport-neutral, process-local review state. Depends on `an-agent-semantic`,
 not on core, tapes, tools, spool loaders, or host interaction loops.
 

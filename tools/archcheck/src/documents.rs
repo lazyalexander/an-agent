@@ -109,12 +109,35 @@ pub fn inspect(root: &Path, base: &str) -> Result<()> {
         {
             return Err(format!("documentation symlink: {}", path.display()).into());
         }
-        let limit = if path == Path::new("AGENTS.md") {
+        // A translation mirrors an existing English path and inherits its limit.
+        let canonical = if let Ok(source) = path.strip_prefix("doc/zh-CN") {
+            let source = if source == Path::new("AGENTS.zh-CN.md") {
+                Path::new("AGENTS.md")
+            } else {
+                source
+            };
+            if path.file_name().is_some_and(|n| n == "AGENTS.md")
+                || source.starts_with("doc/zh-CN")
+                || !files.contains(source)
+            {
+                return Err(format!(
+                    "translation requires a canonical English document: {}",
+                    path.display()
+                )
+                .into());
+            }
+            source
+        } else {
+            path
+        };
+        let limit = if canonical == Path::new("AGENTS.md") {
             budget.max_agent_lines
-        } else if path.file_name().is_some_and(|n| n == "README.md") {
+        } else if canonical.file_name().is_some_and(|n| n == "README.md") {
             budget.max_readme_lines
-        } else if path.starts_with("doc") {
-            pages += 1;
+        } else if canonical.starts_with("doc") {
+            if canonical == path {
+                pages += 1;
+            }
             budget.max_page_lines
         } else {
             return Err(format!(

@@ -1,5 +1,7 @@
 # memstream
 
+English · [简体中文](../../../../doc/zh-CN/crates/an-agent-core/src/memstream/README.md)
+
 The tape: append-only JSONL event log, the system's single source of truth. Hot path is `context clips`; observation/replay data is cold — indexing, embeddings and graph views are projections built elsewhere, never the source.
 
 **Admission rule:** the event model, storage, and validation. No projections, no query engines.

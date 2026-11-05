@@ -1,5 +1,7 @@
 # ts-tools
 
+English · [简体中文](../../doc/zh-CN/packages/ts-tools/README.md)
+
 TS tools probe package: can a TypeScript tool sit behind the same `Tool` trait as a Rust builtin?
 
 **Protocol (stdio, one shot):** one JSON object in on stdin, one JSON object out on stdout, process exits. Logs go to stderr, never stdout.
