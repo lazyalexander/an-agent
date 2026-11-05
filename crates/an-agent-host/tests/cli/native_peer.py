@@ -289,6 +289,7 @@ def main():
         call(*ask, '--approve', read_preview['approval_sha256'], success=False)
         completed = approve('spool-peer', 'run', policy_sender, 'check-grip', 'request')
         approve('spool-accept', target, completed['run'])
+        call('spool-peer', 'deliver-agent', policy_sender, 'check-grip', READER, success=False)
         approved_reply = approve('spool-peer', 'reply', policy_sender, 'check-grip')
         assert approved_reply['status'] == 'succeeded'
         call('spool-peer', 'run', policy_sender, 'check-grip', 'response', success=False)

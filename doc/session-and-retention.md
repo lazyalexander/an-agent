@@ -139,7 +139,9 @@ plan admits the request. The plan binds both activations, the material and
 recipient, and the ceilings. Outside scope the host refuses before creating
 a peer record. The worker still uses the ordinary supervised execution
 boundary. Its accepted fixed reply can be inspected by the primary agent
-without executing a response phase. Only this local route is qualified.
+without executing a response phase. A scoped request stays with its selected
+spool worker and cannot be handed to an internal agent card. Only this local
+route is qualified.
 
 ## Runtime acceptance matrix
 
