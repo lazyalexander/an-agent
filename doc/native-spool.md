@@ -1,5 +1,12 @@
 # Native spool runtime and round control
 
+Content labels follow [the revision-2 contract](spool-code.md): every release
+file is silk, including files under historical `kit/` paths. Mutable derivatives
+and new work are kit. The path bindings below describe the qualified legacy
+profile, not the definition of those labels. Instruction resources remain protected;
+labels do not authorize new files, configuration changes or execution.
+
+
 ## Release-bound native spool: reviewed headless profile
 
 Status: implemented for reviewed local shell tools and explicitly selected

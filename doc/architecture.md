@@ -14,8 +14,8 @@ needs clarification. Domain algorithms do not belong in the kernel.
 | Spool release | Immutable domain code, internal silks, skills, dependencies, state formats and domain acceptance rules |
 | Spool instance | A release-bound business identity with committed state |
 | Spool execution attempt | The target unit of execution isolation, authority and lifecycle |
-| Silk | Release-bound core domain code and pipeline skeleton; read-only during an attempt |
-| Kit | Adaptable internal glue; packaged baselines are immutable, explicitly editable working copies are scratch by default |
+| Silk | Every immutable release baseline file, including programs, configuration and instructions |
+| Kit | Authorized mutable derivatives and new work; labels describe provenance, not grants |
 | Shuttle | An authorized bridge into an external application, with modification preconditions and observed results |
 | Execution backend | Actual isolation and process/environment control; OpenShell is one optional implementation |
 | an-loom | Developer workbench for authoring, code-tool assistance, checks and packaging; never runtime authorization |
@@ -29,7 +29,7 @@ flowchart TB
     Backend --> Attempt[Spool execution attempt]
     Attempt --> A[Internal silk A]
     Attempt --> B[Internal silk B]
-    A --> K[Kit working copy: bounded glue]
+    A --> K[Kit: mutable derivative / new work]
     K --> B
     Attempt --> Output[Candidate state and products]
     Output --> Acceptance[Host settlement and acceptance]
@@ -83,8 +83,8 @@ A silk cannot select a weaker backend or write directly to the formal catalog.
 Backend support must be qualified for its platform, version and effective policy.
 There is no silent weaker fallback when requirements cannot be enforced.
 
-The [spool code contract](spool-code.md) distinguishes stable silks from adaptable
-kits. This is a target contract, not new mutable-code enforcement. Legacy `file-kit-v1`, CLI
+The [spool code contract](spool-code.md) labels immutable release files silk and mutable derivatives/new work
+kit. This is a target contract, not new mutable-code enforcement. Legacy `file-kit-v1`, CLI
 commands, `kit.*` events, paths and compatibility APIs retain their spelling.
 Historical Silk communication protocol/Silksong records are a different schema,
 not executable silks; no history is rewritten by the naming change.
