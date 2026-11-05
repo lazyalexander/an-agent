@@ -4,6 +4,7 @@ use super::*;
 mod execution;
 mod participant;
 mod publication;
+mod read_scope;
 pub(super) use execution::bound_phase;
 pub use execution::{execute, execute_supervised};
 pub use participant::deliver_agent;

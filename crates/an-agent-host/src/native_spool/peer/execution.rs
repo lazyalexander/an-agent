@@ -36,6 +36,9 @@ fn execute_phase(
     }
     let (dir, record) = open(path, name)?;
     available(&dir, &record)?;
+    if phase == "response" && record["plan"].get("read").is_some() {
+        return Err("read-only peer results are returned as fixed reply artifacts".into());
+    }
     let marker = dir.join(format!("{phase}-start.json"));
     if phase_started(&dir, &record, phase)? {
         return Err("peer phase admitted or uncertain; inspect, never replay".into());

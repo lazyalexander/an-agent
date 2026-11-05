@@ -1,4 +1,5 @@
 //! Short metadata commits; no endpoint lock is held while a peer executes.
+use super::read_scope::{ReadRequest, ReadScope};
 use super::*;
 use serde::Deserialize;
 
@@ -13,6 +14,7 @@ struct Request {
     wall_seconds: u64,
     request_state: Option<String>,
     response_state: Option<String>,
+    read: Option<ReadRequest>,
 }
 
 pub fn request(path: &Path, name: &str, input: &Path, approved: Option<&str>) -> Result<Value> {
@@ -41,6 +43,23 @@ pub fn request(path: &Path, name: &str, input: &Path, approved: Option<&str>) ->
     let _target = store::lock(&target)?;
     let source = endpoint(&root)?;
     let target_id = endpoint(&target)?;
+    let (_, source_bundle) = active(&root)?;
+    let scope = ReadScope::select(&source_bundle, spec.read.as_ref())?;
+    if let (Some(scope), Some(read)) = (&scope, &spec.read) {
+        if spec.schema != CONTEXT_REQUEST
+            || spec.request_state.is_some()
+            || spec.response_state.is_some()
+        {
+            return Err("declared peer reads require local context without a state slot".into());
+        }
+        scope.check(
+            read,
+            &target_id,
+            &spec.source_output,
+            &spec.reply_output,
+            spec.wall_seconds,
+        )?;
+    }
     let (_, target_bundle) = active(&target)?;
     if !target_bundle.manifest.outputs.contains(&spec.reply_output) {
         return Err("peer reply must be a declared target output".into());
@@ -69,9 +88,16 @@ pub fn request(path: &Path, name: &str, input: &Path, approved: Option<&str>) ->
     if spec.schema == CONTEXT_REQUEST {
         plan["context_packet"] = packet_evidence(&data, &target_id)?;
     }
+    if let (Some(scope), Some(read)) = (scope, spec.read) {
+        plan["read"] = scope.evidence(&read, &data, &plan["context_packet"])?;
+    }
     let (digest, execute) = approval(&plan, approved)?;
     if !execute {
-        return Ok(json!({"plan":plan,"approval_sha256":digest,"executed":false}));
+        let mut preview = json!({"plan":plan,"approval_sha256":digest,"executed":false});
+        if plan.get("read").is_some() {
+            preview["decision"] = json!("needs_authorization");
+        }
+        return Ok(preview);
     }
     store::directory(&parent)?;
     fs::create_dir(&dir)?;
@@ -82,9 +108,11 @@ pub fn request(path: &Path, name: &str, input: &Path, approved: Option<&str>) ->
     sync(&dir)?;
     sync(&parent)?;
     sync(&root)?;
-    Ok(
-        json!({"status":"succeeded","request":digest,"waiting_for_reply":true,"process_started":false}),
-    )
+    let mut receipt = json!({"status":"succeeded","request":digest,"waiting_for_reply":true,"process_started":false});
+    if plan.get("read").is_some() {
+        receipt["decision"] = json!("admitted");
+    }
+    Ok(receipt)
 }
 
 pub(super) fn reply_plan(dir: &Path, record: &Value) -> Result<Value> {
