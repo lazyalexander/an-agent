@@ -38,6 +38,9 @@ fn select(bundle: &bundle::Bundle, receiver: Uuid, id: Uuid) -> Result<AgentCard
 pub fn deliver_agent(path: &Path, name: &str, id: Uuid, approved: Option<&str>) -> Result<Value> {
     let (dir, record) = open(path, name)?;
     let peer = &record["plan"];
+    if peer.get("read").is_some() {
+        return Err("declared peer reads are bound to their selected spool worker".into());
+    }
     if peer["schema"] != CONTEXT_REQUEST {
         return Err("agent delivery requires a bounded peer context".into());
     }
