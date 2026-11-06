@@ -9,13 +9,8 @@ fn fixture() -> Result<(TempDir, Value, PathBuf)> {
     fs::write(&source, b"approved")?;
     let attempt = base.join("job/attempts/test");
     fs::create_dir_all(&attempt)?;
-    let executable = std::env::current_exe()?;
-    // Unit test binaries can exceed the runtime's executable size bound.
-    let executable = if cfg!(unix) {
-        PathBuf::from("/bin/echo").canonicalize()?
-    } else {
-        executable
-    };
+    let executable = base.join("runtime");
+    fs::write(&executable, b"fixture runtime")?;
     let plan = json!({"schema":"an-workspace-plan-v2","root":base.join("job"),
         "executable":executable,"executable_sha256":store::digest(&regular(&executable,20*1024*1024)?),
         "inputs":[{"path":source,"name":"selected.txt","sha256":store::digest(b"approved")}],
