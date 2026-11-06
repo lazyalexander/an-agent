@@ -41,7 +41,7 @@ def main():
         preview = call(*argv)
         return call(*argv, '--approve', preview['approval_sha256'])
 
-    def package(name, receiver=False):
+    def package(name, receiver=False, read_scope=None):
         directory = root / (name + '-release')
         (directory / 'silk').mkdir(parents=True)
         code = 'set -eu\nread -r value < "$AN_SPOOL_INPUT"\nprintf ready > ready.marker\n'
@@ -50,6 +50,10 @@ def main():
         code += "printf 'reply:%s\\n' \"$value\" > report.txt\n" if receiver else 'cat "$AN_SPOOL_INPUT" > report.txt\n'
         (directory / 'silk/main.sh').write_text(code)
         files = {'silk/main.sh': hashlib.sha256(code.encode()).hexdigest()}
+        if read_scope is not None:
+            declaration = json.dumps(read_scope).encode()
+            (directory / 'silk/peer-read.json').write_bytes(declaration)
+            files['silk/peer-read.json'] = hashlib.sha256(declaration).hexdigest()
         if receiver:
             roster = json.dumps([card(READER), card(OBSERVER)]).encode()
             (directory / 'silk/agents.json').write_bytes(roster)
@@ -249,9 +253,49 @@ def main():
         assert (target / 'runs' / done['run'] / 'job/work/report.txt').read_text() == 'reply:' + data.read_text()
         call(*execute, success=False)
         participant = qualify(call, approve, offer, sender, target, packet, root, preview['approval_sha256'])
+        # A prior accepted CAD material note is selected by exact custody revision.
+        policy_sender = root / 'cad-material-source'
+        call('spool-load', package('cad-material-source', read_scope={
+            'schema': 'an-native-peer-read-v1', 'task': 'verify-grip-finish',
+            'worker_release': call('spool-show', target)['release'],
+            'material_output': 'report.txt', 'reply_output': 'report.txt',
+            'max_text_bytes': 128, 'max_wall_seconds': 15}), policy_sender)
+        note = 'part=grip; drawing=handwheel; revision=approved-7; finish=walnut'
+        data.write_text(json.dumps(dict(packet, text=note, source='cad:handwheel:approved-7',
+            sha256=hashlib.sha256(note.encode()).hexdigest())) + '\n')
+        approve('spool-start', policy_sender, 'previous-paint', data, 15)
+        approve('spool-accept', policy_sender, 'previous-paint')
+        selected = call('spool-artifacts', policy_sender, 'previous-paint')['outputs'][0]['binding']['revision']
+        read = {'task': 'verify-grip-finish', 'material_revision': selected}
+        request = dict(template, source_run='previous-paint', read=read)
+        other_worker = root / 'different-worker'
+        call('spool-load', package('different-worker', True), other_worker)
+        ask = ['spool-peer', 'request', policy_sender, 'check-grip', spec]
+        for bad in [dict(request, read=None), dict(request, wall_seconds=16),
+                    dict(request, read=dict(read, task='write-grip')),
+                    dict(request, read=dict(read, material_revision='0' * 64)),
+                    dict(request, read=dict(read, disclosure='remote')),
+                    dict(request, target=str(other_worker)),
+                    dict(request, request_state=selected)]:
+            spec.write_text(json.dumps(bad))
+            call(*ask, success=False)
+        spec.write_text(json.dumps(request))
+        read_preview = call(*ask)
+        assert read_preview['decision'] == 'needs_authorization' and not read_preview['executed']
+        assert note not in json.dumps(read_preview)
+        call(*ask, '--approve', '0' * 64, success=False)
+        assert not (policy_sender / 'peers/check-grip').exists()
+        assert call(*ask, '--approve', read_preview['approval_sha256'])['decision'] == 'admitted'
+        call(*ask, '--approve', read_preview['approval_sha256'], success=False)
+        completed = approve('spool-peer', 'run', policy_sender, 'check-grip', 'request')
+        approve('spool-accept', target, completed['run'])
+        call('spool-peer', 'deliver-agent', policy_sender, 'check-grip', READER, success=False)
+        approved_reply = approve('spool-peer', 'reply', policy_sender, 'check-grip')
+        assert approved_reply['status'] == 'succeeded'
+        call('spool-peer', 'run', policy_sender, 'check-grip', 'response', success=False)
         (root / 'report.json').write_text(json.dumps({'passed': True,
             'host_sha256': hashlib.sha256(host.read_bytes()).hexdigest(),
-            'bounded_context_received': True, 'wrong_audience_refused': True, 'dispatch_group_refused': True, 'fixed_reply': 'reply:2', 'generation_fence': True, 'unknown_replayed': False,
+            'cad_read_scope_admitted': True, 'bounded_context_received': True, 'wrong_audience_refused': True, 'dispatch_group_refused': True, 'fixed_reply': 'reply:2', 'generation_fence': True, 'unknown_replayed': False,
             'sender_busy_receiver_progress': True, 'wait_processes': 0,
             'automatic_retries': 0, 'participant': participant,
             'scope': 'split-phase artifact protocol; no live IPC or scheduler fairness claim'}, indent=2))

@@ -1,5 +1,7 @@
 # an-agent-workspace
 
+English · [简体中文](../../doc/zh-CN/crates/an-agent-workspace/README.md)
+
 Content-addressed store. This is not the recorder workspace (`Wp` in the kernel).
 
 **Admission rule:** blob, tree, and commit persistence, plus lead checks. No admission decisions (`act`), no tape (`memstream`).

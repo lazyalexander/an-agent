@@ -1,5 +1,7 @@
 # Optional Linux developer machine
 
+English · [简体中文](../../../doc/zh-CN/infra/dev/lima/README.md)
+
 `arm-linux.yaml` provisions an ordinary ARM Linux machine on an Apple silicon
 Mac. It is development infrastructure only. Native Linux users need neither
 Lima nor this configuration. Host runtime policy stays in `an-agent-host` and

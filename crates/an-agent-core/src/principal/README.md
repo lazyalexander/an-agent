@@ -1,5 +1,7 @@
 # principal
 
+English · [简体中文](../../../../doc/zh-CN/crates/an-agent-core/src/principal/README.md)
+
 Agent identity: the `AgentCard` (model spec + prompt + tool grants + kernel ref), an append-only content-addressed registry, and a card-driven factory.
 
 **Admission rule:** identity and construction. No runtime state, no memory, no keys — a card declares memory *access rights*, never contents. Evolution is supersession: new card, `supersedes` edge, old card untouched.

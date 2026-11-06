@@ -11,7 +11,9 @@ fn layout_is_optional_and_explicit_layouts_cannot_alias() -> Result<()> {
     fs::create_dir(base.join("b"))?;
     fs::write(base.join("a/main.sh"), b"exit 0\n")?;
     fs::write(base.join("b/main.sh"), b"exit 0\n")?;
-    let mut p = json!({"schema":"an-workspace-job-v2","executable":"/bin/echo",
+    let executable = base.join("runtime");
+    fs::write(&executable, b"fixture runtime")?;
+    let mut p = json!({"schema":"an-workspace-job-v2","executable":executable,
         "args":["{input:0}"],"environment":{},"readonly":[],
         "inputs":[base.join("a/main.sh")],"outputs":["result.txt"],
         "wall_seconds":1,"trusted_process_group":true});

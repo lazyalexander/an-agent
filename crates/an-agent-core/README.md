@@ -1,5 +1,7 @@
 # an-agent-core
 
+English · [简体中文](../../doc/zh-CN/crates/an-agent-core/README.md)
+
 The kernel. Spool constructors live in `an-agent-spool`. Embedders supply explicit tool constructors to `build_with` / `spawn_with`; coding harnesses own their shell tools, session context and compaction. The CAS store lives in `an-agent-workspace`. The recorder workspace (`Wp`) stays here.
 
 ## Modules

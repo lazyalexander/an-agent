@@ -110,6 +110,10 @@ individual page length and README length, and rejects missing local file links.
 Links to private or ignored material do not qualify as published documentation.
 External URLs and heading fragments are not fetched or certified by this check.
 
+Simplified Chinese mirrors under `doc/zh-CN/` require a canonical English page
+and inherit its line limit and link checks. Each topic counts once. The Chinese
+copy of `AGENTS.md` is named `AGENTS.zh-CN.md` for reference; English governs.
+
 Do not split a page solely to meet a line budget or concatenate unrelated topics
 to evade a count budget. Keep commands and failure contracts, delete duplicated
 status/history, and link to the authoritative page. Completed plans and detailed

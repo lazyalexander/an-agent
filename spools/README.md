@@ -1,5 +1,7 @@
 # spools — the spool library
 
+English · [简体中文](../doc/zh-CN/spools/README.md)
+
 The library of published spool bodies, one directory per spool. A spool is
 a YAML grant envelope plus the script it wraps: authors edit them as
 separate files, and the body names its script with `script: "@file.rhai"`.

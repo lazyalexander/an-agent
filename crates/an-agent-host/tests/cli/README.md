@@ -1,8 +1,8 @@
 # Host CLI acceptance
 
-Build the selected host binary once, then pass its explicit path. No runner
-builds a binary, reads model credentials or invokes Loom. Python 3 standard
-library is sufficient. Platform eligibility is centralized in
+English · [简体中文](../../../../doc/zh-CN/crates/an-agent-host/tests/cli/README.md)
+
+Build the selected host binary once, then pass its explicit path. No runner builds a binary, reads model credentials or invokes Loom. Python 3 standard library is sufficient. Platform eligibility is centralized in
 `host_qualification.py`; see the [support and qualification matrix](../../../../doc/platforms.md).
 This prerequisite does not replace the host enforcement exercised by each case.
 

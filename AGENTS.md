@@ -9,9 +9,9 @@ into the public repository.
 
 ## Project language
 
-Code comments, README files, and any future documentation inside this
-repository must be written entirely in English. Conversation with the
-user follows the user's language.
+Code comments and example code remain in English. English documentation is
+authoritative. Simplified Chinese documentation is maintained as a companion
+translation. Conversation with the user follows the user's language.
 
 ## Branch lines
 

@@ -1,5 +1,7 @@
 # an-agent-host
 
+English · [简体中文](../../doc/zh-CN/crates/an-agent-host/README.md)
+
 Host-side authorization, execution supervision, model/context exchange, committed
 state and artifact custody. Domain rules belong in spool releases; Loom owns
 building and packaging. Backends enforce each attempt boundary.

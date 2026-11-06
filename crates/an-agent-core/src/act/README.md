@@ -1,5 +1,7 @@
 # act
 
+English · [简体中文](../../../../doc/zh-CN/crates/an-agent-core/src/act/README.md)
+
 Admission: every effect-ful action passes through here. Intent is taped before execution, effect after. An act carries a permit. The effect is projected from the tool tag. A spawn charter is a separate ceiling (tool tag plus signal) and is not stored on the act.
 
 **Admission rule:** the permission vocabulary (`Permit`, `ToolTag`, `Charter`), the envelope, act-wrapping (`run_tool_act`), and the scoped tool registry (`ToolRegistry` — spatial admission: which tools exist, with RAII unregister). No tool implementations, no model code — both are out-calls this layer surrounds.

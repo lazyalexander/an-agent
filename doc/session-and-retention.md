@@ -122,6 +122,27 @@ No provider credentials or conversations are inherited. This qualification
 covers host-directed delivery; participants sharing an execution environment
 have no new security boundary between them.
 
+
+### Release ceilings for a local read
+
+A requester can export an immutable `silk/peer-read.json` declaration. Its
+`an-native-peer-read-v1` scope selects one task, the exact worker release digest,
+the accepted text output slot, the worker reply slot, and text/time ceilings.
+Provide `read: {task, material_revision}` in the existing bounded context request.
+The revision selects an exact accepted output of the requesting instance. Both
+the declaration and the request field are required on this route. Local reads
+carry no checkpoint slots or request to disclose to a model.
+
+Within scope, the preview returns `needs_authorization` with the existing
+host approval digest. Supplying a previously authorized digest for the exact
+plan admits the request. The plan binds both activations, the material and
+recipient, and the ceilings. Outside scope the host refuses before creating
+a peer record. The worker still uses the ordinary supervised execution
+boundary. Its accepted fixed reply can be inspected by the primary agent
+without executing a response phase. A scoped request stays with its selected
+spool worker and cannot be handed to an internal agent card. Only this local
+route is qualified.
+
 ## Runtime acceptance matrix
 
 | Design requirement | Current evidence | Remaining gap |
