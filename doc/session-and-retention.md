@@ -114,11 +114,12 @@ approval as its source. Both serializations must fit the wire limit.
 An exclusive receiver-owned handoff directory fences the request before import.
 If completion evidence is lost, keep the directory for inspection. Another
 delivery requires a fresh peer request. Revocation or activation rotation closes
-admission; it cannot withdraw material already delivered. The existing
-`model PROFILE PACKET OUTPUT` command previews a separate disclosure of the
-selected bytes. Inspect the receipt and approve that command's digest to send
-one request. The model engagement starts fresh under the operator's profile.
-No provider credentials or conversations are inherited. This qualification
+admission; it cannot withdraw material already delivered. Model disclosure is
+separately authorized through the native client's own policy;
+this host handoff grant does not authorize it. Inspect and explicitly select
+bytes before handing them to Codex or another client. No provider credentials
+or conversations are inherited. The retired host `model` command refuses without
+reading the packet or creating a run. This qualification
 covers host-directed delivery; participants sharing an execution environment
 have no new security boundary between them.
 
@@ -537,7 +538,7 @@ savings from prompt caching or summaries before measuring quality and actual use
 | A: native artifact ownership | New managed outputs acquire/release explicit pins through real producer/two-consumer execution; active and unknown owners, retained checkpoint dependencies and legacy catalogs block deletion; legacy outputs stay retained |
 | B: formal payload collection | Closed admission plus released pins permits exact approved deletion; retained provenance remains inspectable, content reads fail clearly, unrelated outputs/checkpoints survive; race, cancellation and lost deletion receipt refuse unsafe progress |
 | C: runtime ownership | Explicit supervised inputs, routed attempts and finite controllers preserve approved work across client loss. Missing original ownership evidence fences execution and custody. |
-| D: bounded context handoff and combined qualification | Native peer requests qualify an audience-bound packet through real supervised execution. The paired packaged case combines scoped bytes with retention and interruption. One release-declared core agent can receive the clip; the model CLI requires a separate disclosure approval. |
+| D: bounded context handoff and combined qualification | Native peer requests qualify an audience-bound packet through real supervised execution. The paired packaged case combines scoped bytes with retention and interruption. One release-declared core agent can receive the clip; native-client model disclosure requires separate authorization. |
 
 A and B close the remaining P1 storage contract. C and D are the next small
 management milestone, not permission to endlessly expand P1. GUI/TUI, general

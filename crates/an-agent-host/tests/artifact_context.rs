@@ -211,3 +211,45 @@ fn unaccepted_or_inconsistent_files_are_refused_before_export() -> Result<()> {
     }
     Ok(())
 }
+
+#[test]
+fn legacy_model_export_remains_read_only_and_receipt_checked() -> Result<()> {
+    let temp = TempDir::new("legacy-model-context");
+    let root = temp.path().canonicalize()?;
+    let run = root.join("run");
+    fs::create_dir(&run)?;
+    let text = format!("START{}END", "selected history ".repeat(400));
+    fs::write(run.join("output.txt"), &text)?;
+    let receipt = json!({"schema":"an-model-receipt-v1","status":"succeeded",
+        "result":{"response_sha256":format!("{:x}",Sha256::digest(text.as_bytes()))}});
+    fs::write(run.join("receipt.json"), receipt.to_string())?;
+    let view = root.join("view");
+    let result = artifact_context::export(&run, "model", Uuid::nil(), 1024, &view)?;
+    assert_eq!(result["model_called"], false);
+    let packet = ContextPacket::parse(&fs::read(view.join("context.json"))?, Uuid::nil())?;
+    assert!(packet.text.starts_with("START") && packet.text.ends_with("END"));
+    assert!(packet.text.contains("source bytes omitted") && packet.text.len() <= 1024);
+    assert_eq!(fs::read_to_string(run.join("output.txt"))?, text);
+    assert_eq!(
+        fs::read_to_string(run.join("receipt.json"))?,
+        receipt.to_string()
+    );
+    for case in ["failed", "hash", "oversize", "linked"] {
+        let mut changed = receipt.clone();
+        match case {
+            "failed" => changed["status"] = json!("failed"),
+            "hash" => changed["result"]["response_sha256"] = json!("0".repeat(64)),
+            "oversize" => fs::write(run.join("output.txt"), vec![b'x'; 1024 * 1024 + 1])?,
+            "linked" => {
+                fs::write(run.join("output.txt"), &text)?;
+                fs::hard_link(run.join("output.txt"), run.join("alias"))?;
+            }
+            _ => unreachable!(),
+        }
+        fs::write(run.join("receipt.json"), changed.to_string())?;
+        let output = root.join(case);
+        assert!(artifact_context::export(&run, "model", Uuid::nil(), 1024, &output).is_err());
+        assert!(!output.exists());
+    }
+    Ok(())
+}

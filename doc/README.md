@@ -34,7 +34,7 @@ repository root unless stated otherwise. Current guarantees are bounded by the
 | Reviewed builds/workspaces and process ownership | [Execution profiles](workspace-jobs.md) |
 | Immutable product versions, input clones, mediated reads | [Artifacts](artifacts.md) |
 | Legacy instance commits and checkpoint recipients | [Checkpoints](checkpoints.md) |
-| Model CLI, explicit context and finite coding-tool access | [Model services](model-services.md) |
+| Native harness ownership, explicit context and finite coding-tool access | [Model services](model-services.md) |
 | Optional backend setup and qualified recovery limits | [OpenShell](openshell.md) |
 | Embedded delivery, tape and environment identity | [Core contracts](core-contracts.md) |
 | Optional developer setup and historical qualification | [Qualification recipes](qualification.md) |

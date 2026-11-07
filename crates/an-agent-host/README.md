@@ -24,7 +24,7 @@ authority. Unknown termination never authorizes replay, acceptance or cleanup.
 | Build or run reviewed operator workflows | [Execution profiles](../../doc/workspace-jobs.md) |
 | Version products and mediate external reads | [Artifacts](../../doc/artifacts.md) |
 | Commit instance state and track recipients | [Checkpoints](../../doc/checkpoints.md) |
-| Use model/context services or finite coding tools | [Services](../../doc/model-services.md) |
+| Use explicit context or finite coding tools | [Services](../../doc/model-services.md) |
 | Use the optional OpenShell backend | [OpenShell](../../doc/openshell.md) |
 
 `execution/` owns admission, backend coordination and settlement; `native_spool/`
