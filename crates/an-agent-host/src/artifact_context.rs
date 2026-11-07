@@ -118,6 +118,7 @@ pub fn export(
             }
             (filename, &receipt[stream]["sha256"], 65536)
         }
+        // Read-only compatibility: historical model runs are not replayed.
         "model" if receipt["schema"] == "an-model-receipt-v1" && status == "succeeded" => (
             "output.txt",
             &receipt["result"]["response_sha256"],

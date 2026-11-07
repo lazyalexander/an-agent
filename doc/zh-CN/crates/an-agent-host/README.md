@@ -21,7 +21,7 @@ cargo install --path crates/an-agent-host --locked
 | 构建或运行已审查的操作员工作流 | [执行配置文件](../../doc/workspace-jobs.md) |
 | 版本产品并协调外部读取 | [制品](../../doc/artifacts.md) |
 | 提交实例状态并跟踪接收者 | [检查点](../../doc/checkpoints.md) |
-| 使用模型/上下文服务或有限编码工具 | [服务](../../doc/model-services.md) |
+| 使用显式上下文或有限编码工具 | [服务](../../doc/model-services.md) |
 | 使用可选的 OpenShell 后端 | [OpenShell](../../doc/openshell.md) |
 
 `execution/` 拥有准入、后端协调和结算；`native_spool/` 拥有发布绑定的外观。`workspace_job/`、`artifact_versions/` 和 `instance/` 保持临时数据、已接受的产品和显式状态区分开。`Host::pump` 保留其嵌入的事件语义；子进程不会在无故障的汇入点中运行。

@@ -44,8 +44,8 @@ developer VM recipe and explicit stdio output/context handoff. Fixed-file runtim
 acceptance is recorded separately in [Linux validation](qualification.md).
 Neither qualifies a production VM backend.
 
-See [model interruption](model-services.md#cancellation-and-deadlines) for approved
-HTTP deadlines, cancellation, retained context, and no-retry settlement.
+Native clients own model transport and cancellation; see
+[retired model services](model-services.md#retired-model-transport-and-command).
 See [process lifecycle ownership](workspace-jobs.md) for cancellation,
 deadline handling, scoped pipe cleanup, confirmed reaping and crash limitations.
 See [CLI restart diagnosis](qualification.md) for the

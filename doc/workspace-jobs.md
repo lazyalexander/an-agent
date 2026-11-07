@@ -384,7 +384,7 @@ To pass the accepted product to a subsequent model request, explicitly select
 `context-export RUN artifact AUDIENCE_UUID TEXT_BYTE_BUDGET NEW_OUTPUT`. The host
 checks success, exit/reaping evidence, fixed path, size and digest before making
 a bounded context view. It never substitutes diagnostics or the kit's writable
-working copy. [Context export](model-services.md) and model approval remain
+working copy. [Context export](model-services.md) and explicit model disclosure remain
 separate steps; Loom does not own runtime context selection.
 
 ### Platform and lifecycle limits
@@ -472,8 +472,8 @@ SIGINT/SIGTERM registration ownership belongs to the CLI, not the host library.
 Registration guards remove successfully installed handlers on partial failure,
 normal return and unwind. Cancellation settles through normal receipt/audit;
 the shared allocation lock has already been released before process launch. A later cancellation does not undo an already settled run.
-This covers the kit run command. For cancellation of the separate HTTP
-model command, see [model cancellation and deadlines](model-services.md#cancellation-and-deadlines).
+This covers the kit run command. Native clients own their model transport and
+cancellation; see [retired model services](model-services.md#retired-model-transport-and-command).
 
 ### Limits
 
