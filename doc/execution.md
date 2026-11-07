@@ -184,12 +184,13 @@ A lost create response can leave no safe cleanup target: record unconfirmed
 termination and reconcile the saved request with an operator, never guess an ID.
 This is not durable crash recovery or an automatic remote garbage collector.
 
-Local tests cover the real host registration/admission/receipt flow with protocol
-fault fixtures, including cancellation and unknown termination. They do not
-qualify the production adapter against a live service, arbitrary guest workloads,
-or CAD→Krita delivery. The earlier remote log experiment used a lab application;
-its success is not production custody acceptance. Keep the prior execution path
-until the relevant real business qualification passes.
+Protocol fixtures cover the host registration/admission/receipt flow, cancellation
+and unknown termination. On 2026-11-07, the public CLI also passed against real
+SPACE at the pinned revision: a macOS control host, Linux x86_64 Firecracker seed,
+registered shell program, formal eight-byte output acceptance, owned VM deletion
+confirmation and changed-client refusal. This qualifies the fixed file profile,
+not arbitrary guests or CAD→Krita. Earlier lab-host evidence remains separate.
+Keep the prior business path until its real full-chain qualification passes.
 
 Run `python3 crates/an-agent-host/tests/cli/space_backend.py --host HOST --evidence
 NEW_DIRECTORY` for the local CLI fixture acceptance. Adding
