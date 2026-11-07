@@ -27,6 +27,7 @@ downgrade to native execution or weaken a declaration to fit it.
 | Independent supervision of explicit inputs, event/peer attempts and finite batches/threads | Real CLI-loss, timeout and cancellation acceptance | Execution remains unsupported | Execution remains unsupported | Original group and owner receipts required; client, controller and attempt-owner loss tested separately |
 | Isolated Rust build recipe | Existing narrow build/file acceptance | No Linux build adapter | Unqualified | [Build/file contract](workspace-jobs.md); separate from running an already-built file program |
 | Optional OpenShell adapter | Operator-selected control/transport | Selected backend environment, independently qualified | Unqualified | [Historical live evidence](openshell.md); opt-in real-VM test is not implied by ordinary CI |
+| Optional SPACE file adapter | Local host/transport fault tests | Same host contract; live service unqualified | Unqualified | Fixed Linux file-kit guest ABI; prior remote log lab does not qualify this product adapter or CAD→Krita |
 | GPU workers, GUI shuttles, live memory suspension | Separate qualification required | Separate qualification required | Separate qualification required | Neither CPU success nor a native binary establishes these capabilities |
 
 CI runner architecture, selected binary/toolchain and runtime dependencies are

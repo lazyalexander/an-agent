@@ -63,3 +63,29 @@ AN_AGENT_ACCEPTANCE_DIR=/absolute/path/to/evidence \
 ### 艺术品描述符和工具身份检查
 
 原生文件-kit 收集器以 `O_NOFOLLOW | O_NONBLOCK` 开始，然后检查并读取与受限、单链表的常规文件相同的描述符。描述符和普通读取共享注册的托管权和侧边车原始路径拒绝。Linux 读取其原始宿主拥有的输出描述符，并且单独拒绝路径名 inode 替换；它从不接受从重新打开的替换路径名中的字节。批准的 Rust 构建在每次编译阶段前重新哈希编译器和链接器。一个不匹配会拒绝该阶段，而无需自动重试。这检测在批准后的变化； 信任的工具链目录仍必须排除不信任的写入者，因为路径名哈希不是原子可执行启动或完整的依赖哈希。
+
+## 可选 SPACE 文件执行
+
+`an-agent-host run-space PROFILE STORE RELEASE INPUT [--execute]` 复用现有
+ExecutionBackend 的注册、准入、不可变程序发布、操作结算、取消检查与产物接收。
+不带 `--execute` 只预览；不建立并行 host、产物库或模型驱动，也不回退到本地执行。
+
+私有配置包含 `python`、`python_sha256`、`client`、`client_sha256`、`token_file`、
+`api_url`、`data_plane_url`、`template` 与 `control_seconds`。使用无符号链接的绝对
+路径及完整摘要，client 选择固定版本 SPACE 官方 first_sandbox.py。令牌文件仅允许
+操作者读取；不会送入 guest。模板必须为完整 NAME@sha256:DIGEST，不接受可变标签。
+控制阶段限时 30–180 秒，另有有限本地进程回收时间。
+
+初版仅接收至多 256 KiB 的 Linux 程序或 guest 可执行脚本；输入上限 8192 字节，
+UTF-8 产物上限 65536 字节。模板需包含 root Python 3 和程序依赖。程序以 UID/GID
+65534 使用固定 input.txt/output.txt ABI，程序、输入和目录由 root 保护。允许 guest
+临时目录，禁止网络出口和宿主挂载；链接、非普通文件、超限候选均拒收。
+
+提交前记录操作及请求键，不自动重放。元数据绑定 run 和 operation，清理校验同一
+sandbox、创建时间与模板摘要。取消工作阶段后独立尝试删除；只有删除操作完成才
+能接收产物。若创建响应丢失导致缺少安全清理目标，记录终止未确认并保留现场，
+由操作者核实，不猜测 ID；这不是持久崩溃恢复或自动远端垃圾回收。
+
+本地故障测试通过真实注册、准入和 receipt 路径；不代表产品适配器已通过云端、
+任意 guest 或 CAD→Krita 验收。此前云端日志实验采用实验应用，不能作为正式
+native-spool 托管验收。完整英文契约位于 doc/execution.md 对应章节。
