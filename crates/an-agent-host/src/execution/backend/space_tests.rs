@@ -38,6 +38,7 @@ fn space_uses_common_admission_acceptance_and_cancellation() -> Result<()> {
         ("uncertain", "termination_unconfirmed"),
         ("unknown-delete", "termination_unconfirmed"),
         ("wrong-delete", "termination_unconfirmed"),
+        ("journal-failed", "termination_unconfirmed"),
         ("cancel", "cancelled"),
     ] {
         let token = root.join(format!("token-{mode}"));
@@ -90,6 +91,15 @@ fn space_uses_common_admission_acceptance_and_cancellation() -> Result<()> {
         let receipt: Value = serde_json::from_slice(&fs::read(receipt_path)?)?;
         assert_eq!(!receipt["artifact"].is_null(), mode == "ok");
         assert!(receipt_path.parent().unwrap().join("audit.json").exists());
+        if mode == "journal-failed" {
+            assert!(
+                receipt_path
+                    .parent()
+                    .unwrap()
+                    .join("delete-reached")
+                    .exists()
+            );
+        }
         if mode == "ok" {
             assert_eq!(
                 fs::read(receipt_path.parent().unwrap().join("artifact.txt"))?,
@@ -100,6 +110,6 @@ fn space_uses_common_admission_acceptance_and_cancellation() -> Result<()> {
             assert_eq!(receipt["space"]["termination_confirmed"], true);
         }
     }
-    assert_eq!(fs::read_dir(host.join("runs"))?.count(), 9);
+    assert_eq!(fs::read_dir(host.join("runs"))?.count(), 10);
     Ok(())
 }

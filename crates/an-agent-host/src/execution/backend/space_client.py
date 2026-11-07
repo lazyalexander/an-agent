@@ -1,5 +1,5 @@
 """SPACE transport only. The Rust host owns admission and artifact acceptance."""
-import base64, hashlib, importlib.util, io, json, os, sys
+import base64, hashlib, importlib.util, io, json, os, sys, uuid
 from pathlib import Path
 
 profile, directory, step = Path(sys.argv[1]), Path(sys.argv[2]), sys.argv[3]
@@ -67,8 +67,19 @@ elif step == 'delete':
     if 'sandbox_id' not in state:
         raise ValueError('submission unresolved; no guessed cleanup target')
     owned()
-    value = s.mutation(c, run, state, 'delete', 'DELETE', '/v1/sandboxes/' + state['sandbox_id'])
-    s.remember_ids(run, state, value, [('operation_id','delete_operation_id','op_')])
+    # Storage exhaustion must not prevent a single owned cleanup request.
+    # If durable proof cannot be written, the host still refuses acceptance.
+    assert 'delete' not in state['requests'], 'delete already requested; inspect before replay'
+    key = 'an-agent-delete-' + uuid.uuid4().hex
+    path = '/v1/sandboxes/' + state['sandbox_id']
+    state['requests']['delete'] = {'method':'DELETE','path':path,'body':None,'key':key}
+    try: save()
+    except OSError: pass
+    value = api(c, 'DELETE', path, key=key)
+    state['delete_operation_id'] = value['operation_id']
+    s.require_id(state, 'delete_operation_id', 'op_')
+    try: save()
+    except OSError: pass
     s.wait_for_state(c, '/v1/operations/' + state['delete_operation_id'], 'succeeded')
     operation = api(c, 'GET', '/v1/operations/' + state['delete_operation_id'])
     assert operation['state'] == 'succeeded' and operation['kind'] == 'delete_sandbox'
