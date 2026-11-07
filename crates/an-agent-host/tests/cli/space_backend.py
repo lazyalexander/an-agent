@@ -29,8 +29,10 @@ def main():
         config=json.loads(args.operator_profile.resolve(strict=True).read_text())
     profile.write_text(json.dumps(config))
     calls=[]
+    # Allow the host to finish all bounded control phases, including owned cleanup.
+    timeout=(config["control_seconds"]+10)*4+30 if args.operator_profile else 60
     def call(*command,refused=False):
-        result=subprocess.run([str(host),*map(str,command)],capture_output=True,text=True,timeout=60)
+        result=subprocess.run([str(host),*map(str,command)],capture_output=True,text=True,timeout=timeout)
         calls.append({'command':list(map(str,command)),'exit':result.returncode,'stdout':result.stdout,'stderr':result.stderr})
         (root/'calls.json').write_text(json.dumps(calls,indent=2))
         if refused:
