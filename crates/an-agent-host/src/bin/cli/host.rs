@@ -50,6 +50,28 @@ pub(super) fn dispatch(command: &str, args: &[String]) -> Result<Value> {
                 )
             })
         }
+        ("run-space", [profile, store, release, input]) => super::with_cancellation(|cancelled| {
+            an_agent_host::execution::run_space(
+                Path::new(profile),
+                Path::new(store),
+                release,
+                Path::new(input),
+                false,
+                &cancelled,
+            )
+        }),
+        ("run-space", [profile, store, release, input, flag]) if flag == "--execute" => {
+            super::with_cancellation(|cancelled| {
+                an_agent_host::execution::run_space(
+                    Path::new(profile),
+                    Path::new(store),
+                    release,
+                    Path::new(input),
+                    true,
+                    &cancelled,
+                )
+            })
+        }
         ("run-openshell", [profile, store, release, input]) => {
             super::with_cancellation(|cancelled| {
                 an_agent_host::execution::run_openshell(

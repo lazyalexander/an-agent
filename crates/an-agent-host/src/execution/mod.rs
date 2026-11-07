@@ -127,3 +127,24 @@ pub(crate) fn run_for_tool(
         false,
     )
 }
+
+/// Execute a registered file kit through an operator-owned SPACE profile.
+/// Admission, reconciliation and artifact acceptance use the common host path.
+pub fn run_space(
+    profile: &Path,
+    root: &Path,
+    release: &str,
+    input_path: &Path,
+    execute: bool,
+    cancelled: &std::sync::atomic::AtomicBool,
+) -> Result<Value> {
+    let profile = backend::space::Profile::load(profile)?;
+    run_backend(
+        root,
+        release,
+        input_path,
+        execute,
+        cancelled,
+        &backend::space::Space(&profile),
+    )
+}
