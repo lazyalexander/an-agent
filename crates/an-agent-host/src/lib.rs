@@ -16,9 +16,6 @@
 //!   an event, execute each reply's intents (utterances go to the app's
 //!   sink; raises become new workspace events), then record [`applied`]
 //!   so the tape closes the loop event → spool note → applied.
-//! - [`HttpModelClient`] — the real model client a policy body needs:
-//!   OpenAI-compatible chat completions, blocking, usage required. The
-//!   host installs it with `AgentControl::set_model_client`.
 //!
 //! Deliberately not here: raised events are not re-dispatched inside a
 //! pump — the loop bound and the self-loop guard stay the app's call
@@ -32,23 +29,18 @@ pub mod agent_tools;
 pub mod artifact_context;
 pub mod artifact_versions;
 pub mod capability;
-mod connection;
 pub mod context_exchange;
 pub mod execution;
 pub mod file_job;
 mod hooks;
 pub mod instance;
-mod model;
-pub mod model_run;
 pub mod native_spool;
 pub mod openshell;
 pub mod retention;
 mod settled_run;
 pub mod workspace_job;
 
-pub use connection::ModelConnection;
 pub use hooks::HostHooks;
-pub use model::{HttpModelClient, ModelCallControl};
 
 use std::collections::HashMap;
 use std::sync::Arc;

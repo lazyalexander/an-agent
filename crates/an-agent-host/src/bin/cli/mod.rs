@@ -5,7 +5,6 @@ mod cohort;
 mod context;
 mod host;
 mod instance;
-mod model;
 mod peer;
 mod registered;
 mod retention;
@@ -124,7 +123,7 @@ pub(super) fn run(args: Vec<String>) -> Result<()> {
         | "spool-weaver-apply"
         | "spool-weaver-revoke" => spool::dispatch(command, args)?,
         "context-check" | "context-export" => context::dispatch(command, args)?,
-        "model" => model::dispatch(command, args)?,
+        "model" => return Err("The model service is retired; use your native Codex client with explicit disclosure and the finite MCP tools. No request was sent.".into()),
         "check" | "register" | "run" | "run-version" | "run-openshell" | "build-kit"
         | "capability-read" => host::dispatch(command, args)?,
         _ => return Err("unknown command; consult the host command reference".into()),

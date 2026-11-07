@@ -70,7 +70,7 @@ for supported sources and disclosure limits.
 | Reviewed workspace jobs | Operator-selected workflows and binary custody; not a general production spool ABI |
 | Semantics | Pure claims/assessments and existing adapters; not comprehensive static analysis or a security boundary |
 | Weaver | Optional Loom-side reviewed harness workflow; host kit proposal slot is not a host-owned agent loop |
-| Coding harness internals | Native clients own shell tools, session assembly and compaction. Unused context/factory crates and the generic ReAct policy are retired; finite MCP, explicit context disclosure and supervised host execution remain supported. See [harness ownership](model-services.md#native-harness-ownership). |
+| Coding harness internals | Native clients own shell tools, session assembly and compaction. Unused context/factory crates, the generic ReAct policy, HTTP model transport and one-shot model service are retired; finite MCP, explicit context disclosure and supervised host execution remain supported. See [harness ownership](model-services.md#native-harness-ownership). |
 | State/release migration | Explicit fresh-instance checkpoint seeding and read-only release comparison; no automatic lineage, domain merge or in-place migration |
 | Live suspension | Admission pause and checkpoint/stop suspension are qualified; process-memory/VM restore and in-flight safe-point signaling are not |
 | Additional orchestration | Multiple business inputs, producer/topology editing, background admission and low-latency channels await concrete demand |
