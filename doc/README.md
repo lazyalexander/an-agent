@@ -17,6 +17,7 @@ repository root unless stated otherwise. Current guarantees are bounded by the
 | Stable silk and editable kit roles | [Spool code](spool-code.md) |
 | Reviewed harness development | [Weaver](weaver.md) |
 | Implemented capabilities and remaining work | [Status](status.md) |
+| Ink/painted comparison and supplementary inline-four teaching case | [Mechanical animation cases](cases.md) |
 | Runtime support and qualification | [Platforms](platforms.md) |
 | Session coordination and remaining retention work | [Session and retention plan](session-and-retention.md) |
 | Testing, CI and cross-repository ownership | [Testing](testing.md) |
