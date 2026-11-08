@@ -70,7 +70,19 @@ def main():
         next_req={'op':'submit','instance':str(b),'run':'second','input':str(source),'seconds':20,
                   'artifact':{'catalog':str(catalog),'revision':binding['revision']}}
         request({**next_req,'input':str(data)},refused=True)
-        task=approved(next_req)['id']
+        # New callers carry the accepted reference, never the host blob filename.
+        logical={k:v for k,v in next_req.items() if k!='input'}
+        scope={'task':'reference-check','subject':'consumer','expires_ms':int(time.time()*1000)+60000,'delegate':False,
+               'permissions':[{'kind':'run-artifact','instance':str(b),'run':'second','catalog':str(catalog),'revision':binding['revision'],'seconds':20}]}
+        issued=approved({'op':'grant','scope':scope})['credential']
+        def scoped(value,refused=False):
+            path=root/'scoped.json';path.write_text(json.dumps({'credential':issued,'request':value}))
+            return call('daemon','task-request',service,path,refused=refused)
+        scoped({**logical,'seconds':21},refused=True)
+        scoped({**logical,'input':str(source)},refused=True)
+        scoped({**logical,'artifact':{**logical['artifact'],'revision':'a'*64}},refused=True)
+        preview=scoped(logical)
+        task=scoped({**logical,'approve':preview['approval_sha256']})['id']
         wait(lambda:request({'op':'task','id':task})['state']=='settled')
         assert request({'op':'task','id':task})['outcome']=='succeeded'
         approved({'op':'accept','instance':str(b),'run':'second'})
@@ -78,7 +90,7 @@ def main():
         output=root/'result.bin';call('artifact-checkout',artifact['catalog'],artifact['output']['binding']['revision'],output)
         assert output.read_bytes()==b'input-selected-selected'
         references=call('spool-input-references',b,'second')
-        (root/'summary.json').write_text(json.dumps({'passed':True,'changed_aux_refused':True,'artifact_path_mismatch_refused':True,'source_revision':binding['revision'],'input_references':references},indent=2))
+        (root/'summary.json').write_text(json.dumps({'passed':True,'changed_aux_refused':True,'artifact_path_mismatch_refused':True,'logical_reference_authorized':True,'widened_reference_refused':True,'source_revision':binding['revision'],'input_references':references},indent=2))
     finally:
         if daemon is not None:
             daemon.send_signal(signal.SIGTERM);daemon.wait(timeout=10)

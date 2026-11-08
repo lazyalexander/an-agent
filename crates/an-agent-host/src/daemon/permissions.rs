@@ -116,15 +116,29 @@ pub(super) fn dispatch(root: &Path, envelope: &Value) -> Result<Value> {
             grants::active(&actor)?;
             return Ok(json!({"inventory":inventory,"bytes":bytes}));
         }
-        "submit" => grants::require(
-            &actor,
-            &Permission::Run {
-                instance: PathBuf::from(text(req, "instance")?),
-                run: text(req, "run")?.into(),
-                input: PathBuf::from(text(req, "input")?),
-                seconds: req["seconds"].as_u64().ok_or("seconds")?,
-            },
-        )?,
+        "submit" => {
+            let instance = PathBuf::from(text(req, "instance")?);
+            let run = text(req, "run")?.into();
+            let seconds = req["seconds"].as_u64().ok_or("seconds")?;
+            let permission = if req.get("input").is_none() {
+                let artifact = req.get("artifact").ok_or("input or artifact required")?;
+                Permission::RunArtifact {
+                    instance,
+                    run,
+                    seconds,
+                    catalog: PathBuf::from(text(artifact, "catalog")?),
+                    revision: text(artifact, "revision")?.into(),
+                }
+            } else {
+                Permission::Run {
+                    instance,
+                    run,
+                    seconds,
+                    input: PathBuf::from(text(req, "input")?),
+                }
+            };
+            grants::require(&actor, &permission)?;
+        }
         "harness" | "delegate" => {
             let task: harness::Task = serde_json::from_value(req["task"].clone())?;
             grants::require(&actor, &harness_permission(&task)?)?;
