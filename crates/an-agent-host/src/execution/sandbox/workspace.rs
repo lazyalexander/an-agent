@@ -13,6 +13,17 @@ pub(crate) const PYTHON_RUNTIME: &str = "macos-native-python-v1";
 pub(crate) const PLAN_BACKEND: &str = "macos-trusted-workspace-v1";
 pub(crate) const SPOOL_PROFILE: &str = "macos-reviewed-native-spool-v1";
 
+/// Apply only the operator-selected graphics service rules to the native policy.
+pub(crate) fn graphics_policy(policy: &str, selection: Option<&str>) -> Result<String> {
+    match selection {
+        None => Ok(policy.to_owned()),
+        Some("macos-agx-metal-v1") => Ok(format!(
+            "{policy}\n(allow iokit-open (iokit-user-client-class \"AGXDeviceUserClient\") (iokit-user-client-class \"IOSurfaceRootUserClient\"))\n(allow mach-lookup (global-name \"com.apple.coreservices.launchservicesd\") (global-name \"com.apple.MTLCompilerService\"))\n"
+        )),
+        _ => Err("unsupported graphics policy selection".into()),
+    }
+}
+
 /// Qualification eligibility only. Actual policy installation can still refuse.
 pub(crate) const fn supported() -> bool {
     cfg!(target_os = "macos")

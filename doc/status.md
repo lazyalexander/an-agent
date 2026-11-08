@@ -92,6 +92,9 @@ followed by user notification. Main promotion remains user-triggered.
 The [case guide](cases.md) compares the ink and painted steam-engine examples,
 with an inline-four supplementary case. Local source regeneration, rendering
 and saved-scene checks passed for both painted films on 2026-11-08. Decoded
-frames matched the supplied painted references. This run reused retained AI
-images and the standalone film workflow. macOS service lifecycle integration
-and reviewed an-spool packaging remain pending.
+frames matched the supplied painted references. The three source packages now run through the existing reviewed workspace backend,
+with fixed artifact revisions between stages. Complete films and reopened scenes
+passed for both cases using explicit Apple Silicon Metal access. Cancellation,
+file/network refusals and formal artifact custody passed. This run reused retained
+AI images. Registered native-spool deployment, daemon scheduling of this recipe
+and Krita GUI round-trip remain separate qualification work.

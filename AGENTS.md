@@ -124,8 +124,8 @@ Plus the discipline-specific checks:
   moved not lost.
 
 Content-label terminology follows [the spool code contract](doc/spool-code.md).
-Silk labels every immutable release baseline; kit labels mutable derivatives and
-new work. Instructions stay protected; labels never grant authority. Preserve legacy wire/API names
+Silk labels every immutable release baseline; kit labels files modified or created by an agent.
+Unchanged copies retain silk labels. Instructions stay protected; labels never grant authority. Preserve legacy wire/API names
 and distinguish target contracts from implemented runtime guarantees.
 
 ## Platform claims
