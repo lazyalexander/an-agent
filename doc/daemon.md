@@ -1,0 +1,225 @@
+# macOS user service
+
+The service is a local product entry point over native spools, not a second
+execution host. It queues references to original `native_spool::supervisor`
+reservations; those finite owners still perform admission, native workspace
+execution, termination confirmation and artifact custody. Domain sequencing and
+instructions remain in spool releases. No VM or container is required.
+
+## Start and inspect
+
+Select the built host by its real absolute path. Create a new service directory
+under an existing private parent, using canonical paths (macOS `/var` and `/tmp`
+are symlinks). The service root must belong to the logged-in user with mode 0700.
+
+```sh
+an-agent-host daemon init /absolute/private/service 2
+an-agent-host daemon serve /absolute/private/service
+an-agent-host daemon show /absolute/private/service
+an-agent-host daemon request /absolute/private/service /absolute/request.json
+an-agent-host daemon launchd /absolute/private/service /absolute/agent.plist
+```
+
+`serve` stays in the foreground for launchd. SIGTERM closes its admission socket;
+original finite owners retain their deadlines and control records. The generated
+LaunchAgent plist is not installed automatically. Install one selected service per
+user with the operator's existing launchd workflow; never run this as root. An
+OS-owned advisory lock prevents duplicate services and releases after process loss.
+No privileged helper, root daemon or provider credential store is installed.
+
+`endpoint.json` contains the loopback console URL. Its fragment token authorizes
+read-only snapshot requests. The socket accepts only same-user callers, bounded
+JSON lines and private store access. The HTTP surface provides no controls, CORS
+access or arbitrary file serving. Host checks and authorization gate data reads.
+This is a trusted same-user service, not isolation from malicious peer processes.
+
+## Operations and approval
+
+Each request has `op` and the selected fields below. Controls returning
+`approval_sha256` are previews; resubmit the same request with `approve` set to that
+exact digest. Changing inputs, runtime selection or scope invalidates approval.
+Registration alone grants neither execution nor model disclosure.
+
+| Operation | Fields | Effect |
+| --- | --- | --- |
+| `register` | `instance` | Register one existing, release-bound native spool instance |
+| `submit` | `instance`, `run`, `input`, `seconds` | Preview/reserve an existing supervisor start and queue its reference |
+| `cancel` | `id` | Record exact task cancellation and forward it to the original owner |
+| `pause`, `resume`, `unload` | `instance` | Delegate the original lifecycle operation and approval |
+| `suspend` | `instance`, `revision` | Select the exact committed checkpoint; no memory suspension |
+| `accept`, `reclaim` | `instance`, `run` | Delegate original custody gates; never infer authority from the queue |
+| `show` | none | Read lifecycle, task and resource projections |
+| `task` | `id` | Inspect one original task without enumerating other spools or artifacts |
+| `harness` | `task` | Preview/queue a finite external client with explicit content disclosure |
+| `harness-result` | `id` | Read a completed proposal, never an accepted business artifact |
+
+The bounded queue permits 1–8 concurrent tasks, one active queued attempt per
+instance, at most 128 registered instances and 256 retained scheduling entries.
+Selection is FIFO among eligible entries. Existing direct entry points keep their
+own locking and do not become globally scheduled implicitly.
+
+A durable claim is written before launching. Claimed work is never automatically
+replayed, including after a service crash in the spawn window. On restart, the
+service reads original completion evidence. An unresolved claim holds its budget
+slot and is displayed as `running-or-unconfirmed`; missing receipts cannot be
+converted into successful cancellation, accepted output or permission to reclaim.
+A stop request and confirmed termination remain separate. Queue records contain
+scheduling metadata, not a new authoritative execution ledger. Registry archival,
+automatic state migration and automatic retries are not implemented.
+
+## Finite Codex harness
+
+The initial adapter reuses the qualified Codex CLI 0.166.0 finite material profile.
+`task` contains `label`, canonical `binary`, `binary_sha256`, `prompt`, `schema`,
+`scope`, nullable `model` and nullable `mcp: {url, token}`. The selected executable
+is hashed at approval and checked again before invocation. Native authentication
+belongs to Codex; no credentials are copied into a spool or console snapshot.
+
+The client owns model/tool loops and context. Shell, editing, plugins, native
+agent delegation and unrelated tools are disabled. The only optional MCP tool is
+`read_approved_material` on an explicitly selected loopback endpoint. A request
+must already have application-owned disclosure authorization. This initial adapter
+is for data proposals, not general-purpose coding, arbitrary remote harness
+protocols or remote environment lifecycle. Remote inference through the selected
+Codex client is distinct from local spool execution.
+
+The same existing process-group supervisor bounds the native client to 180 seconds
+and confirms its local termination. This is not confirmation that a remote model
+stopped or that provider usage is zero. Native events remain private; completed
+proposals still require domain validation and the existing kit-edit/artifact gates.
+The client version, scope and task reference replace Shuttle's duplicate driver.
+
+## Task-scoped permissions
+
+The operator socket issues `grant` with a `scope` containing `task`, `subject`,
+`expires_ms` (host Unix milliseconds), `delegate` and `permissions`. Preview and
+exact approval bind that scope. The response returns a private bearer credential
+`{id, secret}` and a durable grant binding. Store credentials in private application
+memory or files. Activity and queue records retain only grant IDs and digests.
+`subject` attributes work to a role; possession of the credential authenticates
+requests. The existing same-user operator endpoint remains trusted administration.
+
+Use `daemon task-request ROOT JSON` for delegated calls. It connects to `tasks.sock`
+in the same service and requires `{credential, request}` on every call. Missing,
+forged or stripped credentials fail. This endpoint exposes only granted operations
+and the caller's own descendant jobs. Both sockets share the existing queue,
+supervisors and custody. Workloads must remain excluded from operator sockets,
+host stores and other credentials by the selected execution profile. The native
+client and application adapters are still trusted same-user software.
+
+Permissions use exact resources, with at most 64 entries per grant.
+
+| Kind | Fields and enforcement |
+| --- | --- |
+| `run` | Canonical registered `instance`, `run`, canonical `input`, maximum `seconds`; original start approval fixes the selected bytes and backend policy |
+| `harness` | `profile_sha256` from operator `harness-permission` with the selected `task`; binds executable/hash, model, schema, scope and finite MCP selection |
+| `read-input` | Canonical `path` and `sha256`; `read-input` returns exactly matching bytes |
+| `accept` | Registered `instance` and `run`; delegates original acceptance and permits recording proposal adoption for that run |
+| `artifact` | Registered `instance`, `run`, `output`; `artifact-read` verifies original custody and returns bytes plus the selected inventory |
+
+The byte-read operations are bounded to 512 KiB. Permission selection does not
+interpret arbitrary prompt text or prove its provenance. The trusted application
+owns disclosure and domain checks. Every harness submission still requires the
+original exact prompt approval; the launch binding also includes its grant.
+
+`derive-grant` on the task endpoint uses the same scope fields. Its permissions
+must be a subset, its task must match, and expiry cannot increase. A native run
+deadline can decrease. The parent must allow delegation. A child can remove that
+ability. The host checks the entire immutable ancestor chain, bounded to 16 grants;
+the service retains at most 256 grants. Child credentials are returned only to the
+issuing caller. The caller explicitly passes them to the intended adapter.
+
+`revoke-grant` with `id` closes the selected grant and descendants after exact
+approval. Scoped callers can revoke their own grant or descendants. `cancel` for
+a permission-bound job previews and revokes its grant, including other jobs using
+that grant. Use distinct child grants for independently cancellable work. Original
+workers observe revocation/expiry during execution even after daemon loss; queue
+reconciliation forwards cancellation to the original owners. Status inspection
+and further cancellation remain available after revocation. New work, proposal
+retrieval and artifact acquisition fail. Existing accepted products remain in
+their original custody. Local termination evidence still comes from the original
+supervisors; remote inference termination remains unknown.
+
+`native_task_permissions.py` qualifies credential refusals, attenuation, cross-task
+access, changed inputs, native filesystem denial, cancellation, persistent parent
+revocation and worker expiry during daemon loss. `document_activity.py` qualifies
+two real Codex agents with separate child grants, accepted PDF/Markdown/XLSX
+handoff, cancellation and retained products. Pass `--shuttle-client` with the
+compiled CAD daemon client to exercise its capability transport.
+
+## Observation and acceptance
+
+The console projects original instance, round-control, run, custody and kit labels.
+It displays task order, cancellation, uncertainty and outcomes separately from
+artifact acceptance. OS samples include the service and birth-identity checked
+live task-owner descendants. Summed resident sizes may include shared pages; the
+sample excludes exited workers, reparented processes and shared CAD/Krita apps.
+No unavailable metric is reported as zero or used to authorize process control.
+Model billing, historical resource accounting and automatic resource enforcement
+are not inferred from these samples. The console is currently read-only.
+
+Run `tests/cli/native_daemon.py` with explicit `--host` and a fresh `--evidence`
+directory on macOS. It covers duplicate service exclusion, bound approvals,
+FIFO/concurrency, service loss without replay, queued cancellation, original
+custody, lifecycle controls, external-client cancellation, resource observation and
+console authorization. Its local harness fixture is not provider evidence.
+CAD→Krita and real Codex/MCP tests remain separately required in Shuttle before
+promoting a mature spool. Unsupported platforms refuse service execution.
+
+## Async delegation
+
+`delegate` takes `parent` and the existing finite harness `task`, returning a task
+ID immediately after exact disclosure approval. `parent` is a correlation label,
+not an authorization grant or isolation boundary. Same-user access rules apply.
+`update-delegation` takes `id`, `strategy: "enqueue"` and `instruction`. It retains
+the original harness, scope, schema and MCP binding, appends the instruction to
+its prompt and requires a new approval. This is a new finite attempt, not a live
+session resume: predecessor output is not automatically injected. The FIFO queue
+starts it only after confirmed predecessor success. Failed, cancelled or unknown
+predecessors leave it queued; explicitly cancel it to settle it without running.
+Interrupt/replay and autonomous recursive spawning are not supported.
+
+Use existing `task` and `cancel` operations. `delegation-inbox` takes `parent` and
+returns durable task projections and completed proposals; repeated reads and
+service restarts do not consume messages or replay execution. This minimum uses
+pull delivery: automatic orchestrator wake-up and inbox acknowledgements are not
+implemented. Proposals remain untrusted data, not accepted artifacts. Existing
+queue limits bound all delegations; there is no second scheduler or model loop.
+
+## Agent activity and adoption
+
+`activity` with `id` returns a bounded view over retained request, claim, owner,
+cancellation, completion and proposal records. Each source has a digest; record
+categories are not a reconstructed wall-clock timeline. Native spool custody
+continues to come from the original status/acceptance facade. The console's task
+detail uses the same authenticated read-only activity view.
+
+External Codex JSONL events are classified into fixed event/action categories,
+with original line numbers and the retained source digest. At most 128 events
+are returned; omitted and malformed lines are counted. Raw prompts, arguments,
+messages, URLs and tool output are never copied into this view. These are harness
+reports, not host-confirmed filesystem changes or authority. Missing events mean
+unknown visibility. Original private events remain the source, with no duplicate
+activity ledger.
+
+`record-adoption` with `id`, registered `instance` and `run` previews an explicit
+operator association between a confirmed proposal digest and original formally
+accepted artifact custody. Exact approval writes one retained association under
+the task. It cannot accept an artifact, change custody or prove semantic
+equivalence. An unaccepted/cancelled run cannot be linked. The retained record
+survives service restart and is included in activity queries.
+
+The opt-in `document_activity.py` CLI qualification uses a synthetic PDF table,
+two real finite Codex delegations and an operator-selected mature workbook
+builder. PDF extraction and workbook authoring stay in application adapters;
+original native spools publish the exact PDF, Markdown and XLSX bytes and retain
+their custody. Approved adoption links connect the two proposals to accepted
+Markdown/XLSX artifacts. Exported OOXML values and formulas are independently
+checked. This is one text-PDF case, not OCR or native Excel qualification.
+
+The document case takes `--host`, fresh `--evidence`, synthetic `--pdf`, qualified
+`--codex`, `--node` and application-owned `--builder` paths. The controller needs
+`pypdf`. The builder receives typed rows JSON and an output directory and writes
+`result.xlsx`: source rows A6:C8, amount formulas D6:D8 and total D10. It never
+installs tools or provisions services. The fixture checks Bolt (12 at 0.50),
+Plate (3 at 8.00), Bearing (2 at 4.25), total EUR 38.50.

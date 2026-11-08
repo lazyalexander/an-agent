@@ -13,16 +13,27 @@ pub fn execute(root: &Path, name: &str, hash: &str, cancelled: Arc<AtomicBool>) 
     // claim remains unknown, even if no backend child was subsequently started.
     write_json(
         &dir.join("owner.json"),
-        &json!({"request":hash,"pid":std::process::id()}),
+        &json!({"request":hash,"pid":std::process::id(),
+            "process_identity":crate::execution::sandbox::service_process::identity(std::process::id())}),
     )?;
     sync(&dir)?;
     let seconds = record["plan"]["seconds"]
         .as_u64()
         .ok_or("supervisor deadline")?;
     let parent = events::ParentCancel::from_route(&record["plan"]["start"]["routed_supervision"])?;
+    let authorization: Option<crate::task_permissions::Binding> = record["plan"]
+        .get("task_authorization")
+        .map(|v| serde_json::from_value(v.clone()))
+        .transpose()?;
     let result = monitor(
         || {
             poll_control(&dir, None, &cancelled);
+            if authorization
+                .as_ref()
+                .is_some_and(|b| crate::task_permissions::active(b).is_err())
+            {
+                cancelled.store(true, Ordering::Release);
+            }
             if parent
                 .as_ref()
                 .is_some_and(|p| p.cancelled().unwrap_or(true))

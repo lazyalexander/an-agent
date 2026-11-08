@@ -41,3 +41,9 @@ lab/
 !/doc/quality.md
 !/doc/qualification.md
 !/doc/native-deployment.md
+!/doc/daemon.md
+!/doc/zh-CN/
+/doc/zh-CN/*
+!/doc/zh-CN/doc/
+/doc/zh-CN/doc/*
+!/doc/zh-CN/doc/daemon.md

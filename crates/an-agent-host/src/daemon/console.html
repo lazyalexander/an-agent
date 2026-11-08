@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>an-agent · 工作台</title>
+<style>
+:root{font:15px -apple-system,BlinkMacSystemFont,sans-serif;color:#e8e9ed;background:#111318}body{max-width:1160px;margin:48px auto;padding:0 24px}header{display:flex;justify-content:space-between;align-items:center}h1{font-size:26px;font-weight:600}h2{font-size:18px;margin-top:36px}p,.muted{color:#9da5b5}.summary{display:flex;gap:16px;margin:26px 0}.card{background:#1c2028;border:1px solid #303641;border-radius:12px;padding:20px;flex:1}.value{font-size:30px;margin-top:8px}table{border-collapse:collapse;width:100%;background:#1c2028;border-radius:12px}td,th{text-align:left;padding:14px;border-bottom:1px solid #303641}th{font-size:12px;color:#9da5b5;font-weight:500}.badge{display:inline-block;padding:4px 9px;border-radius:6px;background:#293a43;color:#ade5d1}.path{font:11px ui-monospace,monospace;color:#9da5b5;max-width:380px;overflow-wrap:anywhere}#connection{font-size:13px}#detail{white-space:pre-wrap;font-size:12px;color:#9da5b5}button{background:#29313d;color:#e8e9ed;border:1px solid #465063;border-radius:6px;padding:6px 10px;cursor:pointer}.error{color:#f3af9b}
+</style>
+<header><div><div class="muted">AN-AGENT / LOCAL</div><h1>工作台</h1></div><span id="connection">连接中</span></header>
+<p>查看 spool、后台任务与交付状态。运行和验收均由原有宿主流程管理。</p>
+<div class="summary"><div class="card">已加载 spool<div class="value" id="loaded">—</div></div><div class="card">排队中<div class="value" id="queued">—</div></div><div class="card">执行中或待核实<div class="value" id="active">—</div></div><div class="card">守护服务内存<div class="value" id="memory">—</div></div></div>
+<h2>Spool 实例</h2><table><thead><tr><th>名称 / 版本</th><th>生命周期</th><th>实例位置</th></tr></thead><tbody id="instances"></tbody></table>
+<h2>后台任务</h2><table><thead><tr><th>任务</th><th>执行状态</th><th>交付状态</th><th>活进程 CPU / 内存</th><th>操作</th></tr></thead><tbody id="tasks"></tbody></table>
+<p>“已结算”表示原执行证据已核实；是否交付以产物验收为准。暂未取得的资源和模型用量显示为未知。</p>
+<div class="card"><strong>任务详情</strong><pre id="detail">选择任务查看原始状态。</pre></div>
+<script src="/app.js"></script></html>

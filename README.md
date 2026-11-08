@@ -2,112 +2,61 @@
 
 English · [简体中文](doc/zh-CN/README.md)
 
-<p align="center">
-  <img src="assets/icon.png" width="128" alt="an-agent icon">
-</p>
+A local agent runtime for application workflows, with a macOS user service,
+lightweight scheduling and external harness delegation.
 
-An experimental Rust framework for embedding event-driven agents into existing applications.
+an-agent owns task authority, original execution supervision, spool lifecycle,
+activity records and accepted artifacts. External harnesses own their model loops.
+Domain instructions and business acceptance belong to spools; application bridges
+remain in Shuttle. The service reuses `ExecutionBackend` and the existing supervisors.
 
-Instead of making people work through a separate AI interface, an-agent explores how agents can participate directly in ordinary software workflows. Changes to a document, model, or canvas can trigger bounded assistance, without requiring a new prompt for every action.
+## Use and observe
 
-The application remains the working environment. The host owns execution, users retain control over their editable documents, and agents operate through explicitly declared capabilities.
+Build `an-agent-host` with `cargo build --release --locked --bin an-agent-host`.
+Follow [the user service guide](doc/daemon.md) to start the foreground service or
+prepare a LaunchAgent, inspect the local console, delegate work and read results.
 
-The framework provides execution coordination, semantic assessment, supervision, and inspectable evidence. It does not assume that recorded actions are reversible, that external state can always be recovered, or that semantic checks alone provide a security boundary.
+Task permissions travel with delegated work, can narrow and expire, and can be
+revoked. Cancellation reaches the original owner; unknown termination is not a
+successful cleanup. [Execution contracts](doc/execution.md) and
+[platform qualification](doc/platforms.md) describe enforcement and limits.
+The local operator boundary trusts the same OS user; remote model termination
+is not inferred from a local client exit.
 
-This is an early-stage library and integration effort, not a finished creative application.
+## Repository boundaries
 
-A spool is the domain execution isolation and lifecycle boundary; internal
-**silks** implement its callable steps. Local reviewed headless execution is the
-current delivery focus. OpenShell remains an optional, replaceable backend with
-expansion paused; application shuttles remain host-authorized external bridges.
-Headless does not imply trusted code, and insufficient isolation must refuse
-execution rather than fall back to a weaker backend.
-See the [implementation audit and staged migration](doc/architecture.md).
-OpenShell's bounded file profile does not provide the native spool state/event/artifact contract.
+| Project | Owns |
+| --- | --- |
+| an-agent | Authority, scheduling, supervision, lifecycle, activity and custody |
+| [an-loom](https://github.com/lazyalexander/an-loom) | Authoring, validation and packaging |
+| [an-spool](https://github.com/lazyalexander/an-spool) | Reviewed domain knowledge and implementations |
+| [an-shuttle](https://github.com/lazyalexander/an-shuttle) | Application snapshots, interaction and product delivery |
 
-The [spool content contract](doc/spool-code.md) labels every published baseline
-file **silk**, and authorized working copies or newly generated work **kit**.
-Instructions remain protected; programs and configuration may have approved kit
-copies. Labels describe provenance and lifetime, never execution authority.
-Legacy directory/API names and qualified profile restrictions remain compatible.
+Every immutable release baseline is **silk**. Authorized modified or new files
+are **kit**, subject to retention or reclamation after confirmed settlement.
+Instructions remain protected. Labels never grant execution authority.
+See [the content contract](doc/spool-code.md).
 
-## Current demonstration
+## Example: CAD → Krita
 
-![Mechanical ink animation](assets/demos/mechanical-ink.gif)
+A saved CAD revision becomes a transparent painting with editable part layers.
+The example exercises delegation, native execution and accepted-product delivery.
 
-A mechanical drawing experiment separates prescribed mechanism motion from its drawing treatment. The geometry supplies the poses and visibility; an ink treatment follows those poses. The working artifacts include editable SVG and layered OpenRaster drawings. AI-generated bitmap references contribute surface appearance, not the mechanism's motion.
+![CAD painting](https://raw.githubusercontent.com/lazyalexander/an-shuttle/0dfd646/examples/cad-paint/sample/vise.png)
 
-This is an independent workflow prototype informing the framework's direction, not an end-to-end feature of the Rust kernel. The ink study shows four repetitions of one operating cycle, not an assembly sequence or a force simulation. It does not demonstrate automatic propagation of arbitrary painting edits, live CAD synchronization, or full recovery from the event log.
-
-## Documentation
-
-Start with the [public documentation](doc/README.md) for architecture, spool/silk
-execution boundaries, state/artifact ownership and implementation status. Detailed
-contracts remain beside the crates that implement them.
-
-The [native workspace event contract](doc/native-events.md)
-connects accepted file versions to explicitly approved headless spool deliveries.
-Business workflows stay inside silks/kits; the host adds no business graph DSL.
-
-## Architecture and current capabilities
-
-The host application owns the workspace, user interaction, and execution of application-specific effects. Today, spools are embedded capability bodies with declared contracts and configuration. The target packaging model is a reusable workflow package containing stages, silks, configuration and documentation; it requests shuttle capabilities rather than necessarily containing a shuttle. A spool carries domain knowledge, business rules, skills and domain acceptance criteria; the host supplies generic execution and artifact management rather than absorbing those rules. Package identity, a workflow run and an individual stage are distinct. The existing descriptor and mounting APIs are not changed by this design direction.
-
-Loom owns development and packaging. The an-agent host owns workflow admission, scoped context/model services and accepted artifacts; an execution backend enforces isolation and owns VM/process lifecycle. Shuttles remain application-side bridges, not unrestricted host shells. See [the responsibility and permission boundaries](doc/architecture.md) and [the local VM direction and capability limits](doc/openshell.md). Local execution is the priority; no remote orchestration platform is required.
-
-- **Workspace integration:** events, configuration, environment snapshots, and registration provide the host-facing context. The workspace is the interaction center; its durable documents and assets remain essential inputs.
-- **Agent execution:** `AgentControl` coordinates mounted bodies, model and tool boundaries, hooks, and recorded outcomes. The host supplies model clients and native integrations.
-- **Semantic checks:** a separate crate represents claims, concrete attempts, version-bound grants, receipts, contract assessments, and dependency validity. It does not own business scheduling or user interaction. Trusted adapters determine what evidence and enforcement are actually available.
-- **Supervision:** operations requiring review can yield to a live supervisor. Approvals are bound to the exact operation and current authority; explicit denial or missing capabilities cannot be bypassed through approval. Changes to relevant live state invalidate affected reviews.
-- **Audit and limited recovery:** append-only tapes retain execution evidence, while session APIs support bounded recovery with required inputs available. Dependency checks can quarantine stale model results rather than treating them as current work.
-- **Bounded CLI hosting:** `an-agent-host` independently registers hash-bound deployments and runs an explicit stdio-only capability through admission, the qualified native backend restrictions, and retained receipts. Development and packaging tools are not runtime dependencies. See [the host execution contract](crates/an-agent-host/README.md) and [platform support matrix](doc/platforms.md).
-
-Release-bound native spools also support explicit workspace-event handoff and
-[operator-selected Python with binary products](doc/native-spool.md).
-The headless log-report example produces editable XLSX/PPTX through the same
-supervision and custody boundary; document rules remain in spool code.
-An optional [separate state input](doc/native-state.md#independent-business-data-and-state)
-binds a fixed business artifact and committed checkpoint without implicit HEAD
-selection; expected-version commit and cancellation retention remain host-owned.
-
-Semantic assessment and execution enforcement are distinct. The host or supervising agent decides how to respond to findings; trusted execution boundaries enforce permissions. A declaration or a recorded receipt is not, by itself, an operating-system sandbox.
-
-## Boundaries
-
-The tape is an audit record, not a backup of the entire world. It cannot reconstruct a missing spool implementation, restore an unavailable model or external service, or guarantee faithful recovery after long periods. Retaining required packages, workspace assets, and compatible dependencies remains the deployer's responsibility.
-
-The content-addressed workspace store is not a complete document-versioning or rollback system. Memory provenance does not establish truth or a calibrated confidence score. External effects are not automatically reversible or safe to retry. General static effect inference, comprehensive OS isolation, durable approval recovery, distributed execution, and seamless creative-tool integration remain work ahead.
-
-## Layout
-
-- `crates/an-agent-core` — the kernel: tape, admission, identity, `AgentControl`, seats, and the recorder file workspace.
-- `crates/an-agent-host` — embedding helpers, spool construction, reply-intent execution, and a model-client adapter.
-- `crates/an-agent-semantic` — transport-neutral claims, concrete attempts, version-bound assessments, grants, and execution receipts. It owns no scheduling or interruption. Core execution boundaries retain evidence and return supervisor requests for blocked operations.
-- `crates/an-agent-supervision` — transport-neutral live review state and exact one-shot approvals. It owns no tape, execution, or scheduling; core adapts trusted execution boundaries to it.
-- `crates/an-agent-spool` — capability spools: YAML descriptor admission and the append-only spool registry.
-- `crates/an-agent-workspace` — content-addressed store. It is not the recorder workspace.
-- `packages/causal-web` — zero-dependency tape viewer: drop in a `.jsonl` tape, see the causal threads, get the tape validated in-page.
-- `packages/lean-probe` — tiny Lake package from a Lean 4 compatibility experiment (no Mathlib).
-- `doc/` — public architecture, execution, state/artifact and implementation-status guides.
-- `config/` — model endpoint configuration.
-- `assets/demos/` — presentation media, separate from runtime capabilities.
+[Case setup, acceptance and limitations](https://github.com/lazyalexander/an-shuttle#example-cad--krita) ·
+[Spool source](https://github.com/lazyalexander/an-spool)
 
 ## Develop
 
 ```sh
-cargo check --workspace --all-targets
 cargo test --workspace
 cargo clippy --workspace --all-targets
 cargo fmt --all -- --check
 cargo arch
 ```
 
-The toolchain is pinned via `rust-toolchain.toml`. Experiments stay outside the product dependency graph. Promote a proven integration through a tested implementation, rather than treating a successful standalone demo as a kernel guarantee.
-
-See [architecture gates](doc/quality.md) for the TOML rules, existing-debt
-baseline, dependency boundaries and the separately locked SPACE-based checker.
-
-The [implementation boundary audit](doc/architecture.md#implementation-boundary-audit) maps current modules to developer, host, and backend responsibilities and records the remaining limits.
-
-See [Weaver and independent spool development](doc/weaver.md) for the separation
-between standalone iteration and platform-managed execution.
+See [documentation](doc/README.md), [architecture](doc/architecture.md),
+[testing](doc/testing.md), and [quality gates](doc/quality.md).
+The separate architecture checker and real host acceptance are required where
+applicable; ordinary unit tests do not establish application or provider behavior.

@@ -6,7 +6,9 @@ mod client;
 mod prelaunch;
 mod routing;
 pub use client::launch;
-pub(in crate::native_spool) use client::{monitor, observe_controls, poll_control, wait};
+pub(crate) use client::launch_background;
+pub(crate) use client::monitor;
+pub(in crate::native_spool) use client::{observe_controls, poll_control, wait};
 pub(super) use routing::{
     bound_data, finish_route, reconcile_binding, verify_route, verify_settled,
 };
@@ -69,6 +71,21 @@ pub fn prepare(
     executable: &Path,
     approved: Option<&str>,
 ) -> Result<Value> {
+    prepare_authorized(root, name, input, seconds, executable, approved, None)
+}
+
+pub(crate) fn prepare_authorized(
+    root: &Path,
+    name: &str,
+    input: Input<'_>,
+    seconds: u64,
+    executable: &Path,
+    approved: Option<&str>,
+    authorization: Option<&crate::task_permissions::Binding>,
+) -> Result<Value> {
+    if let Some(binding) = authorization {
+        crate::task_permissions::active(binding)?;
+    }
     let root = location(root)?;
     let combined = matches!(&input, Input::DataState(_));
     let (input, revision, preview) = match input {
@@ -109,6 +126,9 @@ pub fn prepare(
 
     let mut plan = json!({"schema":"an-native-supervisor-v1","root":root,"run":name,
         "input":input,"seconds":seconds,"executable":executable,"start":preview["plan"]});
+    if let Some(binding) = authorization {
+        plan["task_authorization"] = json!(binding);
+    }
     if let Some(revision) = revision {
         plan["state_revision"] = json!(revision);
     }

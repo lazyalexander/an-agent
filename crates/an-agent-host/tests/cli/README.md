@@ -1,10 +1,9 @@
 # Host CLI acceptance
-
 English · [简体中文](../../../../doc/zh-CN/crates/an-agent-host/tests/cli/README.md)
 
 Build the selected host binary once, then pass its explicit path. No runner builds a binary, reads model credentials or invokes Loom. Python 3 standard library is sufficient. Platform eligibility is centralized in
 `host_qualification.py`; see the [support and qualification matrix](../../../../doc/platforms.md).
-This prerequisite does not replace the host enforcement exercised by each case.
+This prerequisite does not replace case-specific enforcement. SPACE CLI fixture/live recipes are in [execution](../../../../doc/execution.md#optional-space-file-execution).
 
 ```sh
 cargo build --locked -p an-agent-host --bin an-agent-host
@@ -178,3 +177,4 @@ client exit, continuing timeout/cancellation, supervisor loss, no replay and
 confirmed-only collection. The state suite advances HEAD before selecting the
 old revision and verifies retained checkpoints; `--combined` also pins business
 data and rejects changed selectors. PIDs serve fault injection and observation only; accepted products and independent instances remain unaffected.
+`native_daemon.py` and `native_task_permissions.py` cover [service and task permissions](../../../../doc/daemon.md) with explicit `--host` and fresh `--evidence` paths. `document_activity.py` adds the real PDF/Markdown/XLSX case, optionally using `--shuttle-client` for the compiled Shuttle transport.
