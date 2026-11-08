@@ -28,6 +28,7 @@ downgrade to native execution or weaken a declaration to fit it.
 | Isolated Rust build recipe | Existing narrow build/file acceptance | No Linux build adapter | Unqualified | [Build/file contract](workspace-jobs.md); separate from running an already-built file program |
 | Optional OpenShell adapter | Operator-selected control/transport | Selected backend environment, independently qualified | Unqualified | [Historical live evidence](openshell.md); opt-in real-VM test is not implied by ordinary CI |
 | User service, bounded queue and read-only console | Real native CLI acceptance; CAD integration separate | Refused | Refused | Original supervisors and custody remain authoritative; [service contract](daemon.md) |
+| Optional SPACE file adapter | Live public host acceptance plus fault tests | Host CI; live Linux control host unqualified | Unqualified | Fixed Linux x86_64 Firecracker guest file ABI; eight-byte custody/deletion qualified, CAD→Krita pending |
 | GPU workers, GUI shuttles, live memory suspension | Separate qualification required | Separate qualification required | Separate qualification required | Neither CPU success nor a native binary establishes these capabilities |
 
 CI runner architecture, selected binary/toolchain and runtime dependencies are
