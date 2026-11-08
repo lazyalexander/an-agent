@@ -14,9 +14,10 @@ use std::{
 
 const LIMIT: u64 = 131072;
 
-pub(super) fn request(root: &Path, value: &Value) -> Result<Value> {
+pub(super) fn request(root: &Path, value: &Value, scoped: bool) -> Result<Value> {
     let root = storage::private(root)?;
-    let mut socket = UnixStream::connect(root.join("control.sock"))?;
+    let mut socket =
+        UnixStream::connect(root.join(if scoped { "tasks.sock" } else { "control.sock" }))?;
     socket.set_read_timeout(Some(Duration::from_secs(15)))?;
     socket.set_write_timeout(Some(Duration::from_secs(2)))?;
     let mut bytes = serde_json::to_vec(value)?;
@@ -61,36 +62,30 @@ pub(super) fn serve(root: &Path, cancelled: &AtomicBool) -> Result<Value> {
     {
         return Err("another daemon already owns this directory".into());
     }
-    let path = root.join("control.sock");
-    if let Ok(metadata) = fs::symlink_metadata(&path) {
-        if !metadata.file_type().is_socket() {
-            return Err("control path is not a socket".into());
-        }
-        fs::remove_file(&path)?;
-    }
-    let listener = UnixListener::bind(&path)?;
-    fs::set_permissions(&path, fs::Permissions::from_mode(0o600))?;
-    listener.set_nonblocking(true)?;
+    let listener = listen(&root, "control.sock")?;
+    let task_listener = listen(&root, "tasks.sock")?;
     let mut web = web::Server::start(&root)?;
     let mut children = BTreeMap::new();
     let mut settled = BTreeSet::new();
     let mut ticks = 0u8;
     while !cancelled.load(Ordering::Acquire) {
-        // One request per tick keeps queue progress and controls independent.
-        match listener.accept() {
-            Ok((mut stream, _)) => {
-                stream.set_nonblocking(false)?;
-                stream.set_read_timeout(Some(Duration::from_millis(200)))?;
-                stream.set_write_timeout(Some(Duration::from_millis(500)))?;
-                let response = handle(&root, &mut stream);
-                let value = match response {
-                    Ok(value) => json!({"result":value}),
-                    Err(e) => json!({"error":e.to_string()}),
-                };
-                let _ = stream.write_all(&serde_json::to_vec(&value)?);
+        // Both endpoints share this service, queue and authoritative owners.
+        for (listener, scoped) in [(&listener, false), (&task_listener, true)] {
+            match listener.accept() {
+                Ok((mut stream, _)) => {
+                    stream.set_nonblocking(false)?;
+                    stream.set_read_timeout(Some(Duration::from_millis(200)))?;
+                    stream.set_write_timeout(Some(Duration::from_millis(500)))?;
+                    let response = handle(&root, &mut stream, scoped);
+                    let value = match response {
+                        Ok(value) => json!({"result":value}),
+                        Err(e) => json!({"error":e.to_string()}),
+                    };
+                    let _ = stream.write_all(&serde_json::to_vec(&value)?);
+                }
+                Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => (),
+                Err(error) => return Err(error.into()),
             }
-            Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => (),
-            Err(error) => return Err(error.into()),
         }
         ticks = (ticks + 1) % 8;
         if ticks == 0 {
@@ -100,14 +95,30 @@ pub(super) fn serve(root: &Path, cancelled: &AtomicBool) -> Result<Value> {
         std::thread::sleep(Duration::from_millis(25));
     }
     // Finite owners retain their deadlines and receipts across service shutdown.
-    fs::remove_file(&path)?;
+    fs::remove_file(root.join("control.sock"))?;
+    fs::remove_file(root.join("tasks.sock"))?;
     fs::remove_file(root.join("endpoint.json"))?;
     drop(lock);
     Ok(json!({"stopped":true,"active_work":"original supervisors retain ownership; no replay"}))
 }
 
 #[cfg(target_os = "macos")]
-fn handle(root: &Path, socket: &mut UnixStream) -> Result<Value> {
+fn listen(root: &Path, name: &str) -> Result<UnixListener> {
+    let path = root.join(name);
+    if let Ok(metadata) = fs::symlink_metadata(&path) {
+        if !metadata.file_type().is_socket() {
+            return Err("control path is not a socket".into());
+        }
+        fs::remove_file(&path)?;
+    }
+    let listener = UnixListener::bind(&path)?;
+    fs::set_permissions(&path, fs::Permissions::from_mode(0o600))?;
+    listener.set_nonblocking(true)?;
+    Ok(listener)
+}
+
+#[cfg(target_os = "macos")]
+fn handle(root: &Path, socket: &mut UnixStream, scoped: bool) -> Result<Value> {
     let mut uid = 0;
     let mut gid = 0;
     if unsafe { libc::getpeereid(std::os::fd::AsRawFd::as_raw_fd(socket), &mut uid, &mut gid) } != 0
@@ -122,5 +133,10 @@ fn handle(root: &Path, socket: &mut UnixStream) -> Result<Value> {
     if bytes.len() as u64 > LIMIT || bytes.last() != Some(&b'\n') {
         return Err("invalid or oversized daemon request".into());
     }
-    control::dispatch(root, &serde_json::from_slice(&bytes)?)
+    let request = serde_json::from_slice(&bytes)?;
+    if scoped {
+        permissions::dispatch(root, &request)
+    } else {
+        control::dispatch(root, &request)
+    }
 }

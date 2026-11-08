@@ -34,6 +34,10 @@ pub(super) fn task(root: &Path, id: &str) -> Result<Value> {
         "order":read(&dir.join("order.json"))?,"claimed":claimed,
         "cancellation_requested":dir.join("cancel.json").exists(),"request":job.request(),
         "state":if result.is_ok(){"settled"}else if claimed{"running-or-unconfirmed"}else{"queued"}});
+    if let Some(binding) = job.authorization() {
+        row["authorization"] = json!({"grant":binding,
+            "active":crate::task_permissions::active(binding).is_ok()});
+    }
     match &job {
         Job::Spool { instance, run, .. } => {
             row["kind"] = json!("spool");

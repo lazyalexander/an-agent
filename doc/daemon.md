@@ -89,6 +89,64 @@ stopped or that provider usage is zero. Native events remain private; completed
 proposals still require domain validation and the existing kit-edit/artifact gates.
 The client version, scope and task reference replace Shuttle's duplicate driver.
 
+## Task-scoped permissions
+
+The operator socket issues `grant` with a `scope` containing `task`, `subject`,
+`expires_ms` (host Unix milliseconds), `delegate` and `permissions`. Preview and
+exact approval bind that scope. The response returns a private bearer credential
+`{id, secret}` and a durable grant binding. Store credentials in private application
+memory or files. Activity and queue records retain only grant IDs and digests.
+`subject` attributes work to a role; possession of the credential authenticates
+requests. The existing same-user operator endpoint remains trusted administration.
+
+Use `daemon task-request ROOT JSON` for delegated calls. It connects to `tasks.sock`
+in the same service and requires `{credential, request}` on every call. Missing,
+forged or stripped credentials fail. This endpoint exposes only granted operations
+and the caller's own descendant jobs. Both sockets share the existing queue,
+supervisors and custody. Workloads must remain excluded from operator sockets,
+host stores and other credentials by the selected execution profile. The native
+client and application adapters are still trusted same-user software.
+
+Permissions use exact resources, with at most 64 entries per grant.
+
+| Kind | Fields and enforcement |
+| --- | --- |
+| `run` | Canonical registered `instance`, `run`, canonical `input`, maximum `seconds`; original start approval fixes the selected bytes and backend policy |
+| `harness` | `profile_sha256` from operator `harness-permission` with the selected `task`; binds executable/hash, model, schema, scope and finite MCP selection |
+| `read-input` | Canonical `path` and `sha256`; `read-input` returns exactly matching bytes |
+| `accept` | Registered `instance` and `run`; delegates original acceptance and permits recording proposal adoption for that run |
+| `artifact` | Registered `instance`, `run`, `output`; `artifact-read` verifies original custody and returns bytes plus the selected inventory |
+
+The byte-read operations are bounded to 512 KiB. Permission selection does not
+interpret arbitrary prompt text or prove its provenance. The trusted application
+owns disclosure and domain checks. Every harness submission still requires the
+original exact prompt approval; the launch binding also includes its grant.
+
+`derive-grant` on the task endpoint uses the same scope fields. Its permissions
+must be a subset, its task must match, and expiry cannot increase. A native run
+deadline can decrease. The parent must allow delegation. A child can remove that
+ability. The host checks the entire immutable ancestor chain, bounded to 16 grants;
+the service retains at most 256 grants. Child credentials are returned only to the
+issuing caller. The caller explicitly passes them to the intended adapter.
+
+`revoke-grant` with `id` closes the selected grant and descendants after exact
+approval. Scoped callers can revoke their own grant or descendants. `cancel` for
+a permission-bound job previews and revokes its grant, including other jobs using
+that grant. Use distinct child grants for independently cancellable work. Original
+workers observe revocation/expiry during execution even after daemon loss; queue
+reconciliation forwards cancellation to the original owners. Status inspection
+and further cancellation remain available after revocation. New work, proposal
+retrieval and artifact acquisition fail. Existing accepted products remain in
+their original custody. Local termination evidence still comes from the original
+supervisors; remote inference termination remains unknown.
+
+`native_task_permissions.py` qualifies credential refusals, attenuation, cross-task
+access, changed inputs, native filesystem denial, cancellation, persistent parent
+revocation and worker expiry during daemon loss. `document_activity.py` qualifies
+two real Codex agents with separate child grants, accepted PDF/Markdown/XLSX
+handoff, cancellation and retained products. Pass `--shuttle-client` with the
+compiled CAD daemon client to exercise its capability transport.
+
 ## Observation and acceptance
 
 The console projects original instance, round-control, run, custody and kit labels.

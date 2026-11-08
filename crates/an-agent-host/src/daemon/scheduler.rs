@@ -43,6 +43,7 @@ pub(super) fn result(job: &Job, dir: &Path) -> Result<Value> {
             instance,
             run,
             request,
+            ..
         } => spool::supervisor::completion(instance, run, request),
         Job::Harness { request, .. } => harness::completion(dir, request),
     }
@@ -53,6 +54,7 @@ pub(super) fn tick(
     children: &mut BTreeMap<PathBuf, Child>,
     settled: &mut BTreeSet<PathBuf>,
 ) -> Result<()> {
+    permissions::reconcile(root)?;
     let mut reaped = Vec::new();
     for (path, child) in children.iter_mut() {
         if child.try_wait()?.is_some() {
@@ -115,6 +117,7 @@ pub(super) fn tick(
                 instance,
                 run,
                 request,
+                ..
             } => {
                 if dir.join("cancel.json").exists() {
                     cancel(&job)?;
