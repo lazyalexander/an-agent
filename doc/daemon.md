@@ -49,6 +49,7 @@ Registration alone grants neither execution nor model disclosure.
 | `suspend` | `instance`, `revision` | Select the exact committed checkpoint; no memory suspension |
 | `accept`, `reclaim` | `instance`, `run` | Delegate original custody gates; never infer authority from the queue |
 | `show` | none | Read lifecycle, task and resource projections |
+| `task` | `id` | Inspect one original task without enumerating other spools or artifacts |
 | `harness` | `task` | Preview/queue a finite external client with explicit content disclosure |
 | `harness-result` | `id` | Read a completed proposal, never an accepted business artifact |
 

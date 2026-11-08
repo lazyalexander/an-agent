@@ -86,22 +86,14 @@ pub fn worker(root: &Path, id: &str, hash: &str, cancelled: &AtomicBool) -> Resu
     let work = dir.join("work");
     store::directory(&work)?;
     write(&dir.join("schema.json"), &task.schema)?;
-    let stop = AtomicBool::new(false);
-    let result = std::thread::scope(|scope| {
-        let watch = scope.spawn(|| {
-            while !stop.load(Ordering::Acquire) {
-                if dir.join("cancel.json").exists() {
-                    cancelled.store(true, Ordering::Release);
-                }
-                std::thread::sleep(std::time::Duration::from_millis(25));
+    let result = spool::supervisor::monitor(
+        || {
+            if dir.join("cancel.json").exists() {
+                cancelled.store(true, Ordering::Release);
             }
-        });
-        let result = execute(&dir, &task, cancelled);
-        stop.store(true, Ordering::Release);
-        let joined = watch.join();
-        joined.map_err(|_| "harness control observer panicked")?;
-        result
-    });
+        },
+        || execute(&dir, &task, cancelled),
+    );
     let response = match &result {
         Ok(result) => json!({"request":hash,"result":result}),
         Err(error) => {

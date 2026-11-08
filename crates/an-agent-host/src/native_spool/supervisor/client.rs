@@ -112,10 +112,7 @@ pub(in crate::native_spool) fn observe_controls<T>(
     clippy::disallowed_methods,
     reason = "bounded owner control observation interval"
 )]
-pub(in crate::native_spool) fn monitor<T>(
-    poll: impl Fn() + Sync,
-    body: impl FnOnce() -> Result<T>,
-) -> Result<T> {
+pub(crate) fn monitor<T>(poll: impl Fn() + Sync, body: impl FnOnce() -> Result<T>) -> Result<T> {
     poll();
     let done = AtomicBool::new(false);
     std::thread::scope(|scope| {

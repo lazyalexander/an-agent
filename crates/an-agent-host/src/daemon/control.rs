@@ -8,6 +8,7 @@ pub(super) fn dispatch(root: &Path, req: &Value) -> Result<Value> {
         .transpose()?;
     match text(req, "op")? {
         "show" => observation::snapshot(root),
+        "task" => observation::task(root, text(req, "id")?),
         "register" => storage::register(root, Path::new(text(req, "instance")?)),
         "submit" => submit(root, req, approved),
         "harness" => harness::submit(root, req, approved),
@@ -57,7 +58,7 @@ pub(super) fn dispatch(root: &Path, req: &Value) -> Result<Value> {
 fn submit(root: &Path, req: &Value, approved: Option<&str>) -> Result<Value> {
     let instance = Path::new(text(req, "instance")?);
     let run = text(req, "run")?;
-    let identity = storage::instance(root, instance)?;
+    storage::instance(root, instance)?;
     let jobs = storage::entries(root, "jobs", 256)?;
     if jobs.len() >= 256 {
         return Err("daemon task registry full".into());
@@ -78,31 +79,19 @@ fn submit(root: &Path, req: &Value, approved: Option<&str>) -> Result<Value> {
     let input = Path::new(text(req, "input")?);
     let seconds = req["seconds"].as_u64().ok_or("seconds")?;
     let executable = storage::config(root)?.executable;
-    let preview = spool::supervisor::prepare(
-        instance,
-        run,
-        spool::supervisor::Input::File(input),
-        seconds,
-        &executable,
-        None,
-    )?;
-    let (response, execute) = approval(
-        json!({"operation":"queue-native-spool", "daemon":root,
-        "supervisor":preview,"instance":identity["instance"]}),
-        approved,
-    )?;
-    if !execute {
-        return Ok(response);
-    }
-    let hash = text(&response["plan"]["supervisor"], "approval_sha256")?;
+    // Reuse the native preview/approval once per request. Rebuilding it twice
+    // re-hashes the selected runtime inventory without adding authority.
     let prepared = spool::supervisor::prepare(
         instance,
         run,
         spool::supervisor::Input::File(input),
         seconds,
         &executable,
-        Some(hash),
+        approved,
     )?;
+    if prepared["reserved"] != true {
+        return Ok(prepared);
+    }
     let job = Job::Spool {
         instance: instance.canonicalize()?,
         run: run.into(),

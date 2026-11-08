@@ -28,6 +28,16 @@ pub(super) fn cancel(job: &Job) -> Result<()> {
 }
 
 pub(super) fn result(job: &Job, dir: &Path) -> Result<Value> {
+    let marker = match job {
+        Job::Spool { instance, run, .. } => instance
+            .join("runs")
+            .join(run)
+            .join("supervisor/completion.json"),
+        Job::Harness { .. } => dir.join("completion.json"),
+    };
+    if !marker.try_exists()? {
+        return Err("original completion is not yet available; no replay".into());
+    }
     match job {
         Job::Spool {
             instance,

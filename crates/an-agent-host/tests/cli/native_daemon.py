@@ -60,7 +60,7 @@ def main():
         return call('daemon', 'show', service)
 
     def task(task_id):
-        return next(row for row in show()['tasks'] if row['id'] == task_id)
+        return request({'op': 'task', 'id': task_id})
 
     package = root / 'release'
     (package / 'silk').mkdir(parents=True)
@@ -155,6 +155,15 @@ printf '{"type":"turn.completed"}\\n'
         decision = request({'op': 'harness-result', 'id': job})
         assert decision['proposal'] == {'finish': 'steel'}
         assert decision['result']['artifact_accepted'] is False
+        # A narrow task check must not enumerate unrelated registered spools.
+        registry = service / 'instances'
+        hidden = service / 'instances-held'
+        registry.rename(hidden)
+        try:
+            assert task(job)['state'] == 'settled'
+            request({'op': 'show'}, success=False)
+        finally:
+            hidden.rename(registry)
         job = approved({'op': 'harness', 'task': {**base, 'prompt': 'slow-harness'}})['id']
         until(lambda: (service / 'jobs' / job / 'owner.json').exists())
         approved({'op': 'cancel', 'id': job})

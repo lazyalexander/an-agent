@@ -34,7 +34,8 @@ an-agent-host daemon launchd /absolute/private/service /absolute/agent.plist
 - `cancel`：向确切任务请求取消；请求成功不代表终止已确认。
 - `pause`、`resume`、`suspend`、`unload`：调用原生命周期接口。
 - `accept`、`reclaim`：仍由原产物托管流程核验，不从队列状态推导许可。
-- `show`：读取投影；`harness`：提交明确披露的有限客户端任务。
+- `show`：读取全量投影；`task` 按 ID 只查原任务，避免等待时扫描其他实例。
+- `harness`：提交明确披露的有限客户端任务。
 - `harness-result`：读取已完成提案，不能把它当成已验收的业务产物。
 
 并发为 1–8，同一实例一次启动一个排队任务，最多注册 128 个实例、保留 256 个

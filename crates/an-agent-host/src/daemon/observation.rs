@@ -11,41 +11,11 @@ pub(super) fn snapshot(root: &Path) -> Result<Value> {
     }
     let mut jobs = Vec::new();
     for dir in storage::entries(root, "jobs", 256)? {
-        let job: Job = serde_json::from_value(read(&dir.join("request.json"))?)?;
-        let claimed = dir.join("claimed.json").exists();
-        let result = scheduler::result(&job, &dir);
-        let mut row = json!({"id":dir.file_name().and_then(|s|s.to_str()),
-            "order":read(&dir.join("order.json"))?,"claimed":claimed,
-            "cancellation_requested":dir.join("cancel.json").exists(),"request":job.request(),
-            "state":if result.is_ok(){"settled"}else if claimed{"running-or-unconfirmed"}else{"queued"}});
-        match &job {
-            Job::Spool { instance, run, .. } => {
-                row["kind"] = json!("spool");
-                row["instance"] = json!(instance);
-                row["run"] = json!(run);
-                row["native"] =
-                    spool::status(instance, run).unwrap_or_else(|e| json!({"error":e.to_string()}));
-                row["resources"] = resources(
-                    &instance.join("runs").join(run).join("supervisor"),
-                    job.request(),
-                );
-            }
-            Job::Harness { task, .. } => {
-                row["kind"] = json!("harness");
-                row["label"] = json!(task.label);
-                row["resources"] = resources(&dir, job.request());
-            }
-        }
-        match result {
-            Ok(value) => {
-                row["outcome"] = value["status"].clone();
-            }
-            Err(error) if claimed => {
-                row["diagnostic"] = json!(error.to_string());
-            }
-            _ => (),
-        }
-        jobs.push(row);
+        let id = dir
+            .file_name()
+            .and_then(|name| name.to_str())
+            .ok_or("task ID")?;
+        jobs.push(task(root, id)?);
     }
     jobs.sort_by_key(|row| row["order"].as_u64());
     Ok(
@@ -54,6 +24,44 @@ pub(super) fn snapshot(root: &Path) -> Result<Value> {
         "authority":"projection of original lifecycle and execution evidence",
         "service_resources":crate::execution::sandbox::service_process::current_resources()}),
     )
+}
+
+pub(super) fn task(root: &Path, id: &str) -> Result<Value> {
+    let (dir, job) = storage::job(root, id)?;
+    let claimed = dir.join("claimed.json").exists();
+    let result = scheduler::result(&job, &dir);
+    let mut row = json!({"id":dir.file_name().and_then(|s|s.to_str()),
+        "order":read(&dir.join("order.json"))?,"claimed":claimed,
+        "cancellation_requested":dir.join("cancel.json").exists(),"request":job.request(),
+        "state":if result.is_ok(){"settled"}else if claimed{"running-or-unconfirmed"}else{"queued"}});
+    match &job {
+        Job::Spool { instance, run, .. } => {
+            row["kind"] = json!("spool");
+            row["instance"] = json!(instance);
+            row["run"] = json!(run);
+            row["native"] =
+                spool::status(instance, run).unwrap_or_else(|e| json!({"error":e.to_string()}));
+            row["resources"] = resources(
+                &instance.join("runs").join(run).join("supervisor"),
+                job.request(),
+            );
+        }
+        Job::Harness { task, .. } => {
+            row["kind"] = json!("harness");
+            row["label"] = json!(task.label);
+            row["resources"] = resources(&dir, job.request());
+        }
+    }
+    match result {
+        Ok(value) => {
+            row["outcome"] = value["status"].clone();
+        }
+        Err(error) if claimed => {
+            row["diagnostic"] = json!(error.to_string());
+        }
+        _ => (),
+    }
+    Ok(row)
 }
 
 fn resources(dir: &Path, request: &str) -> Value {
