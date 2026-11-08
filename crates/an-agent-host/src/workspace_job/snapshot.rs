@@ -81,6 +81,10 @@ pub(super) fn launch(plan: &Value, attempt: &Path) -> Result<Value> {
                 .ok_or_else(|| "source path".into()))
             .collect::<Result<Vec<_>>>()?
     )?);
+    launch["policy"] = json!(sandbox::workspace::graphics_policy(
+        launch["policy"].as_str().ok_or("missing policy")?,
+        plan["graphics"].as_str(),
+    )?);
     Ok(launch)
 }
 

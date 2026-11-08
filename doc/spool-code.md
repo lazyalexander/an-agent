@@ -1,6 +1,6 @@
 # Spool content labels: silk and kit
 
-Status: agreed definition, revision 2. Labels describe provenance and lifetime,
+Status: agreed definition, revision 3. Labels describe provenance and lifetime,
 not code responsibilities, language, file extension, directory or authority.
 Existing qualified profiles remain the execution limit. This revision does not
 implement arbitrary runtime editing or a general overlay filesystem.
@@ -10,12 +10,13 @@ implement arbitrary runtime editing or a general overlay filesystem.
 | Content | Label | Rule |
 | --- | --- | --- |
 | Every selected release file, including programs, configuration, skills and AGENTS.md | silk | Immutable baseline; change through reviewed development and a new release |
-| An authorized working copy of a baseline program or configuration | kit | Separate derivative; never overwrite the selected release |
+| An agent-modified working copy of any baseline file | kit | Separate derivative; never overwrite the selected release |
 | New files, generated programs and other uncommitted work | kit | Attempt-owned by default; not automatically retained or executable |
 | Accepted artifacts and committed state | Separate custody records | Explicit acceptance/commit and retention; never delete with scratch |
 
 A file under a legacy `kit/` directory is still silk inside the release. Its
-working copy is kit even when its bytes match the baseline, including after reset.
+unchanged working copy retains the silk label. Once modified it is kit, including
+after reset; the modification record and baseline match are reported separately.
 Reset restores bytes; it does not turn a mutable working copy into a release.
 File kind (program, configuration, instructions, data) is independent of the label.
 A program does not become silk merely because it implements core domain logic.
@@ -76,7 +77,7 @@ qualified host route. A new-file kit label alone must not bypass that restrictio
 
 ## Implemented observation and next qualification
 
-Host instance inspection reports release files as silk, existing working copies as
+Host instance inspection reports release files as silk, unchanged working copies as silk and modified copies as
 kit, and unregistered generated work as kit by default. It retains the original
 `kits` digest map for compatibility. These observations grant no authority and do
 not replace artifact/state custody records.

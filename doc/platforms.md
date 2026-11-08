@@ -29,7 +29,8 @@ downgrade to native execution or weaken a declaration to fit it.
 | Optional OpenShell adapter | Operator-selected control/transport | Selected backend environment, independently qualified | Unqualified | [Historical live evidence](openshell.md); opt-in real-VM test is not implied by ordinary CI |
 | User service, bounded queue and read-only console | Real native CLI acceptance; CAD integration separate | Refused | Refused | Original supervisors and custody remain authoritative; [service contract](daemon.md) |
 | Optional SPACE file adapter | Live public host acceptance plus fault tests | Host CI; live Linux control host unqualified | Unqualified | Fixed Linux x86_64 Firecracker guest file ABI; eight-byte custody/deletion qualified, CAD→Krita pending |
-| GPU workers, GUI shuttles, live memory suspension | Separate qualification required | Separate qualification required | Separate qualification required | Neither CPU success nor a native binary establishes these capabilities |
+| Apple Silicon Blender Metal via reviewed workspace | Steam and inline-four full-film/source checks, cancellation and custody qualified locally | Unqualified | Unqualified | Explicit graphics selection; [operator profile](workspace-jobs.md#explicit-apple-silicon-metal-selection) and [teaching cases](cases.md) |
+| Other GPU workers, GUI shuttles, live memory suspension | Separate qualification required | Separate qualification required | Separate qualification required | Neither CPU success nor a native binary establishes these capabilities |
 
 CI runner architecture, selected binary/toolchain and runtime dependencies are
 part of the evidence. Do not generalize one runner's success to all CPUs or

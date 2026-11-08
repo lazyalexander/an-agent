@@ -107,8 +107,9 @@ frame count, presentation timing and per-frame decoded hashes with its selected
 reference. Review motion dynamically and inspect the reopened editable scene.
 
 This repository publishes the GIF previews and teaching notes. Full generators,
-painting assets, MP4 deliveries, editable scenes and raw reproduction receipts currently live
-in the local lab package. A distributable, reviewed animation spool is pending.
+painting assets and three source releases are prepared in an-spool. The source
+packages are mechanism, appearance and mechanical-film. MP4 deliveries, editable
+scenes and raw host receipts are retained locally.
 
 ## Integration exercise
 
@@ -121,5 +122,11 @@ Label authorized changed or new files as kit and retain protected instructions.
 Exercise supplemental instructions, cancellation, service restart, acceptance
 and reclamation. Preserve uncertain executions for reconciliation. A completed
 film must link back to its selected inputs and original execution record.
-This lifecycle acceptance remains pending. See [status](status.md),
+The operator-reviewed workspace chain now passes both complete cases, with
+revision-bound handoffs and formal artifact acceptance. Explicit
+`macos-agx-metal-v1` access permits two IOKit clients and two Mach endpoints.
+Cancellation after Blender initialization confirms reaping and refuses publication.
+File and network restrictions remain enforced. Registered native-spool deployment,
+daemon scheduling of this recipe and Krita GUI round-trip require their own
+qualification. See [status](status.md),
 [task permissions](execution.md) and [content labels](spool-code.md).

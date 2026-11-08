@@ -26,6 +26,27 @@ fn layout_is_optional_and_explicit_layouts_cannot_alias() -> Result<()> {
         )
     };
     assert_eq!(plan(&p)?.1["inputs"][0]["name"], "main.sh");
+    assert!(plan(&p)?.1.get("graphics").is_none());
+    p["graphics"] = json!("unrestricted");
+    assert!(plan(&p).is_err());
+    p["graphics"] = json!("macos-agx-metal-v1");
+    p["wall_seconds"] = json!(900);
+    let graphics = plan(&p)?.1;
+    assert_eq!(graphics["graphics"], "macos-agx-metal-v1");
+    #[cfg(target_os = "macos")]
+    {
+        let policy = graphics["policy"].as_str().ok_or("missing policy")?;
+        assert!(policy.contains("AGXDeviceUserClient"));
+        assert!(policy.contains("IOSurfaceRootUserClient"));
+        assert!(!policy.contains("(allow iokit-open)"));
+        assert!(!policy.contains("(allow network*"));
+    }
+    p.as_object_mut()
+        .ok_or("profile object")?
+        .remove("graphics");
+    assert!(plan(&p).is_err());
+    p["wall_seconds"] = json!(1);
+
     p["inputs"] = json!([base.join("a/main.sh"), base.join("b/main.sh")]);
     assert!(plan(&p).is_err());
     p["input_layout"] = json!(["silk/main.sh", "kit/main.sh"]);

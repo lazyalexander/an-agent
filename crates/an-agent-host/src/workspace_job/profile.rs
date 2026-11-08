@@ -32,6 +32,8 @@ pub(super) struct Profile {
     /// Operator headroom requests may raise, but never lower, the native floor.
     #[serde(default)]
     minimum_free_bytes: u64,
+    #[serde(default)]
+    graphics: Option<String>,
     trusted_process_group: bool,
 }
 
@@ -53,7 +55,12 @@ impl Profile {
         let p: Self = serde_json::from_slice(bytes)?;
         if p.schema != "an-workspace-job-v2"
             || !p.trusted_process_group
-            || !(1..=300).contains(&p.wall_seconds)
+            || !(1..=if p.graphics.as_deref() == Some("macos-agx-metal-v1") {
+                900
+            } else {
+                300
+            })
+                .contains(&p.wall_seconds)
             || p.args.len() > 64
             || p.inputs.is_empty()
             || p.inputs.len() > 16
@@ -63,6 +70,12 @@ impl Profile {
             || p.environment.len() > 32
         {
             return Err("unsupported bounded trusted-runtime profile".into());
+        }
+        if p.graphics
+            .as_deref()
+            .is_some_and(|value| value != "macos-agx-metal-v1")
+        {
+            return Err("unsupported graphics selection".into());
         }
         let work = root.join("work");
         let exe = p.executable.canonicalize()?;
@@ -180,6 +193,9 @@ impl Profile {
             "predecessor":predecessor,"scratch_before":if work.exists(){inventory::scan(&work)?}else{json!({})},
             "wall_seconds":p.wall_seconds,"minimum_free_bytes":minimum_free,"network":false,"automatic_retries":0,
             "scope":"reviewed local tools without daemonization; not hostile process-tree containment"});
+        if let Some(graphics) = &p.graphics {
+            plan["graphics"] = json!(graphics);
+        }
         if !binary.is_empty() {
             plan["binary_outputs"] = json!(binary);
         }

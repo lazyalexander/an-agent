@@ -84,8 +84,8 @@ ffmpeg -v error -i assets/demos/painted-steam-engine.gif \
 换成 `assets/demos/painted-inline-four.gif` 可检查补充案例。评估新渲染时，比较帧数、播放时序
 和每帧解码哈希，动态观看运动，并检查重新打开的可编辑场景。
 
-本仓库发布 GIF 预览和教学说明。完整生成器、绘画素材、MP4 交付、可编辑场景与原始复现记录保存在本地
-实验包中。可分发、经过审阅的动画 spool 待完成。
+本仓库发布 GIF 预览和教学说明。an-spool 中已准备 mechanism、appearance、mechanical-film 三个源码包。
+MP4、可编辑场景与原始宿主记录保存在本地验收目录。
 
 ## 接入练习
 
@@ -95,5 +95,7 @@ Shuttle 负责已验收可编辑产物的应用交付。
 
 获准修改或新增的文件标为 kit，指令文件保持受保护。依次验证补充指令、取消、服务重启、
 产物验收与回收。执行结果不确定时保留现场用于核对，成片须追溯到选定输入和原执行记录。
-这组生命周期验收待完成。参见[实现状态](status.md)、[任务权限](execution.md)和
+现有 reviewed workspace 路由已通过两案例的完整执行、固定版本交接和正式产物接收。
+显式图形选择限制为两个 IOKit 客户端和两个 Mach 服务，取消后确认回收且不发布产物，文件和网络边界仍受约束。
+注册式 native-spool 部署、此配方的守护服务调度及 Krita GUI 回存需单独验收。参见[实现状态](status.md)、[任务权限](execution.md)和
 [内容标签](spool-code.md)。
