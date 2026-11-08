@@ -4,6 +4,7 @@ use std::path::Path;
 use std::process::Stdio;
 mod process;
 pub(crate) mod service_process;
+pub(crate) mod space_transport;
 pub mod supervisor_process;
 pub(crate) mod workspace;
 use process::OwnedChild;

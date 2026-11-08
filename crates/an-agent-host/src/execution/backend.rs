@@ -1,6 +1,7 @@
 //! Internal execution boundary, not a VM controller or a package extension API.
 mod native;
 mod openshell;
+pub(super) mod space;
 
 pub(super) use native::Native;
 pub(super) use openshell::OpenShell;
