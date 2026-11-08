@@ -89,6 +89,15 @@ impl Server {
                 "application/json",
                 serde_json::to_string(&observation::snapshot(root)?)?,
             )
+        } else if let Some(id) = first
+            .strip_prefix("GET /activity/")
+            .and_then(|s| s.strip_suffix(" HTTP/1.1"))
+            && header("authorization") == Some(format!("Bearer {}", self.token).as_str())
+        {
+            match activity::view(root, id) {
+                Ok(value) => (200, "application/json", serde_json::to_string(&value)?),
+                Err(_) => (403, "text/plain", "Activity unavailable".into()),
+            }
         } else {
             (
                 403,

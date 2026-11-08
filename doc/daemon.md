@@ -127,3 +127,41 @@ service restarts do not consume messages or replay execution. This minimum uses
 pull delivery: automatic orchestrator wake-up and inbox acknowledgements are not
 implemented. Proposals remain untrusted data, not accepted artifacts. Existing
 queue limits bound all delegations; there is no second scheduler or model loop.
+
+## Agent activity and adoption
+
+`activity` with `id` returns a bounded view over retained request, claim, owner,
+cancellation, completion and proposal records. Each source has a digest; record
+categories are not a reconstructed wall-clock timeline. Native spool custody
+continues to come from the original status/acceptance facade. The console's task
+detail uses the same authenticated read-only activity view.
+
+External Codex JSONL events are classified into fixed event/action categories,
+with original line numbers and the retained source digest. At most 128 events
+are returned; omitted and malformed lines are counted. Raw prompts, arguments,
+messages, URLs and tool output are never copied into this view. These are harness
+reports, not host-confirmed filesystem changes or authority. Missing events mean
+unknown visibility. Original private events remain the source, with no duplicate
+activity ledger.
+
+`record-adoption` with `id`, registered `instance` and `run` previews an explicit
+operator association between a confirmed proposal digest and original formally
+accepted artifact custody. Exact approval writes one retained association under
+the task. It cannot accept an artifact, change custody or prove semantic
+equivalence. An unaccepted/cancelled run cannot be linked. The retained record
+survives service restart and is included in activity queries.
+
+The opt-in `document_activity.py` CLI qualification uses a synthetic PDF table,
+two real finite Codex delegations and an operator-selected mature workbook
+builder. PDF extraction and workbook authoring stay in application adapters;
+original native spools publish the exact PDF, Markdown and XLSX bytes and retain
+their custody. Approved adoption links connect the two proposals to accepted
+Markdown/XLSX artifacts. Exported OOXML values and formulas are independently
+checked. This is one text-PDF case, not OCR or native Excel qualification.
+
+The document case takes `--host`, fresh `--evidence`, synthetic `--pdf`, qualified
+`--codex`, `--node` and application-owned `--builder` paths. The controller needs
+`pypdf`. The builder receives typed rows JSON and an output directory and writes
+`result.xlsx`: source rows A6:C8, amount formulas D6:D8 and total D10. It never
+installs tools or provisions services. The fixture checks Bolt (12 at 0.50),
+Plate (3 at 8.00), Bearing (2 at 4.25), total EUR 38.50.

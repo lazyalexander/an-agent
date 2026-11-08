@@ -148,6 +148,10 @@ while [ "$#" -gt 0 ]; do
   shift
 done
 printf '{"finish":"%s"}' "$finish" > "$out"
+echo
+echo not-json
+printf '{"type":"item.completed","item":{"type":"mcp_tool_call","arguments":"PRIVATE-FIXTURE-SENTINEL"}}\\n'
+for ((i=0;i<130;i++)); do echo '{}'; done
 printf '{"type":"turn.completed"}\\n'
 ''')
         fake.chmod(0o700)
@@ -196,6 +200,36 @@ printf '{"type":"turn.completed"}\\n'
         decision = request({'op': 'harness-result', 'id': job})
         assert decision['proposal'] == {'finish': 'steel'}
         assert decision['result']['artifact_accepted'] is False
+        activity = request({'op': 'activity', 'id': job})
+        assert activity['harness']['visibility'] == 'reported-events-only'
+        assert activity['harness']['events'][0]['line'] == 3
+        assert len(activity['harness']['events']) == 128
+        assert activity['harness']['malformed'] == 1 and activity['harness']['omitted'] > 0
+        assert any(v['action'] == 'tool-call' for v in activity['harness']['events'])
+        assert 'PRIVATE-FIXTURE-SENTINEL' not in json.dumps(activity)
+        tape = service / 'jobs' / job / 'native-events.jsonl'
+        assert activity['harness']['source_sha256'] == hashlib.sha256(tape.read_bytes()).hexdigest()
+        request({'op': 'record-adoption', 'id': job, 'instance': str(b), 'run': 'second'}, success=False)
+        adopted = {'op': 'record-adoption', 'id': job, 'instance': str(a), 'run': 'first'}
+        approved(adopted)
+        activity = request({'op': 'activity', 'id': job})
+        assert activity['adoption']['plan']['grants_authority'] is False
+        assert call('spool-artifacts', a, 'first') == inventory
+        daemon.terminate()
+        daemon.wait(timeout=10)
+        daemon = start()
+        assert request({'op': 'activity', 'id': job}) == activity
+        request({'op': 'activity', 'id': '../config.json'}, success=False)
+        endpoint = json.loads((service / 'endpoint.json').read_text())['url']
+        origin, token = endpoint.split('/#')
+        try:
+            urllib.request.urlopen(origin + '/activity/' + job)
+            raise AssertionError('unauthorized activity accepted')
+        except urllib.error.HTTPError as error:
+            assert error.code == 403
+        req = urllib.request.Request(origin + '/activity/' + job, headers={'Authorization': 'Bearer ' + token})
+        with urllib.request.urlopen(req) as response:
+            assert json.load(response) == activity
         # A narrow task check must not enumerate unrelated registered spools.
         registry = service / 'instances'
         hidden = service / 'instances-held'
