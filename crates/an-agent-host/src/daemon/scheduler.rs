@@ -105,6 +105,9 @@ pub(super) fn tick(
                 continue;
             }
         }
+        if !dir.join("cancel.json").exists() && !delegation::ready(root, &job)? {
+            continue;
+        }
         // A crash in the spawn window remains uncertain and consumes a slot.
         write(&dir.join("claimed.json"), &json!({"request":job.request()}))?;
         let launch = match &job {

@@ -7,6 +7,9 @@ pub(super) fn dispatch(root: &Path, req: &Value) -> Result<Value> {
         .map(|_| text(req, "approve"))
         .transpose()?;
     match text(req, "op")? {
+        "delegate" | "update-delegation" | "delegation-inbox" => {
+            delegation::dispatch(root, req, approved)
+        }
         "show" => observation::snapshot(root),
         "task" => observation::task(root, text(req, "id")?),
         "register" => storage::register(root, Path::new(text(req, "instance")?)),

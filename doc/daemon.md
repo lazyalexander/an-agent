@@ -107,3 +107,23 @@ custody, lifecycle controls, external-client cancellation, resource observation 
 console authorization. Its local harness fixture is not provider evidence.
 CAD→Krita and real Codex/MCP tests remain separately required in Shuttle before
 promoting a mature spool. Unsupported platforms refuse service execution.
+
+## Async delegation
+
+`delegate` takes `parent` and the existing finite harness `task`, returning a task
+ID immediately after exact disclosure approval. `parent` is a correlation label,
+not an authorization grant or isolation boundary. Same-user access rules apply.
+`update-delegation` takes `id`, `strategy: "enqueue"` and `instruction`. It retains
+the original harness, scope, schema and MCP binding, appends the instruction to
+its prompt and requires a new approval. This is a new finite attempt, not a live
+session resume: predecessor output is not automatically injected. The FIFO queue
+starts it only after confirmed predecessor success. Failed, cancelled or unknown
+predecessors leave it queued; explicitly cancel it to settle it without running.
+Interrupt/replay and autonomous recursive spawning are not supported.
+
+Use existing `task` and `cancel` operations. `delegation-inbox` takes `parent` and
+returns durable task projections and completed proposals; repeated reads and
+service restarts do not consume messages or replay execution. This minimum uses
+pull delivery: automatic orchestrator wake-up and inbox acknowledgements are not
+implemented. Proposals remain untrusted data, not accepted artifacts. Existing
+queue limits bound all delegations; there is no second scheduler or model loop.
