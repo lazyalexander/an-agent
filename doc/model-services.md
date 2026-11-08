@@ -31,7 +31,8 @@ The host no longer ships `HttpModelClient`, `ModelConnection`, `ModelCallControl
 Their only in-repository consumers were the model command and its own tests;
 Loom and Shuttle have no dependency on them. CAD material review and missing
 finish completion already use the same qualified finite Codex entry in Shuttle.
-There is no replacement host model launcher, provider fallback, or credential store.
+The optional [user service](daemon.md) supervises a finite native Codex client; it
+does not restore this HTTP model transport, provider fallback or credential store.
 The removed `model` command refuses before reading inputs or creating output.
 
 Existing library consumers must migrate explicitly or pin the

@@ -78,6 +78,36 @@ fn spawn_worker(
     Ok(command.spawn()?)
 }
 
+/// Trusted external harness worker uses the same finite owner detachment.
+pub(crate) fn spawn_harness(
+    executable: &Path,
+    root: &Path,
+    id: &str,
+    hash: &str,
+    directory: &Path,
+) -> Result<Child> {
+    host_executable(executable)?;
+    let stdout = OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(directory.join("stdout.log"))?;
+    let stderr = OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(directory.join("stderr.log"))?;
+    let mut command = Command::new(executable);
+    command
+        .args(["daemon", "harness-worker"])
+        .arg(root)
+        .args([id, hash])
+        .current_dir(root)
+        .stdin(Stdio::null())
+        .stdout(stdout)
+        .stderr(stderr);
+    detach(&mut command)?;
+    Ok(command.spawn()?)
+}
+
 #[cfg(unix)]
 fn detach(command: &mut Command) -> Result<()> {
     use std::os::unix::process::CommandExt;
