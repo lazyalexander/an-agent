@@ -13,7 +13,8 @@ pub fn execute(root: &Path, name: &str, hash: &str, cancelled: Arc<AtomicBool>) 
     // claim remains unknown, even if no backend child was subsequently started.
     write_json(
         &dir.join("owner.json"),
-        &json!({"request":hash,"pid":std::process::id()}),
+        &json!({"request":hash,"pid":std::process::id(),
+            "process_identity":crate::execution::sandbox::service_process::identity(std::process::id())}),
     )?;
     sync(&dir)?;
     let seconds = record["plan"]["seconds"]

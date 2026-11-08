@@ -35,3 +35,7 @@ todo = "deny"
 # debuggable without benchmarking an unoptimized cryptographic compression loop.
 [profile.test.package.sha2]
 opt-level = 3
+
+# The local service checks real native client binaries before dispatch.
+[profile.dev.package.sha2]
+opt-level = 3

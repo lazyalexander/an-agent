@@ -6,7 +6,9 @@ mod client;
 mod prelaunch;
 mod routing;
 pub use client::launch;
-pub(in crate::native_spool) use client::{monitor, observe_controls, poll_control, wait};
+pub(crate) use client::launch_background;
+pub(crate) use client::monitor;
+pub(in crate::native_spool) use client::{observe_controls, poll_control, wait};
 pub(super) use routing::{
     bound_data, finish_route, reconcile_binding, verify_route, verify_settled,
 };

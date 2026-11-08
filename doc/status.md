@@ -73,7 +73,7 @@ for supported sources and disclosure limits.
 | Coding harness internals | Native clients own shell tools, session assembly and compaction. Unused context/factory crates, the generic ReAct policy, HTTP model transport and one-shot model service are retired; finite MCP, explicit context disclosure and supervised host execution remain supported. See [harness ownership](model-services.md#native-harness-ownership). |
 | State/release migration | Explicit fresh-instance checkpoint seeding and read-only release comparison; no automatic lineage, domain merge or in-place migration |
 | Live suspension | Admission pause and checkpoint/stop suspension are qualified; process-memory/VM restore and in-flight safe-point signaling are not |
-| Additional orchestration | Multiple business inputs, producer/topology editing, background admission and low-latency channels await concrete demand |
+| User-local scheduling | [macOS service](daemon.md) queues existing supervisor reservations; original lifecycle/custody remain authoritative. No automatic replay or business graph scheduler |
 | GPU/GUI and hostile harnesses | Require independent platform, application and enforcement qualification |
 
 Spool interaction remains workspace-event routing. Domain branches, loops and

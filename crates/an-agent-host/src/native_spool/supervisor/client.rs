@@ -6,6 +6,21 @@ use std::{
     time::{Duration, Instant},
 };
 
+/// A local service may wait elsewhere; the original finite owner still settles work.
+pub(crate) fn launch_background(root: &Path, name: &str, hash: &str) -> Result<Child> {
+    let (dir, original) = request(root, name)?;
+    if original["approval_sha256"] != hash {
+        return Err("queued supervisor identity changed".into());
+    }
+    crate::execution::supervisor_process::spawn(
+        Path::new(text(&original["plan"], "executable")?),
+        root,
+        name,
+        hash,
+        &dir,
+    )
+}
+
 pub fn launch(root: &Path, name: &str, prepared: &Value, cancelled: &AtomicBool) -> Result<Value> {
     if prepared["reserved"] != true {
         return Ok(prepared.clone());
@@ -97,10 +112,7 @@ pub(in crate::native_spool) fn observe_controls<T>(
     clippy::disallowed_methods,
     reason = "bounded owner control observation interval"
 )]
-pub(in crate::native_spool) fn monitor<T>(
-    poll: impl Fn() + Sync,
-    body: impl FnOnce() -> Result<T>,
-) -> Result<T> {
+pub(crate) fn monitor<T>(poll: impl Fn() + Sync, body: impl FnOnce() -> Result<T>) -> Result<T> {
     poll();
     let done = AtomicBool::new(false);
     std::thread::scope(|scope| {

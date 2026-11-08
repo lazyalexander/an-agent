@@ -3,6 +3,7 @@ mod artifact;
 mod checkpoint;
 mod cohort;
 mod context;
+mod daemon;
 mod host;
 mod instance;
 mod peer;
@@ -50,6 +51,7 @@ fn with_cancellation(
 pub(super) fn run(args: Vec<String>) -> Result<()> {
     let (command, args) = args.split_first().ok_or("missing command")?;
     let result = match command.as_str() {
+        "daemon" => daemon::dispatch(args)?,
         "spool-supervisor" => supervisor::dispatch(args)?,
         "spool-peer" => peer::dispatch(args)?,
         "cohort" => {

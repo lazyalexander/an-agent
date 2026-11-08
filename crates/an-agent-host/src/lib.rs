@@ -30,6 +30,7 @@ pub mod artifact_context;
 pub mod artifact_versions;
 pub mod capability;
 pub mod context_exchange;
+pub mod daemon;
 pub mod execution;
 pub mod file_job;
 mod hooks;
