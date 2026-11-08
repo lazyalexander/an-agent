@@ -169,7 +169,8 @@ fn execute(dir: &Path, task: &Task, cancelled: &AtomicBool) -> Result<Value> {
     if let Some(model) = &task.model {
         args.extend(["--model".into(), model.clone()]);
     }
-    args.push(task.prompt.clone());
+    // A prompt beginning with '-' is data, never another native-client option.
+    args.extend(["--".into(), task.prompt.clone()]);
     let result = crate::execution::sandbox::service_process::codex(task, dir, &args, cancelled)?;
     let redact = |bytes: Vec<u8>| {
         let text = String::from_utf8_lossy(&bytes).into_owned();
