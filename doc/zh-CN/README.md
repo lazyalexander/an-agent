@@ -26,16 +26,28 @@ an-agent 负责任务权限、原执行者监督、spool 生命周期、活动�
 不可变发布基线为 **silk**；获准修改或新增的文件标为 **kit**，确认结算后按规则保留或回收。
 指令文件保持受保护，标签不授予执行权限。见[内容契约](doc/spool-code.md)。
 
-## 示例：CAD → Krita
-
-保存 CAD 版本并交付可按零件分层编辑的透明绘画，验证委派、执行与产物交付。
-
-![CAD 绘画](https://raw.githubusercontent.com/lazyalexander/an-shuttle/0dfd646/examples/cad-paint/sample/vise.png)
-
-[案例配置与验收](https://github.com/lazyalexander/an-shuttle) · [领域源码](https://github.com/lazyalexander/an-spool)
+现有原生执行与分层产物验收参见 [CAD → Krita 集成](https://github.com/lazyalexander/an-shuttle/blob/main/docs/cad-paint.zh-CN.md)。
 
 ## 开发
 
 运行 `cargo test --workspace`、`cargo clippy --workspace --all-targets`、
 `cargo fmt --all -- --check` 和 `cargo arch`。
 [架构](doc/architecture.md)、[测试](doc/testing.md)和[质量门禁](doc/quality.md)说明完整要求。
+
+## 案例 · 机械动画
+
+### 水墨动画与手绘蒸汽机对比
+
+| 水墨动画 | 手绘版本 · 6 秒 |
+| --- | --- |
+| ![机械水墨动画](../../assets/demos/mechanical-ink.gif) | [![手绘蒸汽机](../../assets/demos/painted-steam-engine.jpg)](../../assets/demos/painted-steam-engine.mp4) |
+
+对比线条式机械表达与 AI 材质、手绘背景结合后的画面，理解几何与运动如何约束动画。
+[教学流程与复现证据](doc/cases.md)。
+
+### 补充案例 · 四缸发动机
+
+<a href="../../assets/demos/painted-inline-four.mp4"><img src="../../assets/demos/painted-inline-four.jpg" alt="四缸发动机" width="420"></a>
+
+40 个 CAD 零件与 8 秒运动周期复用手绘制作流程。
+[运动、检查与接入阶段](doc/cases.md#补充案例--四缸发动机)。

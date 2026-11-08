@@ -14,6 +14,7 @@
 | 稳定的 silk 和可编辑的 kit 角色 | [Spool 代码](spool-code.md) |
 | 审查过的 harness 开发 | [Weaver](weaver.md) |
 | 实现的能力和剩余工作 | [状态](status.md) |
+| 水墨与手绘对比、四缸补充教学案例 | [机械动画案例](cases.md) |
 | 运行时支持和资格 | [平台](platforms.md) |
 | 会话协调和剩余保留工作 | [会话和保留计划](session-and-retention.md) |
 | 测试、CI 和跨仓库所有权 | [测试](testing.md) |
