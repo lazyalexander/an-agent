@@ -6,7 +6,7 @@ English · [简体中文](zh-CN/doc/cases.md)
 
 | Ink animation | Painted steam engine |
 | --- | --- |
-| ![Ink animation](../assets/demos/mechanical-ink.gif) | [![Painted steam engine](../assets/demos/painted-steam-engine.jpg)](../assets/demos/painted-steam-engine.mp4) |
+| ![Ink animation](../assets/demos/mechanical-ink.gif) | ![Painted steam engine](../assets/demos/painted-steam-engine.gif) |
 
 The paired examples teach the progression from mechanical line work to painted
 materials, lighting and environment. Watch the piston, connecting rod and flywheel
@@ -19,7 +19,7 @@ reference and its newly rendered reproduction.
 | --- | --- | --- |
 | Visual emphasis | Silhouette, mechanism and ink hatching | Surface material, warm/cool light and workshop context |
 | Teaching focus | Follow the mechanical cycle through readable lines | Keep motion and shape stable while enriching appearance |
-| Retained public media | Animated GIF | Six-second 1080p MP4 and preview |
+| Retained public media | Animated GIF | Six-second looping GIF |
 | Current evidence | Retained visual demonstration | Rebuilt geometry and poses, fresh rendering and reopened editable scene |
 
 ## Build the workflow
@@ -55,7 +55,7 @@ harness can prepare bounded edits and request these tools through the host.
 
 ## Supplementary case — inline-four
 
-[![Inline-four engine](../assets/demos/painted-inline-four.jpg)](../assets/demos/painted-inline-four.mp4)
+![Inline-four engine](../assets/demos/painted-inline-four.gif)
 
 The educational inline-four assembly expands the same workflow to 40 CAD parts,
 four pistons, eight valves and a camshaft. FreeCAD exports native solids and STEP,
@@ -87,23 +87,27 @@ The existing film kit's seven tests passed. Exact decoded-frame equality was
 measured for this run and toolchain. Video container hashes can differ after
 encoding, so record file identity and decoded-image comparisons separately.
 
-From the repository root, inspect a published clip with FFprobe and record its
+The two painted GIF previews use 720 × 405 at 12 fps and loop their complete
+six- and eight-second cycles. They contain 72 and 96 frames respectively.
+The reproduction measurements above apply to the original 1080p MP4 deliveries.
+
+From the repository root, inspect a published GIF with FFprobe and record its
 decoded frame hashes with FFmpeg.
 
 ```sh
 ffprobe -v error -select_streams v:0 \
   -show_entries stream=width,height,r_frame_rate,nb_frames,duration \
-  -of json assets/demos/painted-steam-engine.mp4
-ffmpeg -v error -i assets/demos/painted-steam-engine.mp4 \
+  -of json assets/demos/painted-steam-engine.gif
+ffmpeg -v error -i assets/demos/painted-steam-engine.gif \
   -map 0:v:0 -f framemd5 steam-frames.md5
 ```
 
-Repeat for `assets/demos/painted-inline-four.mp4`. To assess a new render, compare
+Repeat for `assets/demos/painted-inline-four.gif`. To assess a new render, compare
 frame count, presentation timing and per-frame decoded hashes with its selected
 reference. Review motion dynamically and inspect the reopened editable scene.
 
-This repository publishes the clips and teaching notes. Full generators,
-painting assets, editable scenes and raw reproduction receipts currently live
+This repository publishes the GIF previews and teaching notes. Full generators,
+painting assets, MP4 deliveries, editable scenes and raw reproduction receipts currently live
 in the local lab package. A distributable, reviewed animation spool is pending.
 
 ## Integration exercise

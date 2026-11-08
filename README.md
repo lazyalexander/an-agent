@@ -60,7 +60,7 @@ applicable; ordinary unit tests do not establish application or provider behavio
 
 | Ink animation | Painted version · 6 s |
 | --- | --- |
-| ![Mechanical ink animation](assets/demos/mechanical-ink.gif) | [![Painted steam engine](assets/demos/painted-steam-engine.jpg)](assets/demos/painted-steam-engine.mp4) |
+| ![Mechanical ink animation](assets/demos/mechanical-ink.gif) | ![Painted steam engine](assets/demos/painted-steam-engine.gif) |
 
 Compare line-based mechanical presentation with AI-created surface textures and
 a painted background, animated through prescribed geometry and motion.
@@ -68,7 +68,7 @@ a painted background, animated through prescribed geometry and motion.
 
 ### Supplementary case · inline-four engine
 
-<a href="assets/demos/painted-inline-four.mp4"><img src="assets/demos/painted-inline-four.jpg" alt="Inline-four engine" width="420"></a>
+<img src="assets/demos/painted-inline-four.gif" alt="Inline-four engine" width="420">
 
 Forty CAD parts and an eight-second cycle reuse the painted workflow.
 [Motion, checks and integration stages](doc/cases.md#supplementary-case--inline-four).

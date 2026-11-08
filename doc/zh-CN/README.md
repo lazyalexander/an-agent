@@ -40,14 +40,14 @@ an-agent 负责任务权限、原执行者监督、spool 生命周期、活动�
 
 | 水墨动画 | 手绘版本 · 6 秒 |
 | --- | --- |
-| ![机械水墨动画](../../assets/demos/mechanical-ink.gif) | [![手绘蒸汽机](../../assets/demos/painted-steam-engine.jpg)](../../assets/demos/painted-steam-engine.mp4) |
+| ![机械水墨动画](../../assets/demos/mechanical-ink.gif) | ![手绘蒸汽机](../../assets/demos/painted-steam-engine.gif) |
 
 对比线条式机械表达与 AI 材质、手绘背景结合后的画面，理解几何与运动如何约束动画。
 [教学流程与复现证据](doc/cases.md)。
 
 ### 补充案例 · 四缸发动机
 
-<a href="../../assets/demos/painted-inline-four.mp4"><img src="../../assets/demos/painted-inline-four.jpg" alt="四缸发动机" width="420"></a>
+<img src="../../assets/demos/painted-inline-four.gif" alt="四缸发动机" width="420">
 
 40 个 CAD 零件与 8 秒运动周期复用手绘制作流程。
 [运动、检查与接入阶段](doc/cases.md#补充案例--四缸发动机)。
