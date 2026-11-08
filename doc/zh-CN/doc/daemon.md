@@ -157,3 +157,5 @@ an-spool 的 `examples/mechanical-animation/product` 提供本地教学操作页
 `native_daemon_inputs.py` 覆盖辅助输入变化拒绝、图形授权缺失拒绝，以及原队列中两个实例的固定二进制产物版本交接。真实 Blender 和 Krita 仍需单独从产品入口验收。
 
 工作台默认显示英文，可用语言按钮切换到简体中文。两种语言共用原状态、权限与任务记录，语言切换不会提交运行。
+
+教学入口仅为测试／使用示例，不进入主要运行时代码。新调用者的 `submit` 只传 `artifact: {catalog, revision}`，省略 `input`；`run-artifact` 权限固定目录引用、版本、接收实例、运行名及期限，允许收窄期限。宿主负责解析内部文件位置。旧路径型调用仍保留，但两种输入同时出现时必须一致。
