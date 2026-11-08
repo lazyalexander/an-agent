@@ -7,6 +7,8 @@ pub(super) const VERSION: &str = "codex-cli 0.166.0";
 #[derive(Deserialize, Serialize, Clone)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct Task {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub delegation: Option<Box<super::delegation::Binding>>,
     pub label: String,
     pub binary: PathBuf,
     pub binary_sha256: String,
@@ -26,6 +28,7 @@ pub(crate) struct Mcp {
 
 pub(super) fn submit(root: &Path, req: &Value, approved: Option<&str>) -> Result<Value> {
     let task: Task = serde_json::from_value(req["task"].clone())?;
+    super::delegation::validate(root, &task)?;
     if task.label.is_empty()
         || task.label.len() > 120
         || task.prompt.len() > 65536

@@ -138,18 +138,59 @@ printf 'preserved\n' > report.txt
         fake.write_text('''#!/bin/bash
 set -eu
 if [ "$1" = --version ]; then echo 'codex-cli 0.166.0'; exit 0; fi
+printf 'started' > fixture.started
 out=''
+finish=steel
 while [ "$#" -gt 0 ]; do
   if [ "$1" = --output-last-message ]; then out="$2"; shift; fi
-  if [ "$1" = slow-harness ]; then sleep 8; fi
+  case "$1" in *slow-harness*) sleep 8;; esac
+  case "$1" in *polished*) finish=polished;; esac
   shift
 done
-printf '{"finish":"steel"}' > "$out"
+printf '{"finish":"%s"}' "$finish" > "$out"
 printf '{"type":"turn.completed"}\\n'
 ''')
         fake.chmod(0o700)
         base = {'label': 'finite fixture', 'binary': str(fake), 'binary_sha256': hashlib.sha256(fake.read_bytes()).hexdigest(),
                 'prompt': 'complete', 'scope': {'parts': ['grip']}, 'schema': {'type': 'object'}, 'model': None, 'mcp': None}
+        # Two concurrent delegations share the original scheduler and cancellation.
+        config_path = service / 'config.json'
+        config = json.loads(config_path.read_text())
+        config['concurrency'] = 2
+        config_path.write_text(json.dumps(config))
+        request({'op': 'delegate', 'parent': 'conversation-one', 'task': 'invalid'}, success=False)
+        left = approved({'op': 'delegate', 'parent': 'conversation-one',
+                         'task': {**base, 'prompt': 'slow-harness'}})['id']
+        right = approved({'op': 'delegate', 'parent': 'conversation-one',
+                          'task': {**base, 'prompt': 'slow-harness'}})['id']
+        until(lambda: all((service / 'jobs' / i / 'work/fixture.started').exists() for i in (left, right)))
+        follow = {'op': 'update-delegation', 'id': left, 'strategy': 'enqueue',
+                  'instruction': 'Use polished finish'}
+        preview = request(follow)
+        request({**follow, 'instruction': 'different instruction',
+                 'approve': preview['approval_sha256']}, success=False)
+        next_id = request({**follow, 'approve': preview['approval_sha256']})['id']
+        assert task(next_id)['state'] == 'queued'
+        request({'op': 'harness', 'task': {**base, 'scope': {'parts': ['other']},
+                 'delegation': {'parent': 'conversation-one', 'predecessor': left}}}, success=False)
+        request({**follow, 'strategy': 'interrupt'}, success=False)
+        approved({'op': 'cancel', 'id': right})
+        until(lambda: task(right)['state'] == 'settled')
+        assert task(right)['outcome'] == 'cancelled'
+        until(lambda: task(next_id)['state'] == 'settled')
+        inbox = request({'op': 'delegation-inbox', 'parent': 'conversation-one'})
+        assert len(inbox['messages']) == 3
+        messages = {m['id']: m for m in inbox['messages']}
+        assert messages[next_id]['proposal'] == {'finish': 'polished'}
+        assert 'proposal' not in messages[right]
+        assert not request({'op': 'delegation-inbox', 'parent': 'other'})['messages']
+        assert request({'op': 'delegation-inbox', 'parent': 'conversation-one'}) == inbox
+        daemon.terminate()
+        daemon.wait(timeout=10)
+        daemon = start()
+        assert request({'op': 'delegation-inbox', 'parent': 'conversation-one'}) == inbox
+        config['concurrency'] = 1
+        config_path.write_text(json.dumps(config))
         job = approved({'op': 'harness', 'task': base})['id']
         until(lambda: task(job)['state'] == 'settled')
         decision = request({'op': 'harness-result', 'id': job})
@@ -191,6 +232,7 @@ printf '{"type":"turn.completed"}\\n'
         assert call('spool-artifacts', a, 'first') == inventory
         (root / 'report.json').write_text(json.dumps({'passed': True,
             'host_sha256': hashlib.sha256(host.read_bytes()).hexdigest(),
+            'async_delegation': {'parallel_tasks': 2, 'enqueue_instruction': True, 'running_cancel': True, 'durable_inbox': True},
             'queue_bound': 1, 'restart_replayed': False, 'scoped_prelaunch_cancel': True,
             'original_artifact_custody': True, 'harness_fixture_only': True,
             'provider_qualified': False, 'read_only_console_authorization': True,

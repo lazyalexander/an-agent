@@ -49,6 +49,7 @@ pub(super) fn task(root: &Path, id: &str) -> Result<Value> {
         Job::Harness { task, .. } => {
             row["kind"] = json!("harness");
             row["label"] = json!(task.label);
+            row["delegation"] = json!(task.delegation);
             row["resources"] = resources(&dir, job.request());
         }
     }
