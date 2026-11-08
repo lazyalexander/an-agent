@@ -191,7 +191,7 @@ live task-owner descendants. Summed resident sizes may include shared pages; the
 sample excludes exited workers, reparented processes and shared CAD/Krita apps.
 No unavailable metric is reported as zero or used to authorize process control.
 Model billing, historical resource accounting and automatic resource enforcement
-are not inferred from these samples. The console is currently read-only.
+are not inferred from these samples. The console is currently read-only. English is the default UI language; its language button selects the retained Simplified Chinese companion without changing authority or task records.
 
 Run `tests/cli/native_daemon.py` with explicit `--host` and a fresh `--evidence`
 directory on macOS. It covers duplicate service exclusion, bound approvals,
