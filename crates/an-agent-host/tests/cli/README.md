@@ -177,4 +177,4 @@ client exit, continuing timeout/cancellation, supervisor loss, no replay and
 confirmed-only collection. The state suite advances HEAD before selecting the
 old revision and verifies retained checkpoints; `--combined` also pins business
 data and rejects changed selectors. PIDs serve fault injection and observation only; accepted products and independent instances remain unaffected.
-`native_daemon.py` adds [user-service acceptance](../../../../doc/daemon.md) with explicit `--host` and fresh `--evidence` paths.
+`native_daemon.py` adds [user-service acceptance](../../../../doc/daemon.md) with explicit `--host` and fresh `--evidence` paths. `document_activity.py` is the opt-in [PDF/Markdown/XLSX activity case](../../../../doc/daemon.md), using explicit tool paths and a fresh evidence directory.

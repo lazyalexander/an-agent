@@ -1,6 +1,7 @@
 //! User-local dispatch over existing supervisors, lifecycle and artifact custody.
 //! Queue claims are scheduling fences, never replacement execution receipts.
 #![cfg_attr(not(target_os = "macos"), allow(dead_code))]
+mod activity;
 mod control;
 mod delegation;
 pub(crate) mod harness;

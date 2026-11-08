@@ -10,6 +10,8 @@ pub(super) fn dispatch(root: &Path, req: &Value) -> Result<Value> {
         "delegate" | "update-delegation" | "delegation-inbox" => {
             delegation::dispatch(root, req, approved)
         }
+        "record-adoption" => activity::adopt(root, req, approved),
+        "activity" => activity::view(root, text(req, "id")?),
         "show" => observation::snapshot(root),
         "task" => observation::task(root, text(req, "id")?),
         "register" => storage::register(root, Path::new(text(req, "instance")?)),
