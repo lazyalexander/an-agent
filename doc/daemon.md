@@ -43,7 +43,7 @@ Registration alone grants neither execution nor model disclosure.
 | Operation | Fields | Effect |
 | --- | --- | --- |
 | `register` | `instance` | Register one existing, release-bound native spool instance |
-| `submit` | `instance`, `run`, `input`, `seconds`, optional `artifact: {catalog, revision}` | Preview/reserve an existing supervisor start and queue its reference |
+| `submit` | `instance`, `run`, `seconds`, either `input` or `artifact: {catalog, revision}` | Preview/reserve an existing supervisor start and queue its reference |
 | `cancel` | `id` | Record exact task cancellation and forward it to the original owner |
 | `pause`, `resume`, `unload` | `instance` | Delegate the original lifecycle operation and approval |
 | `suspend` | `instance`, `revision` | Select the exact committed checkpoint; no memory suspension |
@@ -67,7 +67,9 @@ A stop request and confirmed termination remain separate. Queue records contain
 scheduling metadata, not a new authoritative execution ledger. Registry archival,
 automatic state migration and automatic retries are not implemented.
 
-## Native teaching applications
+<a id="native-teaching-applications"></a>
+
+## Native clients and operator runtime selection
 
 Applications can load the three mechanical releases as ordinary native Python
 instances and use this same register/submit/accept path. An operator Python runtime
@@ -81,13 +83,12 @@ graphics selection. Only this selection allows the existing 900-second bound;
 other native runs retain 300 seconds. Backend graphics policy remains unchanged.
 
 For a downstream run, `submit.artifact` selects an already accepted revision;
-`input` must exactly match its original content path. The ordinary task `run`
-permission still scopes that path, instance, run and deadline. The supervisor
+`input` is omitted for new clients. A `run-artifact` permission binds the catalog reference, exact revision, receiving instance/run and maximum seconds. The host resolves the blob location and retains the existing claim/custody path. Legacy callers may still supply `input` with a path-based `run` grant; if both fields are supplied the host verifies they identify the same artifact. The supervisor
 retains the revision and revalidates it at launch through the existing input
 reader/claim path. A copied file is not silently treated as the original revision.
 Queue loss, cancellation and uncertain completion keep their existing behavior.
 
-The teaching application is in an-spool's `examples/mechanical-animation/product`.
+An example-only teaching client is in an-spool's `examples/mechanical-animation/product`; it is not an installed product component. Shared client and optional page helpers stay in `examples/support`, outside production packages.
 Its browser page previews each finite operation, obtains a narrowed task grant,
 and submits through the existing task socket. Credentials live only for that call;
 there is no application credential store or execution queue. Stage eligibility and
@@ -147,6 +148,7 @@ Permissions use exact resources, with at most 64 entries per grant.
 | Kind | Fields and enforcement |
 | --- | --- |
 | `run` | Canonical registered `instance`, `run`, canonical `input`, maximum `seconds`; original start approval fixes the selected bytes and backend policy |
+| `run-artifact` | Canonical `instance`, `run`, canonical `catalog`, exact `revision`, maximum `seconds`; the host alone resolves storage paths |
 | `harness` | `profile_sha256` from operator `harness-permission` with the selected `task`; binds executable/hash, model, schema, scope and finite MCP selection |
 | `read-input` | Canonical `path` and `sha256`; `read-input` returns exactly matching bytes |
 | `accept` | Registered `instance` and `run`; delegates original acceptance and permits recording proposal adoption for that run |

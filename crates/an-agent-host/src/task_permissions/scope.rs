@@ -10,6 +10,13 @@ pub(crate) enum Permission {
         input: PathBuf,
         seconds: u64,
     },
+    RunArtifact {
+        instance: PathBuf,
+        run: String,
+        catalog: PathBuf,
+        revision: String,
+        seconds: u64,
+    },
     Harness {
         profile_sha256: String,
     },
@@ -40,6 +47,21 @@ impl Permission {
                 canonical(instance)?;
                 canonical(input)?;
                 identifier(run)?;
+                if *seconds == 0 {
+                    return Err("task deadline must be positive".into());
+                }
+            }
+            Self::RunArtifact {
+                instance,
+                run,
+                catalog,
+                revision,
+                seconds,
+            } => {
+                canonical(instance)?;
+                canonical(catalog)?;
+                identifier(run)?;
+                digest(revision)?;
                 if *seconds == 0 {
                     return Err("task deadline must be positive".into());
                 }
@@ -88,6 +110,28 @@ impl Permission {
                     seconds: p_seconds,
                 },
             ) => instance == p_instance && run == p_run && input == p_input && seconds <= p_seconds,
+            (
+                Self::RunArtifact {
+                    instance,
+                    run,
+                    catalog,
+                    revision,
+                    seconds,
+                },
+                Self::RunArtifact {
+                    instance: p_instance,
+                    run: p_run,
+                    catalog: p_catalog,
+                    revision: p_revision,
+                    seconds: p_seconds,
+                },
+            ) => {
+                instance == p_instance
+                    && run == p_run
+                    && catalog == p_catalog
+                    && revision == p_revision
+                    && seconds <= p_seconds
+            }
             _ => self == parent,
         }
     }

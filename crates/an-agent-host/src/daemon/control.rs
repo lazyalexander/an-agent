@@ -105,7 +105,10 @@ fn submit(
             return Err("task already submitted; inspect its original ID, never replay".into());
         }
     }
-    let input = Path::new(text(req, "input")?);
+    let input = req
+        .get("input")
+        .map(|_| text(req, "input").map(Path::new))
+        .transpose()?;
     let seconds = req["seconds"].as_u64().ok_or("seconds")?;
     let executable = storage::config(root)?.executable;
     // Reuse the native preview/approval once per request. Rebuilding it twice
@@ -117,12 +120,13 @@ fn submit(
             let catalog = Path::new(text(artifact, "catalog")?);
             let revision = text(artifact, "revision")?;
             let selected = spool::inputs_for_daemon(catalog, revision)?;
-            if selected != input.canonicalize()? {
+            if input.is_some_and(|path| path.canonicalize().map_or(true, |value| value != selected))
+            {
                 return Err("artifact input path mismatch".into());
             }
             spool::supervisor::Input::Artifact(catalog, revision)
         } else {
-            spool::supervisor::Input::File(input)
+            spool::supervisor::Input::File(input.ok_or("input or artifact required")?)
         },
         seconds,
         &executable,
