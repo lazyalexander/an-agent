@@ -533,3 +533,11 @@ holding inherited pipes until its natural exit. Cleanup observations are bounded
 and do not authorize replay or signaling a subsequently reused group ID.
 The [pressure report](testing.md) retains the observed delayed-cancel
 case and the regression/qualification limits.
+
+### Explicit Apple Silicon Metal selection
+
+An operator profile may select `"graphics": "macos-agx-metal-v1"` for reviewed local rendering. The default omits graphics access. The selection is bound into the approval plan and snapshot execution policy. It permits only the AGXDeviceUserClient and IOSurfaceRootUserClient IOKit classes, and the named launchservicesd and MTLCompilerService Mach endpoints. Existing file, network, deadline and process-group rules continue to apply. This selection expands access to local graphics services and requires independent review of the selected executable and dependencies. Local qualification includes both full mechanical films, reopened editable scenes, revision-bound three-stage handoffs, cancellation and file/network refusal checks.
+
+The explicit graphics profile accepts a selected deadline up to 900 seconds for complete rendering jobs. Profiles without that selection retain the 300-second maximum. The selected deadline is visible in approval and enforced by the same supervisor.
+
+The graphics approval permits the reviewed renderer to contact shared macOS services. Termination evidence covers the supervised client process group; shared OS services have their own lifetime.

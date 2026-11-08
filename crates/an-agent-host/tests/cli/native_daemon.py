@@ -124,7 +124,9 @@ printf 'preserved\n' > report.txt
         endpoint = json.loads((service / 'endpoint.json').read_text())['url']
         origin, token = endpoint.split('/#')
         with urllib.request.urlopen(origin + '/') as response:
-            assert '工作台' in response.read().decode()
+            html = response.read().decode()
+            assert 'Local workbench' in html and 'lang="en"' in html
+            assert 'data-zh=' in html
         try:
             urllib.request.urlopen(origin + '/snapshot')
             raise AssertionError('unauthorized snapshot accepted')

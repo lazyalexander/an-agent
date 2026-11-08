@@ -43,7 +43,7 @@ Registration alone grants neither execution nor model disclosure.
 | Operation | Fields | Effect |
 | --- | --- | --- |
 | `register` | `instance` | Register one existing, release-bound native spool instance |
-| `submit` | `instance`, `run`, `input`, `seconds` | Preview/reserve an existing supervisor start and queue its reference |
+| `submit` | `instance`, `run`, `input`, `seconds`, optional `artifact: {catalog, revision}` | Preview/reserve an existing supervisor start and queue its reference |
 | `cancel` | `id` | Record exact task cancellation and forward it to the original owner |
 | `pause`, `resume`, `unload` | `instance` | Delegate the original lifecycle operation and approval |
 | `suspend` | `instance`, `revision` | Select the exact committed checkpoint; no memory suspension |
@@ -66,6 +66,41 @@ converted into successful cancellation, accepted output or permission to reclaim
 A stop request and confirmed termination remain separate. Queue records contain
 scheduling metadata, not a new authoritative execution ledger. Registry archival,
 automatic state migration and automatic retries are not implemented.
+
+## Native teaching applications
+
+Applications can load the three mechanical releases as ordinary native Python
+instances and use this same register/submit/accept path. An operator Python runtime
+may additionally select bounded `readonly` roots (at most six), snapshot `inputs`
+(at most eight), and `graphics: "macos-agx-metal-v1"`. These selections live in the
+immutable instance runtime binding, never in portable release authority. Auxiliary
+files become numbered `AN_SPOOL_AUX_0` inputs with unique snapshot names; their
+bytes participate in the original preview and are rechecked before execution.
+A Python release requesting `gpu: "metal"` refuses loading without that explicit
+graphics selection. Only this selection allows the existing 900-second bound;
+other native runs retain 300 seconds. Backend graphics policy remains unchanged.
+
+For a downstream run, `submit.artifact` selects an already accepted revision;
+`input` must exactly match its original content path. The ordinary task `run`
+permission still scopes that path, instance, run and deadline. The supervisor
+retains the revision and revalidates it at launch through the existing input
+reader/claim path. A copied file is not silently treated as the original revision.
+Queue loss, cancellation and uncertain completion keep their existing behavior.
+
+The teaching application is in an-spool's `examples/mechanical-animation/product`.
+Its browser page previews each finite operation, obtains a narrowed task grant,
+and submits through the existing task socket. Credentials live only for that call;
+there is no application credential store or execution queue. Stage eligibility and
+progress come from original task and custody projections. No automatic retries or
+background stage advancement are introduced. The existing console remains
+read-only; the application has a separate loopback control token and requires
+same-origin POSTs. The final accepted OpenRaster handoff uses Shuttle's existing
+Krita bridge and is a first-frame reference, not editable animation or part layers.
+
+`native_daemon_inputs.py` checks bound auxiliary bytes, graphics refusal and an
+accepted binary revision handed between original queued supervisors. The teaching
+application's real steam/four-cylinder qualification remains a separate product
+acceptance; this fixture does not claim Blender or Krita validation.
 
 ## Finite Codex harness
 
@@ -156,7 +191,7 @@ live task-owner descendants. Summed resident sizes may include shared pages; the
 sample excludes exited workers, reparented processes and shared CAD/Krita apps.
 No unavailable metric is reported as zero or used to authorize process control.
 Model billing, historical resource accounting and automatic resource enforcement
-are not inferred from these samples. The console is currently read-only.
+are not inferred from these samples. The console is currently read-only. English is the default UI language; its language button selects the retained Simplified Chinese companion without changing authority or task records.
 
 Run `tests/cli/native_daemon.py` with explicit `--host` and a fresh `--evidence`
 directory on macOS. It covers duplicate service exclusion, bound approvals,

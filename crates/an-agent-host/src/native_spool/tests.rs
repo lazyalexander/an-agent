@@ -88,7 +88,7 @@ fn binary_output_encoding_is_versioned_unique_and_declared() -> Result<()> {
 }
 
 #[test]
-fn labels_follow_provenance_and_reset_does_not_promote_working_copies() -> Result<()> {
+fn labels_track_modification_and_preserve_history_after_reset() -> Result<()> {
     let temp = TempDir::new("content-labels");
     let base = temp.path().canonicalize()?;
     let source = fixture(&base)?;
@@ -106,7 +106,7 @@ fn labels_follow_provenance_and_reset_does_not_promote_working_copies() -> Resul
     );
     assert_eq!(
         loaded["content_labels"]["working_copies"]["kit/value.sh"]["label"],
-        "kit"
+        "silk"
     );
     let candidate = base.join("changed.sh");
     fs::write(&candidate, b"changed")?;
@@ -120,6 +120,15 @@ fn labels_follow_provenance_and_reset_does_not_promote_working_copies() -> Resul
     assert_eq!(
         fs::read(instance.join("release/kit/value.sh"))?,
         b"baseline"
+    );
+    let changed = show(&instance)?;
+    assert_eq!(
+        changed["content_labels"]["working_copies"]["kit/value.sh"]["label"],
+        "kit"
+    );
+    assert_eq!(
+        changed["content_labels"]["working_copies"]["kit/value.sh"]["matches_baseline"],
+        false
     );
     let plan = reset_kit(&instance, "value.sh", None)?;
     reset_kit(&instance, "value.sh", plan["approval_sha256"].as_str())?;

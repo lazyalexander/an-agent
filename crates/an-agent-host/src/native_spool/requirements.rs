@@ -10,7 +10,7 @@ pub(super) struct Requirements {
     os: String,
     arch: String,
     interaction: String,
-    gpu: String,
+    pub gpu: String,
     pub inputs: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub state_input: Option<String>,
@@ -65,7 +65,7 @@ pub(super) fn validate(m: &bundle::Manifest) -> Result<()> {
         || !workspace::supported()
         || r.arch != "portable-source"
         || r.interaction != "headless"
-        || r.gpu != "none"
+        || !(r.gpu == "none" || (python && r.gpu == "metal"))
     {
         return Err(
             "unsupported native runtime, OS, architecture, interaction or GPU requirement".into(),
