@@ -6,7 +6,7 @@
 
 | 水墨动画 | 手绘蒸汽机 |
 | --- | --- |
-| ![水墨动画](../../../assets/demos/mechanical-ink.gif) | [![手绘蒸汽机](../../../assets/demos/painted-steam-engine.jpg)](../../../assets/demos/painted-steam-engine.mp4) |
+| ![水墨动画](../../../assets/demos/mechanical-ink.gif) | ![手绘蒸汽机](../../../assets/demos/painted-steam-engine.gif) |
 
 这组对比展示从机械线条到材质、光照与环境的表达过程。先观察活塞、连杆和飞轮的配合，
 再比较轮廓、表面笔触、接触阴影和背景。两段保留各自的镜头构图与时序。
@@ -16,7 +16,7 @@
 | --- | --- | --- |
 | 视觉重点 | 轮廓、机构和排线 | 表面材质、冷暖光与厂房环境 |
 | 教学重点 | 通过清晰线条读懂机械周期 | 丰富外观时保持运动和形状稳定 |
-| 仓库展示素材 | 动态 GIF | 6 秒 1080p MP4 与预览图 |
+| 仓库展示素材 | 动态 GIF | 6 秒循环 GIF |
 | 当前证据 | 保留的视觉演示 | 几何与姿态重建、重新渲染、可编辑场景回读 |
 
 ## 制作流程
@@ -42,7 +42,7 @@
 
 ## 补充案例 — 四缸发动机
 
-[![四缸发动机](../../../assets/demos/painted-inline-four.jpg)](../../../assets/demos/painted-inline-four.mp4)
+![四缸发动机](../../../assets/demos/painted-inline-four.gif)
 
 教学用四缸机构把同一流程扩展到 40 个 CAD 零件、4 个活塞、8 个气门和凸轮轴。
 FreeCAD 输出原生实体、STEP、网格与 192 个姿态。曲轴两圈、凸轮轴一圈构成 8 秒周期，
@@ -68,20 +68,23 @@ FreeCAD 输出原生实体、STEP、网格与 192 个姿态。曲轴两圈、凸
 既有短片工具的 7 项测试通过。逐帧一致性是本轮工具链下的实测结果。
 重新编码后视频容器哈希可能变化，应分别记录文件身份与解码图像对比。
 
-在仓库根目录使用 FFprobe 检查公开成片，用 FFmpeg 记录解码帧哈希。
+两段手绘 GIF 采用 720 × 405、12 fps，循环播放完整的 6 秒和 8 秒周期，分别含 72 帧和 96 帧。
+上面的复现数据对应原始 1080p MP4 交付。
+
+在仓库根目录使用 FFprobe 检查公开 GIF，用 FFmpeg 记录解码帧哈希。
 
 ```sh
 ffprobe -v error -select_streams v:0 \
   -show_entries stream=width,height,r_frame_rate,nb_frames,duration \
-  -of json assets/demos/painted-steam-engine.mp4
-ffmpeg -v error -i assets/demos/painted-steam-engine.mp4 \
+  -of json assets/demos/painted-steam-engine.gif
+ffmpeg -v error -i assets/demos/painted-steam-engine.gif \
   -map 0:v:0 -f framemd5 steam-frames.md5
 ```
 
-换成 `assets/demos/painted-inline-four.mp4` 可检查补充案例。评估新渲染时，比较帧数、播放时序
+换成 `assets/demos/painted-inline-four.gif` 可检查补充案例。评估新渲染时，比较帧数、播放时序
 和每帧解码哈希，动态观看运动，并检查重新打开的可编辑场景。
 
-本仓库发布成片和教学说明。完整生成器、绘画素材、可编辑场景与原始复现记录目前保存在本地
+本仓库发布 GIF 预览和教学说明。完整生成器、绘画素材、MP4 交付、可编辑场景与原始复现记录保存在本地
 实验包中。可分发、经过审阅的动画 spool 待完成。
 
 ## 接入练习
