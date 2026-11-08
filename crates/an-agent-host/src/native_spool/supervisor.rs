@@ -60,6 +60,7 @@ fn request(root: &Path, name: &str) -> Result<(PathBuf, Value)> {
 
 pub enum Input<'a> {
     File(&'a Path),
+    Artifact(&'a Path, &'a str),
     State(&'a str),
     DataState(&'a Path),
 }
@@ -88,11 +89,16 @@ pub(crate) fn prepare_authorized(
     }
     let root = location(root)?;
     let combined = matches!(&input, Input::DataState(_));
+    let artifact = matches!(&input, Input::Artifact(_, _));
     let (input, revision, preview) = match input {
         Input::File(path) => {
             let path = location(path)?;
             let preview = run::start(&root, name, &path, seconds, None, &AtomicBool::new(false))?;
             (json!(path), None, preview)
+        }
+        Input::Artifact(catalog, revision) => {
+            let preview = run::preview_artifact(&root, name, catalog, revision, seconds)?;
+            (Value::Null, None, preview)
         }
         Input::State(revision) => {
             if !store::valid_digest(revision) {
@@ -131,6 +137,9 @@ pub(crate) fn prepare_authorized(
     }
     if let Some(revision) = revision {
         plan["state_revision"] = json!(revision);
+    }
+    if artifact {
+        plan["input_kind"] = json!("artifact");
     }
     if combined {
         plan["input_kind"] = json!("data-state");

@@ -15,6 +15,12 @@ pub(super) struct Runtime {
     site: PathBuf,
     site_sha256: String,
     dependencies: Vec<String>,
+    #[serde(default)]
+    readonly: Vec<PathBuf>,
+    #[serde(default)]
+    inputs: Vec<PathBuf>,
+    #[serde(default)]
+    graphics: Option<String>,
 }
 
 fn python(bundle: &bundle::Bundle) -> bool {
@@ -37,7 +43,11 @@ pub(super) fn prepare(
             let bytes = regular(path, 65536)?;
             let runtime: Runtime = serde_json::from_slice(&bytes)?;
             runtime.check(bundle)?;
-            for path in [&runtime.stdlib, &runtime.site, &runtime.executable] {
+            for path in [&runtime.stdlib, &runtime.site, &runtime.executable]
+                .into_iter()
+                .chain(runtime.readonly.iter())
+                .chain(runtime.inputs.iter())
+            {
                 let package = package.canonicalize()?;
                 if root.starts_with(path)
                     || path.starts_with(root)
@@ -108,7 +118,29 @@ impl Runtime {
                 "runtime schema, dependency labels or digests do not match the release".into(),
             );
         }
-        for path in [&self.executable, &self.stdlib, &self.site] {
+        if bundle
+            .manifest
+            .requirements
+            .as_ref()
+            .is_some_and(|r| r.gpu == "metal")
+            && self.graphics.as_deref() != Some("macos-agx-metal-v1")
+        {
+            return Err("Metal release requires explicit operator graphics selection".into());
+        }
+        if self.readonly.len() > 6
+            || self.inputs.len() > 8
+            || self
+                .graphics
+                .as_deref()
+                .is_some_and(|g| g != "macos-agx-metal-v1")
+        {
+            return Err("unsupported Python runtime extensions".into());
+        }
+        for path in [&self.executable, &self.stdlib, &self.site]
+            .into_iter()
+            .chain(self.readonly.iter())
+            .chain(self.inputs.iter())
+        {
             store::no_links(path)?;
             if !path.is_absolute() || *path != path.canonicalize()? || path == Path::new("/") {
                 return Err("runtime paths must be canonical absolute selections".into());
@@ -136,7 +168,30 @@ pub(super) fn profile(root: &Path, bundle: &bundle::Bundle, profile: &mut Value)
         let entry = profile["args"][0].clone();
         // No site startup, user packages, .pth processing or bytecode writes.
         profile["args"] = json!(["-S", "-B", entry]);
-        profile["readonly"] = json!([runtime.stdlib, runtime.site]);
+        let mut roots = vec![runtime.stdlib.clone(), runtime.site.clone()];
+        roots.extend(runtime.readonly);
+        profile["readonly"] = json!(roots);
+        if let Some(graphics) = runtime.graphics {
+            profile["graphics"] = json!(graphics);
+        }
+        for (index, path) in runtime.inputs.iter().enumerate() {
+            let slot = profile["inputs"].as_array().ok_or("profile inputs")?.len();
+            profile["inputs"]
+                .as_array_mut()
+                .ok_or("profile inputs")?
+                .push(json!(path));
+            profile["input_layout"]
+                .as_array_mut()
+                .ok_or("Python input layout")?
+                .push(json!(format!(
+                    "aux-{index}-{}",
+                    path.file_name()
+                        .and_then(|p| p.to_str())
+                        .ok_or("auxiliary basename")?
+                )));
+            profile["environment"][format!("AN_SPOOL_AUX_{index}")] =
+                json!(format!("{{input:{slot}}}"));
+        }
         profile["environment"]["PYTHONPATH"] =
             json!(format!("{{inputs}}:{}", runtime.site.display()));
         profile["environment"]["PYTHONNOUSERSITE"] = json!("1");
@@ -145,4 +200,18 @@ pub(super) fn profile(root: &Path, bundle: &bundle::Bundle, profile: &mut Value)
         profile["environment"]["AN_SPOOL_RUNTIME_SHA256"] = instance["runtime_sha256"].clone();
     }
     Ok(())
+}
+
+/// Operator graphics selection alone permits the existing longer workspace bound.
+pub(super) fn maximum_seconds(root: &Path, bundle: &bundle::Bundle) -> Result<u64> {
+    let instance: Value = serde_json::from_slice(&regular(&root.join("instance.json"), 65536)?)?;
+    Ok(
+        if binding(root, &instance, bundle)?
+            .is_some_and(|r| r.graphics.as_deref() == Some("macos-agx-metal-v1"))
+        {
+            900
+        } else {
+            300
+        },
+    )
 }

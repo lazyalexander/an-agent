@@ -96,5 +96,4 @@ frames matched the supplied painted references. The three source packages now ru
 with fixed artifact revisions between stages. Complete films and reopened scenes
 passed for both cases using explicit Apple Silicon Metal access. Cancellation,
 file/network refusals and formal artifact custody passed. This run reused retained
-AI images. Registered native-spool deployment, daemon scheduling of this recipe
-and Krita GUI round-trip remain separate qualification work.
+AI images. The three native Python envelopes now also passed the original daemon queue and task grants for both cases, with six formally accepted stages and fixed upstream revision claims. The teaching application links the original read-only console and hands accepted first-frame ORA references to Shuttle. The present run has not visually confirmed the native Krita windows while the Mac is locked; historical GUI round-trip evidence remains separately scoped. See [native teaching applications](daemon.md#native-teaching-applications).
