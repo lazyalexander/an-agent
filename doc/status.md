@@ -86,3 +86,12 @@ There is no reverse runtime dependency. Preserve existing CLI/profile/tape
 identities and old release bytes; unsupported enforcement refuses rather than
 falling back. Dev merges require diff review, real acceptance and every CI gate,
 followed by user notification. Main promotion remains user-triggered.
+
+## Mechanical animation teaching cases
+
+The [case guide](cases.md) compares the ink and painted steam-engine examples,
+with an inline-four supplementary case. Local source regeneration, rendering
+and saved-scene checks passed for both painted films on 2026-11-08. Decoded
+frames matched the supplied painted references. This run reused retained AI
+images and the standalone film workflow. macOS service lifecycle integration
+and reviewed an-spool packaging remain pending.

@@ -37,15 +37,8 @@ are **kit**, subject to retention or reclamation after confirmed settlement.
 Instructions remain protected. Labels never grant execution authority.
 See [the content contract](doc/spool-code.md).
 
-## Example: CAD → Krita
-
-A saved CAD revision becomes a transparent painting with editable part layers.
-The example exercises delegation, native execution and accepted-product delivery.
-
-![CAD painting](https://raw.githubusercontent.com/lazyalexander/an-shuttle/0dfd646/examples/cad-paint/sample/vise.png)
-
-[Case setup, acceptance and limitations](https://github.com/lazyalexander/an-shuttle#example-cad--krita) ·
-[Spool source](https://github.com/lazyalexander/an-spool)
+The [CAD → Krita integration](https://github.com/lazyalexander/an-shuttle/blob/main/docs/cad-paint.md)
+provides the existing native execution and editable-artifact acceptance reference.
 
 ## Develop
 
@@ -60,3 +53,22 @@ See [documentation](doc/README.md), [architecture](doc/architecture.md),
 [testing](doc/testing.md), and [quality gates](doc/quality.md).
 The separate architecture checker and real host acceptance are required where
 applicable; ordinary unit tests do not establish application or provider behavior.
+
+## Cases · mechanical animation
+
+### Ink and painted steam-engine comparison
+
+| Ink animation | Painted version · 6 s |
+| --- | --- |
+| ![Mechanical ink animation](assets/demos/mechanical-ink.gif) | ![Painted steam engine](assets/demos/painted-steam-engine.gif) |
+
+Compare line-based mechanical presentation with AI-created surface textures and
+a painted background, animated through prescribed geometry and motion.
+[Teaching guide and reproduction evidence](doc/cases.md).
+
+### Supplementary case · inline-four engine
+
+<img src="assets/demos/painted-inline-four.gif" alt="Inline-four engine" width="420">
+
+Forty CAD parts and an eight-second cycle reuse the painted workflow.
+[Motion, checks and integration stages](doc/cases.md#supplementary-case--inline-four).
