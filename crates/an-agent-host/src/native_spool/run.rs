@@ -10,7 +10,7 @@ fn profile(
     selected: &inputs::Selection,
     seconds: u64,
 ) -> Result<Value> {
-    if !(1..=300).contains(&seconds) {
+    if !(1..=runtime::maximum_seconds(root, bundle)?).contains(&seconds) {
         return Err("invalid run deadline".into());
     }
     let mut inputs = Vec::new();
@@ -78,6 +78,33 @@ pub fn start_state(
         approved,
         RunAdmission {
             cancelled,
+            supervisor: None,
+            routed: None,
+        },
+        |_| Ok(()),
+    )
+}
+
+pub(super) fn preview_artifact(
+    root: &Path,
+    name: &str,
+    catalog: &Path,
+    revision: &str,
+    seconds: u64,
+) -> Result<Value> {
+    let artifact = inputs::artifact(catalog, revision)?;
+    start_selected(
+        root,
+        name,
+        Input::Bound(inputs::BoundInput {
+            artifact: &artifact,
+            state_revision: None,
+            supervision: None,
+        }),
+        seconds,
+        None,
+        RunAdmission {
+            cancelled: &AtomicBool::new(false),
             supervisor: None,
             routed: None,
         },
@@ -157,8 +184,12 @@ pub(super) fn start_supervised(
     let routed = start.get("routed_supervision");
     let data = if routed.is_some() {
         Some(super::supervisor::bound_data(start)?)
-    } else if plan["input_kind"] == "data-state" {
-        let data = &start["data_input"];
+    } else if plan["input_kind"] == "data-state" || plan["input_kind"] == "artifact" {
+        let data = if plan["input_kind"] == "artifact" {
+            &start["state_input"]
+        } else {
+            &start["data_input"]
+        };
         Some(inputs::artifact(
             Path::new(data["catalog"].as_str().ok_or("data catalog")?),
             data["binding"]["revision"]
@@ -173,6 +204,7 @@ pub(super) fn start_supervised(
             artifact,
             state_revision: start
                 .get("state_input")
+                .filter(|_| plan["input_kind"] != "artifact")
                 .map(|state| {
                     state["binding"]["revision"]
                         .as_str()

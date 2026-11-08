@@ -113,7 +113,17 @@ fn submit(
     let prepared = spool::supervisor::prepare_authorized(
         instance,
         run,
-        spool::supervisor::Input::File(input),
+        if let Some(artifact) = req.get("artifact") {
+            let catalog = Path::new(text(artifact, "catalog")?);
+            let revision = text(artifact, "revision")?;
+            let selected = spool::inputs_for_daemon(catalog, revision)?;
+            if selected != input.canonicalize()? {
+                return Err("artifact input path mismatch".into());
+            }
+            spool::supervisor::Input::Artifact(catalog, revision)
+        } else {
+            spool::supervisor::Input::File(input)
+        },
         seconds,
         &executable,
         approved,

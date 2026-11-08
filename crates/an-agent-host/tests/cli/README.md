@@ -177,4 +177,4 @@ client exit, continuing timeout/cancellation, supervisor loss, no replay and
 confirmed-only collection. The state suite advances HEAD before selecting the
 old revision and verifies retained checkpoints; `--combined` also pins business
 data and rejects changed selectors. PIDs serve fault injection and observation only; accepted products and independent instances remain unaffected.
-`native_daemon.py` and `native_task_permissions.py` cover [service and task permissions](../../../../doc/daemon.md) with explicit `--host` and fresh `--evidence` paths. `document_activity.py` adds the real PDF/Markdown/XLSX case, optionally using `--shuttle-client` for the compiled Shuttle transport.
+`native_daemon.py`, `native_daemon_inputs.py` and `native_task_permissions.py` cover [service and task permissions](../../../../doc/daemon.md) with explicit `--host` and fresh `--evidence` paths. `document_activity.py` adds the real PDF/Markdown/XLSX case, optionally using `--shuttle-client` for the compiled Shuttle transport.

@@ -102,3 +102,11 @@ fn readonly(path: &Path) -> Result<()> {
 
 #[cfg(test)]
 mod tests;
+
+/// Resolve an accepted revision for exact daemon task input authorization.
+pub(crate) fn inputs_for_daemon(catalog: &Path, revision: &str) -> Result<PathBuf> {
+    let value = inputs::artifact(catalog, revision)?;
+    Ok(PathBuf::from(
+        value["path"].as_str().ok_or("artifact path")?,
+    ))
+}
