@@ -26,9 +26,19 @@ pub(crate) struct Mcp {
     pub token: String,
 }
 
-pub(super) fn submit(root: &Path, req: &Value, approved: Option<&str>) -> Result<Value> {
+pub(super) fn submit(
+    root: &Path,
+    req: &Value,
+    approved: Option<&str>,
+    authorization: Option<&Binding>,
+) -> Result<Value> {
     let task: Task = serde_json::from_value(req["task"].clone())?;
     super::delegation::validate(root, &task)?;
+    let authorization = super::delegation::authorization(root, &task, authorization)?;
+    let authorization = authorization.as_ref();
+    if let Some(binding) = authorization {
+        crate::task_permissions::require(binding, &permissions::harness_permission(&task)?)?;
+    }
     if task.label.is_empty()
         || task.label.len() > 120
         || task.prompt.len() > 65536
@@ -47,7 +57,7 @@ pub(super) fn submit(root: &Path, req: &Value, approved: Option<&str>) -> Result
     {
         return Err("finite material MCP must use an approved loopback endpoint".into());
     }
-    let binding = store::digest(&serde_json::to_vec(&task)?);
+    let binding = task_binding(&task, authorization)?;
     // Never copy the prompt, scoped content, or MCP secret into a public preview.
     let (preview, execute) = approval(
         json!({"operation":"queue-codex-harness", "daemon":root,
@@ -61,6 +71,7 @@ pub(super) fn submit(root: &Path, req: &Value, approved: Option<&str>) -> Result
     let id = scheduler::enqueue(
         root,
         &Job::Harness {
+            authorization: authorization.cloned(),
             task,
             request: binding,
         },
@@ -68,15 +79,28 @@ pub(super) fn submit(root: &Path, req: &Value, approved: Option<&str>) -> Result
     Ok(json!({"id":id,"queued":true,"executed":false}))
 }
 
+fn task_binding(task: &Task, authorization: Option<&Binding>) -> Result<String> {
+    let bytes = match authorization {
+        Some(binding) => serde_json::to_vec(&json!({"task":task,"authorization":binding}))?,
+        None => serde_json::to_vec(task)?,
+    };
+    Ok(store::digest(&bytes))
+}
+
 pub fn worker(root: &Path, id: &str, hash: &str, cancelled: &AtomicBool) -> Result<Value> {
     let root = storage::private(root)?;
     storage::config(&root)?;
     let (dir, job) = storage::job(&root, id)?;
-    let Job::Harness { task, request } = job else {
+    let Job::Harness {
+        task,
+        request,
+        authorization,
+    } = job
+    else {
         return Err("not a harness task".into());
     };
     if request != hash
-        || store::digest(&serde_json::to_vec(&task)?) != hash
+        || task_binding(&task, authorization.as_ref())? != hash
         || read(&dir.join("claimed.json"))?["request"] != hash
     {
         return Err("harness launch binding mismatch".into());
@@ -91,7 +115,11 @@ pub fn worker(root: &Path, id: &str, hash: &str, cancelled: &AtomicBool) -> Resu
     write(&dir.join("schema.json"), &task.schema)?;
     let result = spool::supervisor::monitor(
         || {
-            if dir.join("cancel.json").exists() {
+            if dir.join("cancel.json").exists()
+                || authorization
+                    .as_ref()
+                    .is_some_and(|b| crate::task_permissions::active(b).is_err())
+            {
                 cancelled.store(true, Ordering::Release);
             }
         },

@@ -51,7 +51,41 @@ pub(super) fn ready(root: &Path, job: &Job) -> Result<bool> {
     Ok(scheduler::result(&previous, &dir).is_ok_and(|r| r["status"] == "succeeded"))
 }
 
-pub(super) fn dispatch(root: &Path, req: &Value, approved: Option<&str>) -> Result<Value> {
+pub(super) fn authorization(
+    root: &Path,
+    task: &harness::Task,
+    caller: Option<&super::Binding>,
+) -> Result<Option<super::Binding>> {
+    let Some(predecessor) = task
+        .delegation
+        .as_ref()
+        .and_then(|b| b.predecessor.as_ref())
+    else {
+        return Ok(caller.cloned());
+    };
+    let (_, previous) = storage::job(root, predecessor)?;
+    let Some(original) = previous.authorization() else {
+        return Ok(caller.cloned());
+    };
+    if let Some(caller) = caller {
+        if crate::task_permissions::owns(original, caller)? {
+            return Ok(Some(caller.clone()));
+        }
+        if !crate::task_permissions::owns(caller, original)? {
+            return Err("follow-up cannot change task grant lineage".into());
+        }
+    }
+    // An operator or ancestor may supply instructions while the child retains
+    // its original execution grant, including its revocation and expiry.
+    Ok(Some(original.clone()))
+}
+
+pub(super) fn dispatch(
+    root: &Path,
+    req: &Value,
+    approved: Option<&str>,
+    authorization: Option<&super::Binding>,
+) -> Result<Value> {
     match text(req, "op")? {
         "delegate" => {
             let mut task: harness::Task = serde_json::from_value(req["task"].clone())?;
@@ -59,7 +93,7 @@ pub(super) fn dispatch(root: &Path, req: &Value, approved: Option<&str>) -> Resu
                 parent: text(req, "parent")?.into(),
                 predecessor: None,
             }));
-            harness::submit(root, &json!({"task":task}), approved)
+            harness::submit(root, &json!({"task":task}), approved, authorization)
         }
         "update-delegation" => {
             if text(req, "strategy")? != "enqueue" {
@@ -78,7 +112,7 @@ pub(super) fn dispatch(root: &Path, req: &Value, approved: Option<&str>) -> Resu
                 "\n\nFollow-up instruction (new finite attempt after predecessor succeeds):\n",
             );
             task.prompt.push_str(text(req, "instruction")?);
-            harness::submit(root, &json!({"task":task}), approved)
+            harness::submit(root, &json!({"task":task}), approved, authorization)
         }
         _ => {
             let parent = text(req, "parent")?;
@@ -86,6 +120,11 @@ pub(super) fn dispatch(root: &Path, req: &Value, approved: Option<&str>) -> Resu
             for dir in storage::entries(root, "jobs", 256)? {
                 let id = dir.file_name().and_then(|s| s.to_str()).ok_or("task ID")?;
                 let (_, job) = storage::job(root, id)?;
+                if let Some(actor) = authorization
+                    && permissions::owned_job(root, actor, id).is_err()
+                {
+                    continue;
+                }
                 if let Job::Harness { task, .. } = &job
                     && task.delegation.as_ref().is_some_and(|b| b.parent == parent)
                 {

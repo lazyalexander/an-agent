@@ -39,6 +39,7 @@ pub mod native_spool;
 pub mod openshell;
 pub mod retention;
 mod settled_run;
+mod task_permissions;
 pub mod workspace_job;
 
 pub use hooks::HostHooks;

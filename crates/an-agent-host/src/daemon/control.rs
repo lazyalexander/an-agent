@@ -2,21 +2,36 @@
 use super::*;
 
 pub(super) fn dispatch(root: &Path, req: &Value) -> Result<Value> {
+    match text(req, "op")? {
+        "grant" => permissions::issue(root, req, None),
+        "revoke-grant" => permissions::revoke(root, req, None),
+        "harness-permission" => Ok(serde_json::to_value(permissions::harness_permission(
+            &serde_json::from_value(req["task"].clone())?,
+        )?)?),
+        _ => authorized(root, req, None),
+    }
+}
+
+pub(super) fn authorized(
+    root: &Path,
+    req: &Value,
+    authorization: Option<&Binding>,
+) -> Result<Value> {
     let approved = req
         .get("approve")
         .map(|_| text(req, "approve"))
         .transpose()?;
     match text(req, "op")? {
         "delegate" | "update-delegation" | "delegation-inbox" => {
-            delegation::dispatch(root, req, approved)
+            delegation::dispatch(root, req, approved, authorization)
         }
         "record-adoption" => activity::adopt(root, req, approved),
         "activity" => activity::view(root, text(req, "id")?),
         "show" => observation::snapshot(root),
         "task" => observation::task(root, text(req, "id")?),
         "register" => storage::register(root, Path::new(text(req, "instance")?)),
-        "submit" => submit(root, req, approved),
-        "harness" => harness::submit(root, req, approved),
+        "submit" => submit(root, req, approved, authorization),
+        "harness" => harness::submit(root, req, approved, authorization),
         "harness-result" => {
             let (dir, job) = storage::job(root, text(req, "id")?)?;
             if !matches!(job, Job::Harness { .. }) {
@@ -30,13 +45,17 @@ pub(super) fn dispatch(root: &Path, req: &Value) -> Result<Value> {
         }
         "cancel" => {
             let (dir, job) = storage::job(root, text(req, "id")?)?;
-            let (preview, execute) = approval(
-                json!({"operation":"cancel-daemon-task", "root":root,
-                "id":text(req,"id")?,"request":job.request()}),
-                approved,
-            )?;
+            let mut plan = json!({"operation":"cancel-daemon-task", "root":root,
+                "id":text(req,"id")?,"request":job.request()});
+            if let Some(binding) = job.authorization() {
+                plan["revoke_task_grant"] = json!(binding);
+            }
+            let (preview, execute) = approval(plan, approved)?;
             if !execute {
                 return Ok(preview);
+            }
+            if let Some(binding) = job.authorization() {
+                crate::task_permissions::revoke(binding)?;
             }
             if !dir.join("cancel.json").exists() {
                 write(&dir.join("cancel.json"), &preview)?;
@@ -60,7 +79,12 @@ pub(super) fn dispatch(root: &Path, req: &Value) -> Result<Value> {
     }
 }
 
-fn submit(root: &Path, req: &Value, approved: Option<&str>) -> Result<Value> {
+fn submit(
+    root: &Path,
+    req: &Value,
+    approved: Option<&str>,
+    authorization: Option<&Binding>,
+) -> Result<Value> {
     let instance = Path::new(text(req, "instance")?);
     let run = text(req, "run")?;
     storage::instance(root, instance)?;
@@ -86,18 +110,20 @@ fn submit(root: &Path, req: &Value, approved: Option<&str>) -> Result<Value> {
     let executable = storage::config(root)?.executable;
     // Reuse the native preview/approval once per request. Rebuilding it twice
     // re-hashes the selected runtime inventory without adding authority.
-    let prepared = spool::supervisor::prepare(
+    let prepared = spool::supervisor::prepare_authorized(
         instance,
         run,
         spool::supervisor::Input::File(input),
         seconds,
         &executable,
         approved,
+        authorization,
     )?;
     if prepared["reserved"] != true {
         return Ok(prepared);
     }
     let job = Job::Spool {
+        authorization: authorization.cloned(),
         instance: instance.canonicalize()?,
         run: run.into(),
         request: text(&prepared, "approval_sha256")?.into(),

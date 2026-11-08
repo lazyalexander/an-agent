@@ -6,12 +6,14 @@ mod control;
 mod delegation;
 pub(crate) mod harness;
 mod observation;
+mod permissions;
 mod scheduler;
 mod storage;
 #[cfg(unix)]
 mod transport;
 mod web;
 
+use crate::task_permissions::Binding;
 use crate::{
     execution::{Result, store},
     native_spool as spool,
@@ -38,17 +40,28 @@ struct Config {
 #[serde(tag = "kind", rename_all = "kebab-case", deny_unknown_fields)]
 enum Job {
     Spool {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        authorization: Option<Binding>,
         instance: PathBuf,
         run: String,
         request: String,
     },
     Harness {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        authorization: Option<Binding>,
         task: harness::Task,
         request: String,
     },
 }
 
 impl Job {
+    fn authorization(&self) -> Option<&Binding> {
+        match self {
+            Self::Spool { authorization, .. } | Self::Harness { authorization, .. } => {
+                authorization.as_ref()
+            }
+        }
+    }
     fn request(&self) -> &str {
         match self {
             Self::Spool { request, .. } | Self::Harness { request, .. } => request,
@@ -86,7 +99,19 @@ fn approval(plan: Value, supplied: Option<&str>) -> Result<(Value, bool)> {
 pub fn request(root: &Path, value: &Value) -> Result<Value> {
     #[cfg(unix)]
     {
-        transport::request(root, value)
+        transport::request(root, value, false)
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = (root, value);
+        Err("local daemon requires macOS".into())
+    }
+}
+
+pub fn task_request(root: &Path, value: &Value) -> Result<Value> {
+    #[cfg(unix)]
+    {
+        transport::request(root, value, true)
     }
     #[cfg(not(unix))]
     {
