@@ -125,6 +125,45 @@ stopped or that provider usage is zero. Native events remain private; completed
 proposals still require domain validation and the existing kit-edit/artifact gates.
 The client version, scope and task reference replace Shuttle's duplicate driver.
 
+## Embedded app-server ownership
+
+The host may supervise a pinned Codex app-server as a replaceable child process.
+The harness owns model turns and private conversation history. The host owns task
+identity, grants, native execution settlement and accepted products. A model turn
+completion never accepts an artifact or proves a remote request stopped.
+
+The first profile creates a fresh ephemeral thread per host harness attempt.
+Set `task.app_server=true` on the existing harness request. It is part of the
+harness permission digest; legacy requests omit it and keep their old identity.
+This profile requires task authorization and refuses external MCP configuration.
+Only the explicit prompt and results of authorized host tools enter that thread.
+Shell, editing, plugins, implicit project instructions and native subagent tools
+are disabled. Host-mediated delegation opens another fresh thread under an
+operator-issued descendant grant. The child receives an explicit task and no
+parent conversation. Grant references remain host-owned; bearer secrets never
+enter model context. Every tool dispatch rechecks the original task grant and
+concrete resource capability. Delegation may only select an existing descendant
+of that grant and cannot restore rights removed from the child.
+
+Approval binds the selected adapter, executable, model, output schema and scope.
+Cancellation and revocation reach the existing independent owner. The owner
+confirms local process-group termination; unknown results remain held without
+replay. Work already admitted to a separate spool retains its original owner
+and must be cancelled explicitly. Tool requests return to the original daemon;
+its ordinary task checks and queue serialize effects. The model sees one
+`host_request` tool with a JSON `request` argument. Previews grant nothing and
+mutations still require an exact approval plus a concrete capability. An optional
+`grant` ID selects an existing descendant. Only a delegating parent can select
+one; models cannot issue bearer credentials or administer grants. Request/response
+hashes and outcomes are retained in private `tool-receipts.jsonl`.
+The app-server uses a private client home with a reference to the native file
+login. User config, project rules and private sessions are not copied. This
+initial file-login profile does not qualify keyring-only authentication. Local
+termination permits deletion of that private client home. Protocol errors,
+missing receipts and unsupported server requests fail closed without replay.
+Domain conversion belongs to packaged programs
+and application adapters, not to this protocol bridge.
+
 ## Task-scoped permissions
 
 The operator socket issues `grant` with a `scope` containing `task`, `subject`,

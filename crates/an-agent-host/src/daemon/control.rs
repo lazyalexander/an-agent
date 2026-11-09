@@ -3,6 +3,7 @@ use super::*;
 
 pub(super) fn dispatch(root: &Path, req: &Value) -> Result<Value> {
     match text(req, "op")? {
+        "harness-tool" => super::app_server::dispatch(root, req),
         "grant" => permissions::issue(root, req, None),
         "revoke-grant" => permissions::revoke(root, req, None),
         "harness-permission" => Ok(serde_json::to_value(permissions::harness_permission(

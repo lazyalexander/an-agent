@@ -45,12 +45,12 @@ pub(super) fn view(root: &Path, id: &str) -> Result<Value> {
             // Fixed categories only: raw arguments, messages, URLs and tool output
             // can contain credentials or private source content.
             let kind = match value["type"].as_str().unwrap_or("") {
-                "thread.started" => "session-started",
-                "turn.started" => "turn-started",
-                "turn.completed" => "turn-completed",
+                "thread.started" | "thread/started" => "session-started",
+                "turn.started" | "turn/started" => "turn-started",
+                "turn.completed" | "turn/completed" => "turn-completed",
                 "turn.failed" => "turn-failed",
-                "item.started" => "item-started",
-                "item.completed" => "item-completed",
+                "item.started" | "item/started" => "item-started",
+                "item.completed" | "item/completed" => "item-completed",
                 _ => "other",
             };
             let action = match value["item"]["type"].as_str().unwrap_or("") {
