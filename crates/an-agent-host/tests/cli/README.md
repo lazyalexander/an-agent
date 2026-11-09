@@ -155,10 +155,8 @@ request/reply IPC or scheduler fairness. See the runtime acceptance matrix in
 `native_peer.py --host HOST --evidence NEW_DIRECTORY` runs a split-phase
 request/reply/continuation through actual native spools. Waiting creates no process
 or held instance lock; an independent sender job can overlap receiver execution.
-It checks fixed input/reply pins, stale generations, wrong correlation, cancellation,
-missing completion without replay and confirmed-only collection. Revocation closes
-future delivery, while the receiver's supervisor owns termination. This is not
-live IPC, a fairness benchmark or a background scheduler.
+It checks fixed pins, stale generations, correlation, cancellation, missing receipts
+and confirmed-only collection. Receiver supervision owns termination.
 
 `native_supervisor_loss.py --host HOST --evidence NEW_DIRECTORY` contrasts
 SIGTERM with SIGKILL of the actual launching CLI. Two finite workers make orphan
@@ -168,8 +166,6 @@ independent-instance progress and preserved formal products. The disposable
 fixture then removes stale lock markers after sampled process exit to verify
 that missing termination evidence independently blocks acceptance, collection,
 unload and replay. That injection is a test operation, never a recovery recipe.
-Its summary distinguishes passing refusal checks from the observed missing
-caller-independent supervisor. Local process samples carry no cleanup authority.
 
 `native_supervisor.py` and `native_supervisor_state.py` take `--host HOST
 --evidence NEW_DIRECTORY`. They qualify file-input and fixed-checkpoint supervision:
@@ -178,3 +174,7 @@ confirmed-only collection. The state suite advances HEAD before selecting the
 old revision and verifies retained checkpoints; `--combined` also pins business
 data and rejects changed selectors. PIDs serve fault injection and observation only; accepted products and independent instances remain unaffected.
 `native_daemon.py`, `native_daemon_inputs.py` and `native_task_permissions.py` cover [service and task permissions](../../../../doc/daemon.md) with explicit `--host` and fresh `--evidence` paths. `document_activity.py` adds the real PDF/Markdown/XLSX case, optionally using `--shuttle-client` for the compiled Shuttle transport.
+
+`native_app_server.py` covers real local protocol processes, scoped tools,
+revocation and cancellation without inference. The paired Loom `document-table`
+qualifies actual app-server inference using this checkout's evidence driver.

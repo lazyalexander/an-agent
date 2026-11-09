@@ -139,12 +139,44 @@ pub fn execute(
 
 /// Host-built commands only. Policy and environment must already be installed.
 pub(crate) fn execute_command(
-    mut launch: std::process::Command,
+    launch: std::process::Command,
     cwd: &Path,
     input: &[u8],
     timeout: Duration,
     cancelled: &AtomicBool,
     group: bool,
+) -> Result<Execution> {
+    execute_dialogue(
+        launch,
+        cwd,
+        timeout,
+        cancelled,
+        group,
+        |mut stdin, stdout, exceeded| {
+            thread::scope(|scope| {
+                let writer = scope.spawn(move || stdin.write_all(input));
+                let bytes = reader(stdout, exceeded);
+                writer
+                    .join()
+                    .map_err(|_| std::io::Error::other("stdin writer panicked"))??;
+                bytes
+            })
+        },
+    )
+}
+
+pub(crate) fn execute_dialogue(
+    mut launch: std::process::Command,
+    cwd: &Path,
+    timeout: Duration,
+    cancelled: &AtomicBool,
+    group: bool,
+    exchange: impl FnOnce(
+        std::process::ChildStdin,
+        std::process::ChildStdout,
+        Arc<AtomicBool>,
+    ) -> std::io::Result<Vec<u8>>
+    + Send,
 ) -> Result<Execution> {
     if cancelled.load(Ordering::Relaxed) {
         return Ok(Execution {
@@ -186,26 +218,17 @@ pub(crate) fn execute_command(
         };
         let pid = Some(child.child.id());
         let result = (|| -> Result<Execution> {
-            let mut stdin = child.child.stdin.take().ok_or("missing stdin")?;
+            let stdin = child.child.stdin.take().ok_or("missing stdin")?;
             let stdout = child.child.stdout.take().ok_or("missing stdout")?;
             let stderr = child.child.stderr.take().ok_or("missing stderr")?;
             let exceeded = Arc::new(AtomicBool::new(false));
             let failed = &io_failed;
             let stdout_limit = Arc::clone(&exceeded);
             let stderr_limit = Arc::clone(&exceeded);
-            let input_thread = thread::Builder::new()
-                .name("kit-stdin".into())
-                .spawn_scoped(scope, move || {
-                    let result = stdin.write_all(input);
-                    if result.is_err() {
-                        failed.store(true, Ordering::Relaxed);
-                    }
-                    result
-                })?;
             let out_thread = thread::Builder::new()
-                .name("kit-stdout".into())
+                .name("host-dialogue".into())
                 .spawn_scoped(scope, move || {
-                    let result = reader(stdout, stdout_limit);
+                    let result = exchange(stdin, stdout, stdout_limit);
                     if result.is_err() {
                         failed.store(true, Ordering::Relaxed);
                     }
@@ -247,23 +270,23 @@ pub(crate) fn execute_command(
             };
             // Join all workers before inspecting errors; an error in one stream
             // must not detach the other stream or an input writer.
-            let input_result = input_thread.join();
             let out_result = out_thread.join();
             let err_result = err_thread.join();
-            let input_result = input_result.map_err(|_| "stdin writer panicked")?;
-            let stdout = out_result.map_err(|_| "stdout reader panicked")??;
+            let stdout = match out_result.map_err(|_| "stdout reader panicked")? {
+                Ok(bytes) => bytes,
+                Err(_) if reason.is_some() => Vec::new(),
+                Err(error) => return Err(error.into()),
+            };
             let stderr = err_result.map_err(|_| "stderr reader panicked")??;
             if reason.is_none() && exceeded.load(Ordering::Relaxed) {
                 reason = Some("output_limit");
             }
             Ok(Execution {
-                status: reason.unwrap_or(
-                    if status.success() && input_result.is_ok() && !child.group_cleanup_required {
-                        "succeeded"
-                    } else {
-                        "failed"
-                    },
-                ),
+                status: reason.unwrap_or(if status.success() && !child.group_cleanup_required {
+                    "succeeded"
+                } else {
+                    "failed"
+                }),
                 code: status.code(),
                 stdout,
                 stderr,

@@ -9,6 +9,8 @@ pub(super) const VERSION: &str = "codex-cli 0.166.0";
 pub(crate) struct Task {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub delegation: Option<Box<super::delegation::Binding>>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub app_server: bool,
     pub label: String,
     pub binary: PathBuf,
     pub binary_sha256: String,
@@ -56,6 +58,9 @@ pub(super) fn submit(
             || mcp.token.contains(['\r', '\n']))
     {
         return Err("finite material MCP must use an approved loopback endpoint".into());
+    }
+    if task.app_server && (authorization.is_none() || task.mcp.is_some()) {
+        return Err("app-server requires a task grant and no external MCP".into());
     }
     let binding = task_binding(&task, authorization)?;
     // Never copy the prompt, scoped content, or MCP secret into a public preview.
@@ -123,7 +128,15 @@ pub fn worker(root: &Path, id: &str, hash: &str, cancelled: &AtomicBool) -> Resu
                 cancelled.store(true, Ordering::Release);
             }
         },
-        || execute(&dir, &task, cancelled),
+        || {
+            execute(
+                root.as_path(),
+                &dir,
+                &task,
+                authorization.as_ref(),
+                cancelled,
+            )
+        },
     );
     let response = match &result {
         Ok(result) => json!({"request":hash,"result":result}),
@@ -135,7 +148,13 @@ pub fn worker(root: &Path, id: &str, hash: &str, cancelled: &AtomicBool) -> Resu
     result
 }
 
-fn execute(dir: &Path, task: &Task, cancelled: &AtomicBool) -> Result<Value> {
+fn execute(
+    root: &Path,
+    dir: &Path,
+    task: &Task,
+    authorization: Option<&Binding>,
+    cancelled: &AtomicBool,
+) -> Result<Value> {
     if cancelled.load(Ordering::Acquire) {
         return Ok(
             json!({"status":"cancelled","termination_confirmed":true,"process_started":false,"proposal_available":false}),
@@ -163,6 +182,15 @@ fn execute(dir: &Path, task: &Task, cancelled: &AtomicBool) -> Result<Value> {
     }
     if version.status != "succeeded" || String::from_utf8(version.stdout)?.trim() != VERSION {
         return Err("harness requires qualified Codex CLI 0.166.0".into());
+    }
+    if task.app_server {
+        return super::app_server::execute(
+            root,
+            dir,
+            task,
+            authorization.ok_or("missing app-server authority")?,
+            cancelled,
+        );
     }
     let mut args = vec![
         "exec".into(),
@@ -220,7 +248,7 @@ fn execute(dir: &Path, task: &Task, cancelled: &AtomicBool) -> Result<Value> {
     )
 }
 
-fn toml(value: &Value) -> String {
+pub(super) fn toml(value: &Value) -> String {
     match value {
         Value::Object(map) => format!(
             "{{{}}}",
