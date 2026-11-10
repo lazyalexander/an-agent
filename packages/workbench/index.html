@@ -1,0 +1,514 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light"><title>an-agent · Workspace</title><link rel="icon" href="data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiPz4KPHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMDI0IiBoZWlnaHQ9IjEwMjQiIHZpZXdCb3g9IjAgMCAxMDI0IDEwMjQiPgogIDxkZWZzPgogICAgPGNsaXBQYXRoIGlkPSJzcXVpcmNsZSI+CiAgICAgIDxyZWN0IHg9IjAiIHk9IjAiIHdpZHRoPSIxMDI0IiBoZWlnaHQ9IjEwMjQiIHJ4PSIyMjgiIHJ5PSIyMjgiLz4KICAgIDwvY2xpcFBhdGg+CiAgPC9kZWZzPgogIDxyZWN0IHg9IjAiIHk9IjAiIHdpZHRoPSIxMDI0IiBoZWlnaHQ9IjEwMjQiIHJ4PSIyMjgiIHJ5PSIyMjgiIGZpbGw9IiNGRkZGRkYiLz4KICA8ZyBjbGlwLXBhdGg9InVybCgjc3F1aXJjbGUpIj4KICAgIDxwYXRoIGQ9Ik01MDAuODMwMTg4Njc5MjQ1MyA4OTIuMFE1MDAuODMwMTg4Njc5MjQ1MyA4MDQuMTUwOTQzMzk2MjI2NCA0OTcuNjYwMzc3MzU4NDkwNTYgNzI1LjM1ODQ5MDU2NjAzNzdRNDk0LjQ5MDU2NjAzNzczNTg1IDY0Ni41NjYwMzc3MzU4NDkgNDg5LjA1NjYwMzc3MzU4NDg3IDU3Ni44MzAxODg2NzkyNDUyUTQzMy44MTEzMjA3NTQ3MTcgNjQ4LjM3NzM1ODQ5MDU2NTkgMzkzLjk2MjI2NDE1MDk0MzQgNzA5Ljk2MjI2NDE1MDk0MzRRMzU0LjExMzIwNzU0NzE2OTggNzcxLjU0NzE2OTgxMTMyMDcgMzI2LjAzNzczNTg0OTA1NjU2IDgyMC40NTI4MzAxODg2NzkyUTI3Ni4yMjY0MTUwOTQzMzk2IDczOS44NDkwNTY2MDM3NzM1IDE4Ny40NzE2OTgxMTMyMDc1NCA2ODEuODg2NzkyNDUyODMwMlEyMzYuMzc3MzU4NDkwNTY2MDIgNjUzLjgxMTMyMDc1NDcxNjkgMjk3LjUwOTQzMzk2MjI2NDE1IDYxMy45NjIyNjQxNTA5NDM0UTM1OC42NDE1MDk0MzM5NjIyNiA1NzQuMTEzMjA3NTQ3MTY5NyA0MzEuMDk0MzM5NjIyNjQxNSA1MTguODY3OTI0NTI4MzAxOFEzNDEuNDMzOTYyMjY0MTUwOSA1MzAuNjQxNTA5NDMzOTYyMyAyNjkuODg2NzkyNDUyODMwMTUgNTQ1LjU4NDkwNTY2MDM3NzNRMTk4LjMzOTYyMjY0MTUwOTQgNTYwLjUyODMwMTg4Njc5MjQgMTQ0LjAgNTc1LjkyNDUyODMwMTg4NjhRMTU0Ljg2NzkyNDUyODMwMTg3IDUyNC4zMDE4ODY3OTI0NTI3IDE1NC44Njc5MjQ1MjgzMDE4NyA0NzUuMzk2MjI2NDE1MDk0M1ExNTQuODY3OTI0NTI4MzAxODcgNDI2LjQ5MDU2NjAzNzczNTggMTQ0LjAgMzgwLjMwMTg4Njc5MjQ1Mjc2UTE5MS45OTk5OTk5OTk5OTk5NyAzOTMuODg2NzkyNDUyODMwMTUgMjUyLjY3OTI0NTI4MzAxODg3IDQwNy4wMTg4Njc5MjQ1MjgyNVEzMTMuMzU4NDkwNTY2MDM3NzQgNDIwLjE1MDk0MzM5NjIyNjM1IDM4Ny42MjI2NDE1MDk0MzM5NSA0MzEuMDE4ODY3OTI0NTI4MjVRMzI4Ljc1NDcxNjk4MTEzMjA1IDM4Ny41NDcxNjk4MTEzMjA3IDI3Ny41ODQ5MDU2NjAzNzczMyAzNTQuOTQzMzk2MjI2NDE1MVEyMjYuNDE1MDk0MzM5NjIyNiAzMjIuMzM5NjIyNjQxNTA5NCAxODMuODQ5MDU2NjAzNzczNTYgMjk3Ljg4Njc5MjQ1MjgzMDE1UTI3Mi42MDM3NzM1ODQ5MDU2NCAyMzkuMDE4ODY3OTI0NTI4MyAzMjIuNDE1MDk0MzM5NjIyNiAxNTkuMzIwNzU0NzE2OTgxMTNRMzQ3Ljc3MzU4NDkwNTY2MDM2IDIwMy42OTgxMTMyMDc1NDcwNyAzODMuNTQ3MTY5ODExMzIwNyAyNTkuMzk2MjI2NDE1MDk0MjVRNDE5LjMyMDc1NDcxNjk4MTEgMzE1LjA5NDMzOTYyMjY0MTUgNDY3LjMyMDc1NDcxNjk4MTEgMzc5LjM5NjIyNjQxNTA5NDNRNDU1LjU0NzE2OTgxMTMyMDcgMzAwLjYwMzc3MzU4NDkwNTY0IDQ0MS45NjIyNjQxNTA5NDM0IDIzNy4yMDc1NDcxNjk4MTEyOFE0MjguMzc3MzU4NDkwNTY2IDE3My44MTEzMjA3NTQ3MTY5MiA0MTQuNzkyNDUyODMwMTg4NjcgMTI0LjBRNDYwLjk4MTEzMjA3NTQ3MTcgMTM0Ljg2NzkyNDUyODMwMTg0IDUwOS44ODY3OTI0NTI4MzAxNSAxMzQuODY3OTI0NTI4MzAxODRRNTU4Ljc5MjQ1MjgzMDE4ODcgMTM0Ljg2NzkyNDUyODMwMTg0IDYxMC40MTUwOTQzMzk2MjI2IDEyNC4wUTU5NS4wMTg4Njc5MjQ1MjgyIDE4MC4xNTA5NDMzOTYyMjYzNSA1ODAuMDc1NDcxNjk4MTEzMSAyNTMuOTYyMjY0MTUwOTQzMzVRNTY1LjEzMjA3NTQ3MTY5OCAzMjcuNzczNTg0OTA1NjYwMzYgNTUyLjQ1MjgzMDE4ODY3OTIgNDIxLjA1NjYwMzc3MzU4NDg3UTYwNy42OTgxMTMyMDc1NDcxIDM3NC44Njc5MjQ1MjgzMDE4NCA2NjcuNDcxNjk4MTEzMjA3NSAzMTkuNjIyNjQxNTA5NDMzOVE3MjcuMjQ1MjgzMDE4ODY3OSAyNjQuMzc3MzU4NDkwNTY1OTQgNzkxLjU0NzE2OTgxMTMyMDggMjAwLjA3NTQ3MTY5ODExMzEyTDgwNy44NDkwNTY2MDM3NzM1IDIxNi4zNzczNTg0OTA1NjU5NFE3NDMuNTQ3MTY5ODExMzIwOCAyODAuNjc5MjQ1MjgzMDE4OCA2ODkuMjA3NTQ3MTY5ODExNCAzMzkuOTk5OTk5OTk5OTk5OTRRNjM0Ljg2NzkyNDUyODMwMiAzOTkuMzIwNzU0NzE2OTgxMDcgNTg3Ljc3MzU4NDkwNTY2MDMgNDU0LjU2NjAzNzczNTg0OVE2NTkuMzIwNzU0NzE2OTgxMSA0NTkuOTk5OTk5OTk5OTk5OTQgNzQwLjM3NzM1ODQ5MDU2NiA0NjMuMTY5ODExMzIwNzU0NjZRODIxLjQzMzk2MjI2NDE1MSA0NjYuMzM5NjIyNjQxNTA5NCA5MTIuMCA0NjYuMzM5NjIyNjQxNTA5NFY0ODkuODg2NzkyNDUyODMwMTVRODE0LjE4ODY3OTI0NTI4MzEgNDg5Ljg4Njc5MjQ1MjgzMDE1IDcyNy42OTgxMTMyMDc1NDcyIDQ5My41MDk0MzM5NjIyNjQxUTY0MS4yMDc1NDcxNjk4MTEzIDQ5Ny4xMzIwNzU0NzE2OTgwNCA1NjYuMDM3NzM1ODQ5MDU2NiA1MDQuMzc3MzU4NDkwNTY2UTYxNC45NDMzOTYyMjY0MTUyIDU2My4yNDUyODMwMTg4Njc5IDY3NC4yNjQxNTA5NDMzOTYzIDYyOC40NTI4MzAxODg2NzkyUTczMy41ODQ5MDU2NjAzNzc0IDY5My42NjAzNzczNTg0OTA2IDgwNC4yMjY0MTUwOTQzMzk3IDc2My4zOTYyMjY0MTUwOTQ0TDc4Ny45MjQ1MjgzMDE4ODY4IDc3OS42OTgxMTMyMDc1NDcyUTcyMC4wIDcxMi42NzkyNDUyODMwMTg5IDY1Ny41MDk0MzM5NjIyNjQxIDY1NS4xNjk4MTEzMjA3NTQ3UTU5NS4wMTg4Njc5MjQ1MjgyIDU5Ny42NjAzNzczNTg0OTA2IDUzNy45NjIyNjQxNTA5NDM0IDU0OS42NjAzNzczNTg0OTA2UTUzMS42MjI2NDE1MDk0MzQgNjIzLjkyNDUyODMwMTg4NjggNTI4LjAgNzA5LjUwOTQzMzk2MjI2NDFRNTI0LjM3NzM1ODQ5MDU2NiA3OTUuMDk0MzM5NjIyNjQxNCA1MjQuMzc3MzU4NDkwNTY2IDg5Mi4wWiIgZmlsbD0iI0IwOTVEQiIgZmlsbC1ydWxlPSJub256ZXJvIi8+CiAgPC9nPgo8L3N2Zz4K"><style>:root{font:15px/1.5 -apple-system,BlinkMacSystemFont,"Helvetica Neue","PingFang SC",sans-serif;color:#222329;background:#fbfbfd;--muted:#696b77;--line:#e4e4eb;--indigo:#5c51ae}*{box-sizing:border-box}body{margin:0}button,input,textarea{font:inherit}button{cursor:pointer;color:inherit}button:focus-visible,input:focus-visible,textarea:focus-visible,summary:focus-visible{outline:3px solid #998be2;outline-offset:3px}button{border:0;background:none}button:disabled{cursor:default;opacity:.55}.app{display:grid;grid-template-columns:224px minmax(0,1fr);min-height:100vh}.rail{position:sticky;top:0;height:100vh;display:flex;flex-direction:column;background:#f3f3f7;border-right:1px solid var(--line);padding:32px 14px 20px}.brand{display:flex;align-items:center;gap:10px;padding:0 11px 39px;font-size:23px;font-weight:650;letter-spacing:-1.3px}.rail-group,.rail-foot{color:var(--muted);font-size:12px}.rail-group{display:flex;align-items:center;justify-content:space-between;padding:0 11px 8px}.plus,.icon-button{display:grid;place-items:center;border-radius:50%;width:26px;height:26px;font-size:20px}.plus:hover,.icon-button:hover{background:#e4e4eb}.nav-item{width:100%;display:flex;gap:11px;align-items:center;border-radius:10px;padding:10px 12px;text-align:left;font-size:14px}.nav-item span:last-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.nav-item:hover{background:#ececf1}.nav-item.active{background:#e3e2ed;color:#443b73;font-weight:600}.space-mark{width:16px;height:13px;border:1.5px solid currentColor;border-radius:4px;position:relative;flex:none}.space-mark:before{content:'';position:absolute;top:-4px;left:1px;width:7px;height:3px;border:1.5px solid currentColor;border-bottom:0;border-radius:3px 3px 0 0}.library-label{margin-top:25px}.grid-mark{font-size:20px;line-height:17px}.rail-foot{margin-top:auto;display:flex;align-items:center;gap:8px;padding:24px 11px 0}.dot{display:inline-block;width:7px;height:7px;background:#789d91;border-radius:50%}#spaces{overflow:auto}.toolbar{height:63px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;gap:14px;padding:0 clamp(20px,5vw,76px);color:var(--muted);font-size:13px}.usage{display:flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:20px;background:white;font-size:12px;font-weight:550;padding:6px 12px;white-space:nowrap}.usage-bars{color:var(--indigo);letter-spacing:1px}.content{max-width:1040px;margin:auto;padding:38px clamp(20px,5vw,76px) 64px}.hero{position:relative;isolation:isolate;overflow:hidden;border:1px solid #e7e4ef;background:radial-gradient(ellipse at 93% 80%,#e2deef 0,transparent 47%),linear-gradient(108deg,#f6f5fa 25%,#eeebf6 78%,#e7e1ed);padding:32px 34px 34px;border-radius:24px}.hero-copy{position:relative;z-index:2;width:68%}.eyebrow,.context{font-size:12px;color:var(--muted);letter-spacing:.04em}.eyebrow{color:#70658a;font-weight:600}.hero h1,h1{font-size:clamp(28px,3.6vw,44px);letter-spacing:-.05em;line-height:1.16;margin:13px 0}.hero p,.intro{color:#62616d;line-height:1.7;margin:0;font-size:14px}.hero p{overflow-wrap:anywhere;white-space:pre-line}.master{display:inline-flex;align-items:center;gap:7px;margin-top:24px;font-size:12px;color:#545360}.segment{display:inline-flex;gap:2px;margin:25px 0 2px;background:#ededf2;padding:3px;border-radius:11px}.segment button{color:var(--muted);padding:6px 18px;border-radius:8px;font-size:13px}.segment button.active{background:white;color:#25252b;box-shadow:0 1px 4px #0002}h2{font-size:21px;letter-spacing:-.03em;margin:0}h3{font-size:16px;margin:0}.section-head{display:flex;align-items:center;justify-content:space-between;margin:27px 0 12px;gap:14px}.secondary,.primary,.link{font-size:13px;font-weight:550;border-radius:18px;padding:7px 14px}.secondary{background:#eeeeF3}.primary{background:#34303f;color:white}.primary:hover{background:#544c64}.link{color:var(--indigo);padding:5px}.list,.panel{background:white;border:1px solid var(--line);border-radius:17px;overflow:hidden}.row{width:100%;display:flex;align-items:center;gap:13px;padding:16px 19px;text-align:left}.row+.row{border-top:1px solid #f0f0f4}.row:hover{background:#faf9fc}.row-text{flex:1;min-width:0}.row-text strong,.row-text small{display:block}.row-text small,.sub,.empty{color:var(--muted);font-size:13px}.row-text small{margin-top:2px}.chevron{color:#9999a4}.tile{width:38px;height:38px;border-radius:12px;display:grid;place-items:center;flex:none;font-size:22px;font-weight:550;color:var(--ink);background:linear-gradient(140deg,var(--pale),white);border:1px solid var(--pale)}.audio{--ink:#895491;--pale:#eed8ee}.paint{--ink:#467b91;--pale:#cce7ee}.compose{--ink:#8d7150;--pale:#efe2c9}.document{--ink:#617e69;--pale:#dae9db}.panel,.empty{padding:18px 20px}.panel p{margin:6px 0 16px;color:var(--muted);font-size:14px}.market-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:20px}.product{display:flex;flex-direction:column;gap:9px;padding:19px}.product .primary,.product .secondary{align-self:flex-start;margin-top:auto}.product p{font-size:13px;margin:0 0 8px}.search,.field{display:block;width:100%;background:white;border:1px solid #d9d9e1;border-radius:10px;padding:10px 12px}.search{margin:20px 0 12px}.empty{background:#f4f4f7;border-radius:14px}.badge{font-size:12px;color:#597567}.form-label{display:block;font-size:13px;font-weight:600;margin:16px 0 6px}.field{font-weight:400}textarea{resize:vertical}.choice{display:flex;gap:12px;align-items:center;padding:10px 2px;border-bottom:1px solid #efeff3}.choice input{margin-left:auto;accent-color:#64588a;width:17px;height:17px}.footer-actions{display:flex;align-items:center;justify-content:space-between;margin-top:22px;gap:12px}dialog{width:min(470px,calc(100% - 28px));max-height:86vh;overflow:auto;border:1px solid #fff9;border-radius:23px;padding:22px 26px 26px;box-shadow:0 25px 100px #20203038;color:inherit}dialog::backdrop{background:#24233138;backdrop-filter:blur(5px)}.modal-head{display:flex;align-items:center;justify-content:space-between;color:var(--muted);font-size:12px;margin-bottom:8px}.icon-button{background:#f2f2f5}.number{font-size:44px;font-weight:600;letter-spacing:-.06em}.meter{display:flex;overflow:hidden;background:#eae8ee;border-radius:8px;height:8px;margin:12px 0}.meter i{background:#8980b0}.datum{display:flex;justify-content:space-between;gap:14px;padding:10px 0;border-bottom:1px solid #eeeef2;font-size:14px;overflow-wrap:anywhere}.datum span:last-child{text-align:right;color:var(--muted)}details{padding:12px 0}details summary{cursor:pointer}details p{font-size:13px;color:var(--muted);overflow-wrap:anywhere}#storage-note{color:#886328;font-size:12px;text-align:center}#storage-note:empty{display:none}
+@media(max-width:790px){.app{grid-template-columns:178px minmax(0,1fr)}.content{padding:24px 18px}.hero{padding:24px}.hero-copy{width:75%}.toolbar{padding:0 18px}}
+@media(max-width:600px){.app{display:block}.rail{position:static;height:auto;padding:10px 14px;flex-direction:row;flex-wrap:wrap;align-items:center;gap:5px;border-right:0;border-bottom:1px solid var(--line)}.brand{padding:0;flex:1;font-size:18px}.rail-group{padding:0;font-size:0}.rail nav{order:4;width:100%;display:flex;overflow:auto}.rail nav button{width:auto;flex:none}.rail-foot,.library-label{display:none}#market-nav{width:auto;font-size:12px}.toolbar{height:47px}.content{padding:18px 14px}.hero{padding:23px 19px}.hero h1{font-size:28px}.hero-copy{width:78%}.market-grid{grid-template-columns:1fr}.segment button{padding:6px 14px}.row{padding:13px}.master{margin-top:16px}.rail-group .plus{font-size:20px}}
+
+/* The workspace cover changes palette with the scene. */
+:root {
+  --indigo: #4858ae;
+  --line: #e4e6ea;
+  --muted: #636975;
+  background: #fdfdfd;
+}
+.rail { background: linear-gradient(148deg,#f4f5f7,#f5f5f8 75%,#eeeff5); }
+.brand { font-weight: 670; padding-bottom: 36px; }
+.brand img { border-radius: 9px; box-shadow: 0 1px 5px #1112; }
+.create-wide { display:flex; align-items:center; gap:9px; border:1px solid #dcdfe5; border-radius:9px; background:#ffffffc9; margin:0 5px 10px; padding:8px 10px; font-size:13px; text-align:left; }
+.create-wide b { font-weight:400; font-size:19px; line-height:1; }
+#create { display:none; }
+.nav-item.active { background:#e1e5ef; color:#303b58; }
+.content { max-width:1120px; padding-top:30px; }
+.toolbar { background:#ffffffdb; }
+.hero {
+  --sky: #25345a; --haze:#bd8295; --mountain:#494263; --foreground:#2f314c;
+  min-height:228px; display:flex; align-items:center; padding:34px 38px;
+  border:none; border-radius:22px; color:#fff;
+  background: radial-gradient(ellipse at 85% 88%,var(--haze),transparent 60%),linear-gradient(112deg,#171e33,var(--sky) 65%,var(--haze));
+}
+.hero::after { content:''; position:absolute; inset:0; z-index:1; background:linear-gradient(90deg,#192035b3,transparent 88%); }
+.hero-copy { width:70%; }
+.hero h1 { font-size:clamp(30px,3.7vw,49px); margin:8px 0 10px; overflow-wrap:anywhere; }
+.hero .eyebrow { color:#e4e8ff; font-size:12px; letter-spacing:.12em; }
+.hero p { color:#f7f4ff; max-width:48ch; }
+.master { color:#fff; background:#ffffff12; border:1px solid #ffffff3b; border-radius:30px; padding:4px 10px; margin-top:19px; }
+.master .dot { background:#bbe2d1; }
+.landscape,.ridge { position:absolute; inset:0; }
+.landscape { pointer-events:none; overflow:hidden; }
+.moon { position:absolute; right:13%; top:16%; width:52px; aspect-ratio:1; border-radius:50%; background:linear-gradient(145deg,#fff4dd,#f8dbd5); box-shadow:0 0 64px 12px #ffdab233; }
+.ridge.far { background:linear-gradient(158deg,#968d9e,var(--mountain) 76%); clip-path:polygon(0 100%,0 81%,29% 72%,41% 78%,64% 49%,71% 57%,81% 37%,89% 44%,100% 26%,100% 100%); }
+.ridge.near { background:linear-gradient(160deg,var(--mountain),var(--foreground) 76%); clip-path:polygon(0 100%,0 85%,22% 79%,42% 89%,53% 83%,68% 89%,85% 60%,94% 65%,100% 51%,100% 100%); }
+.segment { margin:24px 0 0; }
+.pending { display:flex; align-items:center; gap:14px; padding:17px 19px; background:#f7f8fc; margin-top:22px; }
+.request-copy { flex:1; }
+.request-copy p { margin:4px 0 0; font-size:13px; }
+.primary { background:#38426f; }
+.primary:hover:enabled { background:#273153; }
+.secondary { background:#e9ebf3; }
+.primary,.secondary,.pick,.create-wide,.row { transition:background .15s ease,box-shadow .15s ease; }
+.usage:hover,.create-wide:hover { background:#f4f5fa; }
+.badge { background:#edf4f0; border-radius:20px; padding:2px 9px; }
+.filters { display:flex; gap:6px; flex-wrap:wrap; }
+.filter,.pick { border-radius:15px; padding:5px 12px; font-size:13px; }
+.filter[aria-pressed=true] { background:#292e3c; color:white; }
+.filter[aria-pressed=false]:hover { background:#f1f2f5; }
+.product { border:1px solid var(--line); border-radius:18px; background:linear-gradient(152deg,color-mix(in srgb,var(--pale) 22%,white),white 72%); gap:6px; }
+.product.selected { border-color:#aab5d2; }
+.product-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:7px; }
+.product-head .tile { width:48px; height:48px; font-size:28px; border-radius:14px; }
+.pick { color:#414c75; background:#ebeef6; }
+.pick[aria-pressed=true] { background:#dce3f3; }
+.product details { margin-top:auto; padding:9px 0 0; border-top:1px solid var(--line); font-size:12px; color:var(--muted); }
+.product p { color:var(--muted); line-height:1.6; }
+.market-footer { display:flex; gap:8px; align-items:center; position:sticky; bottom:14px; margin-top:18px; padding:12px 14px; border:1px solid var(--line); border-radius:15px; background:#fffffff2; backdrop-filter:blur(16px); box-shadow:0 3px 18px #2639580d; }
+.market-footer span { margin-right:auto; }
+.choice { cursor:pointer; }
+.choice:has(:checked) { background:#f5f6fb; }
+#breadcrumb { overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
+@media(max-width:600px) {
+  .create-wide { display:none; }
+  #create { display:grid; }
+  .hero { padding:23px; min-height:210px; }
+  .hero-copy { width:88%; }
+  .moon { width:34px; right:6%; top:11%; }
+  .pending { display:grid; grid-template-columns:38px 1fr; }
+  .pending button { grid-column:2; justify-self:start; }
+  .market-footer { bottom:6px; }
+}
+@media(prefers-reduced-motion:reduce) { *,*::after { transition:none !important; } }
+
+#language { margin-left:auto; flex:none; border:1px solid var(--line); border-radius:14px; padding:5px 8px; background:white; color:inherit; font:inherit; cursor:pointer; }
+#language:focus-visible { outline:3px solid #998be2; outline-offset:2px; }
+@media(max-width:600px) { .toolbar { gap:6px; } }
+
+.welcome-action { margin-top:18px; }
+</style></head>
+<body>
+<div class="app">
+<aside class="rail">
+  <div class="brand"><img src="data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiPz4KPHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMDI0IiBoZWlnaHQ9IjEwMjQiIHZpZXdCb3g9IjAgMCAxMDI0IDEwMjQiPgogIDxkZWZzPgogICAgPGNsaXBQYXRoIGlkPSJzcXVpcmNsZSI+CiAgICAgIDxyZWN0IHg9IjAiIHk9IjAiIHdpZHRoPSIxMDI0IiBoZWlnaHQ9IjEwMjQiIHJ4PSIyMjgiIHJ5PSIyMjgiLz4KICAgIDwvY2xpcFBhdGg+CiAgPC9kZWZzPgogIDxyZWN0IHg9IjAiIHk9IjAiIHdpZHRoPSIxMDI0IiBoZWlnaHQ9IjEwMjQiIHJ4PSIyMjgiIHJ5PSIyMjgiIGZpbGw9IiNGRkZGRkYiLz4KICA8ZyBjbGlwLXBhdGg9InVybCgjc3F1aXJjbGUpIj4KICAgIDxwYXRoIGQ9Ik01MDAuODMwMTg4Njc5MjQ1MyA4OTIuMFE1MDAuODMwMTg4Njc5MjQ1MyA4MDQuMTUwOTQzMzk2MjI2NCA0OTcuNjYwMzc3MzU4NDkwNTYgNzI1LjM1ODQ5MDU2NjAzNzdRNDk0LjQ5MDU2NjAzNzczNTg1IDY0Ni41NjYwMzc3MzU4NDkgNDg5LjA1NjYwMzc3MzU4NDg3IDU3Ni44MzAxODg2NzkyNDUyUTQzMy44MTEzMjA3NTQ3MTcgNjQ4LjM3NzM1ODQ5MDU2NTkgMzkzLjk2MjI2NDE1MDk0MzQgNzA5Ljk2MjI2NDE1MDk0MzRRMzU0LjExMzIwNzU0NzE2OTggNzcxLjU0NzE2OTgxMTMyMDcgMzI2LjAzNzczNTg0OTA1NjU2IDgyMC40NTI4MzAxODg2NzkyUTI3Ni4yMjY0MTUwOTQzMzk2IDczOS44NDkwNTY2MDM3NzM1IDE4Ny40NzE2OTgxMTMyMDc1NCA2ODEuODg2NzkyNDUyODMwMlEyMzYuMzc3MzU4NDkwNTY2MDIgNjUzLjgxMTMyMDc1NDcxNjkgMjk3LjUwOTQzMzk2MjI2NDE1IDYxMy45NjIyNjQxNTA5NDM0UTM1OC42NDE1MDk0MzM5NjIyNiA1NzQuMTEzMjA3NTQ3MTY5NyA0MzEuMDk0MzM5NjIyNjQxNSA1MTguODY3OTI0NTI4MzAxOFEzNDEuNDMzOTYyMjY0MTUwOSA1MzAuNjQxNTA5NDMzOTYyMyAyNjkuODg2NzkyNDUyODMwMTUgNTQ1LjU4NDkwNTY2MDM3NzNRMTk4LjMzOTYyMjY0MTUwOTQgNTYwLjUyODMwMTg4Njc5MjQgMTQ0LjAgNTc1LjkyNDUyODMwMTg4NjhRMTU0Ljg2NzkyNDUyODMwMTg3IDUyNC4zMDE4ODY3OTI0NTI3IDE1NC44Njc5MjQ1MjgzMDE4NyA0NzUuMzk2MjI2NDE1MDk0M1ExNTQuODY3OTI0NTI4MzAxODcgNDI2LjQ5MDU2NjAzNzczNTggMTQ0LjAgMzgwLjMwMTg4Njc5MjQ1Mjc2UTE5MS45OTk5OTk5OTk5OTk5NyAzOTMuODg2NzkyNDUyODMwMTUgMjUyLjY3OTI0NTI4MzAxODg3IDQwNy4wMTg4Njc5MjQ1MjgyNVEzMTMuMzU4NDkwNTY2MDM3NzQgNDIwLjE1MDk0MzM5NjIyNjM1IDM4Ny42MjI2NDE1MDk0MzM5NSA0MzEuMDE4ODY3OTI0NTI4MjVRMzI4Ljc1NDcxNjk4MTEzMjA1IDM4Ny41NDcxNjk4MTEzMjA3IDI3Ny41ODQ5MDU2NjAzNzczMyAzNTQuOTQzMzk2MjI2NDE1MVEyMjYuNDE1MDk0MzM5NjIyNiAzMjIuMzM5NjIyNjQxNTA5NCAxODMuODQ5MDU2NjAzNzczNTYgMjk3Ljg4Njc5MjQ1MjgzMDE1UTI3Mi42MDM3NzM1ODQ5MDU2NCAyMzkuMDE4ODY3OTI0NTI4MyAzMjIuNDE1MDk0MzM5NjIyNiAxNTkuMzIwNzU0NzE2OTgxMTNRMzQ3Ljc3MzU4NDkwNTY2MDM2IDIwMy42OTgxMTMyMDc1NDcwNyAzODMuNTQ3MTY5ODExMzIwNyAyNTkuMzk2MjI2NDE1MDk0MjVRNDE5LjMyMDc1NDcxNjk4MTEgMzE1LjA5NDMzOTYyMjY0MTUgNDY3LjMyMDc1NDcxNjk4MTEgMzc5LjM5NjIyNjQxNTA5NDNRNDU1LjU0NzE2OTgxMTMyMDcgMzAwLjYwMzc3MzU4NDkwNTY0IDQ0MS45NjIyNjQxNTA5NDM0IDIzNy4yMDc1NDcxNjk4MTEyOFE0MjguMzc3MzU4NDkwNTY2IDE3My44MTEzMjA3NTQ3MTY5MiA0MTQuNzkyNDUyODMwMTg4NjcgMTI0LjBRNDYwLjk4MTEzMjA3NTQ3MTcgMTM0Ljg2NzkyNDUyODMwMTg0IDUwOS44ODY3OTI0NTI4MzAxNSAxMzQuODY3OTI0NTI4MzAxODRRNTU4Ljc5MjQ1MjgzMDE4ODcgMTM0Ljg2NzkyNDUyODMwMTg0IDYxMC40MTUwOTQzMzk2MjI2IDEyNC4wUTU5NS4wMTg4Njc5MjQ1MjgyIDE4MC4xNTA5NDMzOTYyMjYzNSA1ODAuMDc1NDcxNjk4MTEzMSAyNTMuOTYyMjY0MTUwOTQzMzVRNTY1LjEzMjA3NTQ3MTY5OCAzMjcuNzczNTg0OTA1NjYwMzYgNTUyLjQ1MjgzMDE4ODY3OTIgNDIxLjA1NjYwMzc3MzU4NDg3UTYwNy42OTgxMTMyMDc1NDcxIDM3NC44Njc5MjQ1MjgzMDE4NCA2NjcuNDcxNjk4MTEzMjA3NSAzMTkuNjIyNjQxNTA5NDMzOVE3MjcuMjQ1MjgzMDE4ODY3OSAyNjQuMzc3MzU4NDkwNTY1OTQgNzkxLjU0NzE2OTgxMTMyMDggMjAwLjA3NTQ3MTY5ODExMzEyTDgwNy44NDkwNTY2MDM3NzM1IDIxNi4zNzczNTg0OTA1NjU5NFE3NDMuNTQ3MTY5ODExMzIwOCAyODAuNjc5MjQ1MjgzMDE4OCA2ODkuMjA3NTQ3MTY5ODExNCAzMzkuOTk5OTk5OTk5OTk5OTRRNjM0Ljg2NzkyNDUyODMwMiAzOTkuMzIwNzU0NzE2OTgxMDcgNTg3Ljc3MzU4NDkwNTY2MDMgNDU0LjU2NjAzNzczNTg0OVE2NTkuMzIwNzU0NzE2OTgxMSA0NTkuOTk5OTk5OTk5OTk5OTQgNzQwLjM3NzM1ODQ5MDU2NiA0NjMuMTY5ODExMzIwNzU0NjZRODIxLjQzMzk2MjI2NDE1MSA0NjYuMzM5NjIyNjQxNTA5NCA5MTIuMCA0NjYuMzM5NjIyNjQxNTA5NFY0ODkuODg2NzkyNDUyODMwMTVRODE0LjE4ODY3OTI0NTI4MzEgNDg5Ljg4Njc5MjQ1MjgzMDE1IDcyNy42OTgxMTMyMDc1NDcyIDQ5My41MDk0MzM5NjIyNjQxUTY0MS4yMDc1NDcxNjk4MTEzIDQ5Ny4xMzIwNzU0NzE2OTgwNCA1NjYuMDM3NzM1ODQ5MDU2NiA1MDQuMzc3MzU4NDkwNTY2UTYxNC45NDMzOTYyMjY0MTUyIDU2My4yNDUyODMwMTg4Njc5IDY3NC4yNjQxNTA5NDMzOTYzIDYyOC40NTI4MzAxODg2NzkyUTczMy41ODQ5MDU2NjAzNzc0IDY5My42NjAzNzczNTg0OTA2IDgwNC4yMjY0MTUwOTQzMzk3IDc2My4zOTYyMjY0MTUwOTQ0TDc4Ny45MjQ1MjgzMDE4ODY4IDc3OS42OTgxMTMyMDc1NDcyUTcyMC4wIDcxMi42NzkyNDUyODMwMTg5IDY1Ny41MDk0MzM5NjIyNjQxIDY1NS4xNjk4MTEzMjA3NTQ3UTU5NS4wMTg4Njc5MjQ1MjgyIDU5Ny42NjAzNzczNTg0OTA2IDUzNy45NjIyNjQxNTA5NDM0IDU0OS42NjAzNzczNTg0OTA2UTUzMS42MjI2NDE1MDk0MzQgNjIzLjkyNDUyODMwMTg4NjggNTI4LjAgNzA5LjUwOTQzMzk2MjI2NDFRNTI0LjM3NzM1ODQ5MDU2NiA3OTUuMDk0MzM5NjIyNjQxNCA1MjQuMzc3MzU4NDkwNTY2IDg5Mi4wWiIgZmlsbD0iI0IwOTVEQiIgZmlsbC1ydWxlPSJub256ZXJvIi8+CiAgPC9nPgo8L3N2Zz4K" alt="" width="34" height="34">an-agent</div>
+  <div class="rail-group"><span id="space-label">工作空间</span><button id="create" class="plus" title="创建 Workspace" aria-label="创建 Workspace">＋</button></div>
+  <button id="create-wide" class="create-wide"><b aria-hidden="true">＋</b> <span id="new-label">新建工作空间</span></button><nav id="spaces" aria-label="选择 Workspace"></nav>
+  <div id="library-label" class="rail-group library-label">资源库</div>
+  <button id="market-nav" class="nav-item"><span class="grid-mark" aria-hidden="true">⊞</span>Spool Market</button>
+  <div class="rail-foot"><span class="dot"></span><span id="demo-label">本地工作台</span></div>
+</aside>
+<main>
+  <header class="toolbar"><span id="breadcrumb"></span><select id="language" aria-label="界面语言 / Interface language"><option value="zh-CN" lang="zh-CN">简体中文</option><option value="en" lang="en">English</option></select><button id="usage" class="usage" aria-label="查看当前工作区 Token 用量"><span class="usage-bars" aria-hidden="true">▂▅▇</span><span id="usage-value"></span></button></header>
+  <div id="content" class="content"></div>
+  <p id="storage-note" role="status"></p>
+</main></div>
+<dialog id="sheet" aria-labelledby="sheet-title"><div class="modal-head"><span id="sheet-context"></span><button id="close" class="icon-button" aria-label="关闭">×</button></div><div id="sheet-body"></div></dialog>
+<template id="hero-art"><div class="landscape" aria-hidden="true"><i class="moon"></i><i class="ridge far"></i><i class="ridge near"></i></div></template>
+<script>"use strict";
+const languageKey = 'an-agent.workbench.language';
+function initialLanguage() {
+    try {
+        const saved = localStorage.getItem(languageKey);
+        if (saved === 'zh-CN' || saved === 'en')
+            return saved;
+    }
+    catch { /* Continue with browser preferences. */ }
+    for (const tag of navigator.languages?.length ? navigator.languages : [navigator.language]) {
+        if (/^zh(?:-|$)/i.test(tag))
+            return 'zh-CN';
+        if (/^en(?:-|$)/i.test(tag))
+            return 'en';
+    }
+    return 'en';
+}
+let language = initialLanguage();
+const t = (zh, en) => language === 'en' ? en : zh;
+const source = window.workbenchSource;
+const key = source?.storageKey ?? 'an-agent.workbench.v1';
+const catalog = source?.catalog ?? [];
+const byId = (id) => catalog.find(item => item.id === id);
+const spoolName = (id) => id === 'master' ? 'Master Agent' : byId(id).name;
+const format = (n) => n.toLocaleString(language);
+function blank(id, name, intent, installed) {
+    return { id, name, intent, installed, artifacts: [], receipts: [], usage: [], integration: 'none' };
+}
+function valid(w) {
+    const text = (x) => typeof x === 'string';
+    const known = (id) => catalog.some(m => m.id === id);
+    const endpoint = (id) => id === 'master' || known(id);
+    return !!w && [w.id, w.name, w.intent].every(text) && Array.isArray(w.installed) && w.installed.every(known)
+        && Array.isArray(w.artifacts) && w.artifacts.every(a => a && known(a.spool) && [a.file, a.revision, a.agent].every(text))
+        && Array.isArray(w.receipts) && w.receipts.every(r => r && endpoint(r.from) && endpoint(r.to) && [r.file, r.revision].every(text))
+        && Array.isArray(w.usage) && w.usage.every(u => u && text(u.agent) && [u.input, u.output].every(n => Number.isSafeInteger(n) && n >= 0))
+        && ['pending', 'done', 'none'].includes(w.integration);
+}
+function restore() {
+    try {
+        const data = JSON.parse(localStorage.getItem(key) ?? 'null');
+        if (data?.version === 1 && Array.isArray(data.spaces) && data.spaces.length && data.spaces.every(valid) && data.spaces.some((w) => w.id === data.active))
+            return data;
+    }
+    catch { /* Storage may be unavailable for local HTML. */ }
+    return source?.initialState() ?? { version: 1, active: '', spaces: [] };
+}
+const store = restore();
+const ws = () => store.spaces.find(w => w.id === store.active);
+function save() {
+    try {
+        localStorage.setItem(key, JSON.stringify(store));
+    }
+    catch {
+        get('storage-note').textContent = t('本窗口可继续使用，当前浏览器无法保存本地工作区。', 'Browser storage is unavailable. Changes last for this session.');
+    }
+}
+function load(w, id) {
+    if (w.installed.includes(id))
+        return;
+    w.installed.push(id);
+    source?.afterLoad?.(w, id);
+}
+function get(id) { return document.getElementById(id); }
+function node(tag, cls = '', text = '') {
+    const el = document.createElement(tag);
+    if (cls)
+        el.className = cls;
+    if (text)
+        el.textContent = text;
+    return el;
+}
+function button(text, cls, fn) {
+    const b = node('button', cls, text);
+    b.type = 'button';
+    b.onclick = fn;
+    return b;
+}
+function tile(m) { const t = node('span', 'tile ' + m.theme, m.glyph); t.setAttribute('aria-hidden', 'true'); return t; }
+function datum(a, b) {
+    const d = node('div', 'datum');
+    d.append(node('span', '', a), node('span', '', b));
+    return d;
+}
+function heading(title, action) {
+    const h = node('div', 'section-head');
+    h.append(node('h2', '', title));
+    if (action)
+        h.append(action);
+    return h;
+}
+function record(title, detail) {
+    const d = node('details');
+    d.append(node('summary', '', title), node('p', '', detail));
+    return d;
+}
+const main = get('content'), sheet = get('sheet'), body = get('sheet-body');
+let page = 'space', tab = 'overview';
+function modal(context, title) {
+    get('sheet-context').textContent = context;
+    const heading = node('h2', '', title);
+    heading.id = 'sheet-title';
+    body.replaceChildren(heading);
+    if (!sheet.open)
+        sheet.showModal();
+}
+get('close').onclick = () => sheet.close();
+sheet.onclick = e => { if (e.target === sheet) {
+    const r = sheet.getBoundingClientRect();
+    if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom)
+        sheet.close();
+} };
+function total(w) { return w.usage.reduce((s, u) => s + u.input + u.output, 0); }
+function usageView() {
+    const w = ws();
+    modal(w.name, t('Token 用量', 'Token usage'));
+    if (!w.usage.length) {
+        body.append(node('p', 'empty', t('暂无用量记录。', 'No usage recorded yet.')));
+        return;
+    }
+    const tokens = total(w), input = w.usage.reduce((s, u) => s + u.input, 0);
+    body.append(node('p', 'sub', t('累计用量', 'Total usage')), node('div', 'number', format(tokens)));
+    const bar = node('div', 'meter'), part = node('i');
+    part.style.width = (100 * input / (tokens || 1)) + '%';
+    bar.append(part);
+    body.append(bar, datum(t('输入', 'Input'), format(input)), datum(t('输出', 'Output'), format(tokens - input)), heading(t('按 Agent', 'By agent')));
+    for (const agent of new Set(w.usage.map(u => u.agent))) {
+        const records = w.usage.filter(u => u.agent === agent);
+        body.append(datum(agent, format(records.reduce((s, u) => s + u.input + u.output, 0))));
+    }
+}
+function selectedCount(n) { return t('已选 ' + n + ' 个', n + ' selected'); }
+function createView() {
+    modal('Workspace', t('创建工作空间', 'New workspace'));
+    const form = node('form');
+    const name = node('input', 'field');
+    name.id = 'new-name';
+    name.required = true;
+    name.maxLength = 64;
+    name.placeholder = t('工作区名称', 'Workspace name');
+    const intent = node('textarea', 'field');
+    intent.id = 'new-intent';
+    intent.maxLength = 1200;
+    intent.placeholder = t('希望 Master Agent 完成什么？', 'What should the master agent deliver?');
+    intent.rows = 2;
+    function label(text, id) { const l = node('label', 'form-label', text); l.htmlFor = id; return l; }
+    form.append(label(t('名称', 'Name'), name.id), name, label(t('目标（可选）', 'Goal (optional)'), intent.id), intent, node('p', 'form-label', t('选择 Spool', 'Choose Spools')));
+    if (!catalog.length)
+        form.append(node('p', 'sub', t('当前没有可用的 Spool，可先创建工作区。', 'No Spools are available yet. You can still create this workspace.')));
+    const choices = catalog.map(m => {
+        const l = node('label', 'choice'), input = node('input');
+        input.type = 'checkbox';
+        input.value = m.id;
+        const copy = node('span', 'row-text');
+        copy.append(node('strong', '', m.name), node('small', '', m.input + ' → ' + m.output));
+        l.append(tile(m), copy, input);
+        form.append(l);
+        return input;
+    });
+    const footer = node('div', 'footer-actions'), count = node('span', 'sub', selectedCount(0));
+    form.onchange = () => count.textContent = selectedCount(choices.filter(c => c.checked).length);
+    const submit = node('button', 'primary', t('创建 Workspace', 'Create workspace'));
+    submit.type = 'submit';
+    footer.append(count, submit);
+    form.append(footer);
+    form.onsubmit = e => {
+        e.preventDefault();
+        const title = name.value.trim();
+        if (!title || store.spaces.some(w => w.name === title)) {
+            name.setCustomValidity(title ? t('已有同名工作区', 'A workspace with this name already exists.') : t('请输入工作区名称', 'Enter a workspace name.'));
+            name.reportValidity();
+            return;
+        }
+        const w = blank(crypto.randomUUID(), title, intent.value.trim(), choices.filter(c => c.checked).map(c => c.value));
+        store.spaces.push(w);
+        store.active = w.id;
+        page = 'space';
+        tab = 'overview';
+        save();
+        sheet.close();
+        render();
+    };
+    name.oninput = () => name.setCustomValidity('');
+    body.append(form);
+    name.focus();
+}
+function artifactList(items) {
+    const box = node('div', 'panel');
+    if (!items.length)
+        box.append(node('span', 'sub', t('暂无已验收的产物。', 'No accepted artifacts yet.')));
+    for (const a of items)
+        box.append(record(a.file, spoolName(a.spool) + ' · ' + a.agent + t(' · 已验收 · ', ' · Accepted · ') + a.revision));
+    return box;
+}
+function receiptList(items) {
+    const box = node('div', 'panel');
+    if (!items.length)
+        box.append(node('span', 'sub', t('暂无传递记录。', 'No transfers yet.')));
+    for (const r of items)
+        box.append(record(r.file + '　·　' + spoolName(r.from) + ' → ' + spoolName(r.to), t('已确认消费 · ', 'Consumption confirmed · ') + r.revision));
+    return box;
+}
+function spoolView(id, request = false) {
+    const w = ws(), m = byId(id), installed = w.installed.includes(id);
+    modal(w.name + '　/　' + (request ? t('加载申请', 'Load request') : 'Spool'), m.name);
+    body.append(node('p', 'intro', m.description), datum(t('输入', 'Input'), m.input), datum(t('输出', 'Output'), m.output));
+    if (m.version)
+        body.append(datum(t('版本', 'Version'), m.version));
+    if (request)
+        body.append(datum(t('申请方', 'Requested by'), 'Master Agent'));
+    if (installed) {
+        const products = w.artifacts.filter(a => a.spool === id);
+        body.append(datum(t('运行状态', 'Status'), t('已加载 · 空闲', 'Loaded · Idle')), datum(t('最近使用', 'Last used by'), products.length ? products.at(-1).agent : t('尚未运行', 'No runs yet')), heading(t('产物', 'Artifacts')), artifactList(products), heading(t('传递', 'Transfers')), receiptList(w.receipts.filter(r => r.from === id || r.to === id)));
+    }
+    const f = node('div', 'footer-actions');
+    f.append(node('span', 'sub', installed ? t('移除后保留产物与记录', 'Artifacts and history are kept after removal.') : t('仅对当前 Workspace 生效', 'Applies to this workspace only.')));
+    f.append(button(installed ? t('移除 Spool', 'Remove Spool') : request ? t('批准并加载', 'Approve and load') : t('加入工作区', 'Add to workspace'), installed ? 'secondary' : 'primary', () => {
+        if (installed)
+            w.installed = w.installed.filter(x => x !== id);
+        else
+            load(w, id);
+        save();
+        sheet.close();
+        render();
+    }));
+    body.append(f);
+}
+let marketDraft = { selected: new Set(), category: '', search: '' };
+function market() {
+    marketDraft = { selected: new Set(ws().installed), category: '', search: '' };
+    page = 'market';
+    render();
+}
+function marketView() {
+    const w = ws();
+    main.append(node('div', 'eyebrow', t('资源库', 'Library')), node('h1', '', 'Spool Market'), node('p', 'intro', t('为「' + w.name + '」选择可用能力。', 'Choose capabilities for ' + w.name + '.')));
+    if (!catalog.length) {
+        main.append(node('p', 'empty', t('尚无可用的 Spool。', 'No Spools available yet.')), button(t('返回工作区', 'Back to workspace'), 'secondary', () => { page = 'space'; render(); }));
+        return;
+    }
+    const search = node('input', 'search');
+    search.type = 'search';
+    search.placeholder = t('搜索 Spool、输入或输出', 'Search Spools, inputs or outputs');
+    search.setAttribute('aria-label', search.placeholder);
+    const grid = node('div', 'market-grid'), filters = node('div', 'filters');
+    const selected = marketDraft.selected;
+    let category = marketDraft.category;
+    search.value = marketDraft.search;
+    const footer = node('div', 'market-footer'), summary = node('span', 'sub');
+    const back = button(t('返回工作区', 'Back to workspace'), 'secondary', () => { page = 'space'; render(); });
+    const apply = button(t('保存选择', 'Save selection'), 'primary', () => {
+        w.installed = w.installed.filter(id => selected.has(id));
+        for (const id of selected)
+            if (!w.installed.includes(id))
+                load(w, id);
+        save();
+        page = 'space';
+        tab = 'overview';
+        render();
+    });
+    function update() {
+        const changed = w.installed.length !== selected.size || w.installed.some(id => !selected.has(id));
+        summary.textContent = selectedCount(selected.size);
+        back.textContent = changed ? t('放弃更改', 'Discard changes') : t('返回工作区', 'Back to workspace');
+        apply.disabled = !changed;
+    }
+    function results() {
+        grid.replaceChildren();
+        const q = search.value.trim().toLowerCase();
+        for (const m of catalog.filter(m => (!category || m.theme === category) && [m.name, m.category, m.description, m.input, m.output].join(' ').toLowerCase().includes(q))) {
+            const card = node('article', 'product ' + m.theme);
+            const head = node('div', 'product-head'), select = button('', 'pick', () => {
+                if (selected.has(m.id))
+                    selected.delete(m.id);
+                else
+                    selected.add(m.id);
+                refresh();
+                update();
+            });
+            function refresh() {
+                const on = selected.has(m.id);
+                select.textContent = on ? t('✓ 已选', '✓ Selected') : t('＋ 选择', '+ Select');
+                select.setAttribute('aria-label', m.name + ' · ' + select.textContent);
+                select.setAttribute('aria-pressed', String(on));
+                card.classList.toggle('selected', on);
+            }
+            refresh();
+            head.append(tile(m), select);
+            const spec = record(t('能力声明', 'Capability manifest'), m.input + ' → ' + m.output + (m.version ? ' · v' + m.version : ''));
+            card.append(head, node('h3', '', m.name), node('p', '', m.description), spec);
+            grid.append(card);
+        }
+        if (!grid.children.length)
+            grid.append(node('p', 'empty', t('没有匹配的 Spool。', 'No matching Spools.')));
+    }
+    for (const [id, label] of [['', t('全部', 'All')], ...catalog.map(m => [m.theme, m.category])]) {
+        const chip = button(label, 'filter', () => {
+            marketDraft.category = category = id;
+            for (const item of Array.from(filters.children))
+                item.setAttribute('aria-pressed', String(item === chip));
+            results();
+        });
+        chip.setAttribute('aria-pressed', String(id === category));
+        filters.append(chip);
+    }
+    search.oninput = () => { marketDraft.search = search.value; results(); };
+    footer.append(summary, back, apply);
+    main.append(search, filters, grid, footer);
+    update();
+    results();
+}
+function overview(w) {
+    const request = source?.request?.(w);
+    if (request && catalog.some(m => m.id === request.spool)) {
+        const candidate = byId(request.spool);
+        const panel = node('article', 'panel pending');
+        const message = node('div', 'request-copy');
+        message.append(node('h3', '', t('允许加载「' + candidate.name + '」？', 'Load ' + candidate.name + '?')), node('p', '', request.reason));
+        panel.append(tile(candidate), message, button(t('审阅申请', 'Review request'), 'secondary', () => spoolView(candidate.id, true)));
+        main.append(panel);
+    }
+    main.append(heading(t('已加载的 Spool · ', 'Loaded Spools · ') + w.installed.length, button(t('选择 Spool　＋', 'Choose Spools +'), 'link', market)));
+    const list = node('div', 'list');
+    if (!w.installed.length)
+        list.append(node('p', 'empty', t('尚未加载 Spool。前往 Market 为这条流水线选择能力。', 'No Spools loaded. Choose capabilities for this pipeline in the Market.')));
+    for (const id of w.installed) {
+        const m = byId(id), a = w.artifacts.filter(a => a.spool === id), row = button('', 'row', () => spoolView(id)), text = node('span', 'row-text');
+        text.append(node('strong', '', m.name), node('small', '', a.length ? a.at(-1).agent + ' · ' + t(a.length + ' 件产物', a.length + (a.length === 1 ? ' artifact' : ' artifacts')) : t('尚未运行', 'No runs yet')));
+        row.append(tile(m), text, node('span', 'badge', t('空闲', 'Idle')), node('span', 'chevron', '›'));
+        list.append(row);
+    }
+    main.append(list);
+}
+function workspaceView() {
+    const w = ws(), hero = node('header', 'hero'), copy = node('div', 'hero-copy');
+    const status = node('span', 'master');
+    status.append(node('i', 'dot'), document.createTextNode('Master Agent · ' + (w.integration === 'pending' ? t('等待加载批准', 'Awaiting approval') : w.integration === 'done' ? t('已完成交付', 'Delivered') : t('就绪', 'Ready'))));
+    copy.append(node('div', 'eyebrow', 'Workspace'), node('h1', '', w.name));
+    if (w.intent)
+        copy.append(node('p', '', w.intent));
+    copy.append(status);
+    hero.append(copy, get('hero-art').content.cloneNode(true));
+    main.append(hero);
+    const tabs = node('div', 'segment');
+    for (const [name, label] of [['overview', t('概览', 'Overview')], ['artifacts', t('产物', 'Artifacts')], ['transfers', t('传递', 'Transfers')]]) {
+        const b = button(label, tab === name ? 'active' : '', () => { tab = name; render(); main.querySelector('.segment .active')?.focus(); });
+        b.setAttribute('aria-pressed', String(tab === name));
+        tabs.append(b);
+    }
+    main.append(tabs);
+    if (tab === 'overview')
+        overview(w);
+    if (tab === 'artifacts')
+        main.append(heading(t('已验收产物', 'Accepted artifacts')), artifactList(w.artifacts));
+    if (tab === 'transfers')
+        main.append(heading(t('产物传递', 'Artifact transfers')), receiptList(w.receipts));
+}
+function render() {
+    document.documentElement.lang = language;
+    document.title = t('an-agent · 工作台', 'an-agent · Workbench');
+    get('space-label').textContent = t('工作空间', 'Workspaces');
+    get('new-label').textContent = t('新建工作空间', 'New workspace');
+    get('library-label').textContent = t('资源库', 'Library');
+    get('demo-label').textContent = source ? t('本地演示', 'Local demo') : t('本地工作台', 'Local workbench');
+    get('create').title = t('创建工作空间', 'Create workspace');
+    get('create').setAttribute('aria-label', get('create').title);
+    get('spaces').setAttribute('aria-label', t('选择工作空间', 'Choose workspace'));
+    get('usage').setAttribute('aria-label', t('查看当前工作区 Token 用量', 'View workspace token usage'));
+    get('close').setAttribute('aria-label', t('关闭', 'Close'));
+    if (get('storage-note').textContent)
+        get('storage-note').textContent = t('本窗口可继续使用，当前浏览器无法保存本地工作区。', 'Browser storage is unavailable. Changes last for this session.');
+    get('language').value = language;
+    const w = ws(), spaces = get('spaces');
+    spaces.replaceChildren();
+    get('market-nav').disabled = !w;
+    get('usage').disabled = !w;
+    if (!w) {
+        get('breadcrumb').textContent = t('工作台', 'Workbench');
+        get('usage-value').textContent = t('Token 用量 · 0', 'Token usage · 0');
+        main.replaceChildren(node('h1', '', t('创建第一个工作空间', 'Create your first workspace')), node('p', 'intro', t('为流水线设定目标，再选择可用的 Spool。', 'Set a goal for your pipeline and choose the Spools it can use.')), button(t('创建工作空间', 'New workspace'), 'primary welcome-action', createView));
+        return;
+    }
+    for (const space of store.spaces) {
+        const active = space.id === w.id;
+        const b = button('', 'nav-item' + (active ? ' active' : ''), () => { store.active = space.id; page = 'space'; tab = 'overview'; save(); render(); });
+        b.append(node('i', 'space-mark'), node('span', '', space.name));
+        b.setAttribute('aria-pressed', String(active));
+        spaces.append(b);
+    }
+    get('market-nav').classList.toggle('active', page === 'market');
+    get('market-nav').setAttribute('aria-pressed', String(page === 'market'));
+    get('breadcrumb').textContent = w.name + '　/　' + (page === 'market' ? 'Spool Market' : t('工作台', 'Workbench'));
+    get('usage-value').textContent = t('Token 用量　', 'Token usage · ') + format(total(w));
+    main.replaceChildren();
+    if (page === 'market')
+        marketView();
+    else
+        workspaceView();
+}
+get('language').onchange = e => {
+    language = e.currentTarget.value === 'en' ? 'en' : 'zh-CN';
+    try {
+        localStorage.setItem(languageKey, language);
+    }
+    catch { /* Session-only preference. */ }
+    render();
+};
+get('usage').onclick = usageView;
+get('create').onclick = createView;
+get('create-wide').onclick = createView;
+get('market-nav').onclick = market;
+render();
+</script></body></html>

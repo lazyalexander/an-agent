@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light"><title>an-agent · Workspace</title><link rel="icon" href="__APP_ICON__"><style>/* STYLES */</style></head>
+<body>
+<div class="app">
+<aside class="rail">
+  <div class="brand"><img src="__APP_ICON__" alt="" width="34" height="34">an-agent</div>
+  <div class="rail-group"><span id="space-label">工作空间</span><button id="create" class="plus" title="创建 Workspace" aria-label="创建 Workspace">＋</button></div>
+  <button id="create-wide" class="create-wide"><b aria-hidden="true">＋</b> <span id="new-label">新建工作空间</span></button><nav id="spaces" aria-label="选择 Workspace"></nav>
+  <div id="library-label" class="rail-group library-label">资源库</div>
+  <button id="market-nav" class="nav-item"><span class="grid-mark" aria-hidden="true">⊞</span>Spool Market</button>
+  <div class="rail-foot"><span class="dot"></span><span id="demo-label">本地工作台</span></div>
+</aside>
+<main>
+  <header class="toolbar"><span id="breadcrumb"></span><select id="language" aria-label="界面语言 / Interface language"><option value="zh-CN" lang="zh-CN">简体中文</option><option value="en" lang="en">English</option></select><button id="usage" class="usage" aria-label="查看当前工作区 Token 用量"><span class="usage-bars" aria-hidden="true">▂▅▇</span><span id="usage-value"></span></button></header>
+  <div id="content" class="content"></div>
+  <p id="storage-note" role="status"></p>
+</main></div>
+<dialog id="sheet" aria-labelledby="sheet-title"><div class="modal-head"><span id="sheet-context"></span><button id="close" class="icon-button" aria-label="关闭">×</button></div><div id="sheet-body"></div></dialog>
+<template id="hero-art"><div class="landscape" aria-hidden="true"><i class="moon"></i><i class="ridge far"></i><i class="ridge near"></i></div></template>
+<script>/* SCRIPT */</script></body></html>
