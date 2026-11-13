@@ -1,3 +1,4 @@
+declare const translations: Record<string, string>;
 // Local workspace UI. A host may supply its catalog and initial records before startup.
 type Language = 'zh-CN' | 'en';
 const languageKey='an-agent.workbench.language';
@@ -58,7 +59,7 @@ const store=restore();
 const ws=()=>store.spaces.find(w=>w.id===store.active)!;
 function save(){
   try{localStorage.setItem(key,JSON.stringify(store));}
-  catch{get('storage-note').textContent=t('本窗口可继续使用，当前浏览器无法保存本地工作区。','Browser storage is unavailable. Changes last for this session.');}
+  catch{get('storage-note').textContent=t(translations.storageUnavailable,'Browser storage is unavailable. Changes last for this session.');}
 }
 function load(w:Workspace,id:string){
   if(w.installed.includes(id))return;
@@ -100,26 +101,26 @@ sheet.onclick=e=>{if(e.target===sheet){const r=sheet.getBoundingClientRect();if(
 function total(w:Workspace){return w.usage.reduce((s,u)=>s+u.input+u.output,0);}
 function usageView(){
   const w=ws();
-  modal(w.name,t('Token 用量','Token usage'));
-  if(!w.usage.length){body.append(node('p','empty',t('暂无用量记录。','No usage recorded yet.')));return;}
+  modal(w.name,t(translations.tokenUsage,'Token usage'));
+  if(!w.usage.length){body.append(node('p','empty',t(translations.noUsage,'No usage recorded yet.')));return;}
   const tokens=total(w),input=w.usage.reduce((s,u)=>s+u.input,0);
-  body.append(node('p','sub',t('累计用量','Total usage')),node('div','number',format(tokens)));
+  body.append(node('p','sub',t(translations.totalUsage,'Total usage')),node('div','number',format(tokens)));
   const bar=node('div','meter'),part=node('i');part.style.width=(100*input/(tokens||1))+'%';bar.append(part);
-  body.append(bar,datum(t('输入','Input'),format(input)),datum(t('输出','Output'),format(tokens-input)),heading(t('按 Agent','By agent')));
+  body.append(bar,datum(t(translations.input,'Input'),format(input)),datum(t(translations.output,'Output'),format(tokens-input)),heading(t(translations.byAgent,'By agent')));
   for(const agent of new Set(w.usage.map(u=>u.agent))){
     const records=w.usage.filter(u=>u.agent===agent);
     body.append(datum(agent,format(records.reduce((s,u)=>s+u.input+u.output,0))));
   }
 }
-function selectedCount(n:number){return t('已选 '+n+' 个',n+' selected');}
+function selectedCount(n:number){return t(translations.selectedPrefix+n+translations.selectedSuffix,n+' selected');}
 function createView(){
-  modal('Workspace',t('创建工作空间','New workspace'));
+  modal('Workspace',t(translations.createWorkspace,'New workspace'));
   const form=node('form');
-  const name=node('input','field');name.id='new-name';name.required=true;name.maxLength=64;name.placeholder=t('工作区名称','Workspace name');
-  const intent=node('textarea','field');intent.id='new-intent';intent.maxLength=1200;intent.placeholder=t('希望 Master Agent 完成什么？','What should the master agent deliver?');intent.rows=2;
+  const name=node('input','field');name.id='new-name';name.required=true;name.maxLength=64;name.placeholder=t(translations.workspaceName,'Workspace name');
+  const intent=node('textarea','field');intent.id='new-intent';intent.maxLength=1200;intent.placeholder=t(translations.goalPlaceholder,'What should the master agent deliver?');intent.rows=2;
   function label(text:string,id:string){const l=node('label','form-label',text);l.htmlFor=id;return l;}
-  form.append(label(t('名称','Name'),name.id),name,label(t('目标（可选）','Goal (optional)'),intent.id),intent,node('p','form-label',t('选择 Spool','Choose Spools')));
-  if(!catalog.length)form.append(node('p','sub',t('当前没有可用的 Spool，可先创建工作区。','No Spools are available yet. You can still create this workspace.')));
+  form.append(label(t(translations.name,'Name'),name.id),name,label(t(translations.optionalGoal,'Goal (optional)'),intent.id),intent,node('p','form-label',t(translations.chooseSpools,'Choose Spools')));
+  if(!catalog.length)form.append(node('p','sub',t(translations.emptyCatalog,'No Spools are available yet. You can still create this workspace.')));
   const choices=catalog.map(m=>{
     const l=node('label','choice'),input=node('input');input.type='checkbox';input.value=m.id;
     const copy=node('span','row-text');
@@ -128,11 +129,11 @@ function createView(){
   });
   const footer=node('div','footer-actions'),count=node('span','sub',selectedCount(0));
   form.onchange=()=>count.textContent=selectedCount(choices.filter(c=>c.checked).length);
-  const submit=node('button','primary',t('创建 Workspace','Create workspace'));submit.type='submit';footer.append(count,submit);form.append(footer);
+  const submit=node('button','primary',t(translations.create,'Create workspace'));submit.type='submit';footer.append(count,submit);form.append(footer);
   form.onsubmit=e=>{
     e.preventDefault();
     const title=name.value.trim();
-    if(!title||store.spaces.some(w=>w.name===title)){name.setCustomValidity(title?t('已有同名工作区','A workspace with this name already exists.'):t('请输入工作区名称','Enter a workspace name.'));name.reportValidity();return;}
+    if(!title||store.spaces.some(w=>w.name===title)){name.setCustomValidity(title?t(translations.duplicateWorkspace,'A workspace with this name already exists.'):t(translations.enterWorkspaceName,'Enter a workspace name.'));name.reportValidity();return;}
     const w=blank(crypto.randomUUID(),title,intent.value.trim(),choices.filter(c=>c.checked).map(c=>c.value));
     store.spaces.push(w);store.active=w.id;page='space';tab='overview';save();sheet.close();render();
   };
@@ -141,29 +142,29 @@ function createView(){
 }
 function artifactList(items:Artifact[]){
   const box=node('div','panel');
-  if(!items.length)box.append(node('span','sub',t('暂无已验收的产物。','No accepted artifacts yet.')));
-  for(const a of items)box.append(record(a.file,spoolName(a.spool)+' · '+a.agent+t(' · 已验收 · ',' · Accepted · ')+a.revision));
+  if(!items.length)box.append(node('span','sub',t(translations.noArtifacts,'No accepted artifacts yet.')));
+  for(const a of items)box.append(record(a.file,spoolName(a.spool)+' · '+a.agent+t(translations.acceptedSeparator,' · Accepted · ')+a.revision));
   return box;
 }
 function receiptList(items:Receipt[]){
   const box=node('div','panel');
-  if(!items.length)box.append(node('span','sub',t('暂无传递记录。','No transfers yet.')));
-  for(const r of items)box.append(record(r.file+'　·　'+spoolName(r.from)+' → '+spoolName(r.to),t('已确认消费 · ','Consumption confirmed · ')+r.revision));
+  if(!items.length)box.append(node('span','sub',t(translations.noTransfers,'No transfers yet.')));
+  for(const r of items)box.append(record(r.file+'　·　'+spoolName(r.from)+' → '+spoolName(r.to),t(translations.consumptionConfirmed,'Consumption confirmed · ')+r.revision));
   return box;
 }
 function spoolView(id:string,request=false){
   const w=ws(),m=byId(id),installed=w.installed.includes(id);
-  modal(w.name+'　/　'+(request?t('加载申请','Load request'):'Spool'),m.name);
-  body.append(node('p','intro',m.description),datum(t('输入','Input'),m.input),datum(t('输出','Output'),m.output));
-  if(m.version)body.append(datum(t('版本','Version'),m.version));
-  if(request)body.append(datum(t('申请方','Requested by'),'Master Agent'));
+  modal(w.name+'　/　'+(request?t(translations.loadRequest,'Load request'):'Spool'),m.name);
+  body.append(node('p','intro',m.description),datum(t(translations.input,'Input'),m.input),datum(t(translations.output,'Output'),m.output));
+  if(m.version)body.append(datum(t(translations.version,'Version'),m.version));
+  if(request)body.append(datum(t(translations.requestedBy,'Requested by'),'Master Agent'));
   if(installed){
     const products=w.artifacts.filter(a=>a.spool===id);
-    body.append(datum(t('运行状态','Status'),t('已加载 · 空闲','Loaded · Idle')),datum(t('最近使用','Last used by'),products.length?products.at(-1)!.agent:t('尚未运行','No runs yet')),heading(t('产物','Artifacts')),artifactList(products),heading(t('传递','Transfers')),receiptList(w.receipts.filter(r=>r.from===id||r.to===id)));
+    body.append(datum(t(translations.status,'Status'),t(translations.loadedIdle,'Loaded · Idle')),datum(t(translations.lastUsed,'Last used by'),products.length?products.at(-1)!.agent:t(translations.noRuns,'No runs yet')),heading(t(translations.artifacts,'Artifacts')),artifactList(products),heading(t(translations.transfers,'Transfers')),receiptList(w.receipts.filter(r=>r.from===id||r.to===id)));
   }
   const f=node('div','footer-actions');
-  f.append(node('span','sub',installed?t('移除后保留产物与记录','Artifacts and history are kept after removal.'):t('仅对当前 Workspace 生效','Applies to this workspace only.')));
-  f.append(button(installed?t('移除 Spool','Remove Spool'):request?t('批准并加载','Approve and load'):t('加入工作区','Add to workspace'),installed?'secondary':'primary',()=>{
+  f.append(node('span','sub',installed?t(translations.removalRetention,'Artifacts and history are kept after removal.'):t(translations.workspaceScope,'Applies to this workspace only.')));
+  f.append(button(installed?t(translations.removeSpool,'Remove Spool'):request?t(translations.approveLoad,'Approve and load'):t(translations.addToWorkspace,'Add to workspace'),installed?'secondary':'primary',()=>{
     if(installed)w.installed=w.installed.filter(x=>x!==id);else load(w,id);
     save();sheet.close();render();
   }));
@@ -176,20 +177,20 @@ function market(){
 }
 function marketView(){
   const w=ws();
-  main.append(node('div','eyebrow',t('资源库','Library')),node('h1','','Spool Market'),node('p','intro',t('为「'+w.name+'」选择可用能力。','Choose capabilities for '+w.name+'.')));
+  main.append(node('div','eyebrow',t(translations.library,'Library')),node('h1','','Spool Market'),node('p','intro',t(translations.chooseCapabilitiesPrefix+w.name+translations.chooseCapabilitiesSuffix,'Choose capabilities for '+w.name+'.')));
   if(!catalog.length){
-    main.append(node('p','empty',t('尚无可用的 Spool。','No Spools available yet.')),
-      button(t('返回工作区','Back to workspace'),'secondary',()=>{page='space';render();}));
+    main.append(node('p','empty',t(translations.noSpools,'No Spools available yet.')),
+      button(t(translations.backToWorkspace,'Back to workspace'),'secondary',()=>{page='space';render();}));
     return;
   }
-  const search=node('input','search');search.type='search';search.placeholder=t('搜索 Spool、输入或输出','Search Spools, inputs or outputs');search.setAttribute('aria-label',search.placeholder);
+  const search=node('input','search');search.type='search';search.placeholder=t(translations.searchSpools,'Search Spools, inputs or outputs');search.setAttribute('aria-label',search.placeholder);
   const grid=node('div','market-grid'), filters=node('div','filters');
   const selected=marketDraft.selected;
   let category=marketDraft.category;
   search.value=marketDraft.search;
   const footer=node('div','market-footer'),summary=node('span','sub');
-  const back=button(t('返回工作区','Back to workspace'),'secondary',()=>{page='space';render();});
-  const apply=button(t('保存选择','Save selection'),'primary',()=>{
+  const back=button(t(translations.backToWorkspace,'Back to workspace'),'secondary',()=>{page='space';render();});
+  const apply=button(t(translations.saveSelection,'Save selection'),'primary',()=>{
     w.installed=w.installed.filter(id=>selected.has(id));
     for(const id of selected) if(!w.installed.includes(id))load(w,id);
     save();page='space';tab='overview';render();
@@ -197,7 +198,7 @@ function marketView(){
   function update(){
     const changed=w.installed.length!==selected.size||w.installed.some(id=>!selected.has(id));
     summary.textContent=selectedCount(selected.size);
-    back.textContent=changed?t('放弃更改','Discard changes'):t('返回工作区','Back to workspace');
+    back.textContent=changed?t(translations.discardChanges,'Discard changes'):t(translations.backToWorkspace,'Back to workspace');
     apply.disabled=!changed;
   }
   function results(){
@@ -210,19 +211,19 @@ function marketView(){
       });
       function refresh(){
         const on=selected.has(m.id);
-        select.textContent=on?t('✓ 已选','✓ Selected'):t('＋ 选择','+ Select');
+        select.textContent=on?t(translations.selected,'✓ Selected'):t(translations.select,'+ Select');
         select.setAttribute('aria-label',m.name+' · '+select.textContent);
         select.setAttribute('aria-pressed',String(on));
         card.classList.toggle('selected',on);
       }
       refresh();head.append(tile(m),select);
-      const spec=record(t('能力声明','Capability manifest'),m.input+' → '+m.output+(m.version?' · v'+m.version:''));
+      const spec=record(t(translations.capabilityManifest,'Capability manifest'),m.input+' → '+m.output+(m.version?' · v'+m.version:''));
       card.append(head,node('h3','',m.name),node('p','',m.description),spec);
       grid.append(card);
     }
-    if(!grid.children.length)grid.append(node('p','empty',t('没有匹配的 Spool。','No matching Spools.')));
+    if(!grid.children.length)grid.append(node('p','empty',t(translations.noMatchingSpools,'No matching Spools.')));
   }
-  for(const [id,label] of [['',t('全部','All')],...catalog.map(m=>[m.theme,m.category])]){
+  for(const [id,label] of [['',t(translations.all,'All')],...catalog.map(m=>[m.theme,m.category])]){
     const chip=button(label,'filter',()=>{
       marketDraft.category=category=id;
       for(const item of Array.from(filters.children))item.setAttribute('aria-pressed',String(item===chip));
@@ -240,59 +241,59 @@ function overview(w:Workspace){
     const candidate=byId(request.spool);
     const panel=node('article','panel pending');
     const message=node('div','request-copy');
-    message.append(node('h3','',t('允许加载「'+candidate.name+'」？','Load '+candidate.name+'?')),node('p','',request.reason));
-    panel.append(tile(candidate),message,button(t('审阅申请','Review request'),'secondary',()=>spoolView(candidate.id,true)));
+    message.append(node('h3','',t(translations.loadPromptPrefix+candidate.name+'」？','Load '+candidate.name+'?')),node('p','',request.reason));
+    panel.append(tile(candidate),message,button(t(translations.reviewRequest,'Review request'),'secondary',()=>spoolView(candidate.id,true)));
     main.append(panel);
   }
-  main.append(heading(t('已加载的 Spool · ','Loaded Spools · ')+w.installed.length,button(t('选择 Spool　＋','Choose Spools +'),'link',market)));
+  main.append(heading(t(translations.loadedSpools,'Loaded Spools · ')+w.installed.length,button(t(translations.chooseSpoolsAction,'Choose Spools +'),'link',market)));
   const list=node('div','list');
-  if(!w.installed.length)list.append(node('p','empty',t('尚未加载 Spool。前往 Market 为这条流水线选择能力。','No Spools loaded. Choose capabilities for this pipeline in the Market.')));
+  if(!w.installed.length)list.append(node('p','empty',t(translations.emptyInstalled,'No Spools loaded. Choose capabilities for this pipeline in the Market.')));
   for(const id of w.installed){
     const m=byId(id),a=w.artifacts.filter(a=>a.spool===id),row=button('','row',()=>spoolView(id)),text=node('span','row-text');
-    text.append(node('strong','',m.name),node('small','',a.length?a.at(-1)!.agent+' · '+t(a.length+' 件产物',a.length+(a.length===1?' artifact':' artifacts')):t('尚未运行','No runs yet')));
-    row.append(tile(m),text,node('span','badge',t('空闲','Idle')),node('span','chevron','›'));list.append(row);
+    text.append(node('strong','',m.name),node('small','',a.length?a.at(-1)!.agent+' · '+t(a.length+translations.artifactsSuffix,a.length+(a.length===1?' artifact':' artifacts')):t(translations.noRuns,'No runs yet')));
+    row.append(tile(m),text,node('span','badge',t(translations.idle,'Idle')),node('span','chevron','›'));list.append(row);
   }
   main.append(list);
 }
 function workspaceView(){
   const w=ws(),hero=node('header','hero'),copy=node('div','hero-copy');
-  const status=node('span','master');status.append(node('i','dot'),document.createTextNode('Master Agent · '+(w.integration==='pending'?t('等待加载批准','Awaiting approval'):w.integration==='done'?t('已完成交付','Delivered'):t('就绪','Ready'))));
+  const status=node('span','master');status.append(node('i','dot'),document.createTextNode('Master Agent · '+(w.integration==='pending'?t(translations.awaitingApproval,'Awaiting approval'):w.integration==='done'?t(translations.delivered,'Delivered'):t(translations.ready,'Ready'))));
   copy.append(node('div','eyebrow','Workspace'),node('h1','',w.name));
   if(w.intent)copy.append(node('p','',w.intent));
   copy.append(status);hero.append(copy,(get('hero-art') as HTMLTemplateElement).content.cloneNode(true));main.append(hero);
   const tabs=node('div','segment');
-  for(const [name,label] of [['overview',t('概览','Overview')],['artifacts',t('产物','Artifacts')],['transfers',t('传递','Transfers')]] as const){
+  for(const [name,label] of [['overview',t(translations.overview,'Overview')],['artifacts',t(translations.artifacts,'Artifacts')],['transfers',t(translations.transfers,'Transfers')]] as const){
     const b=button(label,tab===name?'active':'',()=>{tab=name;render();main.querySelector<HTMLButtonElement>('.segment .active')?.focus();});
     b.setAttribute('aria-pressed',String(tab===name));tabs.append(b);
   }
   main.append(tabs);
   if(tab==='overview')overview(w);
-  if(tab==='artifacts')main.append(heading(t('已验收产物','Accepted artifacts')),artifactList(w.artifacts));
-  if(tab==='transfers')main.append(heading(t('产物传递','Artifact transfers')),receiptList(w.receipts));
+  if(tab==='artifacts')main.append(heading(t(translations.acceptedArtifacts,'Accepted artifacts')),artifactList(w.artifacts));
+  if(tab==='transfers')main.append(heading(t(translations.artifactTransfers,'Artifact transfers')),receiptList(w.receipts));
 }
 function render(){
   document.documentElement.lang=language;
-  document.title=t('an-agent · 工作台','an-agent · Workbench');
-  get('space-label').textContent=t('工作空间','Workspaces');
-  get('new-label').textContent=t('新建工作空间','New workspace');
-  get('library-label').textContent=t('资源库','Library');
-  get('demo-label').textContent=source?t('本地演示','Local demo'):t('本地工作台','Local workbench');
-  get('create').title=t('创建工作空间','Create workspace');
+  document.title=t(translations.pageTitle,'an-agent · Workbench');
+  get('space-label').textContent=t(translations.workspaces,'Workspaces');
+  get('new-label').textContent=t(translations.newWorkspace,'New workspace');
+  get('library-label').textContent=t(translations.library,'Library');
+  get('demo-label').textContent=source?t(translations.localDemo,'Local demo'):t(translations.localWorkbench,'Local workbench');
+  get('create').title=t(translations.createWorkspace,'Create workspace');
   get('create').setAttribute('aria-label',get('create').title);
-  get('spaces').setAttribute('aria-label',t('选择工作空间','Choose workspace'));
-  get('usage').setAttribute('aria-label',t('查看当前工作区 Token 用量','View workspace token usage'));
-  get('close').setAttribute('aria-label',t('关闭','Close'));
-  if(get('storage-note').textContent)get('storage-note').textContent=t('本窗口可继续使用，当前浏览器无法保存本地工作区。','Browser storage is unavailable. Changes last for this session.');
+  get('spaces').setAttribute('aria-label',t(translations.chooseWorkspace,'Choose workspace'));
+  get('usage').setAttribute('aria-label',t(translations.viewUsage,'View workspace token usage'));
+  get('close').setAttribute('aria-label',t(translations.close,'Close'));
+  if(get('storage-note').textContent)get('storage-note').textContent=t(translations.storageUnavailable,'Browser storage is unavailable. Changes last for this session.');
   (get('language') as HTMLSelectElement).value=language;
   const w=ws(),spaces=get('spaces');spaces.replaceChildren();
   (get('market-nav') as HTMLButtonElement).disabled=!w;
   (get('usage') as HTMLButtonElement).disabled=!w;
   if(!w){
-    get('breadcrumb').textContent=t('工作台','Workbench');
-    get('usage-value').textContent=t('Token 用量 · 0','Token usage · 0');
-    main.replaceChildren(node('h1','',t('创建第一个工作空间','Create your first workspace')),
-      node('p','intro',t('为流水线设定目标，再选择可用的 Spool。','Set a goal for your pipeline and choose the Spools it can use.')),
-      button(t('创建工作空间','New workspace'),'primary welcome-action',createView));
+    get('breadcrumb').textContent=t(translations.workbench,'Workbench');
+    get('usage-value').textContent=t(translations.zeroUsage,'Token usage · 0');
+    main.replaceChildren(node('h1','',t(translations.firstWorkspace,'Create your first workspace')),
+      node('p','intro',t(translations.workspaceIntro,'Set a goal for your pipeline and choose the Spools it can use.')),
+      button(t(translations.createWorkspace,'New workspace'),'primary welcome-action',createView));
     return;
   }
   for(const space of store.spaces){
@@ -302,8 +303,8 @@ function render(){
   }
   get('market-nav').classList.toggle('active',page==='market');
   get('market-nav').setAttribute('aria-pressed',String(page==='market'));
-  get('breadcrumb').textContent=w.name+'　/　'+(page==='market'?'Spool Market':t('工作台','Workbench'));
-  get('usage-value').textContent=t('Token 用量　','Token usage · ')+format(total(w));
+  get('breadcrumb').textContent=w.name+'　/　'+(page==='market'?'Spool Market':t(translations.workbench,'Workbench'));
+  get('usage-value').textContent=t(translations.usagePrefix,'Token usage · ')+format(total(w));
   main.replaceChildren();
   if(page==='market')marketView();else workspaceView();
 }

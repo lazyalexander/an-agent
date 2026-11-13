@@ -204,3 +204,8 @@ spool 产物发布和验收流程。未来改造后的 DeepSeek Harness 需实�
 同级越权拒绝、命令去重、独立取消与守护服务重启。
 `document_activity.py --app-server` 使用真实 Codex 和指定的应用侧工作簿工具，
 复验 PDF→Markdown→Excel 交付、公式及产物归属。本地证据区保留真实模型验收记录。
+
+独立工作区界面使用 `python3 packages/workbench/build.py` 构建。
+TypeScript 与 HTML 源码使用英文，简体中文界面翻译保存在
+`packages/workbench/zh-CN.json` 中并在构建时嵌入。
+用户填写的工作区名称、目标及记录保留原始语言。
