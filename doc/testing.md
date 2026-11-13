@@ -341,3 +341,18 @@ telemetry, zero observed control violations and an explicit accounting of added
 maintenance, dependencies and recovery paths. A latency win during rendering
 alone provides no evidence that more model agents would help. Keep the single-main
 path as the default until the evidence supports a specific change.
+
+### Cocoon candidate custody
+
+`native_cocoon_session.py --host HOST --evidence PRIVATE_DIR` uses protocol
+fixtures plus the real native spool supervisor and acceptance path. It verifies
+binary chunk bounds, exact task capabilities, source/digest mismatch rejection,
+formal-output denial before acceptance, and a continuation on the original owner
+that reconciles a lost chunk receipt before reading the accepted artifact.
+`--cancel-validation` instead cancels the producer while the native validator is
+running, verifies termination with the parent grant still active, and rejects late
+acceptance and candidate reuse. `--cocoon-profile PRIVATE_JSON --cocoon-attempt UUID`
+selects an already authorized live VM for the same test. The operator owns VM
+provisioning and final stop/reconciliation. Never commit profiles or evidence.
+The main agent remains a deterministic protocol fixture even in live VM mode;
+these checks do not qualify real model behavior or PDF/Excel domain correctness.

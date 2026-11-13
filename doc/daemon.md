@@ -437,3 +437,17 @@ its original operation, never resends an uncertain write. Cancellation/revocatio
 is checked between chunks and before staging a candidate. Downloads remain private
 session candidates (`candidate.bin`); `staged` never means accepted, executable or
 delivered. This interface does not establish VM termination or domain correctness.
+
+A staged download can be selected as a spool `submit` input using
+`candidate={session,transfer,sha256}` instead of `input` or `artifact`. The caller
+must own the producer session and hold `run-candidate` permission binding the
+instance, run, transfer, digest and maximum seconds. The producer grant must remain
+active. The host verifies the complete staged receipt and candidate bytes before
+preview and reservation; no caller-supplied host path is accepted. The existing
+spool supervisor snapshots that input and owns execution/termination. Its grant
+follows the producer lineage so cancellation/revocation remains effective after
+reservation. Task observation retains `candidate_input` provenance. Formal custody
+still requires the original spool `accept`, and `artifact-read` verifies that
+custody before returning bytes to the continuing primary session. This bridge
+qualifies candidate input and custody; it does not move the domain runtime into
+Cocoon or establish PDF/Excel correctness.

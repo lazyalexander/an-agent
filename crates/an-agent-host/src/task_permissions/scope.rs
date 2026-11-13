@@ -10,6 +10,13 @@ pub(crate) enum Permission {
         input: PathBuf,
         seconds: u64,
     },
+    RunCandidate {
+        instance: PathBuf,
+        run: String,
+        transfer: String,
+        sha256: String,
+        seconds: u64,
+    },
     RunArtifact {
         instance: PathBuf,
         run: String,
@@ -54,6 +61,20 @@ impl Permission {
                 if *seconds == 0 {
                     return Err("task deadline must be positive".into());
                 }
+            }
+            Self::RunCandidate {
+                instance,
+                run,
+                transfer,
+                sha256,
+                seconds,
+            } => {
+                canonical(instance)?;
+                identifier(run)?;
+                if uuid::Uuid::parse_str(transfer)?.to_string() != *transfer || *seconds == 0 {
+                    return Err("invalid candidate run capability".into());
+                }
+                digest(sha256)?;
             }
             Self::RunArtifact {
                 instance,
@@ -107,6 +128,28 @@ impl Permission {
 
     pub(crate) fn within(&self, parent: &Self) -> bool {
         match (self, parent) {
+            (
+                Self::RunCandidate {
+                    instance,
+                    run,
+                    transfer,
+                    sha256,
+                    seconds,
+                },
+                Self::RunCandidate {
+                    instance: p_instance,
+                    run: p_run,
+                    transfer: p_transfer,
+                    sha256: p_sha256,
+                    seconds: p_seconds,
+                },
+            ) => {
+                instance == p_instance
+                    && run == p_run
+                    && transfer == p_transfer
+                    && sha256 == p_sha256
+                    && seconds <= p_seconds
+            }
             (
                 Self::Run {
                     instance,

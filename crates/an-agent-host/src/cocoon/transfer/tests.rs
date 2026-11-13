@@ -76,6 +76,11 @@ fn binary_download_is_bounded_digest_checked_and_not_accepted() {
     assert_eq!(result["artifact_accepted"], false);
     assert_eq!(fs::read(f.0.join(&id).join("candidate.bin")).unwrap(), data);
     assert_eq!(server.join().unwrap().len(), 2);
+    let (selected, binding) = candidate(&f.0, &id, "task", &store::digest(&data)).unwrap();
+    assert_eq!(fs::read(&selected).unwrap(), data);
+    assert_eq!(binding["artifact_accepted"], false);
+    assert!(candidate(&f.0, &id, "other", &store::digest(&data)).is_err());
+    assert!(candidate(&f.0, &id, "task", &"b".repeat(64)).is_err());
     // Re-enter from durable chunk receipts with no backend listener.
     assert_eq!(
         run(&f.0, &p, &id, plan.clone(), "task", || Ok(())).unwrap(),
@@ -148,4 +153,22 @@ fn empty_and_exact_chunk_outputs_preserve_binary_boundaries() {
         assert_eq!(fs::read(f.0.join(id).join("candidate.bin")).unwrap(), bytes);
         assert_eq!(server.join().unwrap().len(), 1);
     }
+}
+
+#[test]
+fn incomplete_or_tampered_candidates_cannot_become_spool_inputs() {
+    let f = Fixture::new();
+    let p = f.profile();
+    let bytes = b"candidate".to_vec();
+    let server = serve(UnixListener::bind(&p.socket).unwrap(), bytes.clone(), false);
+    let id = an_agent_core::det_seam::Entropy::os().uuid_v4().to_string();
+    run(&f.0, &p, &id, plan("download", &bytes), "task", || Ok(())).unwrap();
+    server.join().unwrap();
+    let hash = store::digest(&bytes);
+    let path = f.0.join(&id).join("candidate.bin");
+    fs::write(&path, b"tampered").unwrap();
+    assert!(candidate(&f.0, &id, "task", &hash).is_err());
+    fs::write(&path, &bytes).unwrap();
+    fs::remove_file(f.0.join(&id).join("staged.json")).unwrap();
+    assert!(candidate(&f.0, &id, "task", &hash).is_err());
 }

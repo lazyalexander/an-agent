@@ -149,6 +149,12 @@ jobs:
       - name: Native artifact retirement and admitted downstream custody
         if: matrix.native_workspace
         run: python3 -B crates/an-agent-host/tests/cli/native_retirement.py --host target/debug/an-agent-host --evidence "$RUNNER_TEMP/native-state/retirement"
+      - name: Cocoon binary candidate custody and original-session continuation
+        if: matrix.native_workspace
+        run: python3 -B crates/an-agent-host/tests/cli/native_cocoon_session.py --host target/debug/an-agent-host --evidence "$RUNNER_TEMP/native-state/cocoon-candidate"
+      - name: Cocoon producer cancellation blocks late acceptance
+        if: matrix.native_workspace
+        run: python3 -B crates/an-agent-host/tests/cli/native_cocoon_session.py --host target/debug/an-agent-host --evidence "$RUNNER_TEMP/native-state/cocoon-cancel" --cancel-validation
       - name: Retain native state evidence
         if: always() && matrix.native_workspace
         uses: actions/upload-artifact@v4

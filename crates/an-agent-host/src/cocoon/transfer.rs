@@ -66,7 +66,7 @@ pub(crate) fn run(
     store::directory(directory)?;
     let root = directory.join(id);
     store::directory(&root)?;
-    let binding = json!({"plan_sha256":store::digest(&serde_json::to_vec(&plan)?),
+    let binding = json!({"schema":"an-cocoon-transfer-v1","attempt":parsed.attempt,"plan_sha256":store::digest(&serde_json::to_vec(&plan)?),
         "vm":profile.vm,"generation":profile.generation,"caller":profile.caller,"task":task});
     let intent = root.join("intent.json");
     if intent.exists() {
@@ -151,11 +151,56 @@ pub(crate) fn run(
             fs::File::open(&root)?.sync_all()?;
         }
     }
-    Ok(
-        json!({"transfer":id,"state":"staged","direction":parsed.direction,
-        "sha256":parsed.sha256,"bytes":parsed.bytes,"artifact_accepted":false}),
-    )
+    let result = json!({"schema":"an-cocoon-staged-v1","transfer":id,"state":"staged",
+        "intent_sha256":store::digest(&serde_json::to_vec(&binding)?),"direction":parsed.direction,
+        "sha256":parsed.sha256,"bytes":parsed.bytes,"artifact_accepted":false});
+    let completed = root.join("staged.json");
+    if completed.exists() {
+        if serde_json::from_slice::<Value>(&store::read(&completed, 32768)?)? != result {
+            return Err("Cocoon staged receipt changed".into());
+        }
+    } else {
+        persist(&completed, &result)?;
+    }
+    Ok(result)
 }
 
 #[cfg(test)]
 mod tests;
+
+/// A staged candidate is input data for a domain verifier, never formal custody.
+pub(crate) fn candidate(
+    directory: &Path,
+    id: &str,
+    task: &str,
+    sha256: &str,
+) -> Result<(PathBuf, Value)> {
+    if uuid::Uuid::parse_str(id)?.to_string() != id || !store::valid_digest(sha256) {
+        return Err("invalid Cocoon candidate reference".into());
+    }
+    let root = directory.join(id);
+    let intent: Value = serde_json::from_slice(&store::read(&root.join("intent.json"), 32768)?)?;
+    let staged: Value = serde_json::from_slice(&store::read(&root.join("staged.json"), 32768)?)?;
+    let path = root.join("candidate.bin");
+    let bytes = store::read(&path, LIMIT)?;
+    if intent["schema"] != "an-cocoon-transfer-v1"
+        || intent["task"] != task
+        || staged["schema"] != "an-cocoon-staged-v1"
+        || staged["transfer"] != id
+        || staged["state"] != "staged"
+        || staged["direction"] != "download"
+        || staged["artifact_accepted"] != false
+        || staged["intent_sha256"] != store::digest(&serde_json::to_vec(&intent)?)
+        || staged["sha256"] != sha256
+        || store::digest(&bytes) != sha256
+        || staged["bytes"].as_u64() != Some(bytes.len() as u64)
+    {
+        return Err("unverified Cocoon candidate input".into());
+    }
+    Ok((
+        path,
+        json!({"transfer":id,"sha256":sha256,"bytes":bytes.len(),
+        "staged_receipt_sha256":store::digest(&serde_json::to_vec(&staged)?),
+        "vm":intent["vm"],"generation":intent["generation"],"attempt":intent["attempt"],"artifact_accepted":false}),
+    ))
+}
