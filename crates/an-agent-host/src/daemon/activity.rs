@@ -67,6 +67,9 @@ pub(super) fn view(root: &Path, id: &str) -> Result<Value> {
     }
     let mut result = json!({"schema":"an-agent-activity-v1","task":observation::task(root,id)?,
         "records":events,"harness":harness,"ordering":"record categories; not a reconstructed timeline"});
+    if let Job::Harness { task, .. } = &job {
+        result["harness"]["metrics"] = super::harness_metrics::view(&dir, task)?;
+    }
     if let Job::Spool { instance, run, .. } = job {
         result["custody"] = spool::status(&instance, &run)?;
     }

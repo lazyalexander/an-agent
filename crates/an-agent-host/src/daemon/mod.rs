@@ -8,6 +8,7 @@ mod control;
 mod delegation;
 pub(crate) mod harness;
 mod harness_adapter;
+mod harness_metrics;
 mod observation;
 mod permissions;
 mod scheduler;
@@ -52,7 +53,7 @@ enum Job {
     Harness {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         authorization: Option<Binding>,
-        task: harness::Task,
+        task: Box<harness::Task>,
         request: String,
     },
 }
