@@ -174,3 +174,33 @@ an-spool 的 `examples/mechanical-animation/product` 提供本地教学操作页
 结果未知时保留原任务，不自动重试。已提交给另一个 spool 的工作由其监督者负责，
 需要显式取消。客户端使用独立目录并仅引用原生文件登录，不复制用户配置或私人会话。
 本期尚未验收仅钥匙串登录、会话恢复和任意原生工具。
+
+## HarnessAdapter 与重连
+
+`HarnessAdapter` 接入现有调度、独立任务宿主、权限和产物验收，负责启动外部
+harness、声明能力以及转换观测事件。交互任务选择
+`task.adapter="codex-app-server"`，有限执行使用 `codex-exec`。
+旧的省略字段与 `app_server=true` 请求保留原有身份和权限摘要，冲突选择会被拒绝。
+两种 Codex 模式均固定为 CLI 0.166.0，并核验授权时的程序哈希。
+
+通过原任务权限入口调用 `harness-connect`，传入 `id` 和可选的事件 `cursor`，
+取得执行句柄、能力、状态、增量事件及补充指令回执。控制端断开或守护服务重启后，
+继续观察原有任务进程。`resume_execution=false` 表明执行进程丢失后需要保留未知状态。
+撤销后的凭据仍可观察和取消其所属任务。
+
+`harness-steer` 接收 `id`、`execution`、唯一 `command` 和 `instruction`。
+预览与精确批准将指令摘要绑定到原执行句柄，调用者必须拥有任务及其 harness 权限。
+原任务进程在交付前再次核验授权，按接纳顺序处理最多 32 条、各不超过 64 KiB 的指令。
+相同命令 ID 与相同内容复用原回执，内容不同则拒绝。发送标记先于传输落盘，
+标记之后、确认之前崩溃的结果保留为未知。`queued` 表示本地接纳，`acknowledged`
+表示 Codex 已接纳到原 turn，最终结果仍需验收。
+
+Codex 使用携带原 `expectedTurnId` 的 `turn/steer`。取消沿用授权撤销与进程组监督，
+结算要求本地释放证据，远程服务是否停止仍标记为未确认。最终结构化输出进入既有
+spool 产物发布和验收流程。未来改造后的 DeepSeek Harness 需实现同一契约、明确声明
+能力并通过相同验收，保留宿主任务身份、授权链和原有生命周期。
+
+`native_harness_adapter.py` 通过协议进程验收双后台任务、补充指令、旧句柄拒绝、
+同级越权拒绝、命令去重、独立取消与守护服务重启。
+`document_activity.py --app-server` 使用真实 Codex 和指定的应用侧工作簿工具，
+复验 PDF→Markdown→Excel 交付、公式及产物归属。本地证据区保留真实模型验收记录。

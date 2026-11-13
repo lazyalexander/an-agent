@@ -26,6 +26,9 @@ pub(super) fn authorized(
         "delegate" | "update-delegation" | "delegation-inbox" => {
             delegation::dispatch(root, req, approved, authorization)
         }
+        "harness-connect" | "harness-steer" => {
+            super::harness_adapter::dispatch(root, req, approved)
+        }
         "record-adoption" => activity::adopt(root, req, approved),
         "activity" => activity::view(root, text(req, "id")?),
         "show" => observation::snapshot(root),
