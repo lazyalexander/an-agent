@@ -55,6 +55,12 @@ pub(super) fn harness_permission(task: &harness::Task) -> Result<Permission> {
     let profile = json!({"binary":task.binary,"binary_sha256":task.binary_sha256,
         "schema":task.schema,"scope":task.scope,"model":task.model,"mcp":task.mcp});
     let mut profile = profile;
+    if let Some(limit) = task.turn_limit {
+        profile["turn_limit"] = json!(limit);
+    }
+    if let Some(seconds) = task.wall_seconds {
+        profile["wall_seconds"] = json!(seconds);
+    }
     if super::harness_adapter::interactive(task)? {
         profile["adapter"] = json!("codex-app-server-v1");
     }
@@ -99,7 +105,7 @@ pub(super) fn dispatch_bound(root: &Path, req: &Value, actor: &Binding) -> Resul
                 return Err("authorized input changed".into());
             }
             grants::active(actor)?;
-            return Ok(json!({"sha256":digest,"bytes":bytes}));
+            return input_response(req, json!({"sha256":digest}), bytes);
         }
         "artifact-read" => {
             let instance = Path::new(text(req, "instance")?);
@@ -124,7 +130,7 @@ pub(super) fn dispatch_bound(root: &Path, req: &Value, actor: &Binding) -> Resul
                 return Err("task artifact exceeds 512 KiB transfer limit".into());
             }
             grants::active(actor)?;
-            return Ok(json!({"inventory":inventory,"bytes":bytes}));
+            return input_response(req, json!({"inventory":inventory}), bytes);
         }
         "submit" => {
             let instance = PathBuf::from(text(req, "instance")?);
@@ -160,14 +166,19 @@ pub(super) fn dispatch_bound(root: &Path, req: &Value, actor: &Binding) -> Resul
                 return Err("use delegate for task-scoped submissions".into());
             }
         }
-        "update-delegation" | "harness-steer" => {
+        "update-delegation" | "harness-steer" | "harness-continue" => {
             let job = owned_job(root, actor, text(req, "id")?)?;
             let Job::Harness { task, .. } = job else {
                 return Err("not a harness task".into());
             };
             grants::require(actor, &harness_permission(&task)?)?;
         }
-        "task" | "activity" | "harness-result" | "harness-connect" | "cancel" => {
+        "task"
+        | "activity"
+        | "harness-result"
+        | "harness-turn-result"
+        | "harness-connect"
+        | "cancel" => {
             owned_job(root, actor, text(req, "id")?)?;
         }
         "accept" | "record-adoption" => {
@@ -201,6 +212,16 @@ pub(super) fn owned_job(root: &Path, actor: &Binding, id: &str) -> Result<Job> {
         return Err("job belongs to another task grant".into());
     }
     Ok(job)
+}
+
+fn input_response(request: &Value, mut response: Value, bytes: Vec<u8>) -> Result<Value> {
+    match request.get("encoding") {
+        None => response["bytes"] = json!(bytes),
+        Some(value) if value == "bytes" => response["bytes"] = json!(bytes),
+        Some(value) if value == "utf-8" => response["text"] = json!(String::from_utf8(bytes)?),
+        _ => return Err("unsupported task input encoding".into()),
+    }
+    Ok(response)
 }
 
 /// Persist cancellation through the original owner, including after service restart.

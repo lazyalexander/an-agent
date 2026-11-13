@@ -66,7 +66,7 @@ pub(crate) fn codex(
             command,
             &dir.join("work"),
             b"",
-            std::time::Duration::from_secs(180),
+            std::time::Duration::from_secs(task.wall_seconds.unwrap_or(180)),
             cancelled,
             true,
         )
@@ -126,7 +126,7 @@ pub(crate) fn app_server(
         let result = super::execute_dialogue(
             command,
             &dir.join("work"),
-            std::time::Duration::from_secs(180),
+            std::time::Duration::from_secs(task.wall_seconds.unwrap_or(180)),
             cancelled,
             true,
             exchange,

@@ -93,7 +93,7 @@ prompt、schema、scope、可选 model 和有限 MCP。原生客户端保管认�
 禁用 shell、编辑、插件、子 agent 等工具；唯一可选 MCP 工具是事先获准的
 回环材料读取。该接口接收数据提案，不是任意代码代理或任意远程 harness 协议。
 
-本地客户端继续由现有进程组监督，期限 180 秒。确认本地终止不表示远端模型
+本地客户端继续由现有进程组监督，默认期限 180 秒。确认本地终止不表示远端模型
 已停止或计费为零。提案须通过 spool 的业务验证和既有 kit、产物许可。
 原生事件与请求保存在私有目录，工作台不披露 prompt、MCP 凭据或私有会话。
 
@@ -209,3 +209,21 @@ spool 产物发布和验收流程。未来改造后的 DeepSeek Harness 需实�
 TypeScript 与 HTML 源码使用英文，简体中文界面翻译保存在
 `packages/workbench/zh-CN.json` 中并在构建时嵌入。
 用户填写的工作区名称、目标及记录保留原始语言。
+
+### 有界续轮与采集
+
+交互任务可声明 1 至 8 的 `turn_limit` 和 1 至 3600 的 `wall_seconds`，默认单轮、180 秒。
+显式设置进入 harness 权限摘要。所有轮次共用原 owner、执行句柄、thread、schema、授权与监督器。
+有限 exec 支持单轮。补充指令绑定当前活动 turn，迟到指令拒绝，空闲会话需显式续轮。
+
+`harness-turn-result` 接收 `id` 与从 1 开始的 `turn`，返回不可变的已完成轮次提案，
+其中 `artifact_accepted=false`、`termination_confirmed=false`。
+`harness-continue` 接收 `id`、`execution`、`after_turn`、唯一 `command` 和 `instruction`。
+精确批准绑定指令及已完成轮次，每轮在原上限内接纳一次续轮。重复命令核对原回执，
+发送标记先于传输落盘，结果未知时保留原身份。等待续轮的任务仍受取消、授权撤销和总期限约束。
+最终 `harness-result` 继续要求原任务完成结算。
+
+`activity.harness.metrics` 从已有记录汇总提供方累计计数和授权披露。缓存输入属于输入，
+推理输出属于输出，同会话累计更新去重，倒退或非法计数降低覆盖率，缺失值为 `null`。
+资源回执记录摘要、字节数和宿主工具耗时，模型实际消费情况未知。
+`read-input` 与 `artifact-read` 可选择 `encoding="utf-8"`，复用原授权检查，默认保留字节响应。

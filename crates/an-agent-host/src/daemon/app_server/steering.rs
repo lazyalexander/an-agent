@@ -9,7 +9,7 @@ pub(super) fn send_pending(
     thread: &str,
     turn: &str,
 ) -> Result<()> {
-    if turn.is_empty() || dir.join("cancel.json").exists() {
+    if dir.join("cancel.json").exists() || !dir.join("session.json").exists() {
         return Ok(());
     }
     if crate::task_permissions::active(authority).is_err() {
@@ -25,6 +25,9 @@ pub(super) fn send_pending(
     }
     commands.sort_by_key(|command| command["sequence"].as_u64());
     for command in commands {
+        if command["plan"]["operation"] != "steer-harness" {
+            continue;
+        }
         let name = text(&command["plan"], "command")?;
         let marker = dir.join(format!("sent-{name}.json"));
         if marker.exists() {
@@ -32,6 +35,22 @@ pub(super) fn send_pending(
         }
         if command["plan"]["execution"] != session["execution"] {
             return Err("stale steering command".into());
+        }
+        if command["plan"]
+            .get("turn")
+            .is_some_and(|selected| selected != turn)
+        {
+            let receipt = dir.join(format!("ack-{name}.json"));
+            if !receipt.exists() {
+                super::super::harness_adapter::publish(
+                    &receipt,
+                    &json!({"command":name,"state":"rejected","reason":"selected turn ended"}),
+                )?;
+            }
+            continue;
+        }
+        if turn.is_empty() {
+            continue;
         }
         if crate::task_permissions::active(authority).is_err() {
             cancelled.store(true, Ordering::Release);
@@ -65,9 +84,11 @@ pub(super) fn acknowledge(dir: &Path, message: &Value, turn: &str) -> Result<boo
     {
         return Err("unbound steering response".into());
     }
+    let command = read(&dir.join("commands").join(format!("{name}.json")))?;
+    let selected = command["plan"]["turn"].as_str().unwrap_or(turn);
     let state = if message.get("error").is_some() {
         "rejected"
-    } else if message["result"]["turnId"] == turn {
+    } else if message["result"]["turnId"] == selected {
         "acknowledged"
     } else {
         return Err("steering response has foreign turn".into());

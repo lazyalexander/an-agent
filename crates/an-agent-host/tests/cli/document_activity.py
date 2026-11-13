@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
-"""Real finite delegation and original custody for a synthetic PDF/MD/XLSX case.
+"""One original main session and original custody for a synthetic PDF/MD/XLSX case.
 
 Application adapters own PDF extraction and workbook authoring. The host retains
 delegation, approval, activity evidence, native publication and artifact custody.
-Requires pypdf in the controller environment and an explicitly selected builder.
+Requires pypdf and either XlsxWriter or an explicitly selected builder.
 """
 import argparse
 import hashlib
 import json
 import os
+import re
 from io import BytesIO
 from pathlib import Path
 import signal
@@ -19,23 +20,36 @@ from xml.etree import ElementTree
 
 from pypdf import PdfReader
 from host_qualification import require_native_workspace
+from document_benchmark import knowledge, write_workbook, expected_rows
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    for name in ('host', 'evidence', 'pdf', 'codex', 'node', 'builder'):
+    for name in ('host', 'evidence', 'pdf', 'codex'):
         parser.add_argument('--' + name, type=Path, required=True)
+    parser.add_argument('--node', type=Path)
+    parser.add_argument('--builder', type=Path)
+    parser.add_argument('--scenario', default='document_delivery.table_exact')
+    parser.add_argument('--model', default='gpt-6.1-sol')
     parser.add_argument('--shuttle-client', type=Path)
     parser.add_argument('--app-server', action='store_true')
-    args = parser.parse_args()
+    qualify(parser.parse_args())
+
+
+def qualify(args):
     require_native_workspace()
-    host, pdf, codex, node, builder = [p.resolve(strict=True) for p in
-                                     (args.host, args.pdf, args.codex, args.node, args.builder)]
+    started = time.monotonic()
+    host, pdf, codex = [p.resolve(strict=True) for p in (args.host, args.pdf, args.codex)]
+    node = args.node.resolve(strict=True) if args.node else None
+    builder = args.builder.resolve(strict=True) if args.builder else None
+    if (builder or args.shuttle_client) and node is None:
+        raise ValueError('--node is required for the selected application adapter')
     root = args.evidence.resolve()
     root.mkdir(mode=0o700)
     service = root / 'service'
     sha = lambda p: hashlib.sha256(p.read_bytes()).hexdigest()
     jobs = []
+    phases = {}
     rejections = []
     parent_credential = None
 
@@ -68,7 +82,7 @@ catch (error) { console.error(error.message); process.exitCode = 1; }
         return request({**value, 'approve': preview['approval_sha256']}, credential)
 
     def wait(task_id, credential, outcome='succeeded'):
-        deadline = time.monotonic() + 200
+        deadline = time.monotonic() + 600
         while time.monotonic() < deadline:
             view = request({'op': 'task', 'id': task_id}, credential)
             if view['state'] == 'settled':
@@ -85,7 +99,7 @@ catch (error) { console.error(error.message); process.exitCode = 1; }
         code = 'set -eu\ncat "$AN_SPOOL_INPUT" > ' + name + '\n'
         (package / 'silk/main.sh').write_text(code)
         (package / 'native-spool.json').write_text(json.dumps({
-            'schema': 'an-native-spool-v3', 'name': 'document-delivery', 'version': '0.1.0',
+            'schema': 'an-native-spool-v3', 'name': materials['selected'], 'version': '0.1.0',
             'events': {'consumes': [], 'produces': ['artifact.accepted']},
             'entry': 'silk/main.sh', 'files': {'silk/main.sh': hashlib.sha256(code.encode()).hexdigest()},
             'outputs': [name], 'binary_outputs': [name] if name.endswith(('.pdf', '.xlsx')) else [], 'requirements': {'runtime': 'macos-native-process-v1', 'os': 'macos',
@@ -110,19 +124,17 @@ catch (error) { console.error(error.message); process.exitCode = 1; }
         assert received['inventory']['output']['binding']['content_sha256'] == sha(output)
         return instance, output
 
-    def selected(label, prompt, schema, scope):
-        return {'app_server': args.app_server, 'label': label, 'binary': str(codex), 'binary_sha256': sha(codex),
-                'prompt': prompt, 'schema': schema, 'scope': scope, 'model': None, 'mcp': None}
-
-    def delegate(label, prompt, schema, scope, credential):
-        value = {'op': 'delegate', 'parent': sha(pdf), 'task': {
-            'app_server': args.app_server, 'label': label, 'binary': str(codex), 'binary_sha256': sha(codex),
-            'prompt': prompt, 'schema': schema, 'scope': scope, 'model': None, 'mcp': None}}
-        task_id = approve(value, credential)['id']
-        wait(task_id, credential)
-        inbox = request({'op': 'delegation-inbox', 'parent': sha(pdf)}, credential)
-        message = next(v for v in inbox['messages'] if v['id'] == task_id)
-        return task_id, message['proposal']
+    def turn_result(task_id, number, credential):
+        deadline = time.monotonic() + 600
+        marker = service / 'jobs' / task_id / f'turn-result-{number}.json'
+        while not marker.exists():
+            view = request({'op': 'task', 'id': task_id}, credential)
+            if view['state'] == 'settled':
+                raise AssertionError(('main session ended before its next turn', view))
+            if time.monotonic() >= deadline:
+                raise AssertionError('original turn deadline exceeded; retain evidence')
+            time.sleep(.1)
+        return request({'op': 'harness-turn-result', 'id': task_id, 'turn': number}, credential)
 
     call('daemon', 'init', service, 2)
     with (root / 'service.log').open('w') as log:
@@ -139,18 +151,21 @@ catch (error) { console.error(error.message); process.exitCode = 1; }
         workbook = root / 'workbook/result.xlsx'
         workbook.touch()
         sources = {'source.pdf': pdf, 'document.md': markdown, 'result.xlsx': workbook}
+        materials = knowledge(root, args.scenario)
         instances = {name: prepare(name) for name in sources}
-        markdown_schema = {'type': 'object', 'properties': {'markdown': {'type': 'string'}},
-                           'required': ['markdown'], 'additionalProperties': False}
         item = {'type': 'object', 'properties': {'item': {'type': 'string'},
                 'quantity': {'type': 'integer'}, 'unit_price': {'type': 'number'}},
                 'required': ['item', 'quantity', 'unit_price'], 'additionalProperties': False}
-        rows_schema = {'type': 'object', 'properties': {'rows': {'type': 'array', 'items': item}},
-                       'required': ['rows'], 'additionalProperties': False}
-        pdf_scope = {'pdf_sha256': sha(pdf)}
-        sheet_scope = {'pdf_sha256': sha(pdf), 'stage': 'markdown-to-sheet'}
-        profiles = [request({'op': 'harness-permission', 'task': selected('document-agent', '', schema, scope)})
-                    for schema, scope in [(markdown_schema, pdf_scope), (rows_schema, sheet_scope)]]
+        schema = {'type': 'object', 'properties': {'markdown': {'type': 'string'},
+                  'rows': {'type': 'array', 'items': item}, 'selected': {'type': 'string'}},
+                  'required': ['markdown', 'rows', 'selected'], 'additionalProperties': False}
+        ambiguous = args.scenario.endswith('table_ambiguous')
+        turn_limit = 3 if ambiguous else 2
+        selected = {'adapter': 'codex-app-server', 'turn_limit': turn_limit, 'wall_seconds': 600,
+                    'label': 'document-main', 'binary': str(codex), 'binary_sha256': sha(codex),
+                    'prompt': '', 'schema': schema, 'scope': {'pdf_sha256': sha(pdf), 'case': args.scenario},
+                    'model': args.model, 'mcp': None}
+        profile = request({'op': 'harness-permission', 'task': selected})
         permissions = {}
         for name, source in sources.items():
             resource = {'instance': str(instances[name]), 'run': 'deliver'}
@@ -159,37 +174,82 @@ catch (error) { console.error(error.message); process.exitCode = 1; }
                 {'kind': 'accept', **resource},
                 {'kind': 'artifact', **resource, 'output': name}]
         scope = {'task': sha(pdf), 'subject': 'document-shuttle', 'expires_ms': int(time.time()*1000)+900_000,
-                 'delegate': True, 'permissions': profiles + sum(permissions.values(), [])}
+                 'delegate': True, 'permissions': [profile, *materials['permissions']] + sum(permissions.values(), [])}
         parent_credential = approve({'op': 'grant', 'scope': scope})['credential']
         def child(subject, rights):
             return approve({'op': 'derive-grant', 'scope': {**scope, 'subject': subject,
                 'delegate': False, 'permissions': rights}}, parent_credential)['credential']
-        first_credential = child('pdf-markdown-agent', [profiles[0], permissions['source.pdf'][2], *permissions['document.md']])
-        second_credential = child('markdown-sheet-agent', [profiles[1], permissions['document.md'][2], *permissions['result.xlsx']])
+        main_credential = child('document-main', scope['permissions'])
+        observer = child('unrelated-observer', [])
+        admitted = time.monotonic()
         original, accepted_pdf = publish('source.pdf', pdf, parent_credential)
-        pdf_data = request({'op': 'artifact-read', 'instance': str(original), 'run': 'deliver', 'output': 'source.pdf'}, first_credential)
+        pdf_data = request({'op': 'artifact-read', 'instance': str(original), 'run': 'deliver', 'output': 'source.pdf'}, main_credential)
         text = '\n'.join(p.extract_text() for p in PdfReader(BytesIO(bytes(pdf_data['bytes']))).pages)
-        assert all(word in text for word in ('Bolt', 'Plate', 'Bearing'))
-        first, proposal = delegate('pdf-markdown-agent',
-            'Convert this synthetic PDF text into Markdown. Preserve every item, quantity and unit price. '
-            'Use a pipe table with columns Item, Quantity, Unit price. Return only the schema.\n' + text,
-            markdown_schema, pdf_scope, first_credential)
+        first_prompt = (
+            'Convert the supplied PDF text to Markdown. Discover the appropriate document capability '
+            'by reading the index and its matching contract and skill through host_request. '
+            'read-input supports encoding="utf-8" and requires the listed path and sha256. '
+            'Preserve every item, quantity and price in a pipe table with columns Item, Quantity, Unit price. '
+            'Apply the selected skill unit rules to produce EUR values. If facts are missing, return questions in markdown '
+            'with empty rows and wait for clarification before producing the table. '
+            'Return markdown, rows=[] and selected equal to the chosen capability ID. '
+            'The second turn will provide the accepted Markdown for typed extraction.\nIndex request: '
+            + json.dumps(materials['index']) + '\nPDF text:\n' + text)
+        main_id = approve({'op': 'harness', 'task': dict(selected, prompt=first_prompt)}, main_credential)['id']
+        first = turn_result(main_id, 1, main_credential)
+        turns = [first['turn']]
+        connect = request({'op': 'harness-connect', 'id': main_id}, main_credential)
+        owner = (service / 'jobs' / main_id / 'owner.json').read_bytes()
+        proposal = first['proposal']
+        assert proposal['selected'] == materials['selected'], proposal
+        markdown_turn = 1
+        if ambiguous:
+            assert '?' in proposal['markdown'] and not proposal['rows'], proposal
+            approve({'op': 'harness-continue', 'id': main_id, 'execution': connect['execution'],
+                     'after_turn': 1, 'command': 'clarification',
+                     'instruction': 'The currency is EUR and the Bolt quantity is 12. Produce the requested Markdown now.'}, main_credential)
+            clarified = turn_result(main_id, 2, main_credential)
+            assert clarified['thread'] == first['thread']
+            turns.append(clarified['turn'])
+            proposal = clarified['proposal']
+            markdown_turn = 2
         markdown.write_text(proposal['markdown'])
         assert all(word in proposal['markdown'] for word in ('Bolt', 'Plate', 'Bearing', '|'))
-        md_instance, accepted_md = publish('document.md', markdown, first_credential)
-        approve({'op': 'record-adoption', 'id': first, 'instance': str(md_instance), 'run': 'deliver'}, first_credential)
-        read_md = request({'op': 'artifact-read', 'instance': str(md_instance), 'run': 'deliver', 'output': 'document.md'}, second_credential)
-        second, rows = delegate('markdown-sheet-agent',
-            'Extract the table into typed rows, preserving item names, quantities and unit prices.\n' + bytes(read_md['bytes']).decode(),
-            rows_schema, sheet_scope, second_credential)
-        expected = [('Bolt', 12, .5), ('Plate', 3, 8), ('Bearing', 2, 4.25)]
+        expected = expected_rows(args.scenario)
+        markdown_rows = []
+        for line in proposal['markdown'].splitlines():
+            cells = [cell.strip().strip('*') for cell in line.strip().strip('|').split('|')]
+            if cells and cells[0] in [row[0] for row in expected]:
+                assert len(cells) >= 3, cells
+                numeric = lambda cell: float(re.sub(r'\s|EUR|€', '', cell))
+                markdown_rows.append((cells[0], numeric(cells[1]), numeric(cells[2])))
+        assert markdown_rows == expected, markdown_rows
+        phases['markdown_ready_ms'] = round((time.monotonic() - started) * 1000)
+        md_instance, accepted_md = publish('document.md', markdown, main_credential)
+        read_md = {'op': 'artifact-read', 'instance': str(md_instance), 'run': 'deliver',
+                   'output': 'document.md', 'encoding': 'utf-8'}
+        instruction = ('Read the accepted Markdown using host_request, then extract its table into typed rows. '
+                       'Use the workbook skill. Return markdown="", rows with all original values, and '
+                       'the same selected capability ID. Markdown request: ' + json.dumps(read_md)
+                       + '\nWorkbook skill request: ' + json.dumps(materials['sheet']))
+        approve({'op': 'harness-continue', 'id': main_id, 'execution': connect['execution'],
+                 'after_turn': markdown_turn, 'command': 'extract-accepted-markdown', 'instruction': instruction}, main_credential)
+        wait(main_id, main_credential)
+        final = request({'op': 'harness-result', 'id': main_id}, main_credential)
+        second = request({'op': 'harness-turn-result', 'id': main_id, 'turn': turn_limit}, main_credential)
+        turns.append(second['turn'])
+        assert first['thread'] == second['thread'] and first['turn'] != second['turn']
+        assert owner == (service / 'jobs' / main_id / 'owner.json').read_bytes()
+        rows = final['proposal']
         assert [(r['item'], r['quantity'], r['unit_price']) for r in rows['rows']] == expected
         rows['source_sha256'] = sha(accepted_md)
         data = root / 'rows.json'
         data.write_text(json.dumps(rows))
-        # Application-owned mature authoring utility, never another agent driver.
-        subprocess.run([str(node), str(builder), str(data), str(root / 'workbook')], check=True, timeout=90)
-        sheet_instance, accepted_sheet = publish('result.xlsx', workbook, second_credential)
+        if builder:
+            subprocess.run([str(node), str(builder), str(data), str(root / 'workbook')], check=True, timeout=90)
+        else:
+            write_workbook(rows, workbook)
+        sheet_instance, accepted_sheet = publish('result.xlsx', workbook, main_credential)
         # Independently inspect exported OOXML, not the builder's own assertions.
         with ZipFile(accepted_sheet) as archive:
             ns = {'m': 'http://schemas.openxmlformats.org/spreadsheetml/2006/main'}
@@ -213,47 +273,61 @@ catch (error) { console.error(error.message); process.exitCode = 1; }
             for row, (name, quantity, price) in enumerate(expected, 6):
                 assert (value('A' + str(row)), value('B' + str(row)), value('C' + str(row))) == (name, quantity, price)
                 assert value('D' + str(row)) == quantity * price
-            assert value('D10') == 38.5
+                assert cells['D' + str(row)].findtext('m:f', namespaces=ns).lstrip('=') == f'B{row}*C{row}'
+            assert value('D10') == sum(q * p for _, q, p in expected)
             assert cells['D10'].findtext('m:f', namespaces=ns).lstrip('=') == 'SUM(D6:D8)'
-        approve({'op': 'record-adoption', 'id': second, 'instance': str(sheet_instance), 'run': 'deliver'}, second_credential)
+        approve({'op': 'record-adoption', 'id': main_id, 'instance': str(sheet_instance), 'run': 'deliver'}, main_credential)
+        delivery_ms = round((time.monotonic() - admitted) * 1000)
         for name, value, credential in [
-            ('PDF access removed from sheet agent', {'op': 'artifact-read', 'instance': str(original), 'run': 'deliver', 'output': 'source.pdf'}, second_credential),
-            ('sibling result denied', {'op': 'harness-result', 'id': first}, second_credential),
-            ('child escalation denied', {'op': 'derive-grant', 'scope': scope}, first_credential),
-            ('operator controls denied', {'op': 'show'}, first_credential),
+            ('foreign result denied', {'op': 'harness-result', 'id': main_id}, observer),
+            ('child escalation denied', {'op': 'derive-grant', 'scope': scope}, main_credential),
+            ('operator controls denied', {'op': 'show'}, main_credential),
         ]:
             request(value, credential, success=False)
             rejections.append(name)
-        cancelled_credential = child('cancelled-document-agent', [profiles[0]])
-        cancelled = approve({'op': 'delegate', 'parent': sha(pdf), 'task': selected('cancelled-document-agent',
-            'Return a short Markdown table for the cancelled synthetic test.', markdown_schema, pdf_scope)}, cancelled_credential)['id']
-        approve({'op': 'cancel', 'id': cancelled}, parent_credential)
-        wait(cancelled, cancelled_credential, outcome='cancelled')
-        request({'op': 'harness-result', 'id': cancelled}, cancelled_credential, success=False)
-        assert request({'op': 'grant-status'}, cancelled_credential)['active'] is False
         activities = [request({'op': 'activity', 'id': task_id}, parent_credential) for task_id in jobs]
-        assert len(activities) == 5
-        for task_id in (first, second):
-            activity = next(v for v in activities if v['task']['id'] == task_id)
-            assert activity['adoption']['plan']['grants_authority'] is False
-            assert activity['harness']['visibility'] == 'reported-events-only'
-            assert activity['task']['authorization']['active'] is True
+        activity = next(v for v in activities if v['task']['id'] == main_id)
+        metrics = activity['harness']['metrics']
+        assert metrics['usage']['available'] and metrics['usage']['total_tokens'] > 0, metrics
+        assert metrics['usage']['sessions'] == 1
+        hashes = set(materials['knowledge_hashes'])
+        reads = [r for r in metrics['disclosure']['resources'] if r['content_sha256'] in hashes]
+        unique = {r['content_sha256']: r['content_bytes'] for r in reads}
+        metrics['knowledge'] = {'reads': len(reads), 'total_bytes': sum(r['content_bytes'] for r in reads),
+                                'unique_bytes': sum(unique.values()), 'classification': 'frozen knowledge content hashes',
+                                'irrelevant_bytes': sum(r['content_bytes'] for r in reads if r['content_sha256'] in materials['irrelevant_hashes'])}
+        assert set(materials['required_hashes']).issubset(unique), metrics
         approve({'op': 'revoke-grant', 'id': parent_credential['id']}, parent_credential)
-        request({'op': 'harness-result', 'id': second}, second_credential, success=False)
+        request({'op': 'harness-result', 'id': main_id}, main_credential, success=False)
         assert call('spool-artifacts', sheet_instance, 'deliver')['outputs'][0]['binding']['content_sha256'] == sha(accepted_sheet)
         (root / 'activities.json').write_text(json.dumps(activities, indent=2))
-        (root / 'report.json').write_text(json.dumps({'passed': True, 'real_codex': True,
-            'host_sha256': sha(host), 'agents': [first, second], 'tasks': jobs,
-            'expected_rows': expected, 'total_eur': 38.5, 'source_pdf_sha256': sha(pdf),
+        report = {'passed': True, 'real_codex': True, 'scenario': args.scenario,
+            'host_sha256': sha(host), 'codex_sha256': sha(codex), 'model': args.model,
+            'agents': [main_id], 'thread': first['thread'], 'turns': turns, 'tasks': jobs,
+            'expected_rows': expected, 'total_eur': sum(q * p for _, q, p in expected), 'source_pdf_sha256': sha(pdf),
             'markdown_sha256': sha(accepted_md), 'xlsx_sha256': sha(accepted_sheet),
-            'task_permissions': {'rejections': rejections, 'cancelled_task': cancelled,
-                'cancel_revoked_authority': True, 'parent_revocation_reaches_children': True,
+            'elapsed_ms': round((time.monotonic() - started) * 1000), 'phases': phases, 'metrics': metrics,
+            'admission_to_delivery_ms': delivery_ms, 'preparation_ms': round((admitted - started) * 1000),
+            'task_permissions': {'rejections': rejections, 'parent_revocation_reaches_children': True,
                 'accepted_products_survive_revocation': True, 'shuttle_client': bool(args.shuttle_client)},
-            'authoring': 'external application adapter; native host verifies publication and custody',
-            'hidden_harness_actions': 'unknown', 'activity': 'retained source references, not a second ledger'}, indent=2))
+            'authoring': 'application library; native host publication and custody',
+            'single_main_session': True, 'expected_clarifications': int(ambiguous), 'automatic_retries': 0}
+        (root / 'report.json').write_text(json.dumps(report, indent=2))
+        return report
     finally:
         if parent_credential and daemon.poll() is None:
             approve({'op': 'revoke-grant', 'id': parent_credential['id']}, parent_credential)
+            deadline = time.monotonic() + 20
+            while time.monotonic() < deadline:
+                pending = [task for task in request({'op': 'show'})['tasks'] if task['state'] != 'settled']
+                if not pending:
+                    break
+                time.sleep(.1)
+            retained = {}
+            for path in (service / 'jobs').glob('*/request.json'):
+                if json.loads(path.read_text()).get('kind') == 'harness':
+                    retained[path.parent.name] = request({'op': 'activity', 'id': path.parent.name})['harness']['metrics']
+            (root / 'retained-metrics.json').write_text(json.dumps(retained, indent=2))
         if daemon.poll() is None:
             daemon.send_signal(signal.SIGTERM)
             daemon.wait(timeout=10)

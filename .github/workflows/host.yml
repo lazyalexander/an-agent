@@ -116,6 +116,9 @@ jobs:
       - name: Harness steering and original-owner reconnect
         if: matrix.native_workspace
         run: python3 -B crates/an-agent-host/tests/cli/native_harness_adapter.py --host target/debug/an-agent-host --evidence "$RUNNER_TEMP/native-state/harness-adapter"
+      - name: Original-thread continuation and usage accounting
+        if: matrix.native_workspace
+        run: python3 -B crates/an-agent-host/tests/cli/native_harness_session.py --host target/debug/an-agent-host --evidence "$RUNNER_TEMP/native-state/harness-session"
       - name: Native selected inputs and accepted artifact handoff
         if: matrix.native_workspace
         run: python3 -B crates/an-agent-host/tests/cli/native_daemon_inputs.py --host target/debug/an-agent-host --evidence "$RUNNER_TEMP/native-state/daemon-inputs"

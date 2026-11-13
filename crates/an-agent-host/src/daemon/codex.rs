@@ -10,7 +10,8 @@ pub(super) struct Codex {
 impl super::harness_adapter::HarnessAdapter for Codex {
     fn capabilities(&self) -> Value {
         json!({"version":VERSION,"steer":self.interactive,"reconnect_observation":true,
-            "resume_execution":false,"cancel":"host-process-group","usage":"reported-only"})
+            "resume_execution":false,"continue_turn":self.interactive,
+            "cancel":"host-process-group","usage":"provider-cumulative-snapshots"})
     }
     fn execute(
         &self,
@@ -160,5 +161,11 @@ pub(super) fn event(native: &Value) -> Value {
         "thread/tokenUsage/updated" => "usage",
         _ => "other",
     };
-    json!({"event":category,"evidence":"external-harness-report","grants_authority":false})
+    let mut event =
+        json!({"event":category,"evidence":"external-harness-report","grants_authority":false});
+    if let Some(usage) = super::harness_metrics::codex_usage(native) {
+        event["usage"] = usage;
+    }
+    event["observed_ms"] = native["host_observed_ms"].clone();
+    event
 }
