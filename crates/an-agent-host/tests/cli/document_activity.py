@@ -26,6 +26,7 @@ def main():
     for name in ('host', 'evidence', 'pdf', 'codex', 'node', 'builder'):
         parser.add_argument('--' + name, type=Path, required=True)
     parser.add_argument('--shuttle-client', type=Path)
+    parser.add_argument('--app-server', action='store_true')
     args = parser.parse_args()
     require_native_workspace()
     host, pdf, codex, node, builder = [p.resolve(strict=True) for p in
@@ -110,12 +111,12 @@ catch (error) { console.error(error.message); process.exitCode = 1; }
         return instance, output
 
     def selected(label, prompt, schema, scope):
-        return {'label': label, 'binary': str(codex), 'binary_sha256': sha(codex),
+        return {'app_server': args.app_server, 'label': label, 'binary': str(codex), 'binary_sha256': sha(codex),
                 'prompt': prompt, 'schema': schema, 'scope': scope, 'model': None, 'mcp': None}
 
     def delegate(label, prompt, schema, scope, credential):
         value = {'op': 'delegate', 'parent': sha(pdf), 'task': {
-            'label': label, 'binary': str(codex), 'binary_sha256': sha(codex),
+            'app_server': args.app_server, 'label': label, 'binary': str(codex), 'binary_sha256': sha(codex),
             'prompt': prompt, 'schema': schema, 'scope': scope, 'model': None, 'mcp': None}}
         task_id = approve(value, credential)['id']
         wait(task_id, credential)

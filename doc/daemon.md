@@ -299,3 +299,51 @@ The document case takes `--host`, fresh `--evidence`, synthetic `--pdf`, qualifi
 `result.xlsx`: source rows A6:C8, amount formulas D6:D8 and total D10. It never
 installs tools or provisions services. The fixture checks Bolt (12 at 0.50),
 Plate (3 at 8.00), Bearing (2 at 4.25), total EUR 38.50.
+
+## Harness adapters and reconnect
+
+`HarnessAdapter` supplies execution, capability discovery and normalized event
+translation behind the existing daemon queue and independent task owner. Select
+`task.adapter="codex-app-server"` for interactive Codex. `codex-exec` preserves the
+finite profile. Existing omitted selectors and `app_server=true` retain their
+serialized identities and permission profiles. Conflicting selectors are rejected.
+Both Codex profiles remain pinned to CLI 0.166.0 and the approved executable hash.
+
+Call `harness-connect` with `id` and optional `cursor` through the original task
+endpoint. It returns the original execution handle, capability flags, task state,
+normalized events, the next cursor and steering receipts. Reconnecting uses retained
+records and the original worker. It survives a controller disconnect or daemon
+restart while that worker stays alive. `resume_execution=false` explicitly describes
+worker/provider loss. Unknown executions keep their original IDs without replay.
+Cancelled credentials retain scoped observation and cancellation access.
+
+Call `harness-steer` with `id`, `execution`, a unique `command` and `instruction`.
+Preview and exact approval bind the instruction digest to the original execution.
+The caller must own the task and retain its harness capability. The worker rechecks
+the original task grant before delivery. Up to 32 commands are ordered by admission,
+with instructions bounded to 64 KiB. Reusing an identical command ID reconciles its
+receipt. Reusing it for different content fails. The durable sent marker precedes
+transport, so a crash between marker and acknowledgement remains unknown.
+`queued` describes local admission. `acknowledged` records provider acceptance into
+the same turn. It does not prove the requested change appeared in the result.
+
+The Codex bridge maps steering to `turn/steer` with the original `expectedTurnId`.
+Cancellation continues through the existing revocable grant and supervised process
+group. Local release evidence gates settlement. Remote provider termination remains
+unconfirmed. Final structured output remains a proposal until the existing spool
+publication and acceptance path accepts a concrete product. The adapter owns no
+scheduler, model loop, permission issuer or artifact store. Protocol details follow
+the pinned binary schema and [Codex app-server documentation](https://learn.chatgpt.com/docs/app-server).
+
+A future modified DeepSeek adapter must implement this contract, declare supported
+capabilities, map its native session identities privately and pass the same scoped
+steering, cancellation, reconnect and artifact-custody checks. Unsupported capabilities
+must be rejected explicitly. Adding an adapter must preserve the existing host job,
+grant lineage, cancellation owner and acceptance path.
+
+`native_harness_adapter.py` verifies two background owners, steering acknowledgements,
+stale handles, sibling denial, duplicate command rejection, isolated cancellation
+and daemon restart with unchanged owners using deterministic protocol processes.
+`document_activity.py --app-server` exercises real Codex proposals through the
+existing PDF, Markdown and Excel custody path using explicitly selected inputs and
+an application-owned workbook builder. Real-provider evidence is retained locally.

@@ -55,7 +55,7 @@ pub(super) fn harness_permission(task: &harness::Task) -> Result<Permission> {
     let profile = json!({"binary":task.binary,"binary_sha256":task.binary_sha256,
         "schema":task.schema,"scope":task.scope,"model":task.model,"mcp":task.mcp});
     let mut profile = profile;
-    if task.app_server {
+    if super::harness_adapter::interactive(task)? {
         profile["adapter"] = json!("codex-app-server-v1");
     }
     Ok(Permission::Harness {
@@ -72,7 +72,10 @@ pub(super) fn dispatch(root: &Path, envelope: &Value) -> Result<Value> {
 pub(super) fn dispatch_bound(root: &Path, req: &Value, actor: &Binding) -> Result<Value> {
     let op = text(req, "op")?;
     // Revocation retains status/cancellation access to the caller's own jobs.
-    if !matches!(op, "task" | "grant-status" | "cancel" | "revoke-grant") {
+    if !matches!(
+        op,
+        "task" | "harness-connect" | "grant-status" | "cancel" | "revoke-grant"
+    ) {
         grants::active(actor)?;
     }
     match op {
@@ -157,14 +160,14 @@ pub(super) fn dispatch_bound(root: &Path, req: &Value, actor: &Binding) -> Resul
                 return Err("use delegate for task-scoped submissions".into());
             }
         }
-        "update-delegation" => {
+        "update-delegation" | "harness-steer" => {
             let job = owned_job(root, actor, text(req, "id")?)?;
             let Job::Harness { task, .. } = job else {
                 return Err("not a harness task".into());
             };
             grants::require(actor, &harness_permission(&task)?)?;
         }
-        "task" | "activity" | "harness-result" | "cancel" => {
+        "task" | "activity" | "harness-result" | "harness-connect" | "cancel" => {
             owned_job(root, actor, text(req, "id")?)?;
         }
         "accept" | "record-adoption" => {

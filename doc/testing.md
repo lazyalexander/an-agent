@@ -48,6 +48,21 @@ termination. Retain evidence and refuse destructive cleanup when termination is
 unknown; do not retry the operation automatically. Exercise real enforcement
 before claiming it, and label simulated receipts or faults explicitly.
 
+## Branch-owned run evidence
+
+Every feature PR carries a reviewed acceptance summary tied to the tested source
+revision or patch digest and a frozen executable hash. Include the environment,
+scenario outcomes, denied operations, cancellation/reconnect observations,
+artifact checks and unresolved limitations. Identify deterministic fixtures and
+real-provider runs explicitly. Record accepted product hashes when relevant.
+
+Keep per-run logs, private conversations, receipts and generated files under the
+feature worktree's ignored `lab/` area. The branch owner retains them independently
+of integration. The PR holds the durable summary and any reviewed CI-artifact
+links, including their retention period. Per-run evidence is excluded from both
+`dev-advance` and `main`; reusable regression suites and contract documentation
+travel through the ordinary PR. Preserve summaries when pruning merged heads.
+
 ## Migration acceptance
 
 For each selected suite, document old and new entrypoints and map its assertions

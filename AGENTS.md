@@ -90,6 +90,18 @@ watch, it belongs to the lab.
   clean in the proper crate with tests to product standard, then delete
   the lab original.
 
+## Branch-owned acceptance evidence
+
+Each feature branch owns its run-specific acceptance evidence in its ignored
+`lab/` workspace. Attach a reviewed summary to the feature PR with the tested
+source revision or patch digest, frozen executable hash, environment, scenarios,
+outcomes, limitations and product hashes. Keep raw logs, credentials, transcripts,
+run receipts and generated products in that branch's local evidence area. Reviewed
+CI artifacts may also be linked from the PR with their retention period stated.
+Run-specific evidence files never merge into `dev-advance` or `main`. Reusable tests,
+contract documentation and this evidence policy follow the normal product PR.
+The PR summary remains available after its remote feature branch is deleted.
+
 ## Settling a batch into main
 
 1. All feature PRs of the batch merged to `dev-advance`; the line runs
