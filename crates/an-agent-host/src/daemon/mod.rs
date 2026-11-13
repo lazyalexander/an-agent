@@ -13,6 +13,7 @@ mod observation;
 mod permissions;
 mod scheduler;
 mod storage;
+mod task_session;
 #[cfg(unix)]
 mod transport;
 mod web;

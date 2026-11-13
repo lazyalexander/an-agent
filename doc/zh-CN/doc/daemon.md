@@ -227,3 +227,36 @@ TypeScript 与 HTML 源码使用英文，简体中文界面翻译保存在
 推理输出属于输出，同会话累计更新去重，倒退或非法计数降低覆盖率，缺失值为 `null`。
 资源回执记录摘要、字节数和宿主工具耗时，模型实际消费情况未知。
 `read-input` 与 `artifact-read` 可选择 `encoding="utf-8"`，复用原授权检查，默认保留字节响应。
+
+### 宿主任务会话边界
+
+内部 task-session 层负责续轮准入、命令对账、观察和授权工具分派。
+适配器能力使用类型化声明，补充指令与续轮分别检查。Codex 原生事件与用量解析
+留在 Codex 适配器中。现有 `harness-*` 操作、持久身份和权限摘要保持兼容。
+此次提取不增加调度器，提供方或 guest 报告不能授权产物验收。
+
+## 任务会话的 Cocoon 传输
+
+任务会话中间层通过现有 `host_request` 工具接收 `cocoon-call`、
+`cocoon-status` 和 `cocoon-reconcile`。当前提供有界传输基础，尚未构成已验收的
+spool 执行后端或产物导入器；不会启动 VM，也不会将导出文件接纳为交付产物。
+
+可信操作员提供权限为 0600 的私有 JSON 配置，字段为 `socket`、
+`grant`、`caller`、`vm` 和 `generation`，只保留工作授权，不含 Cocoon 管理凭据。模型只得到配置路径和 SHA-256，不能读取
+其内容。任务授权需包含 `kind=cocoon`、`profile_sha256` 和 `operation_sha256`；
+后者精确绑定序列化后的 Cocoon 操作。授权继续经过宿主原有预览与审批流程，
+不得同时授予模型读取凭据配置的权限。Cocoon 每次仍独立检查自身工作授权。
+
+`cocoon-call` 请求包含 `profile`、`profile_sha256`、UUID 格式的 `operation_id`
+以及 `operation`。仅允许 show、context、stop、guest 和 export；
+guest/export 的 VM、调用者和 generation 必须与配置一致。模型不能签发授权或
+创建 VM。宿主生成独立的 Cocoon 请求 UUID，并在传输前持久化绑定。同一操作 ID
+再次提交只观察原记录，内容变化则拒绝。传输丢失后保持未知，不重放操作。
+记录属于原任务会话，同一授权下的其他会话不可借此读取；意图记录不含凭据和客体载荷。
+
+`cocoon-reconcile` 使用相同配置、操作身份和精确操作授权，仅查询 Cocoon 原请求 ID，
+保留已确认的成功结果。工具中的 `cocoon-status` 只需操作 ID；控制端也可通过任务授权
+端点提供 `id` 和 `operation_id`，在任务授权撤销后观察本任务记录。这不恢复执行权限。
+`harness-connect` 也返回本会话保留的 `cocoon_operations` 回执。
+所有响应保持 `artifact_accepted=false`；`observed` 只表示获得对应后端回执，
+VM 终止和产物验收仍需独立证据。

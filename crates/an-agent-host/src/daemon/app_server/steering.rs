@@ -42,7 +42,7 @@ pub(super) fn send_pending(
         {
             let receipt = dir.join(format!("ack-{name}.json"));
             if !receipt.exists() {
-                super::super::harness_adapter::publish(
+                super::super::task_session::publish(
                     &receipt,
                     &json!({"command":name,"state":"rejected","reason":"selected turn ended"}),
                 )?;
@@ -93,7 +93,7 @@ pub(super) fn acknowledge(dir: &Path, message: &Value, turn: &str) -> Result<boo
     } else {
         return Err("steering response has foreign turn".into());
     };
-    super::super::harness_adapter::publish(
+    super::super::task_session::publish(
         &dir.join(format!("ack-{name}.json")),
         &json!({"command":name,"state":state}),
     )?;

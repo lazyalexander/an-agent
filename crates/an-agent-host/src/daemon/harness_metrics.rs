@@ -45,58 +45,6 @@ pub(super) fn now_ms() -> u64 {
     an_agent_core::det_seam::Clock::wall().now_ms()
 }
 
-pub(super) fn codex_usage(native: &Value) -> Option<Value> {
-    let (usage, session, turn, names) = match native["method"].as_str() {
-        Some("thread/tokenUsage/updated") => (
-            &native["params"]["tokenUsage"]["total"],
-            native["params"]["threadId"].as_str()?,
-            native["params"]["turnId"].as_str(),
-            [
-                "inputTokens",
-                "cachedInputTokens",
-                "outputTokens",
-                "reasoningOutputTokens",
-                "totalTokens",
-            ],
-        ),
-        _ if native["type"] == "turn.completed" && native["usage"].is_object() => (
-            &native["usage"],
-            "finite-exec",
-            None,
-            [
-                "input_tokens",
-                "cached_input_tokens",
-                "output_tokens",
-                "reasoning_output_tokens",
-                "total_tokens",
-            ],
-        ),
-        _ => return None,
-    };
-    let mut result = json!({"session":session,"turn":turn,"scope":"session-total",
-        "source":"provider-reported","cache_is_input_subset":true,"reasoning_is_output_subset":true});
-    for (target, source) in [
-        "input_tokens",
-        "cached_input_tokens",
-        "output_tokens",
-        "reasoning_output_tokens",
-        "total_tokens",
-    ]
-    .into_iter()
-    .zip(names)
-    {
-        result[target] = usage[source].as_u64().map_or(Value::Null, |n| json!(n));
-    }
-    if result["total_tokens"].is_null() {
-        result["total_tokens"] = result["input_tokens"]
-            .as_u64()
-            .zip(result["output_tokens"].as_u64())
-            .and_then(|(a, b)| a.checked_add(b))
-            .map_or(Value::Null, |n| json!(n));
-    }
-    Some(result)
-}
-
 /// A resource disclosure is measured after authorization and successful reading.
 pub(super) fn disclosure(arguments: &Value, response: &Value) -> Option<Value> {
     let request: Value = serde_json::from_str(arguments["request"].as_str()?).ok()?;
@@ -244,15 +192,16 @@ mod tests {
 
     #[test]
     fn numeric_usage_excludes_private_content_and_preserves_missing_values() {
-        let value = codex_usage(&json!({"method":"thread/tokenUsage/updated","params":{
+        let value =
+            super::super::codex::usage(&json!({"method":"thread/tokenUsage/updated","params":{
             "threadId":"thread","turnId":"turn","secret":"hidden",
             "tokenUsage":{"total":{"inputTokens":10,"cachedInputTokens":5,"outputTokens":3}}}}))
-        .unwrap();
+            .unwrap();
         assert_eq!(value["total_tokens"], 13);
         assert_eq!(value["cached_input_tokens"], 5);
         assert!(value["reasoning_output_tokens"].is_null());
         assert!(!value.to_string().contains("hidden"));
-        assert!(codex_usage(&json!({"type":"turn.started"})).is_none());
+        assert!(super::super::codex::usage(&json!({"type":"turn.started"})).is_none());
     }
 
     #[test]

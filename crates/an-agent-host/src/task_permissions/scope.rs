@@ -17,6 +17,10 @@ pub(crate) enum Permission {
         revision: String,
         seconds: u64,
     },
+    Cocoon {
+        profile_sha256: String,
+        operation_sha256: String,
+    },
     Harness {
         profile_sha256: String,
     },
@@ -65,6 +69,13 @@ impl Permission {
                 if *seconds == 0 {
                     return Err("task deadline must be positive".into());
                 }
+            }
+            Self::Cocoon {
+                profile_sha256,
+                operation_sha256,
+            } => {
+                digest(profile_sha256)?;
+                digest(operation_sha256)?;
             }
             Self::Harness { profile_sha256 } => digest(profile_sha256)?,
             Self::ReadInput { path, sha256 } => {

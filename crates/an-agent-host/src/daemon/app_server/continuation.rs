@@ -62,14 +62,14 @@ pub(super) fn acknowledge(dir: &Path, message: &Value, completed: u8) -> Result<
         return Err("unbound continuation response".into());
     }
     if message.get("error").is_some() {
-        super::super::harness_adapter::publish(
+        super::super::task_session::publish(
             &dir.join(format!("ack-{name}.json")),
             &json!({"command":name,"state":"rejected"}),
         )?;
         return Err("provider refused continuation on original session".into());
     }
     let turn = text(&message["result"]["turn"], "id")?.to_owned();
-    super::super::harness_adapter::publish(
+    super::super::task_session::publish(
         &dir.join(format!("ack-{name}.json")),
         &json!({"command":name,"state":"acknowledged","turn":turn}),
     )?;
