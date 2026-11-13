@@ -56,11 +56,31 @@ for raw in sys.stdin:
   send({'method':'turn/completed','params':{'threadId':'main','turn':{'id':'turn','status':'completed'}}})
 ''')
         fixture.chmod(0o700)
-        task = driver.task(fixture, json.dumps(request))
+        binary = bytes(range(256)) * 40
+        source = driver.root / 'source.pdf'
+        source.write_bytes(binary)
+        attempt = str(uuid.uuid4())
+        common = {'path': '/workspace/document.bin', 'attempt': attempt,
+            'sha256': sha(source), 'bytes': len(binary)}
+        upload = dict(common, direction='upload', source=str(source))
+        download = dict(common, direction='download')
+        transfers = [dict(request, op='cocoon-transfer', operation_id=str(uuid.uuid4()), operation=plan)
+            for plan in (upload, download)]
+        fixture_text = fixture.read_text().replace("def send(v):", "pending=[]; success=True\ndef send(v):")
+        fixture_text = fixture_text.replace("  send({'id':99,'method':'item/tool/call'", "  pending=json.loads(v['params']['input'][0]['text'])\n  selected=pending.pop(0)\n  send({'id':99,'method':'item/tool/call'", 1)
+        fixture_text = fixture_text.replace("v['params']['input'][0]['text']}}})", "json.dumps(selected)}}})")
+        fixture_text = fixture_text.replace(" elif v.get('id')==99:\n", " elif v.get('id')==99:\n  success=success and v['result']['success']\n  if pending:\n   send({'id':99,'method':'item/tool/call','params':{'threadId':'main','turnId':'turn','tool':'host_request','namespace':None,'callId':str(len(pending)),'arguments':{'request':json.dumps(pending.pop(0))}}})\n   continue\n")
+        fixture_text = fixture_text.replace("{'ok':v['result']['success']}", "{'ok':success}")
+        fixture.write_text(fixture_text)
+        task = driver.task(fixture, json.dumps([request, *transfers]))
         profile = driver.profile(task)
         digest = hashlib.sha256(json.dumps(operation, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
-        parent = driver.grant([profile, {'kind': 'cocoon', 'profile_sha256': sha(profile_path),
-            'operation_sha256': digest}], delegate=True)
+        rights = [{'kind': 'cocoon', 'profile_sha256': sha(profile_path), 'operation_sha256': digest}]
+        for plan in (upload, download):
+            rights.append({'kind': 'cocoon', 'profile_sha256': sha(profile_path),
+                'operation_sha256': hashlib.sha256(json.dumps(plan, sort_keys=True, separators=(',', ':')).encode()).hexdigest()})
+        rights.append({'kind': 'read-input', 'path': str(source), 'sha256': sha(source)})
+        parent = driver.grant([profile, *rights], delegate=True)
         leaf = driver.grant([profile], subject='restricted', parent=parent)
         received = []
         errors = []
@@ -74,17 +94,35 @@ for raw in sys.stdin:
             return result
         def respond():
             try:
-                stream, _ = server.accept()
-                with stream:
-                    stream.settimeout(10)
-                    size, = struct.unpack('!I', receive_exact(stream, 4))
-                    assert 0 < size <= 32768
-                    body = json.loads(receive_exact(stream, size))
-                    assert body['operation'] == operation and body['credential'] == ''
-                    received.append(body['request'])
-                    response = json.dumps({'request': body['request'], 'caller': 'main',
-                        'result': {'Ok': {'vm': vm, 'state': 'running'}}}).encode()
-                    stream.sendall(struct.pack('!I', len(response)) + response)
+                for index in range(5):
+                    stream, _ = server.accept()
+                    with stream:
+                        stream.settimeout(10)
+                        size, = struct.unpack('!I', receive_exact(stream, 4))
+                        assert 0 < size <= 32768
+                        body = json.loads(receive_exact(stream, size))
+                        assert body['credential'] == ''
+                        received.append(body['request'])
+                        if index == 0:
+                            assert body['operation'] == operation
+                            result = {'vm': vm, 'state': 'running'}
+                        else:
+                            guest = body['operation']['request']
+                            op = guest['operation']
+                            offset = op['offset']
+                            chunk = binary[offset:offset+8192]
+                            assert guest['identity']['attempt'] == attempt
+                            if op['kind'] == 'write_bytes':
+                                assert bytes.fromhex(op['content_hex']) == chunk
+                                result = {'kind': 'written'}
+                            else:
+                                assert op['kind'] == 'read_chunk'
+                                result = {'kind': 'chunk', 'content_hex': chunk.hex(),
+                                    'next_offset': offset+len(chunk), 'eof': offset+len(chunk) == len(binary)}
+                            result = {'identity': guest['identity'], 'result': {'Ok': result}}
+                        response = json.dumps({'request': body['request'], 'caller': 'main',
+                            'result': {'Ok': result}}).encode()
+                        stream.sendall(struct.pack('!I', len(response)) + response)
             except Exception as error:
                 errors.append(str(error))
         thread = threading.Thread(target=respond, daemon=True)
@@ -93,7 +131,9 @@ for raw in sys.stdin:
         driver.wait(job, parent)
         thread.join(35)
         assert not thread.is_alive() and not errors, errors
-        assert len(received) == 1 and received[0] != command
+        assert len(received) == 5 and len(set(received)) == 5 and received[0] != command
+        candidate = driver.service / 'jobs' / job / 'cocoon-transfers' / transfers[1]['operation_id'] / 'candidate.bin'
+        assert candidate.read_bytes() == binary
         assert driver.request({'op': 'harness-result', 'id': job}, parent)['proposal'] == {'ok': True}
         status = driver.request({'op': 'cocoon-status', 'id': job, 'operation_id': command}, parent)
         assert status['state'] == 'observed' and not status['artifact_accepted']
@@ -104,7 +144,7 @@ for raw in sys.stdin:
         driver.wait(refused, leaf)
         assert driver.request({'op': 'harness-result', 'id': refused}, leaf)['proposal'] == {'ok': False}
         (driver.root / 'report.json').write_text(json.dumps({'passed': True, 'fixture_only': True,
-            'model_calls': 0, 'vm_execution_tested': False, 'single_backend_request': True,
+            'model_calls': 0, 'vm_execution_tested': False, 'context_and_four_binary_chunks': True, 'single_thread_tool_sequence': True,
             'scoped_tool_dispatch': True, 'reconnected_receipt': True}, indent=2))
     finally:
         server.close()

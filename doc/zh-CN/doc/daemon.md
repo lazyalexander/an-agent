@@ -260,3 +260,12 @@ guest/export 的 VM、调用者和 generation 必须与配置一致。模型不�
 `harness-connect` 也返回本会话保留的 `cocoon_operations` 回执。
 所有响应保持 `artifact_accepted=false`；`observed` 只表示获得对应后端回执，
 VM 终止和产物验收仍需独立证据。
+
+`cocoon-transfer` 通过相同配置和精确操作授权暂存有界二进制输入输出。
+`operation` 计划绑定 `direction`（upload 或 download）、位于 `/workspace/` 下的
+客体 `path`、当前 VM `attempt`、`sha256` 和 `bytes`（最多 4 MiB）。上传另绑定
+`source`，并要求匹配的 ReadInput 权限；下载不能选择宿主目标路径。宿主填写任务身份，
+核对每个 8192 字节分块的回执身份、游标以及最终大小和摘要。每个分块都有持久化提交栅栏，
+重入只观察或查询原操作，不重发未知写入；分块之间及暂存候选前均检查取消和撤销。
+下载只生成会话私有的 `candidate.bin`，`staged` 不代表已验收、可执行或已交付，
+也不证明 VM 终止或领域产物正确。

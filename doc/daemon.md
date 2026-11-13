@@ -425,3 +425,15 @@ own records. This is local receipt observation, not renewed execution authority.
 `harness-connect` also returns the session’s retained `cocoon_operations` receipts.
 Every response keeps `artifact_accepted=false`. `observed` means a correlated
 backend reply exists; VM termination and product acceptance require separate checks.
+
+`cocoon-transfer` stages bounded binary input/output using the same profile and
+exact-operation capability. Its `operation` plan binds `direction` (upload or
+download), guest `path` below `/workspace/`, active VM `attempt`, `sha256` and
+`bytes` (at most 4 MiB). Upload additionally binds `source`, requiring a matching
+ReadInput capability. Download cannot choose a host destination. The host supplies
+the task identity and verifies each correlated 8192-byte chunk, cursor, final size
+and digest. Each chunk has a durable submission fence; re-entry observes or queries
+its original operation, never resends an uncertain write. Cancellation/revocation
+is checked between chunks and before staging a candidate. Downloads remain private
+session candidates (`candidate.bin`); `staged` never means accepted, executable or
+delivered. This interface does not establish VM termination or domain correctness.
