@@ -39,7 +39,15 @@ pub(super) fn task(root: &Path, id: &str) -> Result<Value> {
             "active":crate::task_permissions::active(binding).is_ok()});
     }
     match &job {
-        Job::Spool { instance, run, .. } => {
+        Job::Spool {
+            instance,
+            run,
+            candidate_input,
+            ..
+        } => {
+            if let Some(candidate) = candidate_input {
+                row["candidate_input"] = candidate.clone();
+            }
             row["kind"] = json!("spool");
             row["instance"] = json!(instance);
             row["run"] = json!(run);

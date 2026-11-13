@@ -264,7 +264,10 @@ fn host_tool(root: &Path, session: &Path, authority: &Binding, arguments: &Value
     let mut req: Value = serde_json::from_str(text(arguments, "request")?)?;
     let op = text(&req, "op")?;
     #[cfg(unix)]
-    if matches!(op, "cocoon-call" | "cocoon-status" | "cocoon-reconcile") {
+    if matches!(
+        op,
+        "cocoon-call" | "cocoon-status" | "cocoon-reconcile" | "cocoon-transfer"
+    ) {
         let id = text(&req, "operation_id")?;
         let directory = session.join("cocoon-operations");
         if op == "cocoon-status" {
@@ -281,6 +284,31 @@ fn host_tool(root: &Path, session: &Path, authority: &Binding, arguments: &Value
         )?;
         let profile = crate::cocoon::load(Path::new(text(&req, "profile")?), digest)?;
         crate::task_permissions::active(authority)?;
+        if op == "cocoon-transfer" {
+            if req["operation"]["direction"] == "upload" {
+                crate::task_permissions::require(
+                    authority,
+                    &crate::task_permissions::Permission::ReadInput {
+                        path: PathBuf::from(text(&req["operation"], "source")?),
+                        sha256: text(&req["operation"], "sha256")?.into(),
+                    },
+                )?;
+            }
+            let task = crate::task_permissions::load(authority)?.scope.task;
+            return crate::cocoon::transfer::run(
+                &session.join("cocoon-transfers"),
+                &profile,
+                id,
+                req["operation"].clone(),
+                &task,
+                || {
+                    if session.join("cancel.json").exists() {
+                        return Err("task cancelled".into());
+                    }
+                    crate::task_permissions::active(authority)
+                },
+            );
+        }
         if op == "cocoon-reconcile" {
             return crate::cocoon::reconcile(&directory, &profile, id);
         }

@@ -50,6 +50,8 @@ enum Job {
         instance: PathBuf,
         run: String,
         request: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        candidate_input: Option<Value>,
     },
     Harness {
         #[serde(default, skip_serializing_if = "Option::is_none")]

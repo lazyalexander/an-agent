@@ -1,4 +1,5 @@
 //! Host-owned Cocoon transport. Provider protocols and guest claims confer no authority.
+pub(crate) mod transfer;
 use crate::execution::{Result, store};
 use serde::Deserialize;
 use serde_json::{Value, json};

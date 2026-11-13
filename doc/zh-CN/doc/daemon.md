@@ -260,3 +260,21 @@ guest/export 的 VM、调用者和 generation 必须与配置一致。模型不�
 `harness-connect` 也返回本会话保留的 `cocoon_operations` 回执。
 所有响应保持 `artifact_accepted=false`；`observed` 只表示获得对应后端回执，
 VM 终止和产物验收仍需独立证据。
+
+`cocoon-transfer` 通过相同配置和精确操作授权暂存有界二进制输入输出。
+`operation` 计划绑定 `direction`（upload 或 download）、位于 `/workspace/` 下的
+客体 `path`、当前 VM `attempt`、`sha256` 和 `bytes`（最多 4 MiB）。上传另绑定
+`source`，并要求匹配的 ReadInput 权限；下载不能选择宿主目标路径。宿主填写任务身份，
+核对每个 8192 字节分块的回执身份、游标以及最终大小和摘要。每个分块都有持久化提交栅栏，
+重入只观察或查询原操作，不重发未知写入；分块之间及暂存候选前均检查取消和撤销。
+下载只生成会话私有的 `candidate.bin`，`staged` 不代表已验收、可执行或已交付，
+也不证明 VM 终止或领域产物正确。
+
+spool 的 `submit` 可用 `candidate={session,transfer,sha256}` 选择已暂存下载，
+代替 `input` 或 `artifact`。调用者须拥有来源会话，持有绑定实例、run、transfer、摘要和
+最长秒数的 `run-candidate` 权限，来源授权也须有效。宿主在预览和预留前核实完整暂存回执
+及文件字节，不接受调用者指定宿主路径。原 spool 监督程序负责输入快照、执行和终止；
+其授权跟随来源会话的授权链，使预留后的取消和撤销继续有效。任务观察保留
+`candidate_input` 来源信息。正式保管仍经过原 spool `accept`，`artifact-read` 核实保管
+后才把字节返回继续执行的主会话。此桥接验证候选输入和保管流程，不表示领域程序已迁入
+Cocoon，也不证明 PDF/Excel 内容正确。

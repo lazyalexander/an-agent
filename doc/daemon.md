@@ -425,3 +425,29 @@ own records. This is local receipt observation, not renewed execution authority.
 `harness-connect` also returns the session’s retained `cocoon_operations` receipts.
 Every response keeps `artifact_accepted=false`. `observed` means a correlated
 backend reply exists; VM termination and product acceptance require separate checks.
+
+`cocoon-transfer` stages bounded binary input/output using the same profile and
+exact-operation capability. Its `operation` plan binds `direction` (upload or
+download), guest `path` below `/workspace/`, active VM `attempt`, `sha256` and
+`bytes` (at most 4 MiB). Upload additionally binds `source`, requiring a matching
+ReadInput capability. Download cannot choose a host destination. The host supplies
+the task identity and verifies each correlated 8192-byte chunk, cursor, final size
+and digest. Each chunk has a durable submission fence; re-entry observes or queries
+its original operation, never resends an uncertain write. Cancellation/revocation
+is checked between chunks and before staging a candidate. Downloads remain private
+session candidates (`candidate.bin`); `staged` never means accepted, executable or
+delivered. This interface does not establish VM termination or domain correctness.
+
+A staged download can be selected as a spool `submit` input using
+`candidate={session,transfer,sha256}` instead of `input` or `artifact`. The caller
+must own the producer session and hold `run-candidate` permission binding the
+instance, run, transfer, digest and maximum seconds. The producer grant must remain
+active. The host verifies the complete staged receipt and candidate bytes before
+preview and reservation; no caller-supplied host path is accepted. The existing
+spool supervisor snapshots that input and owns execution/termination. Its grant
+follows the producer lineage so cancellation/revocation remains effective after
+reservation. Task observation retains `candidate_input` provenance. Formal custody
+still requires the original spool `accept`, and `artifact-read` verifies that
+custody before returning bytes to the continuing primary session. This bridge
+qualifies candidate input and custody; it does not move the domain runtime into
+Cocoon or establish PDF/Excel correctness.

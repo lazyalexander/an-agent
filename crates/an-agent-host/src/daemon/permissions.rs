@@ -136,7 +136,19 @@ pub(super) fn dispatch_bound(root: &Path, req: &Value, actor: &Binding) -> Resul
             let instance = PathBuf::from(text(req, "instance")?);
             let run = text(req, "run")?.into();
             let seconds = req["seconds"].as_u64().ok_or("seconds")?;
-            let permission = if req.get("input").is_none() {
+            let permission = if let Some(candidate) = req.get("candidate") {
+                if req.get("input").is_some() || req.get("artifact").is_some() {
+                    return Err("candidate input cannot be combined with another input".into());
+                }
+                owned_job(root, actor, text(candidate, "session")?)?;
+                Permission::RunCandidate {
+                    instance,
+                    run,
+                    seconds,
+                    transfer: text(candidate, "transfer")?.into(),
+                    sha256: text(candidate, "sha256")?.into(),
+                }
+            } else if req.get("input").is_none() {
                 let artifact = req.get("artifact").ok_or("input or artifact required")?;
                 Permission::RunArtifact {
                     instance,
