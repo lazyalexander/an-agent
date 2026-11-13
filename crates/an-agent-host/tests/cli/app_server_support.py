@@ -17,6 +17,7 @@ class Driver:
         self.root.mkdir(mode=0o700)
         self.service = self.root / 'service'
         self.calls = []
+        self.first_admitted = None
         self.call('daemon', 'init', self.service, 3)
         self.log = (self.root / 'daemon.log').open('w')
         self.process = subprocess.Popen([str(self.host), 'daemon', 'serve', str(self.service)], stdout=self.log, stderr=self.log)
@@ -39,6 +40,8 @@ class Driver:
 
     def approve(self, value, credential=None):
         preview = self.request(value, credential)
+        if value['op'] in ('harness', 'submit') and self.first_admitted is None:
+            self.first_admitted = time.monotonic()
         return self.request(dict(value, approve=preview['approval_sha256']), credential)
 
     def wait(self, job, credential, outcome='succeeded'):
@@ -74,6 +77,27 @@ class Driver:
 
     def close(self):
         if self.process.poll() is None:
+            # Failed qualifications may leave an original owner waiting for its
+            # next turn. Cancel only this private service's unfinished jobs.
+            pending = [task['id'] for task in self.request({'op': 'show'})['tasks']
+                       if task['state'] != 'settled']
+            for job in pending:
+                self.approve({'op': 'cancel', 'id': job})
+            deadline = time.monotonic() + 20
+            while pending and time.monotonic() < deadline:
+                pending = [job for job in pending if self.request({'op': 'task', 'id': job})['state'] != 'settled']
+                if pending:
+                    time.sleep(.1)
+            (self.root / 'cleanup.json').write_text(json.dumps({'unsettled': pending, 'reclaimed': False}))
+            metrics = {}
+            for path in (self.service / 'jobs').glob('*/request.json'):
+                if json.loads(path.read_text()).get('kind') == 'harness':
+                    try:
+                        activity = self.request({'op': 'activity', 'id': path.parent.name})
+                        metrics[path.parent.name] = activity['harness']['metrics']
+                    except (AssertionError, KeyError) as error:
+                        metrics[path.parent.name] = {'unavailable': str(error)}
+            (self.root / 'retained-metrics.json').write_text(json.dumps(metrics, indent=2))
             self.process.send_signal(signal.SIGTERM)
             self.process.wait(timeout=15)
         self.log.close()

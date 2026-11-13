@@ -11,6 +11,10 @@ pub(crate) struct Task {
     pub app_server: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub adapter: Option<super::harness_adapter::Kind>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub turn_limit: Option<u8>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wall_seconds: Option<u64>,
     pub label: String,
     pub binary: PathBuf,
     pub binary_sha256: String,
@@ -41,7 +45,12 @@ pub(super) fn submit(
     if let Some(binding) = authorization {
         crate::task_permissions::require(binding, &permissions::harness_permission(&task)?)?;
     }
-    if task.label.is_empty()
+    if task.turn_limit.is_some_and(|limit| limit == 0 || limit > 8)
+        || task
+            .wall_seconds
+            .is_some_and(|seconds| seconds == 0 || seconds > 3600)
+        || (!super::harness_adapter::interactive(&task)? && task.turn_limit.unwrap_or(1) > 1)
+        || task.label.is_empty()
         || task.label.len() > 120
         || task.prompt.len() > 65536
         || !task.schema.is_object()
@@ -79,7 +88,7 @@ pub(super) fn submit(
         root,
         &Job::Harness {
             authorization: authorization.cloned(),
-            task,
+            task: Box::new(task),
             request: binding,
         },
     )?;

@@ -119,7 +119,7 @@ is for data proposals, not general-purpose coding, arbitrary remote harness
 protocols or remote environment lifecycle. Remote inference through the selected
 Codex client is distinct from local spool execution.
 
-The same existing process-group supervisor bounds the native client to 180 seconds
+The same existing process-group supervisor defaults to a 180-second native client deadline
 and confirms its local termination. This is not confirmation that a remote model
 stopped or that provider usage is zero. Native events remain private; completed
 proposals still require domain validation and the existing kit-edit/artifact gates.
@@ -319,6 +319,8 @@ Cancelled credentials retain scoped observation and cancellation access.
 
 Call `harness-steer` with `id`, `execution`, a unique `command` and `instruction`.
 Preview and exact approval bind the instruction digest to the original execution.
+The selected active turn is also bound. Idle sessions require an explicit continuation.
+Commands arriving after their selected turn ends are rejected.
 The caller must own the task and retain its harness capability. The worker rechecks
 the original task grant before delivery. Up to 32 commands are ordered by admission,
 with instructions bounded to 64 KiB. Reusing an identical command ID reconciles its
@@ -352,3 +354,29 @@ The standalone workspace shell is built with `python3 packages/workbench/build.p
 Its TypeScript and HTML source use English. Simplified Chinese interface messages
 are maintained in `packages/workbench/zh-CN.json` and embedded during the build.
 User-authored workspace names, goals and records retain their original language.
+
+### Bounded turns and measurements
+
+Interactive tasks may declare `turn_limit` from 1 to 8 and `wall_seconds` from 1 to
+3600. Defaults remain one turn and 180 seconds. Explicit values enter the task's
+harness permission digest. The original owner, execution handle, thread, schema,
+grants and supervisor span all declared turns. Finite exec supports one turn.
+
+`harness-turn-result` takes `id` and a one-based `turn`. It returns an immutable
+completed-turn proposal with `artifact_accepted=false` and
+`termination_confirmed=false`. `harness-continue` takes `id`, `execution`,
+`after_turn`, a unique `command` and `instruction`. Exact approval binds the
+instruction and completed turn. One continuation is admitted for each completed
+turn within the original limit. Identical commands reconcile their original
+receipts. The sent marker precedes transport. Unknown commands retain original
+identities. Cancellation and grant revocation also terminate an owner waiting
+between turns. Final `harness-result` still requires original task settlement.
+
+`activity.harness.metrics` projects numeric cumulative provider counters and
+authorized resource disclosures from existing retained records. Cached input is
+part of input, and reasoning output is part of output. Repeated cumulative updates
+are deduplicated per session. Invalid or regressing counters reduce coverage.
+Missing values remain `null`. Resource receipts expose digests, byte counts and
+host dispatch timing. Actual model consumption remains unknown. `read-input` and
+`artifact-read` accept optional `encoding="utf-8"` through the same authorization
+checks. The default response retains the existing byte representation.
