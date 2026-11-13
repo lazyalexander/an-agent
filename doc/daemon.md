@@ -347,3 +347,8 @@ and daemon restart with unchanged owners using deterministic protocol processes.
 `document_activity.py --app-server` exercises real Codex proposals through the
 existing PDF, Markdown and Excel custody path using explicitly selected inputs and
 an application-owned workbook builder. Real-provider evidence is retained locally.
+
+The standalone workspace shell is built with `python3 packages/workbench/build.py`.
+Its TypeScript and HTML source use English. Simplified Chinese interface messages
+are maintained in `packages/workbench/zh-CN.json` and embedded during the build.
+User-authored workspace names, goals and records retain their original language.
