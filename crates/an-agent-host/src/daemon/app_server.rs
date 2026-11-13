@@ -1,0 +1,266 @@
+//! Pinned app-server dialogue; all host effects reuse task capability checks.
+use super::*;
+mod steering;
+use std::{
+    io::{Read, Write},
+    process::{ChildStdin, ChildStdout},
+    sync::{Arc, atomic::Ordering},
+};
+
+pub(super) fn execute(
+    root: &Path,
+    dir: &Path,
+    task: &harness::Task,
+    authority: &Binding,
+    cancelled: &AtomicBool,
+) -> Result<Value> {
+    let settings = json!({"approval_policy":"never","project_doc_max_bytes":0,"web_search":"disabled",
+        "default_permissions":"finite","permissions":{"finite":{"filesystem":{":root":"none",":project_roots":"none"},"network":{"enabled":false}}},
+        "features":{"shell_tool":false,"view_image":false,"multi_agent":false,"apps":false,"plugins":false,
+        "remote_plugin":false,"hooks":false,"goals":false,"skill_search":false,"skip_host_skill_discovery":true,
+        "multi_agent_v2":{"enabled":false,"disable_native_tools":true}}});
+    let mut args = vec!["app-server".into()];
+    for (key, value) in settings.as_object().ok_or("settings")? {
+        args.extend(["-c".into(), format!("{key}={}", super::codex::toml(value))]);
+    }
+    let result = crate::execution::sandbox::service_process::app_server(
+        task,
+        dir,
+        &args,
+        cancelled,
+        |input, output, exceeded| {
+            dialogue(
+                root, dir, task, authority, cancelled, input, output, exceeded,
+            )
+        },
+    )?;
+    store::write_new(&dir.join("diagnostic.txt"), &result.stderr)?;
+    let settlement = crate::execution::sandbox::workspace::settlement(result.pid, result.reaped);
+    let confirmed = (result.pid.is_none() && result.status == "cancelled")
+        || (result.reaped && settlement["empty"] == true);
+    Ok(
+        json!({"status":result.status,"termination_confirmed":confirmed,"group_observation":settlement,
+        "proposal_available":result.status=="succeeded" && confirmed && dir.join("decision.json").is_file(),
+        "artifact_accepted":false,"remote_termination_confirmed":false,"automatic_retries":0}),
+    )
+}
+
+fn send(input: &mut ChildStdin, value: Value) -> std::io::Result<()> {
+    serde_json::to_writer(&mut *input, &value)?;
+    input.write_all(b"\n")?;
+    input.flush()
+}
+
+pub(super) fn dispatch(root: &Path, envelope: &Value) -> Result<Value> {
+    let (dir, job) = storage::job(root, text(envelope, "id")?)?;
+    let Job::Harness {
+        task,
+        authorization: Some(authority),
+        ..
+    } = job
+    else {
+        return Err("no harness authority".into());
+    };
+    if !super::harness_adapter::interactive(&task)?
+        || !dir.join("owner.json").exists()
+        || dir.join("cancel.json").exists()
+        || dir.join("completion.json").exists()
+    {
+        return Err("app-server task is not active".into());
+    }
+    let result = host_tool(root, &authority, &envelope["arguments"]);
+    let receipt = json!({"request_sha256":store::digest(&serde_json::to_vec(&envelope["arguments"])?),
+        "grant":authority.id,"succeeded":result.is_ok(),
+        "response_sha256":store::digest(&serde_json::to_vec(&match &result { Ok(v)=>v.clone(), Err(e)=>json!({"error":e.to_string()}) })?)});
+    let path = dir.join("tool-receipts.jsonl");
+    store::no_links(&path)?;
+    if !path.exists() {
+        store::write_new(&path, b"")?;
+    }
+    let mut file = fs::OpenOptions::new().append(true).open(path)?;
+    serde_json::to_writer(&mut file, &receipt)?;
+    file.write_all(b"\n")?;
+    file.sync_all()?;
+    result
+}
+
+fn host_tool(root: &Path, authority: &Binding, arguments: &Value) -> Result<Value> {
+    let mut req: Value = serde_json::from_str(text(arguments, "request")?)?;
+    let op = text(&req, "op")?;
+    if matches!(
+        op,
+        "derive-grant" | "grant" | "revoke-grant" | "harness-permission"
+    ) {
+        return Err("harness cannot issue credentials or administer grants".into());
+    }
+    let selected = if let Some(id) = req.get("grant").and_then(Value::as_str) {
+        let child = crate::task_permissions::binding(root, id)?;
+        if !crate::task_permissions::load(authority)?.scope.delegate
+            || !crate::task_permissions::owns(authority, &child)?
+            || child == *authority
+        {
+            return Err("delegation requires an authorized descendant grant".into());
+        }
+        child
+    } else {
+        authority.clone()
+    };
+    req.as_object_mut().ok_or("host request")?.remove("grant");
+    crate::task_permissions::active(authority)?;
+    permissions::dispatch_bound(root, &req, &selected)
+}
+
+#[allow(
+    clippy::too_many_arguments,
+    reason = "explicit original owner and transport bindings"
+)]
+fn dialogue(
+    root: &Path,
+    dir: &Path,
+    task: &harness::Task,
+    authority: &Binding,
+    cancelled: &AtomicBool,
+    mut input: ChildStdin,
+    output: ChildStdout,
+    exceeded: Arc<AtomicBool>,
+) -> std::io::Result<Vec<u8>> {
+    let convert = |error: Box<dyn std::error::Error>| std::io::Error::other(error.to_string());
+    let mut journal = fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(dir.join("native-events.jsonl"))?;
+    send(
+        &mut input,
+        json!({"id":0,"method":"initialize","params":{"clientInfo":{"name":"an_agent","version":"0.1.0"},"capabilities":{"experimentalApi":true}}}),
+    )?;
+    store::directory(&dir.join("commands")).map_err(convert)?;
+    let mut messages = steering::Messages::new(output);
+    let mut thread = String::new();
+    let mut turn = String::new();
+    let mut calls = std::collections::BTreeSet::new();
+    let mut total = 0;
+    loop {
+        if dir.join("cancel.json").exists() || crate::task_permissions::active(authority).is_err() {
+            cancelled.store(true, Ordering::Release);
+            return Err(std::io::Error::other("task authorization cancelled"));
+        }
+        steering::send_pending(dir, authority, cancelled, &mut input, &thread, &turn)
+            .map_err(convert)?;
+        let Some(raw) = messages.next()? else {
+            continue;
+        };
+        total += raw.len();
+        if total > 2 * 1024 * 1024 {
+            exceeded.store(true, Ordering::Release);
+            return Err(std::io::Error::other("app-server evidence limit"));
+        }
+        journal.write_all(&raw)?;
+        let message: Value = serde_json::from_slice(&raw)?;
+        if steering::acknowledge(dir, &message, &turn).map_err(convert)? {
+            continue;
+        }
+        if message.get("error").is_some() {
+            return Err(std::io::Error::other(
+                "app-server request refused; inspect private events",
+            ));
+        }
+        match message["id"].as_u64() {
+            Some(0) if message.get("result").is_some() => {
+                send(&mut input, json!({"method":"initialized"}))?;
+                send(
+                    &mut input,
+                    json!({"id":1,"method":"thread/start","params":{"ephemeral":true,"cwd":dir.join("work"),
+                    "model":task.model,"approvalPolicy":"never","permissions":"finite",
+                    "dynamicTools":[{"type":"function","name":"host_request","description":"Call an-agent task tools. request is a JSON string. Mutations preview first, then use the returned approve digest. Use only granted resources. An optional grant selects an operator-issued descendant for delegation.",
+                    "inputSchema":{"type":"object","properties":{"request":{"type":"string"}},"required":["request"],"additionalProperties":false}}]}}),
+                )?;
+            }
+            Some(1) if message.get("result").is_some() => {
+                thread = text(&message["result"]["thread"], "id")
+                    .map_err(convert)?
+                    .into();
+                send(
+                    &mut input,
+                    json!({"id":2,"method":"turn/start","params":{"threadId":thread,
+                    "input":[{"type":"text","text":task.prompt}],"outputSchema":task.schema}}),
+                )?;
+            }
+            Some(2) if message.get("result").is_some() => {
+                turn = text(&message["result"]["turn"], "id")
+                    .map_err(convert)?
+                    .into();
+                let execution = store::digest(&serde_json::to_vec(&json!({
+                    "owner":read(&dir.join("owner.json")).map_err(convert)?,"thread":thread,"turn":turn}))?);
+                super::harness_adapter::publish(
+                    &dir.join("session.json"),
+                    &json!({"execution":execution,"thread":thread,"turn":turn}),
+                )
+                .map_err(convert)?;
+            }
+            _ => {
+                if message.get("id").is_some() && message.get("method").is_some() {
+                    let p = &message["params"];
+                    if message["method"] != "item/tool/call"
+                        || p["threadId"] != thread
+                        || p["turnId"] != turn
+                        || p["tool"] != "host_request"
+                        || p["namespace"].as_str().is_some()
+                        || !calls.insert(text(p, "callId").map_err(convert)?.to_owned())
+                    {
+                        return Err(std::io::Error::other(
+                            "unbound, duplicate or unsupported app-server request",
+                        ));
+                    }
+                    let id = dir
+                        .file_name()
+                        .and_then(|n| n.to_str())
+                        .ok_or_else(|| std::io::Error::other("harness task ID"))?;
+                    let result = super::request(
+                        root,
+                        &json!({"op":"harness-tool","id":id,"arguments":p["arguments"]}),
+                    );
+                    let success = result.is_ok();
+                    let content = result.unwrap_or_else(|e| json!({"error":e.to_string()}));
+                    send(
+                        &mut input,
+                        json!({"id":message["id"],"result":{"success":success,"contentItems":[{"type":"inputText","text":content.to_string()}]}}),
+                    )?;
+                } else if message["method"] == "item/completed"
+                    && message["params"]["item"]["type"] == "agentMessage"
+                    && message["params"]["item"]["phase"] != "commentary"
+                {
+                    if message["params"]["threadId"] != thread
+                        || message["params"]["turnId"] != turn
+                    {
+                        return Err(std::io::Error::other("foreign agent result"));
+                    }
+                    if let Some(text) = message["params"]["item"]["text"].as_str() {
+                        // Only the final structured message is published after completion.
+                        let parsed: Value = serde_json::from_str(text)?;
+                        store::write_new(
+                            &dir.join("candidate.json"),
+                            &serde_json::to_vec(&parsed)?,
+                        )
+                        .map_err(convert)?;
+                    }
+                } else if message["method"] == "turn/completed" {
+                    if message["params"]["threadId"] != thread
+                        || message["params"]["turn"]["id"] != turn
+                        || message["params"]["turn"]["status"] != "completed"
+                    {
+                        return Err(std::io::Error::other("app-server turn did not complete"));
+                    }
+                    if crate::task_permissions::active(authority).is_err() {
+                        cancelled.store(true, Ordering::Release);
+                        return Err(std::io::Error::other("task authorization cancelled"));
+                    }
+                    let candidate =
+                        store::read(&dir.join("candidate.json"), 131072).map_err(convert)?;
+                    store::write_new(&dir.join("decision.json"), &candidate).map_err(convert)?;
+                    journal.sync_all()?;
+                    return Ok(Vec::new()); // Closing stdin lets the app-server shut down.
+                }
+            }
+        }
+    }
+}

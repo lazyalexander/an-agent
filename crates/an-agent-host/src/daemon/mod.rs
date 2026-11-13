@@ -2,9 +2,12 @@
 //! Queue claims are scheduling fences, never replacement execution receipts.
 #![cfg_attr(not(target_os = "macos"), allow(dead_code))]
 mod activity;
+mod app_server;
+mod codex;
 mod control;
 mod delegation;
 pub(crate) mod harness;
+mod harness_adapter;
 mod observation;
 mod permissions;
 mod scheduler;

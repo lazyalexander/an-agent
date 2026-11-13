@@ -25,6 +25,10 @@ pub(super) fn view(root: &Path, id: &str) -> Result<Value> {
     }
     let mut harness = json!({"available":false,"visibility":"unknown"});
     let path = dir.join("native-events.jsonl");
+    let adapter = match &job {
+        Job::Harness { task, .. } => Some(super::harness_adapter::selected(task)?),
+        _ => None,
+    };
     if matches!(job, Job::Harness { .. }) && path.try_exists()? {
         let bytes = store::read(&path, 2 * 1024 * 1024)?;
         let mut items = Vec::new();
@@ -44,20 +48,14 @@ pub(super) fn view(root: &Path, id: &str) -> Result<Value> {
             }
             // Fixed categories only: raw arguments, messages, URLs and tool output
             // can contain credentials or private source content.
-            let kind = match value["type"].as_str().unwrap_or("") {
-                "thread.started" => "session-started",
-                "turn.started" => "turn-started",
-                "turn.completed" => "turn-completed",
-                "turn.failed" => "turn-failed",
-                "item.started" => "item-started",
-                "item.completed" => "item-completed",
-                _ => "other",
-            };
-            let action = match value["item"]["type"].as_str().unwrap_or("") {
-                "mcp_tool_call" => "tool-call",
-                "command_execution" => "command",
-                "file_change" => "file-change-report",
-                "agent_message" => "message",
+            let normalized = adapter.ok_or("harness adapter")?.event(&value);
+            let kind = &normalized["event"];
+            let item = value.get("item").unwrap_or(&value["params"]["item"]);
+            let action = match item["type"].as_str().unwrap_or("") {
+                "mcp_tool_call" | "mcpToolCall" | "dynamicToolCall" => "tool-call",
+                "command_execution" | "commandExecution" => "command",
+                "file_change" | "fileChange" => "file-change-report",
+                "agent_message" | "agentMessage" => "message",
                 _ => "other",
             };
             items.push(json!({"line":line+1,"event":kind,"action":action}));

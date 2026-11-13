@@ -125,6 +125,45 @@ stopped or that provider usage is zero. Native events remain private; completed
 proposals still require domain validation and the existing kit-edit/artifact gates.
 The client version, scope and task reference replace Shuttle's duplicate driver.
 
+## Embedded app-server ownership
+
+The host may supervise a pinned Codex app-server as a replaceable child process.
+The harness owns model turns and private conversation history. The host owns task
+identity, grants, native execution settlement and accepted products. A model turn
+completion never accepts an artifact or proves a remote request stopped.
+
+The first profile creates a fresh ephemeral thread per host harness attempt.
+Set `task.app_server=true` on the existing harness request. It is part of the
+harness permission digest; legacy requests omit it and keep their old identity.
+This profile requires task authorization and refuses external MCP configuration.
+Only the explicit prompt and results of authorized host tools enter that thread.
+Shell, editing, plugins, implicit project instructions and native subagent tools
+are disabled. Host-mediated delegation opens another fresh thread under an
+operator-issued descendant grant. The child receives an explicit task and no
+parent conversation. Grant references remain host-owned; bearer secrets never
+enter model context. Every tool dispatch rechecks the original task grant and
+concrete resource capability. Delegation may only select an existing descendant
+of that grant and cannot restore rights removed from the child.
+
+Approval binds the selected adapter, executable, model, output schema and scope.
+Cancellation and revocation reach the existing independent owner. The owner
+confirms local process-group termination; unknown results remain held without
+replay. Work already admitted to a separate spool retains its original owner
+and must be cancelled explicitly. Tool requests return to the original daemon;
+its ordinary task checks and queue serialize effects. The model sees one
+`host_request` tool with a JSON `request` argument. Previews grant nothing and
+mutations still require an exact approval plus a concrete capability. An optional
+`grant` ID selects an existing descendant. Only a delegating parent can select
+one; models cannot issue bearer credentials or administer grants. Request/response
+hashes and outcomes are retained in private `tool-receipts.jsonl`.
+The app-server uses a private client home with a reference to the native file
+login. User config, project rules and private sessions are not copied. This
+initial file-login profile does not qualify keyring-only authentication. Local
+termination permits deletion of that private client home. Protocol errors,
+missing receipts and unsupported server requests fail closed without replay.
+Domain conversion belongs to packaged programs
+and application adapters, not to this protocol bridge.
+
 ## Task-scoped permissions
 
 The operator socket issues `grant` with a `scope` containing `task`, `subject`,
@@ -260,3 +299,56 @@ The document case takes `--host`, fresh `--evidence`, synthetic `--pdf`, qualifi
 `result.xlsx`: source rows A6:C8, amount formulas D6:D8 and total D10. It never
 installs tools or provisions services. The fixture checks Bolt (12 at 0.50),
 Plate (3 at 8.00), Bearing (2 at 4.25), total EUR 38.50.
+
+## Harness adapters and reconnect
+
+`HarnessAdapter` supplies execution, capability discovery and normalized event
+translation behind the existing daemon queue and independent task owner. Select
+`task.adapter="codex-app-server"` for interactive Codex. `codex-exec` preserves the
+finite profile. Existing omitted selectors and `app_server=true` retain their
+serialized identities and permission profiles. Conflicting selectors are rejected.
+Both Codex profiles remain pinned to CLI 0.166.0 and the approved executable hash.
+
+Call `harness-connect` with `id` and optional `cursor` through the original task
+endpoint. It returns the original execution handle, capability flags, task state,
+normalized events, the next cursor and steering receipts. Reconnecting uses retained
+records and the original worker. It survives a controller disconnect or daemon
+restart while that worker stays alive. `resume_execution=false` explicitly describes
+worker/provider loss. Unknown executions keep their original IDs without replay.
+Cancelled credentials retain scoped observation and cancellation access.
+
+Call `harness-steer` with `id`, `execution`, a unique `command` and `instruction`.
+Preview and exact approval bind the instruction digest to the original execution.
+The caller must own the task and retain its harness capability. The worker rechecks
+the original task grant before delivery. Up to 32 commands are ordered by admission,
+with instructions bounded to 64 KiB. Reusing an identical command ID reconciles its
+receipt. Reusing it for different content fails. The durable sent marker precedes
+transport, so a crash between marker and acknowledgement remains unknown.
+`queued` describes local admission. `acknowledged` records provider acceptance into
+the same turn. It does not prove the requested change appeared in the result.
+
+The Codex bridge maps steering to `turn/steer` with the original `expectedTurnId`.
+Cancellation continues through the existing revocable grant and supervised process
+group. Local release evidence gates settlement. Remote provider termination remains
+unconfirmed. Final structured output remains a proposal until the existing spool
+publication and acceptance path accepts a concrete product. The adapter owns no
+scheduler, model loop, permission issuer or artifact store. Protocol details follow
+the pinned binary schema and [Codex app-server documentation](https://learn.chatgpt.com/docs/app-server).
+
+A future modified DeepSeek adapter must implement this contract, declare supported
+capabilities, map its native session identities privately and pass the same scoped
+steering, cancellation, reconnect and artifact-custody checks. Unsupported capabilities
+must be rejected explicitly. Adding an adapter must preserve the existing host job,
+grant lineage, cancellation owner and acceptance path.
+
+`native_harness_adapter.py` verifies two background owners, steering acknowledgements,
+stale handles, sibling denial, duplicate command rejection, isolated cancellation
+and daemon restart with unchanged owners using deterministic protocol processes.
+`document_activity.py --app-server` exercises real Codex proposals through the
+existing PDF, Markdown and Excel custody path using explicitly selected inputs and
+an application-owned workbook builder. Real-provider evidence is retained locally.
+
+The standalone workspace shell is built with `python3 packages/workbench/build.py`.
+Its TypeScript and HTML source use English. Simplified Chinese interface messages
+are maintained in `packages/workbench/zh-CN.json` and embedded during the build.
+User-authored workspace names, goals and records retain their original language.

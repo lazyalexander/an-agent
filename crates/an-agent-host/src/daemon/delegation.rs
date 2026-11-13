@@ -22,6 +22,7 @@ pub(super) fn validate(root: &Path, task: &harness::Task) -> Result<()> {
         };
         let previous = original.delegation.as_ref().ok_or("not a delegation")?;
         if previous.parent != binding.parent
+            || super::harness_adapter::kind(&original)? != super::harness_adapter::kind(task)?
             || original.scope != task.scope
             || original.schema != task.schema
             || original.binary != task.binary

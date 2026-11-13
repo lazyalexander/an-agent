@@ -78,6 +78,72 @@ pub(crate) fn codex(
     }
 }
 
+pub(crate) fn app_server(
+    task: &crate::daemon::harness::Task,
+    dir: &Path,
+    args: &[String],
+    cancelled: &AtomicBool,
+    exchange: impl FnOnce(
+        std::process::ChildStdin,
+        std::process::ChildStdout,
+        std::sync::Arc<AtomicBool>,
+    ) -> std::io::Result<Vec<u8>>
+    + Send,
+) -> Result<Execution> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        let mut command = std::process::Command::new(&task.binary);
+        command.args(args).env_clear().process_group(0);
+        for key in [
+            "HOME",
+            "CODEX_HOME",
+            "PATH",
+            "HTTPS_PROXY",
+            "HTTP_PROXY",
+            "ALL_PROXY",
+            "NO_PROXY",
+            "SSL_CERT_FILE",
+        ] {
+            if let Some(value) = std::env::var_os(key) {
+                command.env(key, value);
+            }
+        }
+        let home = dir.join("client-home");
+        crate::execution::store::directory(&home)?;
+        let original = std::env::var_os("CODEX_HOME")
+            .map(std::path::PathBuf::from)
+            .or_else(|| {
+                std::env::var_os("HOME").map(|p| std::path::PathBuf::from(p).join(".codex"))
+            })
+            .ok_or("native Codex home unavailable")?;
+        // Reference native login only; no user config, skills or private sessions are copied.
+        let auth = original.join("auth.json");
+        if auth.is_file() {
+            std::os::unix::fs::symlink(auth, home.join("auth.json"))?;
+        }
+        command.env("CODEX_HOME", &home);
+        let result = super::execute_dialogue(
+            command,
+            &dir.join("work"),
+            std::time::Duration::from_secs(180),
+            cancelled,
+            true,
+            exchange,
+        );
+        if result.as_ref().is_ok_and(|r| r.reaped) {
+            // This private runtime contains authentication references, never accepted products.
+            std::fs::remove_dir_all(&home)?;
+        }
+        result
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = (task, dir, args, cancelled, exchange);
+        Err("app-server profile requires native process-group supervision".into())
+    }
+}
+
 pub(crate) fn current_resources() -> Value {
     #[cfg(target_os = "macos")]
     {

@@ -54,6 +54,10 @@ pub(super) fn revoke(root: &Path, req: &Value, actor: Option<&Binding>) -> Resul
 pub(super) fn harness_permission(task: &harness::Task) -> Result<Permission> {
     let profile = json!({"binary":task.binary,"binary_sha256":task.binary_sha256,
         "schema":task.schema,"scope":task.scope,"model":task.model,"mcp":task.mcp});
+    let mut profile = profile;
+    if super::harness_adapter::interactive(task)? {
+        profile["adapter"] = json!("codex-app-server-v1");
+    }
     Ok(Permission::Harness {
         profile_sha256: store::digest(&serde_json::to_vec(&profile)?),
     })
@@ -62,23 +66,29 @@ pub(super) fn harness_permission(task: &harness::Task) -> Result<Permission> {
 pub(super) fn dispatch(root: &Path, envelope: &Value) -> Result<Value> {
     let envelope: Envelope = serde_json::from_value(envelope.clone())?;
     let actor = grants::authenticate(root, &envelope.credential)?;
-    let req = &envelope.request;
+    dispatch_bound(root, &envelope.request, &actor)
+}
+
+pub(super) fn dispatch_bound(root: &Path, req: &Value, actor: &Binding) -> Result<Value> {
     let op = text(req, "op")?;
     // Revocation retains status/cancellation access to the caller's own jobs.
-    if !matches!(op, "task" | "grant-status" | "cancel" | "revoke-grant") {
-        grants::active(&actor)?;
+    if !matches!(
+        op,
+        "task" | "harness-connect" | "grant-status" | "cancel" | "revoke-grant"
+    ) {
+        grants::active(actor)?;
     }
     match op {
-        "derive-grant" => return issue(root, req, Some(actor)),
-        "revoke-grant" => return revoke(root, req, Some(&actor)),
+        "derive-grant" => return issue(root, req, Some(actor.clone())),
+        "revoke-grant" => return revoke(root, req, Some(actor)),
         "grant-status" => {
-            return Ok(json!({"grant":actor,"active":grants::active(&actor).is_ok()}));
+            return Ok(json!({"grant":actor,"active":grants::active(actor).is_ok()}));
         }
         "read-input" => {
             let path = Path::new(text(req, "path")?);
             let digest = text(req, "sha256")?;
             grants::require(
-                &actor,
+                actor,
                 &Permission::ReadInput {
                     path: path.into(),
                     sha256: digest.into(),
@@ -88,7 +98,7 @@ pub(super) fn dispatch(root: &Path, envelope: &Value) -> Result<Value> {
             if store::digest(&bytes) != digest {
                 return Err("authorized input changed".into());
             }
-            grants::active(&actor)?;
+            grants::active(actor)?;
             return Ok(json!({"sha256":digest,"bytes":bytes}));
         }
         "artifact-read" => {
@@ -96,7 +106,7 @@ pub(super) fn dispatch(root: &Path, envelope: &Value) -> Result<Value> {
             let run = text(req, "run")?;
             let output = text(req, "output")?;
             grants::require(
-                &actor,
+                actor,
                 &Permission::Artifact {
                     instance: instance.into(),
                     run: run.into(),
@@ -113,7 +123,7 @@ pub(super) fn dispatch(root: &Path, envelope: &Value) -> Result<Value> {
             if bytes.len() > 512 * 1024 {
                 return Err("task artifact exceeds 512 KiB transfer limit".into());
             }
-            grants::active(&actor)?;
+            grants::active(actor)?;
             return Ok(json!({"inventory":inventory,"bytes":bytes}));
         }
         "submit" => {
@@ -137,12 +147,12 @@ pub(super) fn dispatch(root: &Path, envelope: &Value) -> Result<Value> {
                     input: PathBuf::from(text(req, "input")?),
                 }
             };
-            grants::require(&actor, &permission)?;
+            grants::require(actor, &permission)?;
         }
         "harness" | "delegate" => {
             let task: harness::Task = serde_json::from_value(req["task"].clone())?;
-            grants::require(&actor, &harness_permission(&task)?)?;
-            let scope = grants::load(&actor)?.scope;
+            grants::require(actor, &harness_permission(&task)?)?;
+            let scope = grants::load(actor)?.scope;
             if op == "delegate" && req["parent"] != scope.task {
                 return Err("delegation parent must match the authorized task".into());
             }
@@ -150,22 +160,22 @@ pub(super) fn dispatch(root: &Path, envelope: &Value) -> Result<Value> {
                 return Err("use delegate for task-scoped submissions".into());
             }
         }
-        "update-delegation" => {
-            let job = owned_job(root, &actor, text(req, "id")?)?;
+        "update-delegation" | "harness-steer" => {
+            let job = owned_job(root, actor, text(req, "id")?)?;
             let Job::Harness { task, .. } = job else {
                 return Err("not a harness task".into());
             };
-            grants::require(&actor, &harness_permission(&task)?)?;
+            grants::require(actor, &harness_permission(&task)?)?;
         }
-        "task" | "activity" | "harness-result" | "cancel" => {
-            owned_job(root, &actor, text(req, "id")?)?;
+        "task" | "activity" | "harness-result" | "harness-connect" | "cancel" => {
+            owned_job(root, actor, text(req, "id")?)?;
         }
         "accept" | "record-adoption" => {
             if op == "record-adoption" {
-                owned_job(root, &actor, text(req, "id")?)?;
+                owned_job(root, actor, text(req, "id")?)?;
             }
             grants::require(
-                &actor,
+                actor,
                 &Permission::Accept {
                     instance: PathBuf::from(text(req, "instance")?),
                     run: text(req, "run")?.into(),
@@ -173,13 +183,13 @@ pub(super) fn dispatch(root: &Path, envelope: &Value) -> Result<Value> {
             )?;
         }
         "delegation-inbox" => {
-            if req["parent"] != grants::load(&actor)?.scope.task {
+            if req["parent"] != grants::load(actor)?.scope.task {
                 return Err("inbox belongs to another task".into());
             }
         }
         _ => return Err("operation is unavailable on the task permission endpoint".into()),
     }
-    control::authorized(root, req, Some(&actor))
+    control::authorized(root, req, Some(actor))
 }
 
 pub(super) fn owned_job(root: &Path, actor: &Binding, id: &str) -> Result<Job> {

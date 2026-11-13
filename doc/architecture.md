@@ -213,3 +213,8 @@ Consult its mechanisms and tests when a matching need appears. Its full-access
 executor and restart-driven reassignment are not our isolation or recovery
 contract. This reference adds no dependency, source-code import or GitHub/Feishu
 integration; those applications are optional future qualification cases.
+
+The embedded harness boundary is documented in [the daemon contract](daemon.md#embedded-app-server-ownership).
+Codex app-server owns reasoning and conversation management. Host-issued task
+capabilities and existing spool supervisors retain authority over tools and files.
+Weaver uses the same replaceable harness from Loom's development workflow.
