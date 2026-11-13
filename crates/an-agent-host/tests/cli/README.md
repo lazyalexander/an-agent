@@ -175,6 +175,6 @@ old revision and verifies retained checkpoints; `--combined` also pins business
 data and rejects changed selectors. PIDs serve fault injection and observation only; accepted products and independent instances remain unaffected.
 `native_daemon.py`, `native_daemon_inputs.py` and `native_task_permissions.py` cover [service and task permissions](../../../../doc/daemon.md) with explicit `--host` and fresh `--evidence` paths. `document_activity.py` adds the real PDF/Markdown/XLSX case, optionally using `--shuttle-client` for the compiled Shuttle transport.
 
-`native_app_server.py` covers real local protocol processes, scoped tools,
-revocation and cancellation without inference. The paired Loom `document-table`
-qualifies actual app-server inference using this checkout's evidence driver.
+`native_app_server.py` covers real protocol processes, scoped tools, revocation and cancellation.
+`native_harness_adapter.py --host HOST --evidence NEW_DIRECTORY` verifies two background owners, steering, scoped reconnect, duplicate commands and missing receipts. See the [adapter contract](../../../../doc/daemon.md#harness-adapters-and-reconnect).
+`document_activity.py --app-server` selects real Codex for the PDF/Markdown/Excel custody chain; the paired Loom `document-table` also qualifies app-server inference.

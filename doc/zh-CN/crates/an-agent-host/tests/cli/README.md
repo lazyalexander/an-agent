@@ -60,3 +60,7 @@ SIGTERM与SIGKILL对实际启动的CLI进行区分。两个有限工作者在原
 
 `native_supervisor.py`和`native_supervisor_state.py`取`--host HOST
 --evidence NEW_DIRECTORY`。它们符合文件输入和固定检查点监督：客户端退出、持续超时/取消、监督者丢失、无重放和仅确认收集。状态套件在选择旧版本前先推进HEAD，并验证保留的检查点；`--combined`也固定业务数据并拒绝更改选择器。PID仅用于故障注入和观察；接受的产品和独立实例不受影响。
+
+`native_harness_adapter.py --host HOST --evidence NEW_DIRECTORY` 使用两个后台协议
+任务验收补充指令、事件游标、同级与旧句柄拒绝、命令去重、回执丢失保留、独立取消
+及守护服务重启后的原进程身份。真实模型链使用 `document_activity.py --app-server`。

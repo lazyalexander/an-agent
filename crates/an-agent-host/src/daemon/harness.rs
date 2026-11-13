@@ -1,8 +1,6 @@
-//! Finite external Codex adapter. Proposals remain untrusted domain data.
+//! Scheduled harness ownership. Proposals remain untrusted domain data.
 use super::*;
 use std::sync::atomic::{AtomicBool, Ordering};
-
-pub(super) const VERSION: &str = "codex-cli 0.166.0";
 
 #[derive(Deserialize, Serialize, Clone)]
 #[serde(deny_unknown_fields)]
@@ -11,6 +9,8 @@ pub(crate) struct Task {
     pub delegation: Option<Box<super::delegation::Binding>>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub app_server: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub adapter: Option<super::harness_adapter::Kind>,
     pub label: String,
     pub binary: PathBuf,
     pub binary_sha256: String,
@@ -59,14 +59,16 @@ pub(super) fn submit(
     {
         return Err("finite material MCP must use an approved loopback endpoint".into());
     }
-    if task.app_server && (authorization.is_none() || task.mcp.is_some()) {
+    if super::harness_adapter::interactive(&task)?
+        && (authorization.is_none() || task.mcp.is_some())
+    {
         return Err("app-server requires a task grant and no external MCP".into());
     }
     let binding = task_binding(&task, authorization)?;
     // Never copy the prompt, scoped content, or MCP secret into a public preview.
     let (preview, execute) = approval(
-        json!({"operation":"queue-codex-harness", "daemon":root,
-        "task_sha256":binding,"label":task.label,"version":VERSION,
+        json!({"operation":"queue-harness", "daemon":root,
+        "task_sha256":binding,"label":task.label,"adapter":super::harness_adapter::kind(&task)?,"version":super::harness_adapter::selected(&task)?.capabilities()["version"],
         "disclosure":"exact submitted prompt/schema/scope; finite MCP if selected"}),
         approved,
     )?;
@@ -129,7 +131,7 @@ pub fn worker(root: &Path, id: &str, hash: &str, cancelled: &AtomicBool) -> Resu
             }
         },
         || {
-            execute(
+            super::harness_adapter::selected(&task)?.execute(
                 root.as_path(),
                 &dir,
                 &task,
@@ -146,122 +148,6 @@ pub fn worker(root: &Path, id: &str, hash: &str, cancelled: &AtomicBool) -> Resu
     };
     write(&dir.join("completion.json"), &response)?;
     result
-}
-
-fn execute(
-    root: &Path,
-    dir: &Path,
-    task: &Task,
-    authorization: Option<&Binding>,
-    cancelled: &AtomicBool,
-) -> Result<Value> {
-    if cancelled.load(Ordering::Acquire) {
-        return Ok(
-            json!({"status":"cancelled","termination_confirmed":true,"process_started":false,"proposal_available":false}),
-        );
-    }
-    if crate::execution::sandbox::service_process::executable_hash(&task.binary)?
-        != task.binary_sha256
-    {
-        return Err("harness executable changed after approval".into());
-    }
-    let version = crate::execution::sandbox::service_process::codex(
-        task,
-        dir,
-        &["--version".into()],
-        cancelled,
-    )?;
-    if version.status == "cancelled" {
-        let confirmed = version.pid.is_none()
-            || (version.reaped
-                && crate::execution::sandbox::workspace::settlement(version.pid, version.reaped)["empty"]
-                    == true);
-        return Ok(
-            json!({"status":"cancelled","termination_confirmed":confirmed,"proposal_available":false}),
-        );
-    }
-    if version.status != "succeeded" || String::from_utf8(version.stdout)?.trim() != VERSION {
-        return Err("harness requires qualified Codex CLI 0.166.0".into());
-    }
-    if task.app_server {
-        return super::app_server::execute(
-            root,
-            dir,
-            task,
-            authorization.ok_or("missing app-server authority")?,
-            cancelled,
-        );
-    }
-    let mut args = vec![
-        "exec".into(),
-        "--ignore-user-config".into(),
-        "--ignore-rules".into(),
-        "--ephemeral".into(),
-        "--skip-git-repo-check".into(),
-        "--json".into(),
-        "--output-schema".into(),
-        dir.join("schema.json").display().to_string(),
-        "--output-last-message".into(),
-        dir.join("decision.json").display().to_string(),
-    ];
-    let mut settings = json!({"approval_policy":"never","default_permissions":"finite",
-        "permissions":{"finite":{"filesystem":{":root":"none",":project_roots":"read"},"network":{"enabled":false}}},
-        "project_doc_max_bytes":0,"web_search":"disabled",
-        "features":{"shell_tool":false,"view_image":false,"multi_agent":false,"apps":false,
-            "plugins":false,"remote_plugin":false,"hooks":false,"goals":false,"skill_search":false,
-            "skip_host_skill_discovery":true,"multi_agent_v2":{"enabled":false,"disable_native_tools":true}}});
-    if let Some(mcp) = &task.mcp {
-        settings["mcp_servers"] = json!({"material":{"url":mcp.url,"http_headers":{"Authorization":format!("Bearer {}",mcp.token)},
-            "enabled_tools":["read_approved_material"],"required":true}});
-    }
-    for (key, value) in settings.as_object().ok_or("settings")? {
-        args.extend(["-c".into(), format!("{key}={}", toml(value))]);
-    }
-    if let Some(model) = &task.model {
-        args.extend(["--model".into(), model.clone()]);
-    }
-    // A prompt beginning with '-' is data, never another native-client option.
-    args.extend(["--".into(), task.prompt.clone()]);
-    let result = crate::execution::sandbox::service_process::codex(task, dir, &args, cancelled)?;
-    let redact = |bytes: Vec<u8>| {
-        let text = String::from_utf8_lossy(&bytes).into_owned();
-        task.mcp
-            .as_ref()
-            .map_or(text.clone(), |mcp| text.replace(&mcp.token, "[redacted]"))
-    };
-    store::write_new(
-        &dir.join("native-events.jsonl"),
-        redact(result.stdout).as_bytes(),
-    )?;
-    store::write_new(
-        &dir.join("diagnostic.txt"),
-        redact(result.stderr).as_bytes(),
-    )?;
-    let settlement = crate::execution::sandbox::workspace::settlement(result.pid, result.reaped);
-    let confirmed = (result.pid.is_none() && result.status == "cancelled")
-        || (result.reaped && settlement["empty"] == true);
-    Ok(
-        json!({"status":result.status,"code":result.code,"termination_confirmed":confirmed,
-        "group_observation":settlement,"group_cleanup_required":result.group_cleanup_required,
-        "proposal_available":result.status=="succeeded" && confirmed && dir.join("decision.json").is_file(),
-        "artifact_accepted":false,"remote_termination_confirmed":false,"automatic_retries":0}),
-    )
-}
-
-pub(super) fn toml(value: &Value) -> String {
-    match value {
-        Value::Object(map) => format!(
-            "{{{}}}",
-            map.iter()
-                .map(|(k, v)| format!("{}={}", json!(k), toml(v)))
-                .collect::<Vec<_>>()
-                .join(",")
-        ),
-        Value::Array(items) => {
-            format!("[{}]", items.iter().map(toml).collect::<Vec<_>>().join(","))
-        }
-        _ => value.to_string(),
-    }
 }
 
 fn loopback(url: &str) -> bool {

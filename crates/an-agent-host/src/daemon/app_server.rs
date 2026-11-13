@@ -1,7 +1,8 @@
 //! Pinned app-server dialogue; all host effects reuse task capability checks.
 use super::*;
+mod steering;
 use std::{
-    io::{BufRead, BufReader, Read, Write},
+    io::{Read, Write},
     process::{ChildStdin, ChildStdout},
     sync::{Arc, atomic::Ordering},
 };
@@ -20,14 +21,18 @@ pub(super) fn execute(
         "multi_agent_v2":{"enabled":false,"disable_native_tools":true}}});
     let mut args = vec!["app-server".into()];
     for (key, value) in settings.as_object().ok_or("settings")? {
-        args.extend(["-c".into(), format!("{key}={}", harness::toml(value))]);
+        args.extend(["-c".into(), format!("{key}={}", super::codex::toml(value))]);
     }
     let result = crate::execution::sandbox::service_process::app_server(
         task,
         dir,
         &args,
         cancelled,
-        |input, output, exceeded| dialogue(root, dir, task, authority, input, output, exceeded),
+        |input, output, exceeded| {
+            dialogue(
+                root, dir, task, authority, cancelled, input, output, exceeded,
+            )
+        },
     )?;
     store::write_new(&dir.join("diagnostic.txt"), &result.stderr)?;
     let settlement = crate::execution::sandbox::workspace::settlement(result.pid, result.reaped);
@@ -56,7 +61,7 @@ pub(super) fn dispatch(root: &Path, envelope: &Value) -> Result<Value> {
     else {
         return Err("no harness authority".into());
     };
-    if !task.app_server
+    if !super::harness_adapter::interactive(&task)?
         || !dir.join("owner.json").exists()
         || dir.join("cancel.json").exists()
         || dir.join("completion.json").exists()
@@ -105,11 +110,16 @@ fn host_tool(root: &Path, authority: &Binding, arguments: &Value) -> Result<Valu
     permissions::dispatch_bound(root, &req, &selected)
 }
 
+#[allow(
+    clippy::too_many_arguments,
+    reason = "explicit original owner and transport bindings"
+)]
 fn dialogue(
     root: &Path,
     dir: &Path,
     task: &harness::Task,
     authority: &Binding,
+    cancelled: &AtomicBool,
     mut input: ChildStdin,
     output: ChildStdout,
     exceeded: Arc<AtomicBool>,
@@ -123,26 +133,32 @@ fn dialogue(
         &mut input,
         json!({"id":0,"method":"initialize","params":{"clientInfo":{"name":"an_agent","version":"0.1.0"},"capabilities":{"experimentalApi":true}}}),
     )?;
-    let mut reader = BufReader::new(output);
+    store::directory(&dir.join("commands")).map_err(convert)?;
+    let mut messages = steering::Messages::new(output);
     let mut thread = String::new();
     let mut turn = String::new();
     let mut calls = std::collections::BTreeSet::new();
     let mut total = 0;
     loop {
-        let mut raw = Vec::new();
-        let count = reader.by_ref().take(131073).read_until(b'\n', &mut raw)?;
-        total += count;
-        if count == 0 {
-            return Err(std::io::Error::other(
-                "app-server EOF before completion; never replay",
-            ));
+        if dir.join("cancel.json").exists() || crate::task_permissions::active(authority).is_err() {
+            cancelled.store(true, Ordering::Release);
+            return Err(std::io::Error::other("task authorization cancelled"));
         }
-        if count > 131072 || total > 2 * 1024 * 1024 {
+        steering::send_pending(dir, authority, cancelled, &mut input, &thread, &turn)
+            .map_err(convert)?;
+        let Some(raw) = messages.next()? else {
+            continue;
+        };
+        total += raw.len();
+        if total > 2 * 1024 * 1024 {
             exceeded.store(true, Ordering::Release);
             return Err(std::io::Error::other("app-server evidence limit"));
         }
         journal.write_all(&raw)?;
         let message: Value = serde_json::from_slice(&raw)?;
+        if steering::acknowledge(dir, &message, &turn).map_err(convert)? {
+            continue;
+        }
         if message.get("error").is_some() {
             return Err(std::io::Error::other(
                 "app-server request refused; inspect private events",
@@ -173,6 +189,13 @@ fn dialogue(
                 turn = text(&message["result"]["turn"], "id")
                     .map_err(convert)?
                     .into();
+                let execution = store::digest(&serde_json::to_vec(&json!({
+                    "owner":read(&dir.join("owner.json")).map_err(convert)?,"thread":thread,"turn":turn}))?);
+                super::harness_adapter::publish(
+                    &dir.join("session.json"),
+                    &json!({"execution":execution,"thread":thread,"turn":turn}),
+                )
+                .map_err(convert)?;
             }
             _ => {
                 if message.get("id").is_some() && message.get("method").is_some() {
@@ -227,7 +250,10 @@ fn dialogue(
                     {
                         return Err(std::io::Error::other("app-server turn did not complete"));
                     }
-                    crate::task_permissions::active(authority).map_err(convert)?;
+                    if crate::task_permissions::active(authority).is_err() {
+                        cancelled.store(true, Ordering::Release);
+                        return Err(std::io::Error::other("task authorization cancelled"));
+                    }
                     let candidate =
                         store::read(&dir.join("candidate.json"), 131072).map_err(convert)?;
                     store::write_new(&dir.join("decision.json"), &candidate).map_err(convert)?;
