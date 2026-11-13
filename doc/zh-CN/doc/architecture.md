@@ -116,3 +116,7 @@ Loom的宿主适配器被故意耦合到合格的CLI/接收格式。这是开发
 织者和可插拔的钩子可能提供角色提示、上下文分页、人工手off和恢复建议。宿主执行访问、接纳、执行和保管。Loom包定义域代码和声明；它不拥有模型循环或运行时策略。操作系统线程和资源拥有会话不应与由编码应用称为“Thread”的讨论时间线混淆。
 
 设计参考：[dsh-superagent-prototype at 6337fc8](https://github.com/deepseek-ai/dsh-superagent-prototype/tree/6337fc823ce20251c8de8085948165c81aaa701e)，尤其是其域、授权和执行文档及其效果队列。当出现匹配需求时，应查阅其机制和测试。其全权限执行器和重启驱动重新分配不属于我们的隔离或恢复契约。此参考不添加依赖、源代码导入或GitHub/Feishu集成；这些应用是可选的未来资格案例。
+
+嵌入式 harness 的边界见[守护服务契约](daemon.md)。
+Codex app-server 负责推理与会话管理。宿主签发的任务权限及现有 spool
+执行监管器负责工具与文件的授权。Weaver 在 Loom 开发流程中使用同一可替换 harness。
