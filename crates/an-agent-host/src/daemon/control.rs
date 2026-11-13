@@ -3,7 +3,7 @@ use super::*;
 
 pub(super) fn dispatch(root: &Path, req: &Value) -> Result<Value> {
     match text(req, "op")? {
-        "harness-tool" => super::app_server::dispatch(root, req),
+        "harness-tool" => super::task_session::tool_request(root, req),
         "grant" => permissions::issue(root, req, None),
         "revoke-grant" => permissions::revoke(root, req, None),
         "harness-permission" => Ok(serde_json::to_value(permissions::harness_permission(
@@ -27,7 +27,7 @@ pub(super) fn authorized(
             delegation::dispatch(root, req, approved, authorization)
         }
         "harness-connect" | "harness-steer" | "harness-continue" | "harness-turn-result" => {
-            super::harness_adapter::dispatch(root, req, approved)
+            super::task_session::dispatch(root, req, approved)
         }
         "record-adoption" => activity::adopt(root, req, approved),
         "activity" => activity::view(root, text(req, "id")?),

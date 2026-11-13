@@ -77,7 +77,7 @@ pub(super) fn submit(
     // Never copy the prompt, scoped content, or MCP secret into a public preview.
     let (preview, execute) = approval(
         json!({"operation":"queue-harness", "daemon":root,
-        "task_sha256":binding,"label":task.label,"adapter":super::harness_adapter::kind(&task)?,"version":super::harness_adapter::selected(&task)?.capabilities()["version"],
+        "task_sha256":binding,"label":task.label,"adapter":super::harness_adapter::kind(&task)?,"version":super::harness_adapter::selected(&task)?.capabilities().version,
         "disclosure":"exact submitted prompt/schema/scope; finite MCP if selected"}),
         approved,
     )?;

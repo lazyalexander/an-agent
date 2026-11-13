@@ -380,3 +380,12 @@ Missing values remain `null`. Resource receipts expose digests, byte counts and
 host dispatch timing. Actual model consumption remains unknown. `read-input` and
 `artifact-read` accept optional `encoding="utf-8"` through the same authorization
 checks. The default response retains the existing byte representation.
+
+### Host task-session boundary
+
+The internal task-session layer owns continuation admission, command reconciliation,
+observation and authorized tool dispatch. Adapter capabilities are typed; steering
+and continuation are independent capabilities. Codex native event and usage parsing
+remain in the Codex adapter. Existing `harness-*` operations, persisted identities
+and permission digests remain compatible. This extraction does not introduce a new
+scheduler or authorize guest/provider reports to accept artifacts.

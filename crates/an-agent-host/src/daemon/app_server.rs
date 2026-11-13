@@ -52,69 +52,6 @@ fn send(input: &mut ChildStdin, value: Value) -> std::io::Result<()> {
     input.flush()
 }
 
-pub(super) fn dispatch(root: &Path, envelope: &Value) -> Result<Value> {
-    let (dir, job) = storage::job(root, text(envelope, "id")?)?;
-    let Job::Harness {
-        task,
-        authorization: Some(authority),
-        ..
-    } = job
-    else {
-        return Err("no harness authority".into());
-    };
-    if !super::harness_adapter::interactive(&task)?
-        || !dir.join("owner.json").exists()
-        || dir.join("cancel.json").exists()
-        || dir.join("completion.json").exists()
-    {
-        return Err("app-server task is not active".into());
-    }
-    let started = an_agent_core::det_seam::Clock::monotonic_now();
-    let result = host_tool(root, &authority, &envelope["arguments"]);
-    let receipt = json!({"request_sha256":store::digest(&serde_json::to_vec(&envelope["arguments"])?),
-        "grant":authority.id,"succeeded":result.is_ok(),
-        "observed_ms":super::harness_metrics::now_ms(),"elapsed_ms":started.elapsed().as_millis(),
-        "elapsed_us":started.elapsed().as_micros(),
-        "disclosure":result.as_ref().ok().and_then(|response| super::harness_metrics::disclosure(&envelope["arguments"], response)),
-        "response_sha256":store::digest(&serde_json::to_vec(&match &result { Ok(v)=>v.clone(), Err(e)=>json!({"error":e.to_string()}) })?)});
-    let path = dir.join("tool-receipts.jsonl");
-    store::no_links(&path)?;
-    if !path.exists() {
-        store::write_new(&path, b"")?;
-    }
-    let mut file = fs::OpenOptions::new().append(true).open(path)?;
-    serde_json::to_writer(&mut file, &receipt)?;
-    file.write_all(b"\n")?;
-    file.sync_all()?;
-    result
-}
-
-fn host_tool(root: &Path, authority: &Binding, arguments: &Value) -> Result<Value> {
-    let mut req: Value = serde_json::from_str(text(arguments, "request")?)?;
-    let op = text(&req, "op")?;
-    if matches!(
-        op,
-        "derive-grant" | "grant" | "revoke-grant" | "harness-permission"
-    ) {
-        return Err("harness cannot issue credentials or administer grants".into());
-    }
-    let selected = if let Some(id) = req.get("grant").and_then(Value::as_str) {
-        let child = crate::task_permissions::binding(root, id)?;
-        if !crate::task_permissions::load(authority)?.scope.delegate
-            || !crate::task_permissions::owns(authority, &child)?
-            || child == *authority
-        {
-            return Err("delegation requires an authorized descendant grant".into());
-        }
-        child
-    } else {
-        authority.clone()
-    };
-    req.as_object_mut().ok_or("host request")?.remove("grant");
-    crate::task_permissions::active(authority)?;
-    permissions::dispatch_bound(root, &req, &selected)
-}
-
 #[allow(
     clippy::too_many_arguments,
     reason = "explicit original owner and transport bindings"
@@ -184,7 +121,7 @@ fn dialogue(
                 ));
             }
             turn = next;
-            super::harness_adapter::publish(
+            super::task_session::publish(
                 &dir.join(format!("turn-start-{}.json", completed + 1)),
                 &json!({"thread":thread,"turn":turn}),
             )
@@ -227,12 +164,12 @@ fn dialogue(
                     .into();
                 let execution = store::digest(&serde_json::to_vec(&json!({
                     "owner":read(&dir.join("owner.json")).map_err(convert)?,"thread":thread,"turn":turn}))?);
-                super::harness_adapter::publish(
+                super::task_session::publish(
                     &dir.join("session.json"),
                     &json!({"execution":execution,"thread":thread,"turn":turn}),
                 )
                 .map_err(convert)?;
-                super::harness_adapter::publish(
+                super::task_session::publish(
                     &dir.join("turn-start-1.json"),
                     &json!({"thread":thread,"turn":turn}),
                 )
@@ -299,7 +236,7 @@ fn dialogue(
                     let candidate =
                         store::read(&dir.join(format!("candidate-{completed}.json")), 131072)
                             .map_err(convert)?;
-                    super::harness_adapter::publish(
+                    super::task_session::publish(
                         &dir.join(format!("turn-result-{completed}.json")),
                         &json!({"thread":thread,"turn":turn,"number":completed,
                             "proposal":serde_json::from_slice::<Value>(&candidate)?,
