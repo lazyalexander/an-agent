@@ -389,3 +389,39 @@ and continuation are independent capabilities. Codex native event and usage pars
 remain in the Codex adapter. Existing `harness-*` operations, persisted identities
 and permission digests remain compatible. This extraction does not introduce a new
 scheduler or authorize guest/provider reports to accept artifacts.
+
+## Task-session Cocoon transport
+
+The task-session middle layer accepts `cocoon-call`, `cocoon-status` and
+`cocoon-reconcile` through the existing `host_request` tool. This is a bounded
+transport foundation, not a qualified spool execution backend or artifact importer.
+It neither starts VMs nor accepts exported files into artifact custody.
+
+A trusted operator supplies a private JSON profile (mode 0600) with `socket`,
+`grant`, `caller`, `vm` and `generation`. The profile contains only a work grant,
+not the Cocoon management credential. The model receives the
+profile path and SHA-256, never its contents. A task grant must include
+`{"kind":"cocoon","profile_sha256":"…","operation_sha256":"…"}`; the latter
+binds the serialized Cocoon operation exactly. Issue this capability through the
+existing operator preview/approval flow. Do not grant the model profile read access.
+Cocoon independently checks its own work grant on every request.
+
+A `cocoon-call` request includes `profile`, `profile_sha256`, `operation_id` (a UUID)
+and `operation`. Allowed operations are show, context, stop, guest and
+export. Guest/export identities must match the profile VM, caller and generation.
+Management operations, including grant issuance and VM creation, are unavailable.
+The host creates a separate Cocoon request UUID and durably records its binding
+before transport. Repeated identical local operation IDs observe the original
+record; changed content is rejected. Transport loss remains unknown without replay.
+Records belong to the original task session, including when a grant serves several
+sessions. Credentials and guest payloads are omitted from intent records.
+
+`cocoon-reconcile` takes the same profile, operation identity and exact-operation
+capability. It queries Cocoon's original request ID and retains a confirmed success;
+it never resubmits the operation. `cocoon-status` requires only the operation ID
+inside the tool. Controllers may also use the authenticated task endpoint with
+`id` and `operation_id`, including after task-grant revocation, to observe their
+own records. This is local receipt observation, not renewed execution authority.
+`harness-connect` also returns the session’s retained `cocoon_operations` receipts.
+Every response keeps `artifact_accepted=false`. `observed` means a correlated
+backend reply exists; VM termination and product acceptance require separate checks.

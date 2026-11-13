@@ -30,6 +30,11 @@ pub(super) fn authorized(
             super::task_session::dispatch(root, req, approved)
         }
         "record-adoption" => activity::adopt(root, req, approved),
+        #[cfg(unix)]
+        "cocoon-status" => {
+            let (dir, _) = storage::job(root, text(req, "id")?)?;
+            crate::cocoon::observe(&dir.join("cocoon-operations"), text(req, "operation_id")?)
+        }
         "activity" => activity::view(root, text(req, "id")?),
         "show" => observation::snapshot(root),
         "task" => observation::task(root, text(req, "id")?),

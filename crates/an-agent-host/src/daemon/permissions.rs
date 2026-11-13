@@ -80,7 +80,7 @@ pub(super) fn dispatch_bound(root: &Path, req: &Value, actor: &Binding) -> Resul
     // Revocation retains status/cancellation access to the caller's own jobs.
     if !matches!(
         op,
-        "task" | "harness-connect" | "grant-status" | "cancel" | "revoke-grant"
+        "task" | "harness-connect" | "grant-status" | "cancel" | "revoke-grant" | "cocoon-status"
     ) {
         grants::active(actor)?;
     }
@@ -173,7 +173,8 @@ pub(super) fn dispatch_bound(root: &Path, req: &Value, actor: &Binding) -> Resul
             };
             grants::require(actor, &harness_permission(&task)?)?;
         }
-        "task"
+        "cocoon-status"
+        | "task"
         | "activity"
         | "harness-result"
         | "harness-turn-result"

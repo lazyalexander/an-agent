@@ -167,8 +167,12 @@ pub(super) fn dispatch(root: &Path, req: &Value, approved: Option<&str>) -> Resu
     } else {
         Value::Null
     };
+    #[cfg(unix)]
+    let cocoon_operations = crate::cocoon::receipts(&dir.join("cocoon-operations"))?;
+    #[cfg(not(unix))]
+    let cocoon_operations = json!([]);
     Ok(
-        json!({"id":id,"adapter":kind(task)?,"execution":execution,"capabilities":adapter.capabilities(),
+        json!({"cocoon_operations":cocoon_operations,"id":id,"adapter":kind(task)?,"execution":execution,"capabilities":adapter.capabilities(),
         "turns":turn_state(&dir, task.turn_limit.unwrap_or(1))?,
         "task":observation::task(root,id)?,"events":events,"cursor":next,"commands":commands,"automatic_retries":0}),
     )
@@ -237,7 +241,7 @@ pub(super) fn tool_request(root: &Path, envelope: &Value) -> Result<Value> {
         return Err("task session is not active".into());
     }
     let started = an_agent_core::det_seam::Clock::monotonic_now();
-    let result = host_tool(root, &authority, &envelope["arguments"]);
+    let result = host_tool(root, &dir, &authority, &envelope["arguments"]);
     let receipt = json!({"request_sha256":store::digest(&serde_json::to_vec(&envelope["arguments"])?),
         "grant":authority.id,"succeeded":result.is_ok(),
         "observed_ms":super::harness_metrics::now_ms(),"elapsed_ms":started.elapsed().as_millis(),
@@ -256,9 +260,32 @@ pub(super) fn tool_request(root: &Path, envelope: &Value) -> Result<Value> {
     result
 }
 
-fn host_tool(root: &Path, authority: &Binding, arguments: &Value) -> Result<Value> {
+fn host_tool(root: &Path, session: &Path, authority: &Binding, arguments: &Value) -> Result<Value> {
     let mut req: Value = serde_json::from_str(text(arguments, "request")?)?;
     let op = text(&req, "op")?;
+    #[cfg(unix)]
+    if matches!(op, "cocoon-call" | "cocoon-status" | "cocoon-reconcile") {
+        let id = text(&req, "operation_id")?;
+        let directory = session.join("cocoon-operations");
+        if op == "cocoon-status" {
+            return crate::cocoon::observe(&directory, id);
+        }
+        crate::task_permissions::active(authority)?;
+        let digest = text(&req, "profile_sha256")?;
+        crate::task_permissions::require(
+            authority,
+            &crate::task_permissions::Permission::Cocoon {
+                profile_sha256: digest.into(),
+                operation_sha256: store::digest(&serde_json::to_vec(&req["operation"])?),
+            },
+        )?;
+        let profile = crate::cocoon::load(Path::new(text(&req, "profile")?), digest)?;
+        crate::task_permissions::active(authority)?;
+        if op == "cocoon-reconcile" {
+            return crate::cocoon::reconcile(&directory, &profile, id);
+        }
+        return crate::cocoon::submit(&directory, &profile, id, req["operation"].clone());
+    }
     if matches!(
         op,
         "derive-grant" | "grant" | "revoke-grant" | "harness-permission"
