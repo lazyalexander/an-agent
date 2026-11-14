@@ -307,8 +307,8 @@ TaskSession 将后端 I/O 交给核实过的原 owner，队列及保管操作仍
 ## 离线环境客户端
 
 `an-agent-host app serve ROOT` 为现有私有 daemon 启动独立的本机产品页面，
-地址写入 `ROOT/application/endpoint.json`。当前实现环境导入与宿主任务查看；
-任务创建、领域续轮和产物下载尚未接入。原 daemon 控制台继续只读。
+地址写入 `ROOT/application/endpoint.json`。当前支持环境导入、受限文档任务创建、
+澄清、取消及已验收产物下载。原 daemon 控制台继续只读。
 
 Loom 的 `pack-runtime SOURCE MANIFEST NEW_ARCHIVE` 按明确选定的清单组装离线包。
 `an-offline-runtime-v1` 清单绑定名称、版本、`macos-aarch64`、许可文件、组件引用，
@@ -334,3 +334,37 @@ Loom 的 `pack-runtime SOURCE MANIFEST NEW_ARCHIVE` 按明确选定的清单组�
 产品页面的有限 `task-view`、`task-control` 操作读取原记录，预览并确认取消或补充指令。
 活动轮使用 steering，空闲轮使用 continuation；不开放任意 daemon 请求入口，
 这些控制也不代表领域工作流已经完成。
+
+
+### 产品文档交付
+
+空私有目录上的 `app serve ROOT` 启动原 daemon，默认两个执行槽。
+已有服务保留已选宿主程序；不自动更换可执行文件。文档任务要求服务空闲且至少两个槽，
+一次接纳一个产品交付，避免主会话占满原生验收所需容量；未核实结果继续占位。
+
+离线包通过 `delivery`、`cocoon`、`runner`、`kernel`、`initrd`、`root_image`、
+`native_python`、`native_stdlib`、`native_site`、`intermediate_package`、
+`final_package` 选择文件；包、依赖目录和标准库目录从所选清单或索引文件派生。
+领域交付声明与提示归 an-spool。任务另行冻结环境、输入、Codex、指令、600 秒期限及三轮上限。
+首个文档配置接受不超过现有授权读取器 512 KiB 上限的 EUR 报价文本 PDF，不支持 OCR 或任意版式。
+
+产品接口为 `delivery-preview`、`delivery-create`、`delivery-view`、`delivery-clarify`、
+`delivery-cancel`、`delivery-artifact`。创建与澄清按精确预览确认，相同身份不重放工作。
+协调器仅调用原队列、权限、supervisor 和验收接口，不包含模型循环。
+记录关联原任务、VM 和产物引用；原协调器不可用时显示结果待核实，不隐式重启。
+
+`harness-bind-cocoon` 在公布任务运行状态前，把获准固定程序环境绑定到原主会话，
+保证首次模型工具调用前取消也由原 owner 释放 VM。`harness-attach-input` 为同一任务
+明确确认一个精确只读输入授权，不增加委派权限或延长期限，也不改写原授权。
+原 owner 监测附加输入授权，撤销后取消会话及后续工作；显式收窄的工具授权仍逐次核对。
+未转交的 VM 仅由创建它的控制器通过原工作权限清理。
+
+下载只读取已验收版本，要求原进程与 VM 释放已确认，并重新核实产物保管。
+用户下载不依赖模型披露授权是否过期；不提供 scratch 或任意内部路径。
+关闭、重开页面不会替换任务或重放执行。
+
+文档任务仅在原进程与 VM 确认释放后发布终态。delivery-reconcile 读取原终止回执，
+不重放提案或重启协调器；确认终止的中断交付归为失败或取消，已验收产物继续由原宿主管理。
+批准的主会话 scope 禁止创建子 harness 或委派，并将每个 Cocoon 规范绑定到原操作 ID，
+未知效果不能换新 ID 重试；通用会话保持兼容。空闲单槽服务可预览并批准
+prepare-document-capacity 调整为两槽，运行任务期间禁止调整。

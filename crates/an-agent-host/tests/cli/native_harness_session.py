@@ -19,6 +19,7 @@ def main():
     parser.add_argument('--host', type=Path, required=True)
     parser.add_argument('--evidence', type=Path, required=True)
     parser.add_argument('--finish-validation', action='store_true')
+    parser.add_argument('--attachment-validation', action='store_true')
     args = parser.parse_args()
     require_native_workspace()
     driver = Driver(args.host, args.evidence)
@@ -67,6 +68,40 @@ for raw in sys.stdin:
         source = driver.root / 'knowledge.txt'
         source.write_text('selected knowledge')
         read = {'op': 'read-input', 'path': str(source), 'sha256': sha(source), 'encoding': 'utf-8'}
+        if args.attachment_validation:
+            task=dict(driver.task(fake,json.dumps(read),scope={'single_primary':True,'cocoon_job_ids':{'f'*64:'11111111-1111-4111-8111-111111111111'}}),turn_limit=3)
+            main=driver.grant([driver.profile(task),{'kind':'read-input','path':str(source),'sha256':sha(source)}])
+            job=driver.approve({'op':'harness','task':task},main)['id']
+            deadline=time.monotonic()+30
+            while not (driver.service/'jobs'/job/'turn-result-1.json').exists():
+                assert time.monotonic()<deadline
+                time.sleep(.05)
+            driver.request({'op':'harness-tool','id':job,'arguments':{'request':json.dumps({'op':'harness','task':task})}},ok=False)
+            assert len(driver.request({'op':'show'})['tasks'])==1
+            denied=driver.request({'op':'harness-tool','id':job,'arguments':{'request':json.dumps({'op':'cocoon-job','spec_sha256':'f'*64,'operation_id':'22222222-2222-4222-8222-222222222222'})}},ok=False)
+            assert 'original operation' in denied
+            other=driver.root/'answer.txt';other.write_text('selected knowledge')
+            reference={'op':'read-input','path':str(other),'sha256':sha(other),'encoding':'utf-8'}
+            tool={'op':'harness-tool','id':job,'arguments':{'request':json.dumps(reference)}}
+            driver.request(tool,ok=False)
+            extra=driver.grant([{'kind':'read-input','path':str(other),'sha256':sha(other)}],subject='answers')
+            attach={'op':'harness-attach-input','id':job,'input_grant':extra['id']}
+            driver.approve(attach);driver.approve(attach)
+            assert driver.request(tool)['text']=='selected knowledge'
+            view=driver.request({'op':'harness-connect','id':job},main)
+            driver.approve({'op':'harness-continue','id':job,'execution':view['execution'],'after_turn':1,
+                'command':'approved-answer','instruction':json.dumps(reference)},main)
+            deadline=time.monotonic()+30
+            while not (driver.service/'jobs'/job/'turn-result-2.json').exists():
+                assert time.monotonic()<deadline
+                time.sleep(.05)
+            driver.approve({'op':'revoke-grant','id':extra['id']})
+            driver.request(tool,ok=False)
+            assert driver.request({'op':'grant-status'},main)['active']
+            driver.wait(job,main,'cancelled')
+            (driver.root/'report.json').write_text(json.dumps({'passed':True,'fixture_only':True,
+                'unattached_input_denied':True,'attached_input_read_same_thread':True,'revocation_enforced':True,'original_scope_active':True},indent=2))
+            return
         if args.finish_validation:
             task = dict(driver.task(fake, json.dumps(read)), turn_limit=3)
             credential = driver.grant([driver.profile(task), {'kind':'read-input','path':str(source),'sha256':sha(source)}])

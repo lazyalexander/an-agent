@@ -377,3 +377,15 @@ continuation, checking the same primary execution/owner and retained job records
 steering admission and cancellation latency while guest execution is blocked;
 it then requires local and VM termination with no proposed output. This fixture
 measures control responsiveness, not real-model output or render performance.
+
+The opt-in `native_product_delivery.py --host FROZEN_BINARY --bundle REVIEWED_ARCHIVE
+--evidence NEW_DIRECTORY` qualifies the empty-root product HTTP path, independent
+native Markdown/XLSX acceptance and accepted-revision downloads. Run normal with
+`--restart-page`, clarified with `--clarification --drop-clarification-receipt`,
+early cancel with `--cancel`, preparation cancel with `--cancel --cancel-preparing`, waiting cancel with `--clarification --cancel
+--cancel-when-clarifying`, and coordinator loss with `--clarification --cancel
+--lose-controller`. The last case checks unknown state, original-ID cancellation
+and receipt-only reconciliation without replay. It requires native macOS,
+qualified Codex/auth and a reviewed Cocoon/Python runtime, and is not a CI fixture.
+Use `native_harness_session.py --attachment-validation` for exact supplemental
+read grants, revocation, single-primary and fixed-operation enforcement regression.

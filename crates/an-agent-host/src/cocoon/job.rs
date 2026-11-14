@@ -83,31 +83,8 @@ pub(crate) fn run(
     if store::digest(&program) != spec.program_sha256 {
         return Err("Cocoon job program changed".into());
     }
-    let context = exchange(
-        &profile,
-        &an_agent_core::det_seam::Entropy::os().uuid_v4().to_string(),
-        json!({"operation":"context","vm":profile.vm}),
-    )?;
-    let attempt = context["attempt"]
-        .as_str()
-        .ok_or("Cocoon job needs an active attempt")?;
-    uuid::Uuid::parse_str(attempt)?;
-    if context["vm"] != profile.vm
-        || context["generation"] != profile.generation
-        || context["state"] != "running"
-        || context["work"]["guest_ready"] != true
-    {
-        return Err("Cocoon job environment is not ready".into());
-    }
-    for action in ["inspect", "guest", "stop"] {
-        if !context["work"]["actions"]
-            .as_array()
-            .is_some_and(|a| a.iter().any(|v| v == action))
-        {
-            return Err("Cocoon job requires inspect, guest and stop authority".into());
-        }
-    }
-    lifecycle::claim(session, task, &profile, attempt, &spec)?;
+    let attempt = ready_context(&profile)?;
+    lifecycle::claim(session, task, &profile, &attempt, &spec)?;
     store::directory(&session.join("cocoon-jobs"))?;
     let root = session.join("cocoon-jobs").join(id);
     store::directory(&root)?;
@@ -350,4 +327,38 @@ pub(crate) fn summaries(session: &Path) -> Result<Value> {
     }
     results.sort_by(|a, b| a["operation"].as_str().cmp(&b["operation"].as_str()));
     Ok(json!(results))
+}
+
+fn ready_context(profile: &Profile) -> Result<String> {
+    let context = exchange(
+        profile,
+        &an_agent_core::det_seam::Entropy::os().uuid_v4().to_string(),
+        json!({"operation":"context","vm":profile.vm}),
+    )?;
+    let attempt = context["attempt"]
+        .as_str()
+        .ok_or("Cocoon job needs an active attempt")?;
+    uuid::Uuid::parse_str(attempt)?;
+    if context["vm"] != profile.vm
+        || context["generation"] != profile.generation
+        || context["state"] != "running"
+        || context["work"]["guest_ready"] != true
+    {
+        return Err("Cocoon job environment is not ready".into());
+    }
+    for action in ["inspect", "guest", "stop"] {
+        if !context["work"]["actions"]
+            .as_array()
+            .is_some_and(|a| a.iter().any(|v| v == action))
+        {
+            return Err("Cocoon job requires inspect, guest and stop authority".into());
+        }
+    }
+    Ok(attempt.to_owned())
+}
+pub(crate) fn bind(session: &Path, path: &Path, digest: &str, task: &str) -> Result<()> {
+    let spec = load(path, digest)?;
+    let profile = super::load(&spec.transport, &spec.transport_sha256)?;
+    let attempt = ready_context(&profile)?;
+    lifecycle::claim(session, task, &profile, &attempt, &spec)
 }

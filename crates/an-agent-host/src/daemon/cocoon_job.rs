@@ -22,6 +22,7 @@ pub(super) fn run(
         return Err("Cocoon job input count limit".into());
     }
     let mut selected = Vec::new();
+    let mut input_bindings = Vec::new();
     for input in inputs {
         let allowed: &[&str] = match input["op"].as_str() {
             Some("read-input") => &["op", "path", "sha256"],
@@ -34,7 +35,9 @@ pub(super) fn run(
         }) {
             return Err("unexpected Cocoon job input fields".into());
         }
-        let response = permissions::dispatch_bound(root, input, authority)?;
+        let (response, binding) =
+            super::task_session::disclosure::input(root, session, input, authority)?;
+        input_bindings.push(binding);
         selected.push(crate::cocoon::job::Input {
             bytes: serde_json::from_value(response["bytes"].clone())?,
             evidence: input.clone(),
@@ -55,7 +58,40 @@ pub(super) fn run(
             {
                 return Err("primary task cancelled".into());
             }
+            for binding in &input_bindings {
+                crate::task_permissions::active(binding)?;
+            }
             crate::task_permissions::active(authority)
         },
     )
+}
+
+pub(super) fn bind(root: &Path, req: &Value, approved: Option<&str>) -> Result<Value> {
+    let (directory, job) = storage::job(root, text(req, "id")?)?;
+    let Job::Harness {
+        authorization: Some(authority),
+        ..
+    } = &job
+    else {
+        return Err("bound primary session required".into());
+    };
+    let digest = text(req, "spec_sha256")?;
+    crate::task_permissions::require(
+        authority,
+        &crate::task_permissions::Permission::CocoonJob {
+            spec_sha256: digest.into(),
+        },
+    )?;
+    if directory.join("cancel.json").exists() || directory.join("completion.json").exists() {
+        return Err("primary session closed".into());
+    }
+    let path = Path::new(text(req, "spec")?);
+    crate::cocoon::job::load(path, digest)?;
+    let plan = json!({"operation":"bind-session-environment","id":text(req,"id")?,"request":job.request(),"spec":path,"spec_sha256":digest});
+    let (preview, execute) = approval(plan, approved)?;
+    if execute {
+        let task = crate::task_permissions::load(authority)?.scope.task;
+        crate::cocoon::job::bind(&directory, path, digest, &task)?;
+    }
+    Ok(preview)
 }

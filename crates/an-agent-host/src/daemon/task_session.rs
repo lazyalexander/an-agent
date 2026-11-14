@@ -2,6 +2,7 @@
 use super::harness_adapter::{kind, selected};
 use super::*;
 use std::io::Write;
+pub(super) mod disclosure;
 pub(super) mod finish;
 
 pub(super) fn dispatch(root: &Path, req: &Value, approved: Option<&str>) -> Result<Value> {
@@ -284,8 +285,25 @@ fn tool_request_inner(root: &Path, envelope: &Value, stopped: &AtomicBool) -> Re
     {
         return Err("task session is not active".into());
     }
+    disclosure::active(&dir, &authority)?;
     let started = an_agent_core::det_seam::Clock::monotonic_now();
-    let result = host_tool(root, &dir, &authority, &envelope["arguments"], stopped);
+    let requested: Value = serde_json::from_str(text(&envelope["arguments"], "request")?)?;
+    let fixed_job_mismatch = requested["op"] == "cocoon-job"
+        && task.scope.get("cocoon_job_ids").is_some_and(|ids| {
+            requested["spec_sha256"].as_str().is_none_or(|spec| {
+                ids.get(spec)
+                    .is_none_or(|id| id != &requested["operation_id"])
+            })
+        });
+    let result = if fixed_job_mismatch {
+        Err("workflow job identity must retain its original operation".into())
+    } else if task.scope["single_primary"] == true
+        && matches!(requested["op"].as_str(), Some("harness" | "delegate"))
+    {
+        Err("single-primary sessions cannot launch model child tasks".into())
+    } else {
+        host_tool(root, &dir, &authority, &envelope["arguments"], stopped)
+    };
     let receipt = json!({"request_sha256":store::digest(&serde_json::to_vec(&envelope["arguments"])?),
         "grant":authority.id,"succeeded":result.is_ok(),
         "observed_ms":super::harness_metrics::now_ms(),"elapsed_ms":started.elapsed().as_millis(),
@@ -316,6 +334,9 @@ fn host_tool(
     }
     let mut req: Value = serde_json::from_str(text(arguments, "request")?)?;
     let op = text(&req, "op")?;
+    if op == "read-input" && req.get("grant").is_none() {
+        return disclosure::input(root, session, &req, authority).map(|value| value.0);
+    }
     #[cfg(unix)]
     if op == "cocoon-job-status" {
         return crate::cocoon::job::status(session, text(&req, "operation_id")?);

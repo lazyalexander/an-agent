@@ -134,8 +134,17 @@ pub fn worker(root: &Path, id: &str, hash: &str, cancelled: &AtomicBool) -> Resu
             if dir.join("cancel.json").exists()
                 || authorization
                     .as_ref()
-                    .is_some_and(|b| crate::task_permissions::active(b).is_err())
+                    .is_some_and(|b| super::task_session::disclosure::active(&dir, b).is_err())
             {
+                if !dir.join("cancel.json").exists() {
+                    let _ = store::write_new(
+                        &dir.join("cancel.json"),
+                        &serde_json::to_vec(
+                            &json!({"request":hash,"reason":"session authority unavailable"}),
+                        )
+                        .unwrap_or_default(),
+                    );
+                }
                 cancelled.store(true, Ordering::Release);
             }
         },

@@ -14,6 +14,7 @@ use std::{
 };
 
 pub fn serve(service: &Path, stopped: &AtomicBool) -> Result<Value> {
+    super::bootstrap::ensure(service)?;
     // The original daemon validates service ownership and executable binding.
     crate::daemon::request(service, &json!({"op":"show"}))?;
     let service = service.canonicalize()?;
@@ -203,6 +204,30 @@ fn selected(root: &Path, value: &Value, key: &str) -> Result<PathBuf> {
 }
 fn act(root: &Path, service: &Path, value: &Value) -> Result<Value> {
     match value["op"].as_str() {
+        Some("delivery-capacity") => {
+            let mut request = json!({"op":"prepare-document-capacity","command":value["command"]});
+            if let Some(approval) = value.get("approve") {
+                request["approve"] = approval.clone();
+            }
+            crate::daemon::request(service, &request)
+        }
+        Some("delivery-preview") => super::tasks::preview(service, value),
+        Some("delivery-create") => super::tasks::create(service, value),
+        Some("delivery-view") => {
+            super::tasks::view(service, value["id"].as_str().ok_or("task identity")?)
+        }
+        Some("delivery-reconcile") => {
+            super::tasks::reconcile(service, value["id"].as_str().ok_or("task identity")?)
+        }
+        Some("delivery-clarify") => super::tasks::clarify(service, value),
+        Some("delivery-cancel") => {
+            super::tasks::cancel(service, value["id"].as_str().ok_or("task identity")?)
+        }
+        Some("delivery-artifact") => super::tasks::artifact(
+            service,
+            value["id"].as_str().ok_or("task identity")?,
+            value["stage"].as_str().ok_or("product stage")?,
+        ),
         Some("task-view") => {
             super::control::view(service, value["id"].as_str().ok_or("task identity")?)
         }
@@ -231,8 +256,19 @@ fn view(root: &Path, service: &Path) -> Result<Value> {
             Some(json!({"id":id,"manifest":manifest}))
         })
         .collect::<Vec<_>>();
+    let mut deliveries = Vec::new();
+    for entry in fs::read_dir(root.join("tasks"))?.take(257) {
+        if deliveries.len() >= 256 {
+            return Err("product task registry limit".into());
+        }
+        let entry = entry?;
+        let name = entry.file_name().to_string_lossy().into_owned();
+        if uuid::Uuid::parse_str(&name).is_ok() {
+            deliveries.push(super::tasks::view(service, &name)?);
+        }
+    }
     Ok(
-        json!({"environments":environments,"host":crate::daemon::request(service,&json!({"op":"show"}))?}),
+        json!({"environments":environments,"deliveries":deliveries,"host":crate::daemon::request(service,&json!({"op":"show"}))?}),
     )
 }
 fn respond(stream: &mut TcpStream, status: u16, mime: &str, body: Vec<u8>) -> Result<()> {
