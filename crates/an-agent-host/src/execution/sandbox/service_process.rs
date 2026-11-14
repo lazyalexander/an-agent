@@ -169,7 +169,7 @@ pub(crate) fn current_resources() -> Value {
 
 pub(crate) fn identity(pid: u32) -> Value {
     #[cfg(target_os = "macos")]
-    if let Some(info) = bsd(pid) {
+    if let Some(info) = bsd(pid).filter(|info| info.pbi_start_tvsec != 0) {
         return json!({"pid":pid,"started_seconds":info.pbi_start_tvsec,"started_microseconds":info.pbi_start_tvusec});
     }
     let _ = pid;
@@ -273,4 +273,34 @@ pub(crate) fn owned_resources(owner: &Value) -> Value {
     }
     let _ = owner;
     json!({"available":false,"reason":"original process birth identity unavailable"})
+}
+
+/// Verify the child relation before publishing a task-owned control process.
+pub(crate) fn child_of(pid: u32, parent: u32) -> bool {
+    #[cfg(target_os = "macos")]
+    {
+        bsd(pid).is_some_and(|info| info.pbi_ppid == parent)
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (pid, parent);
+        false
+    }
+}
+
+pub(crate) fn exited(pid: u32) -> bool {
+    #[cfg(target_os = "macos")]
+    {
+        // Darwin SZOMB is 5: the process cannot execute and awaits reaping.
+        if bsd(pid).is_some_and(|info| info.pbi_status == 5) {
+            return true;
+        }
+        (unsafe { libc::kill(pid as i32, 0) }) == -1
+            && std::io::Error::last_os_error().raw_os_error() == Some(libc::ESRCH)
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = pid;
+        false
+    }
 }

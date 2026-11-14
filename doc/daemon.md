@@ -580,3 +580,11 @@ each Cocoon specification to its original operation ID; unknown effects cannot
 be retried with a fresh ID. Existing generic session scopes remain compatible.
 Idle one-slot roots can explicitly preview/approve `prepare-document-capacity`
 to reserve two slots; running tasks prevent this change.
+
+The product controller records its Cocoon control-service child with kernel birth
+identity and original controller ownership before starting VM work. New delivery
+records distinguish runtime-control cleanup from original workload/VM termination.
+Unknown reconciliation may stop only that recorded child, after all original
+execution owners and VM release are confirmed; missing ownership evidence retains
+unknown state. Cleanup sends one SIGTERM and observes exit without retrying an
+unknown effect or signaling a changed process identity.

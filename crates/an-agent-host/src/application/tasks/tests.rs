@@ -75,3 +75,39 @@ fn unknown_delivery_needs_original_process_and_vm_receipts() -> Result<()> {
     assert!(!root.join("launch.json").exists());
     Ok(())
 }
+
+#[cfg(target_os = "macos")]
+#[test]
+fn runtime_cleanup_requires_exact_original_child_and_birth_identity() -> Result<()> {
+    use crate::execution::sandbox::{product_process, service_process};
+    let (_temporary, service, id, root) = fixture()?;
+    let owner =
+        json!({"pid":std::process::id(),"identity":service_process::identity(std::process::id())});
+    store::write_new(&root.join("owner.json"), &serde_json::to_vec(&owner)?)?;
+    assert!(runtime::record(&service, &id, std::process::id()).is_err());
+    store::write_new(&root.join("runtime-launch.json"), b"{}")?;
+    assert!(!runtime::cleanup(&root)?);
+    let mut child = product_process::test_control()?;
+    let result = (|| -> Result<()> {
+        runtime::record(&service, &id, child.id())?;
+        let path = root.join("runtime-owner.json");
+        let original: Value = serde_json::from_slice(&fs::read(&path)?)?;
+        let mut changed = original.clone();
+        changed["identity"]["started_seconds"] = json!(0);
+        fs::write(&path, serde_json::to_vec(&changed)?)?;
+        assert!(runtime::cleanup(&root).is_err());
+        assert!(child.try_wait()?.is_none());
+        fs::write(&path, serde_json::to_vec(&original)?)?;
+        Ok(())
+    })();
+    if let Err(error) = result {
+        child.kill()?;
+        child.wait()?;
+        return Err(error);
+    }
+    let waiter = std::thread::spawn(move || child.wait());
+    assert!(runtime::cleanup(&root)?);
+    waiter.join().map_err(|_| "runtime reaper panicked")??;
+    assert!(runtime::cleanup(&root)?);
+    Ok(())
+}

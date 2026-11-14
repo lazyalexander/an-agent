@@ -60,6 +60,23 @@ A core agent's conversation tape remains private. See the
 [bounded handoff and identity contract](session-and-retention.md#bounded-peer-context)
 for supported sources and disclosure limits.
 
+## macOS product P1: continuous use
+
+This product milestone follows the released single-primary document P0; it does
+not reopen the qualified native-event/storage P1 above. Keep TaskSession neutral.
+
+| Slice | Completion gate |
+| --- | --- |
+| P1.1 reliability | Original-identity fault reconciliation and confirmed workload, VM and task-owned control-service cleanup; implementation in progress |
+| P1.2 persistent images | Approved save, branch, rollback and restart through existing Cocoon operations; pending |
+| P1.3 daily deployment | Readiness, idle-service version switch, retained history and data-preserving uninstall; pending |
+| P1.4 combined qualification | Installation, clarified delivery, image reuse, fault cleanup, upgrade and old-product reads; pending |
+
+Persistent disk images are mandatory. Memory restore has a separate qualification
+gate and must remain unavailable when unqualified. GUI save, OCR, provider expansion
+and automatic migration remain outside this product milestone. The original six
+P0 scenarios remain regression gates; implementation is not qualification.
+
 ## Deferred scope and existing surfaces
 
 | Surface | Current scope or reason to defer |

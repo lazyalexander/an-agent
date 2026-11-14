@@ -99,6 +99,7 @@ def main():
         assert state['state']==('cancelled' if args.cancel else 'succeeded'),state
         products={}
         assert state['termination_confirmed']
+        assert state['runtime_termination_confirmed']
         if args.cancel:assert 'final' not in state.get('products',{})
         if not args.cancel:
             assert state['termination_confirmed']

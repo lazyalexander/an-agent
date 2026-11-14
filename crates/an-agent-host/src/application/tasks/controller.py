@@ -59,7 +59,7 @@ def main():
     save(answers,{})
     accepted.touch(exist_ok=False)
     client=Client(host,service,root);deadline=time.monotonic()+600
-    state={'state':'preparing','products':{},'session':None,'steps':{}}
+    state={'state':'preparing','products':{},'session':None,'steps':{},'runtime_cleanup_required':True}
     vm=None;api_process=None;credential=None;transport=None;work=None;vm_bound=False;cocoon_state=root/'cocoon'
     stopping=False;owners_confirmed=True;requested_outcome='failed'
     def stop(_signal,_frame):
@@ -102,7 +102,9 @@ def main():
         vm=str(uuid.uuid4());update(vm=vm)
         direct('vm','create',vm,image,'product-task','retain')
         log=(root/'cocoon.log').open('w')
+        save(root/'runtime-launch.json',{'automatic_retries':0})
         api_process=subprocess.Popen([str(environment/components['cocoon']),'host',str(cocoon_state),'serve',str(environment/components['runner'])],stdout=log,stderr=log)
+        client.cli('app','task-runtime-owner',service,root.name,api_process.pid)
         socket=Path('/tmp')/('cocoon-host-'+hashlib.sha256(os.fsencode(cocoon_state)).hexdigest()+'.sock')
         for _ in range(300):
             check()
@@ -262,11 +264,13 @@ def main():
                     update(state='unknown',error='VM release not confirmed')
             except Exception:
                 update(state='unknown',error='VM release not confirmed')
-        if vm_confirmed and owners_confirmed and state['state']=='stopping':update(state=requested_outcome,termination_confirmed=True)
         if api_process is not None and vm_confirmed:
             api_process.terminate()
             try:api_process.wait(timeout=15)
-            except subprocess.TimeoutExpired:pass
+            except subprocess.TimeoutExpired:vm_confirmed=False
+        runtime_confirmed=api_process is None or api_process.poll() is not None
+        if vm_confirmed and owners_confirmed and runtime_confirmed and state['state']=='stopping':update(state=requested_outcome,termination_confirmed=True,runtime_termination_confirmed=True)
+        elif not runtime_confirmed:update(state='unknown',error='Control service release not confirmed')
 
 
 if __name__=='__main__':main()

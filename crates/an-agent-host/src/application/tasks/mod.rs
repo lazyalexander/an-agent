@@ -1,4 +1,5 @@
 //! Durable product intents reference existing host jobs; they are not execution receipts.
+pub mod runtime;
 use crate::execution::{Result, store};
 use serde_json::{Value, json};
 use std::{
