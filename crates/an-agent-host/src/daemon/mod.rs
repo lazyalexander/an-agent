@@ -3,6 +3,8 @@
 #![cfg_attr(not(target_os = "macos"), allow(dead_code))]
 mod activity;
 mod app_server;
+#[cfg(unix)]
+mod cocoon_job;
 mod codex;
 mod control;
 mod delegation;

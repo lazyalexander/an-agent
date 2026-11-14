@@ -29,9 +29,9 @@ pub(super) fn execute(
         dir,
         &args,
         cancelled,
-        |input, output, exceeded| {
+        |input, output, exceeded, stopped| {
             dialogue(
-                root, dir, task, authority, cancelled, input, output, exceeded,
+                root, dir, task, authority, cancelled, input, output, exceeded, stopped,
             )
         },
     )?;
@@ -65,6 +65,7 @@ fn dialogue(
     mut input: ChildStdin,
     output: ChildStdout,
     exceeded: Arc<AtomicBool>,
+    stopped: Arc<AtomicBool>,
 ) -> std::io::Result<Vec<u8>> {
     let convert = |error: Box<dyn std::error::Error>| std::io::Error::other(error.to_string());
     let mut journal = fs::OpenOptions::new()
@@ -193,9 +194,10 @@ fn dialogue(
                         .file_name()
                         .and_then(|n| n.to_str())
                         .ok_or_else(|| std::io::Error::other("harness task ID"))?;
-                    let result = super::request(
+                    let result = super::task_session::invoke(
                         root,
                         &json!({"op":"harness-tool","id":id,"arguments":p["arguments"]}),
+                        &stopped,
                     );
                     let success = result.is_ok();
                     let content = result.unwrap_or_else(|e| json!({"error":e.to_string()}));

@@ -15,7 +15,7 @@ struct Plan {
     source: Option<PathBuf>,
 }
 
-fn decode(value: &str) -> Result<Vec<u8>> {
+pub(super) fn decode(value: &str) -> Result<Vec<u8>> {
     if !value.len().is_multiple_of(2) || !value.bytes().all(|b| b.is_ascii_hexdigit()) {
         return Err("invalid Cocoon binary chunk".into());
     }

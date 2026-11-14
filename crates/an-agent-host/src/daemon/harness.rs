@@ -129,7 +129,7 @@ pub fn worker(root: &Path, id: &str, hash: &str, cancelled: &AtomicBool) -> Resu
     let work = dir.join("work");
     store::directory(&work)?;
     write(&dir.join("schema.json"), &task.schema)?;
-    let result = spool::supervisor::monitor(
+    let mut result = spool::supervisor::monitor(
         || {
             if dir.join("cancel.json").exists()
                 || authorization
@@ -149,6 +149,19 @@ pub fn worker(root: &Path, id: &str, hash: &str, cancelled: &AtomicBool) -> Resu
             )
         },
     );
+    #[cfg(unix)]
+    {
+        let cleanup = crate::cocoon::job::release(&dir)
+            .unwrap_or_else(|_| json!({"termination_confirmed":false}));
+        if !cleanup.is_null()
+            && let Ok(value) = &mut result
+        {
+            value["termination_confirmed"] = json!(
+                value["termination_confirmed"] == true && cleanup["termination_confirmed"] == true
+            );
+            value["cocoon"] = cleanup;
+        }
+    }
     let response = match &result {
         Ok(result) => json!({"request":hash,"result":result}),
         Err(error) => {

@@ -152,7 +152,7 @@ pub(crate) fn execute_command(
         timeout,
         cancelled,
         group,
-        |mut stdin, stdout, exceeded| {
+        |mut stdin, stdout, exceeded, _stopped| {
             thread::scope(|scope| {
                 let writer = scope.spawn(move || stdin.write_all(input));
                 let bytes = reader(stdout, exceeded);
@@ -174,6 +174,7 @@ pub(crate) fn execute_dialogue(
     exchange: impl FnOnce(
         std::process::ChildStdin,
         std::process::ChildStdout,
+        Arc<AtomicBool>,
         Arc<AtomicBool>,
     ) -> std::io::Result<Vec<u8>>
     + Send,
@@ -222,13 +223,15 @@ pub(crate) fn execute_dialogue(
             let stdout = child.child.stdout.take().ok_or("missing stdout")?;
             let stderr = child.child.stderr.take().ok_or("missing stderr")?;
             let exceeded = Arc::new(AtomicBool::new(false));
+            let stopped = Arc::new(AtomicBool::new(false));
+            let dialogue_stopped = Arc::clone(&stopped);
             let failed = &io_failed;
             let stdout_limit = Arc::clone(&exceeded);
             let stderr_limit = Arc::clone(&exceeded);
             let out_thread = thread::Builder::new()
                 .name("host-dialogue".into())
                 .spawn_scoped(scope, move || {
-                    let result = exchange(stdin, stdout, stdout_limit);
+                    let result = exchange(stdin, stdout, stdout_limit, dialogue_stopped);
                     if result.is_err() {
                         failed.store(true, Ordering::Relaxed);
                     }
@@ -261,9 +264,11 @@ pub(crate) fn execute_dialogue(
                     };
                 }
                 if let Some(status) = child.poll()? {
+                    stopped.store(true, Ordering::Release);
                     break status;
                 }
                 if reason.is_some() {
+                    stopped.store(true, Ordering::Release);
                     break child.terminate()?;
                 }
                 thread::sleep(Duration::from_millis(10));
@@ -327,3 +332,33 @@ mod tests;
 
 #[cfg(test)]
 mod tape_ownership;
+
+#[cfg(all(test, target_os = "macos"))]
+mod dialogue_stop_tests {
+    use super::*;
+    use std::os::unix::process::CommandExt;
+    #[test]
+    fn deadline_stops_backend_callbacks_without_becoming_user_cancellation() -> Result<()> {
+        let cancelled = AtomicBool::new(false);
+        let mut command = std::process::Command::new("/bin/sleep");
+        command.arg("30").process_group(0);
+        let execution = execute_dialogue(
+            command,
+            Path::new("/private/tmp"),
+            Duration::from_millis(50),
+            &cancelled,
+            true,
+            |_input, _output, _limit, stopped| {
+                while !stopped.load(Ordering::Acquire) {
+                    thread::sleep(Duration::from_millis(2));
+                }
+                Ok(b"callback stopped".to_vec())
+            },
+        )?;
+        assert_eq!(execution.status, "timed_out");
+        assert!(execution.reaped);
+        assert_eq!(execution.stdout, b"callback stopped");
+        assert!(!cancelled.load(Ordering::Acquire));
+        Ok(())
+    }
+}

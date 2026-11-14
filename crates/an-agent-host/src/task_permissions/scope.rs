@@ -10,6 +10,16 @@ pub(crate) enum Permission {
         input: PathBuf,
         seconds: u64,
     },
+    RunJobOutput {
+        instance: PathBuf,
+        run: String,
+        operation: String,
+        output: String,
+        seconds: u64,
+    },
+    CocoonJob {
+        spec_sha256: String,
+    },
     RunCandidate {
         instance: PathBuf,
         run: String,
@@ -49,6 +59,21 @@ pub(crate) enum Permission {
 impl Permission {
     pub(crate) fn validate(&self) -> Result<()> {
         match self {
+            Self::CocoonJob { spec_sha256 } => digest(spec_sha256)?,
+            Self::RunJobOutput {
+                instance,
+                run,
+                operation,
+                output,
+                seconds,
+            } => {
+                canonical(instance)?;
+                identifier(run)?;
+                identifier(output)?;
+                if uuid::Uuid::parse_str(operation)?.to_string() != *operation || *seconds == 0 {
+                    return Err("invalid Cocoon job output capability".into());
+                }
+            }
             Self::Run {
                 instance,
                 run,
@@ -128,6 +153,28 @@ impl Permission {
 
     pub(crate) fn within(&self, parent: &Self) -> bool {
         match (self, parent) {
+            (
+                Self::RunJobOutput {
+                    instance,
+                    run,
+                    operation,
+                    output,
+                    seconds,
+                },
+                Self::RunJobOutput {
+                    instance: p_instance,
+                    run: p_run,
+                    operation: p_operation,
+                    output: p_output,
+                    seconds: p_seconds,
+                },
+            ) => {
+                instance == p_instance
+                    && run == p_run
+                    && operation == p_operation
+                    && output == p_output
+                    && seconds <= p_seconds
+            }
             (
                 Self::RunCandidate {
                     instance,

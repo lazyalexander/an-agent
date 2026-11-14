@@ -162,3 +162,16 @@ spool 监督及验收路径，检查二进制分块、精确任务权限、来�
 可为同一测试显式选择已授权的真实 VM；操作员负责 VM 准备及最终停止与核实，配置和
 证据不得提交。即使选择真实 VM，主 agent 仍为确定性协议夹具，不代表真实模型行为或
 PDF/Excel 领域正确性已验收。
+
+native_cocoon_documents.py 显式选择 --host、--profile、--domain（an-spool documents 包）、
+--python-runtime、--dependency-site 及新的短 --evidence 路径。VM 须已准备操作员审阅的
+Python 和固定文档依赖。不传 --codex 时使用主 agent 协议夹具，传入已验收二进制才进行真实
+模型验收。--clarification 用独立获准的用户回答输入增加第三轮；--lost-receipt 删除已完成
+的宿主执行回执，要求按原 ID 核实；--cancel-before-continuation 验证取消原主 owner 会停止
+其 VM 并拒绝迟到接纳。默认链调用三个固定客体程序，通过原生 spool 接纳 Markdown 和 XLSX，
+独立检查来源行、公式、缓存 EUR 合计和 Markdown 摘要。原始报告和运行镜像保持私有，不由
+原生保管结果推断 GUI 保存、视觉效果、最终计费或远端提供方终止。
+--restart-controller 在 Markdown 接纳与续轮之间仅重启守护服务，检查相同主执行身份、
+owner 和作业记录。--cancel-during-program 通过固定慢程序检查客体执行阻塞时的观察、补充
+指令入队及取消响应，随后要求本地和 VM 终止且没有提案输出。该夹具测量控制响应，不代表
+真实模型输出质量或渲染性能。

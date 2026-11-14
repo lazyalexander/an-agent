@@ -31,6 +31,19 @@ pub(super) fn authorized(
         }
         "record-adoption" => activity::adopt(root, req, approved),
         #[cfg(unix)]
+        "cocoon-job-status" => {
+            let (dir, _) = storage::job(root, text(req, "id")?)?;
+            crate::cocoon::job::status(&dir, text(req, "operation_id")?)
+        }
+        #[cfg(unix)]
+        "cocoon-release" => {
+            let (dir, _) = storage::job(root, text(req, "id")?)?;
+            if !dir.join("cancel.json").exists() && !dir.join("completion.json").exists() {
+                return Err("release requires a closed or cancelled task".into());
+            }
+            crate::cocoon::job::release(&dir)
+        }
+        #[cfg(unix)]
         "cocoon-status" => {
             let (dir, _) = storage::job(root, text(req, "id")?)?;
             crate::cocoon::observe(&dir.join("cocoon-operations"), text(req, "operation_id")?)
@@ -115,8 +128,11 @@ fn submit(
         }
     }
     #[cfg(unix)]
-    let candidate = if let Some(selected) = req.get("candidate") {
-        if req.get("input").is_some() || req.get("artifact").is_some() {
+    let candidate = if let Some(selected) = req.get("candidate").or_else(|| req.get("job_output")) {
+        if req.get("input").is_some()
+            || req.get("artifact").is_some()
+            || (req.get("candidate").is_some() && req.get("job_output").is_some())
+        {
             return Err("candidate input cannot be combined with another input".into());
         }
         let actor = authorization.ok_or("candidate input requires task authority")?;
@@ -135,12 +151,21 @@ fn submit(
             return Err("candidate producer cancelled".into());
         }
         let task = crate::task_permissions::load(&binding)?.scope.task;
-        let (path, mut evidence) = crate::cocoon::transfer::candidate(
-            &directory.join("cocoon-transfers"),
-            text(selected, "transfer")?,
-            &task,
-            text(selected, "sha256")?,
-        )?;
+        let (path, mut evidence) = if req.get("job_output").is_some() {
+            crate::cocoon::job::output(
+                &directory,
+                text(selected, "operation")?,
+                text(selected, "output")?,
+                &task,
+            )?
+        } else {
+            crate::cocoon::transfer::candidate(
+                &directory.join("cocoon-transfers"),
+                text(selected, "transfer")?,
+                &task,
+                text(selected, "sha256")?,
+            )?
+        };
         evidence["session"] = json!(session);
         Some((path, evidence, binding))
     } else {
