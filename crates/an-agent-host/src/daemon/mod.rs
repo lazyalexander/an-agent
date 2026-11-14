@@ -140,3 +140,5 @@ pub fn serve(root: &Path, cancelled: &AtomicBool) -> Result<Value> {
         Err("native daemon is qualified for macOS only".into())
     }
 }
+
+mod capacity;

@@ -3,6 +3,16 @@ use super::*;
 
 pub(super) fn dispatch(root: &Path, req: &Value) -> Result<Value> {
     match text(req, "op")? {
+        "prepare-document-capacity" => super::capacity::prepare(root, req),
+        #[cfg(unix)]
+        "harness-bind-cocoon" => {
+            super::cocoon_job::bind(root, req, req.get("approve").and_then(Value::as_str))
+        }
+        "harness-attach-input" => super::task_session::disclosure::attach(
+            root,
+            req,
+            req.get("approve").and_then(Value::as_str),
+        ),
         "harness-tool" => super::task_session::tool_request(root, req),
         "grant" => permissions::issue(root, req, None),
         "revoke-grant" => permissions::revoke(root, req, None),

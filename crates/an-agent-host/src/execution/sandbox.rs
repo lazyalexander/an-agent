@@ -362,3 +362,5 @@ mod dialogue_stop_tests {
         Ok(())
     }
 }
+
+pub(crate) mod product_process;

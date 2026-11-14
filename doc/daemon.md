@@ -493,8 +493,8 @@ does not hold the daemon's control request lane or authorize later job steps.
 
 `an-agent-host app serve ROOT` starts the separate authenticated product page for
 an existing private daemon. `ROOT/application/endpoint.json` contains its local URL.
-The current client provides environment import and host task observation; task
-creation, domain continuation and artifact download are not yet implemented here.
+The client provides offline environment import, bounded document task creation,
+clarification, cancellation and accepted artifact download.
 It does not change the existing read-only daemon console.
 
 Loom's `pack-runtime SOURCE MANIFEST NEW_ARCHIVE` assembles an explicitly selected
@@ -529,3 +529,54 @@ The product page's finite `task-view` and `task-control` actions project origina
 records and preview/confirm cancellation or a supplement. Active-turn supplements
 use steering; idle-turn supplements use continuation. Neither action exposes an
 arbitrary daemon request endpoint or establishes a domain workflow's completion.
+
+
+### Product document delivery
+
+On a new private root, `app serve ROOT` starts the original daemon with two slots.
+An existing root keeps its selected executable; a changed selection is refused.
+One product delivery is admitted at a time, on an idle service with at least two
+slots, so its retained primary session cannot block its native acceptance job.
+An unresolved product keeps its admission slot until reconciliation.
+
+The offline manifest selects `delivery`, `cocoon`, `runner`, `kernel`, `initrd`,
+`root_image`, `native_python`, `native_stdlib`, `native_site`,
+`intermediate_package` and `final_package`. Component references select files;
+package/site/stdlib directories derive from their selected manifest/index files.
+The delivery declaration and domain prompts belong to an-spool. Import is not
+execution qualification. A task separately freezes environment and input identity,
+Codex selection, instruction, 600-second deadline and maximum three turns.
+The first document profile accepts text EUR quotes up to the existing authorized
+input-reader limit of 512 KiB. OCR and arbitrary PDF layouts remain unsupported.
+
+Product actions are `delivery-preview`, `delivery-create`, `delivery-view`,
+`delivery-clarify`, `delivery-cancel`, `delivery-reconcile` and `delivery-artifact`. Creation and
+clarification use exact previews; creation/answer identities never replay work.
+Model control remains behind TaskSession; the product controller uses original
+queue, authorization, supervisor and acceptance APIs and owns no model loop.
+Product records are projections linking original jobs, VM and artifact references.
+An unavailable original controller is shown as unknown, never restarted implicitly.
+
+`harness-bind-cocoon` binds an approved fixed job specification to its original
+primary session before exposing the task as running. This transfers VM cleanup
+to the original owner even if cancellation precedes the first model tool call.
+`harness-attach-input` explicitly approves one exact read-only input grant for the
+same task, with no delegation or expiry extension; the original grant is unchanged.
+The original owner monitors attached grants, and their revocation cancels the
+session and downstream work. Explicit narrowed tool grants retain their checks.
+The controller stops only its own untransferred VM with its original work authority.
+
+The client downloads only accepted revisions after successful original process
+and VM release. Operator download revalidates custody and is independent of the
+expired model disclosure grant. No scratch file or internal path is served.
+Closing/reopening the page preserves original task identity and execution.
+
+Terminal projections are published only after original process and VM release.
+Unknown delivery reconciliation reads original completion receipts and never
+replays a proposal or restarts the controller. Confirmed interrupted work becomes
+failed/cancelled, with accepted products retained in their original custody.
+The approved primary scope forbids child harness/delegation requests and pins
+each Cocoon specification to its original operation ID; unknown effects cannot
+be retried with a fresh ID. Existing generic session scopes remain compatible.
+Idle one-slot roots can explicitly preview/approve `prepare-document-capacity`
+to reserve two slots; running tasks prevent this change.

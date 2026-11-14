@@ -175,3 +175,13 @@ Python 和固定文档依赖。不传 --codex 时使用主 agent 协议夹具，
 owner 和作业记录。--cancel-during-program 通过固定慢程序检查客体执行阻塞时的观察、补充
 指令入队及取消响应，随后要求本地和 VM 终止且没有提案输出。该夹具测量控制响应，不代表
 真实模型输出质量或渲染性能。
+
+显式运行 native_product_delivery.py --host FROZEN_BINARY --bundle REVIEWED_ARCHIVE
+--evidence NEW_DIRECTORY，验证空服务根目录下的产品 HTTP 链路、独立原生 Markdown/XLSX
+验收及已接纳版本下载。常规链使用 --restart-page；澄清链使用 --clarification
+--drop-clarification-receipt；主会话取消使用 --cancel；准备阶段取消使用 --cancel
+--cancel-preparing；等待澄清取消使用 --clarification --cancel --cancel-when-clarifying；
+协调进程丢失使用 --clarification --cancel --lose-controller。最后一项验证未知状态、
+原 ID 取消与只读回执核对，不重放执行。需要原生 macOS、已验收 Codex/认证与审核过的
+Cocoon/Python 环境，不作为 CI 夹具。native_harness_session.py --attachment-validation
+覆盖精确补充读取授权、撤销、单主会话及固定操作 ID 的协议回归。

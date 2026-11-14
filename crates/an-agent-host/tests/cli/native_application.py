@@ -47,6 +47,16 @@ def main():
             except urllib.error.HTTPError as error:status=error.code;payload=error.read()
             assert status==expected,(path,status,payload)
             return json.loads(payload)
+        import shutil,uuid
+        changed=root/'other-host';shutil.copyfile(host,changed);changed.chmod(0o700)
+        refused=subprocess.run([str(changed),'app','serve',str(service)],capture_output=True,text=True,timeout=15)
+        assert refused.returncode!=0 and 'executable selection changed' in refused.stderr
+        capacity={'op':'delivery-capacity','command':str(uuid.uuid4())}
+        capacity_preview=call('/action',capacity)
+        assert call('/view')['host']['concurrency']==1
+        capacity['approve']=capacity_preview['approval_sha256']
+        call('/action',capacity);assert call('/view')['host']['concurrency']==2
+        assert call('/action',capacity)['replayed'] is False
         call('/view',authorized=False,expected=400)
         call('/action',{'op':'environment-preview','upload':'invalid'},origin='http://foreign.test',expected=400)
         upload=call('/upload',archive.read_bytes())['upload']
