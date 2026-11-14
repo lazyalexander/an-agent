@@ -278,3 +278,27 @@ spool 的 `submit` 可用 `candidate={session,transfer,sha256}` 选择已暂存�
 `candidate_input` 来源信息。正式保管仍经过原 spool `accept`，`artifact-read` 核实保管
 后才把字节返回继续执行的主会话。此桥接验证候选输入和保管流程，不表示领域程序已迁入
 Cocoon，也不证明 PDF/Excel 内容正确。
+
+## Cocoon 固定程序
+
+`cocoon-job` 是宿主任务会话工具，不依赖提供方协议。请求包含 `spec`、`spec_sha256`、
+唯一 `operation_id`、有界 JSON `data`，以及 `inputs` 中最多四个获准的 read-input 或
+artifact-read 字节引用。`cocoon-job` 权限绑定 spec_sha256。操作员私有配置固定传输配置、
+程序路径和摘要、客体解释器、参数及输出名称和编码；参数可替换 {program}、{request}、
+{output}，业务数据不拼接为命令。程序读取含 data 和宿主解析客体输入路径的请求 JSON，
+输出声明的文件及有界 manifest.json，其中记录各文件 sha256 和 bytes。
+
+宿主在修改客体前，为原主会话独占一个 VM 代次；工作授权必须具备 inspect、guest 和 stop。
+每一步都持久化原请求 ID，未知执行只查询，不重发。结果保持 proposed；输出 reference
+可用于 submit.job_output，run-job-output 权限绑定实例、run、operation、output 和最长秒数。
+领域校验、执行终止和正式保管继续由原生 spool 监督及 accept 负责，PDF 和表格规则属于领域包。
+
+harness-connect.cocoon_jobs 及 cocoon-job-status 只观察保留记录，不打开传输。控制端提供任务 id
+和 operation_id，任务工具使用当前会话。成功、取消或失败时，原 harness owner 都先释放所占
+VM，再结束任务；本地进程和 VM 都需确认释放。owner 丢失后，拥有者可对已取消或关闭任务
+请求 cocoon-release，即使任务凭据已撤销，也只核实原停止操作并观察相同 VM 代次。
+Cocoon 授权过期或不可用时保持未知，不使用管理凭据兜底，也不重放执行。
+
+TaskSession 将后端 I/O 交给核实过的原 owner，队列及保管操作仍在守护服务中串行处理。
+后端回调观察受监督客户端的停止信号，包括时间上限到达，并保留超时分类。客体程序阻塞
+不会占用守护服务控制通道，也不会授权停止之后的作业步骤。

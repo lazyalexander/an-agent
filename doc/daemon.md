@@ -451,3 +451,39 @@ still requires the original spool `accept`, and `artifact-read` verifies that
 custody before returning bytes to the continuing primary session. This bridge
 qualifies candidate input and custody; it does not move the domain runtime into
 Cocoon or establish PDF/Excel correctness.
+
+## Fixed Cocoon programs
+
+`cocoon-job` is a host task-session tool, independent of provider protocols. It
+accepts `spec`, `spec_sha256`, a unique `operation_id`, bounded JSON `data`, and up
+to four authorized `read-input`/`artifact-read` byte references in `inputs`. A
+`cocoon-job` capability binds `spec_sha256`. The private operator spec pins the
+transport profile, program path/SHA-256, guest interpreter, fixed arguments and
+output names/encodings. Arguments may substitute `{program}`, `{request}` and
+`{output}`; source data never becomes a command. Programs consume a request JSON
+containing `data` and host-resolved guest input paths, and produce declared files
+plus a bounded `manifest.json` mapping names to `sha256` and `bytes`.
+
+The host claims one VM generation for the original primary session before guest
+mutation. The work grant must support inspect, guest and stop. Each step has an
+original durable request ID; uncertain execution is queried, not resent. Results
+remain `proposed`. Their output `reference` can be passed as `submit.job_output`;
+`run-job-output` authority binds instance, run, operation, output and maximum
+seconds. The original native spool supervisor and `accept` retain domain checking,
+termination and formal custody. Domain code owns PDF/workbook semantics.
+
+`harness-connect.cocoon_jobs` and `cocoon-job-status` retain observations without
+opening a transport. Controllers supply task `id` and `operation_id`; the task tool
+uses its current session. The original harness owner releases claimed VMs before
+completion on success, cancellation or failure. Both local process and VM release
+must be confirmed for task settlement. If the owner is lost, an owning controller
+may request `cocoon-release` on the cancelled/closed task, including with a revoked
+task credential. This only reconciles original stop identities and observes the
+same VM generation. Expired/unavailable Cocoon authority remains unconfirmed;
+there is no management-credential fallback or execution replay.
+
+TaskSession routes backend I/O to the verified original owner, while queue and
+custody mutations remain serialized in the daemon. Backend callbacks observe a
+stop signal from the supervised client process, including wall-time expiry;
+expiry retains its timeout classification. A blocked guest program therefore
+does not hold the daemon's control request lane or authorize later job steps.

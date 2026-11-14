@@ -80,7 +80,14 @@ pub(super) fn dispatch_bound(root: &Path, req: &Value, actor: &Binding) -> Resul
     // Revocation retains status/cancellation access to the caller's own jobs.
     if !matches!(
         op,
-        "task" | "harness-connect" | "grant-status" | "cancel" | "revoke-grant" | "cocoon-status"
+        "task"
+            | "harness-connect"
+            | "grant-status"
+            | "cancel"
+            | "revoke-grant"
+            | "cocoon-status"
+            | "cocoon-release"
+            | "cocoon-job-status"
     ) {
         grants::active(actor)?;
     }
@@ -136,7 +143,22 @@ pub(super) fn dispatch_bound(root: &Path, req: &Value, actor: &Binding) -> Resul
             let instance = PathBuf::from(text(req, "instance")?);
             let run = text(req, "run")?.into();
             let seconds = req["seconds"].as_u64().ok_or("seconds")?;
-            let permission = if let Some(candidate) = req.get("candidate") {
+            let permission = if let Some(selected) = req.get("job_output") {
+                if ["input", "artifact", "candidate"]
+                    .iter()
+                    .any(|key| req.get(key).is_some())
+                {
+                    return Err("ambiguous job output input".into());
+                }
+                owned_job(root, actor, text(selected, "session")?)?;
+                Permission::RunJobOutput {
+                    instance,
+                    run,
+                    seconds,
+                    operation: text(selected, "operation")?.into(),
+                    output: text(selected, "output")?.into(),
+                }
+            } else if let Some(candidate) = req.get("candidate") {
                 if req.get("input").is_some() || req.get("artifact").is_some() {
                     return Err("candidate input cannot be combined with another input".into());
                 }
@@ -186,6 +208,8 @@ pub(super) fn dispatch_bound(root: &Path, req: &Value, actor: &Binding) -> Resul
             grants::require(actor, &harness_permission(&task)?)?;
         }
         "cocoon-status"
+        | "cocoon-release"
+        | "cocoon-job-status"
         | "task"
         | "activity"
         | "harness-result"

@@ -169,10 +169,14 @@ pub(super) fn dispatch(root: &Path, req: &Value, approved: Option<&str>) -> Resu
     };
     #[cfg(unix)]
     let cocoon_operations = crate::cocoon::receipts(&dir.join("cocoon-operations"))?;
+    #[cfg(unix)]
+    let cocoon_jobs = crate::cocoon::job::summaries(&dir)?;
+    #[cfg(not(unix))]
+    let cocoon_jobs = json!([]);
     #[cfg(not(unix))]
     let cocoon_operations = json!([]);
     Ok(
-        json!({"cocoon_operations":cocoon_operations,"id":id,"adapter":kind(task)?,"execution":execution,"capabilities":adapter.capabilities(),
+        json!({"cocoon_jobs":cocoon_jobs,"cocoon_operations":cocoon_operations,"id":id,"adapter":kind(task)?,"execution":execution,"capabilities":adapter.capabilities(),
         "turns":turn_state(&dir, task.turn_limit.unwrap_or(1))?,
         "task":observation::task(root,id)?,"events":events,"cursor":next,"commands":commands,"automatic_retries":0}),
     )
@@ -223,7 +227,40 @@ fn owner_live(dir: &Path) -> Result<bool> {
     Ok(!identity.is_null() && identity == owner["process_identity"])
 }
 
+/// Long backend I/O belongs to the original owner; queue mutations remain in the daemon.
+pub(super) fn invoke(root: &Path, envelope: &Value, stopped: &AtomicBool) -> Result<Value> {
+    let request: Value = serde_json::from_str(text(&envelope["arguments"], "request")?)?;
+    if matches!(
+        request["op"].as_str(),
+        Some(
+            "cocoon-job"
+                | "cocoon-call"
+                | "cocoon-transfer"
+                | "cocoon-reconcile"
+                | "cocoon-status"
+                | "cocoon-job-status"
+        )
+    ) {
+        let (directory, _) = storage::job(root, text(envelope, "id")?)?;
+        let owner = read(&directory.join("owner.json"))?;
+        let pid = std::process::id();
+        if owner["pid"] != pid
+            || owner["process_identity"]
+                != crate::execution::sandbox::service_process::identity(pid)
+        {
+            return Err("backend tool requires its original task owner".into());
+        }
+        tool_request_inner(root, envelope, stopped)
+    } else {
+        super::request(root, envelope)
+    }
+}
+
 pub(super) fn tool_request(root: &Path, envelope: &Value) -> Result<Value> {
+    tool_request_inner(root, envelope, &AtomicBool::new(false))
+}
+
+fn tool_request_inner(root: &Path, envelope: &Value, stopped: &AtomicBool) -> Result<Value> {
     let (dir, job) = storage::job(root, text(envelope, "id")?)?;
     let Job::Harness {
         task,
@@ -241,7 +278,7 @@ pub(super) fn tool_request(root: &Path, envelope: &Value) -> Result<Value> {
         return Err("task session is not active".into());
     }
     let started = an_agent_core::det_seam::Clock::monotonic_now();
-    let result = host_tool(root, &dir, &authority, &envelope["arguments"]);
+    let result = host_tool(root, &dir, &authority, &envelope["arguments"], stopped);
     let receipt = json!({"request_sha256":store::digest(&serde_json::to_vec(&envelope["arguments"])?),
         "grant":authority.id,"succeeded":result.is_ok(),
         "observed_ms":super::harness_metrics::now_ms(),"elapsed_ms":started.elapsed().as_millis(),
@@ -260,9 +297,26 @@ pub(super) fn tool_request(root: &Path, envelope: &Value) -> Result<Value> {
     result
 }
 
-fn host_tool(root: &Path, session: &Path, authority: &Binding, arguments: &Value) -> Result<Value> {
+fn host_tool(
+    root: &Path,
+    session: &Path,
+    authority: &Binding,
+    arguments: &Value,
+    stopped: &AtomicBool,
+) -> Result<Value> {
+    if stopped.load(std::sync::atomic::Ordering::Acquire) {
+        return Err("original task execution stopped".into());
+    }
     let mut req: Value = serde_json::from_str(text(arguments, "request")?)?;
     let op = text(&req, "op")?;
+    #[cfg(unix)]
+    if op == "cocoon-job-status" {
+        return crate::cocoon::job::status(session, text(&req, "operation_id")?);
+    }
+    #[cfg(unix)]
+    if op == "cocoon-job" {
+        return super::cocoon_job::run(root, session, authority, &req, stopped);
+    }
     #[cfg(unix)]
     if matches!(
         op,
@@ -302,7 +356,9 @@ fn host_tool(root: &Path, session: &Path, authority: &Binding, arguments: &Value
                 req["operation"].clone(),
                 &task,
                 || {
-                    if session.join("cancel.json").exists() {
+                    if stopped.load(std::sync::atomic::Ordering::Acquire)
+                        || session.join("cancel.json").exists()
+                    {
                         return Err("task cancelled".into());
                     }
                     crate::task_permissions::active(authority)

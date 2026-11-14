@@ -356,3 +356,24 @@ selects an already authorized live VM for the same test. The operator owns VM
 provisioning and final stop/reconciliation. Never commit profiles or evidence.
 The main agent remains a deterministic protocol fixture even in live VM mode;
 these checks do not qualify real model behavior or PDF/Excel domain correctness.
+
+`native_cocoon_documents.py` accepts explicit `--host`, `--profile`, `--domain`
+(an-spool documents package), `--python-runtime`, `--dependency-site` and a new
+short `--evidence` directory. The VM must already contain the operator-reviewed
+Python runtime and pinned document wheels. Omit `--codex` for the deterministic
+primary protocol fixture; supply the qualified Codex binary for real model
+acceptance. `--clarification` adds a third turn with a separately authorized user
+answer input. `--lost-receipt` removes a completed host execute receipt and requires
+recovery by the original request ID. `--cancel-before-continuation` verifies that
+cancelling the original primary owner stops its VM and denies late acceptance.
+The default chain invokes three fixed guest programs, accepts Markdown and XLSX
+through original native spools, and independently checks source rows, formulas,
+cached EUR totals and Markdown provenance. Raw reports and runtime images remain
+private. Native custody does not establish GUI save/visual acceptance or final
+provider billing/remote-provider termination.
+`--restart-controller` restarts only the daemon between accepted Markdown and
+continuation, checking the same primary execution/owner and retained job records.
+`--cancel-during-program` uses a fixed slow program to check control observation,
+steering admission and cancellation latency while guest execution is blocked;
+it then requires local and VM termination with no proposed output. This fixture
+measures control responsiveness, not real-model output or render performance.

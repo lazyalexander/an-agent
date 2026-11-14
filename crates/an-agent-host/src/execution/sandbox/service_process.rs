@@ -87,6 +87,7 @@ pub(crate) fn app_server(
         std::process::ChildStdin,
         std::process::ChildStdout,
         std::sync::Arc<AtomicBool>,
+        std::sync::Arc<AtomicBool>,
     ) -> std::io::Result<Vec<u8>>
     + Send,
 ) -> Result<Execution> {
