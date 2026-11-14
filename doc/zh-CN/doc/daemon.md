@@ -93,7 +93,7 @@ prompt、schema、scope、可选 model 和有限 MCP。原生客户端保管认�
 禁用 shell、编辑、插件、子 agent 等工具；唯一可选 MCP 工具是事先获准的
 回环材料读取。该接口接收数据提案，不是任意代码代理或任意远程 harness 协议。
 
-本地客户端继续由现有进程组监督，期限 180 秒。确认本地终止不表示远端模型
+本地客户端继续由现有进程组监督，默认期限 180 秒。确认本地终止不表示远端模型
 已停止或计费为零。提案须通过 spool 的业务验证和既有 kit、产物许可。
 原生事件与请求保存在私有目录，工作台不披露 prompt、MCP 凭据或私有会话。
 
@@ -209,3 +209,162 @@ spool 产物发布和验收流程。未来改造后的 DeepSeek Harness 需实�
 TypeScript 与 HTML 源码使用英文，简体中文界面翻译保存在
 `packages/workbench/zh-CN.json` 中并在构建时嵌入。
 用户填写的工作区名称、目标及记录保留原始语言。
+
+### 有界续轮与采集
+
+交互任务可声明 1 至 8 的 `turn_limit` 和 1 至 3600 的 `wall_seconds`，默认单轮、180 秒。
+显式设置进入 harness 权限摘要。所有轮次共用原 owner、执行句柄、thread、schema、授权与监督器。
+有限 exec 支持单轮。补充指令绑定当前活动 turn，迟到指令拒绝，空闲会话需显式续轮。
+
+`harness-turn-result` 接收 `id` 与从 1 开始的 `turn`，返回不可变的已完成轮次提案，
+其中 `artifact_accepted=false`、`termination_confirmed=false`。
+`harness-continue` 接收 `id`、`execution`、`after_turn`、唯一 `command` 和 `instruction`。
+精确批准绑定指令及已完成轮次，每轮在原上限内接纳一次续轮。重复命令核对原回执，
+发送标记先于传输落盘，结果未知时保留原身份。等待续轮的任务仍受取消、授权撤销和总期限约束。
+最终 `harness-result` 继续要求原任务完成结算。
+
+`activity.harness.metrics` 从已有记录汇总提供方累计计数和授权披露。缓存输入属于输入，
+推理输出属于输出，同会话累计更新去重，倒退或非法计数降低覆盖率，缺失值为 `null`。
+资源回执记录摘要、字节数和宿主工具耗时，模型实际消费情况未知。
+`read-input` 与 `artifact-read` 可选择 `encoding="utf-8"`，复用原授权检查，默认保留字节响应。
+
+### 宿主任务会话边界
+
+内部 task-session 层负责续轮准入、命令对账、观察和授权工具分派。
+适配器能力使用类型化声明，补充指令与续轮分别检查。Codex 原生事件与用量解析
+留在 Codex 适配器中。现有 `harness-*` 操作、持久身份和权限摘要保持兼容。
+此次提取不增加调度器，提供方或 guest 报告不能授权产物验收。
+
+## 任务会话的 Cocoon 传输
+
+任务会话中间层通过现有 `host_request` 工具接收 `cocoon-call`、
+`cocoon-status` 和 `cocoon-reconcile`。当前提供有界传输基础，尚未构成已验收的
+spool 执行后端或产物导入器；不会启动 VM，也不会将导出文件接纳为交付产物。
+
+可信操作员提供权限为 0600 的私有 JSON 配置，字段为 `socket`、
+`grant`、`caller`、`vm` 和 `generation`，只保留工作授权，不含 Cocoon 管理凭据。模型只得到配置路径和 SHA-256，不能读取
+其内容。任务授权需包含 `kind=cocoon`、`profile_sha256` 和 `operation_sha256`；
+后者精确绑定序列化后的 Cocoon 操作。授权继续经过宿主原有预览与审批流程，
+不得同时授予模型读取凭据配置的权限。Cocoon 每次仍独立检查自身工作授权。
+
+`cocoon-call` 请求包含 `profile`、`profile_sha256`、UUID 格式的 `operation_id`
+以及 `operation`。仅允许 show、context、stop、guest 和 export；
+guest/export 的 VM、调用者和 generation 必须与配置一致。模型不能签发授权或
+创建 VM。宿主生成独立的 Cocoon 请求 UUID，并在传输前持久化绑定。同一操作 ID
+再次提交只观察原记录，内容变化则拒绝。传输丢失后保持未知，不重放操作。
+记录属于原任务会话，同一授权下的其他会话不可借此读取；意图记录不含凭据和客体载荷。
+
+`cocoon-reconcile` 使用相同配置、操作身份和精确操作授权，仅查询 Cocoon 原请求 ID，
+保留已确认的成功结果。工具中的 `cocoon-status` 只需操作 ID；控制端也可通过任务授权
+端点提供 `id` 和 `operation_id`，在任务授权撤销后观察本任务记录。这不恢复执行权限。
+`harness-connect` 也返回本会话保留的 `cocoon_operations` 回执。
+所有响应保持 `artifact_accepted=false`；`observed` 只表示获得对应后端回执，
+VM 终止和产物验收仍需独立证据。
+
+`cocoon-transfer` 通过相同配置和精确操作授权暂存有界二进制输入输出。
+`operation` 计划绑定 `direction`（upload 或 download）、位于 `/workspace/` 下的
+客体 `path`、当前 VM `attempt`、`sha256` 和 `bytes`（最多 4 MiB）。上传另绑定
+`source`，并要求匹配的 ReadInput 权限；下载不能选择宿主目标路径。宿主填写任务身份，
+核对每个 8192 字节分块的回执身份、游标以及最终大小和摘要。每个分块都有持久化提交栅栏，
+重入只观察或查询原操作，不重发未知写入；分块之间及暂存候选前均检查取消和撤销。
+下载只生成会话私有的 `candidate.bin`，`staged` 不代表已验收、可执行或已交付，
+也不证明 VM 终止或领域产物正确。
+
+spool 的 `submit` 可用 `candidate={session,transfer,sha256}` 选择已暂存下载，
+代替 `input` 或 `artifact`。调用者须拥有来源会话，持有绑定实例、run、transfer、摘要和
+最长秒数的 `run-candidate` 权限，来源授权也须有效。宿主在预览和预留前核实完整暂存回执
+及文件字节，不接受调用者指定宿主路径。原 spool 监督程序负责输入快照、执行和终止；
+其授权跟随来源会话的授权链，使预留后的取消和撤销继续有效。任务观察保留
+`candidate_input` 来源信息。正式保管仍经过原 spool `accept`，`artifact-read` 核实保管
+后才把字节返回继续执行的主会话。此桥接验证候选输入和保管流程，不表示领域程序已迁入
+Cocoon，也不证明 PDF/Excel 内容正确。
+
+## Cocoon 固定程序
+
+`cocoon-job` 是宿主任务会话工具，不依赖提供方协议。请求包含 `spec`、`spec_sha256`、
+唯一 `operation_id`、有界 JSON `data`，以及 `inputs` 中最多四个获准的 read-input 或
+artifact-read 字节引用。`cocoon-job` 权限绑定 spec_sha256。操作员私有配置固定传输配置、
+程序路径和摘要、客体解释器、参数及输出名称和编码；参数可替换 {program}、{request}、
+{output}，业务数据不拼接为命令。程序读取含 data 和宿主解析客体输入路径的请求 JSON，
+输出声明的文件及有界 manifest.json，其中记录各文件 sha256 和 bytes。
+
+宿主在修改客体前，为原主会话独占一个 VM 代次；工作授权必须具备 inspect、guest 和 stop。
+每一步都持久化原请求 ID，未知执行只查询，不重发。结果保持 proposed；输出 reference
+可用于 submit.job_output，run-job-output 权限绑定实例、run、operation、output 和最长秒数。
+领域校验、执行终止和正式保管继续由原生 spool 监督及 accept 负责，PDF 和表格规则属于领域包。
+
+harness-connect.cocoon_jobs 及 cocoon-job-status 只观察保留记录，不打开传输。控制端提供任务 id
+和 operation_id，任务工具使用当前会话。成功、取消或失败时，原 harness owner 都先释放所占
+VM，再结束任务；本地进程和 VM 都需确认释放。owner 丢失后，拥有者可对已取消或关闭任务
+请求 cocoon-release，即使任务凭据已撤销，也只核实原停止操作并观察相同 VM 代次。
+Cocoon 授权过期或不可用时保持未知，不使用管理凭据兜底，也不重放执行。
+
+TaskSession 将后端 I/O 交给核实过的原 owner，队列及保管操作仍在守护服务中串行处理。
+后端回调观察受监督客户端的停止信号，包括时间上限到达，并保留超时分类。客体程序阻塞
+不会占用守护服务控制通道，也不会授权停止之后的作业步骤。
+
+
+## 离线环境客户端
+
+`an-agent-host app serve ROOT` 为现有私有 daemon 启动独立的本机产品页面，
+地址写入 `ROOT/application/endpoint.json`。当前支持环境导入、受限文档任务创建、
+澄清、取消及已验收产物下载。原 daemon 控制台继续只读。
+
+Loom 的 `pack-runtime SOURCE MANIFEST NEW_ARCHIVE` 按明确选定的清单组装离线包。
+`an-offline-runtime-v1` 清单绑定名称、版本、`macos-aarch64`、许可文件、组件引用，
+以及各文件的 SHA-256、大小与可执行标记。gzip tar 首项为 `runtime.json`，之后
+仅包含按名称排序的已声明普通文件；拒绝链接、路径越界和未声明文件。
+总展开量上限 32 GiB，页面压缩上传上限 8 GiB。摘要标识内容，不认证发布者。
+操作者仍须审核运行时来源与许可。
+
+页面先上传至私有目录并校验，展示身份后按对应清单摘要确认导入。
+导入不执行文件：先写临时目录，全部通过后才原子发布为摘要命名的环境。
+重复导入重新核对已安装内容，中断残留不视为已安装。
+导入完成不代表 Codex、VM 或领域工作流已经具备执行条件。
+
+
+### 正常结束会话与产品控制
+
+`harness-finish` 使用原 `id`、`execution` 和已完成的 `after_turn` 预览并结束空闲会话，
+要求原 harness 权限及适配器的 `finish_session` 能力。该轮已接纳续轮时不能结束；
+已接纳结束后不能再续轮。相同结束绑定保持幂等，活动中、已取消、引用过期或
+原 owner 不可用时拒绝新的结束请求。接纳请求不代表终止确认：原 owner 关闭客户端、
+释放 VM，并保留正常完成证据。因此三轮上限的会话可以在两轮后正常结束。
+
+产品页面的有限 `task-view`、`task-control` 操作读取原记录，预览并确认取消或补充指令。
+活动轮使用 steering，空闲轮使用 continuation；不开放任意 daemon 请求入口，
+这些控制也不代表领域工作流已经完成。
+
+
+### 产品文档交付
+
+空私有目录上的 `app serve ROOT` 启动原 daemon，默认两个执行槽。
+已有服务保留已选宿主程序；不自动更换可执行文件。文档任务要求服务空闲且至少两个槽，
+一次接纳一个产品交付，避免主会话占满原生验收所需容量；未核实结果继续占位。
+
+离线包通过 `delivery`、`cocoon`、`runner`、`kernel`、`initrd`、`root_image`、
+`native_python`、`native_stdlib`、`native_site`、`intermediate_package`、
+`final_package` 选择文件；包、依赖目录和标准库目录从所选清单或索引文件派生。
+领域交付声明与提示归 an-spool。任务另行冻结环境、输入、Codex、指令、600 秒期限及三轮上限。
+首个文档配置接受不超过现有授权读取器 512 KiB 上限的 EUR 报价文本 PDF，不支持 OCR 或任意版式。
+
+产品接口为 `delivery-preview`、`delivery-create`、`delivery-view`、`delivery-clarify`、
+`delivery-cancel`、`delivery-artifact`。创建与澄清按精确预览确认，相同身份不重放工作。
+协调器仅调用原队列、权限、supervisor 和验收接口，不包含模型循环。
+记录关联原任务、VM 和产物引用；原协调器不可用时显示结果待核实，不隐式重启。
+
+`harness-bind-cocoon` 在公布任务运行状态前，把获准固定程序环境绑定到原主会话，
+保证首次模型工具调用前取消也由原 owner 释放 VM。`harness-attach-input` 为同一任务
+明确确认一个精确只读输入授权，不增加委派权限或延长期限，也不改写原授权。
+原 owner 监测附加输入授权，撤销后取消会话及后续工作；显式收窄的工具授权仍逐次核对。
+未转交的 VM 仅由创建它的控制器通过原工作权限清理。
+
+下载只读取已验收版本，要求原进程与 VM 释放已确认，并重新核实产物保管。
+用户下载不依赖模型披露授权是否过期；不提供 scratch 或任意内部路径。
+关闭、重开页面不会替换任务或重放执行。
+
+文档任务仅在原进程与 VM 确认释放后发布终态。delivery-reconcile 读取原终止回执，
+不重放提案或重启协调器；确认终止的中断交付归为失败或取消，已验收产物继续由原宿主管理。
+批准的主会话 scope 禁止创建子 harness 或委派，并将每个 Cocoon 规范绑定到原操作 ID，
+未知效果不能换新 ID 重试；通用会话保持兼容。空闲单槽服务可预览并批准
+prepare-document-capacity 调整为两槽，运行任务期间禁止调整。

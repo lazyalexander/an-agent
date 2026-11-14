@@ -66,7 +66,7 @@ pub(crate) fn codex(
             command,
             &dir.join("work"),
             b"",
-            std::time::Duration::from_secs(180),
+            std::time::Duration::from_secs(task.wall_seconds.unwrap_or(180)),
             cancelled,
             true,
         )
@@ -86,6 +86,7 @@ pub(crate) fn app_server(
     exchange: impl FnOnce(
         std::process::ChildStdin,
         std::process::ChildStdout,
+        std::sync::Arc<AtomicBool>,
         std::sync::Arc<AtomicBool>,
     ) -> std::io::Result<Vec<u8>>
     + Send,
@@ -126,7 +127,7 @@ pub(crate) fn app_server(
         let result = super::execute_dialogue(
             command,
             &dir.join("work"),
-            std::time::Duration::from_secs(180),
+            std::time::Duration::from_secs(task.wall_seconds.unwrap_or(180)),
             cancelled,
             true,
             exchange,

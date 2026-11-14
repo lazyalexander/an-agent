@@ -177,4 +177,4 @@ data and rejects changed selectors. PIDs serve fault injection and observation o
 
 `native_app_server.py` covers real protocol processes, scoped tools, revocation and cancellation.
 `native_harness_adapter.py --host HOST --evidence NEW_DIRECTORY` verifies two background owners, steering, scoped reconnect, duplicate commands and missing receipts. See the [adapter contract](../../../../doc/daemon.md#harness-adapters-and-reconnect).
-`document_activity.py --app-server` selects real Codex for the PDF/Markdown/Excel custody chain; the paired Loom `document-table` also qualifies app-server inference.
+`native_harness_session.py` verifies original-thread continuation and metrics. `document_activity.py` runs PDF/Markdown/Excel on one thread. `single_agent_benchmark.py` runs the [eight-case smoke and full baseline](../../../../doc/testing.md#single-main-agent-benchmark-v1).

@@ -3,7 +3,17 @@ use super::*;
 
 pub(super) fn dispatch(root: &Path, req: &Value) -> Result<Value> {
     match text(req, "op")? {
-        "harness-tool" => super::app_server::dispatch(root, req),
+        "prepare-document-capacity" => super::capacity::prepare(root, req),
+        #[cfg(unix)]
+        "harness-bind-cocoon" => {
+            super::cocoon_job::bind(root, req, req.get("approve").and_then(Value::as_str))
+        }
+        "harness-attach-input" => super::task_session::disclosure::attach(
+            root,
+            req,
+            req.get("approve").and_then(Value::as_str),
+        ),
+        "harness-tool" => super::task_session::tool_request(root, req),
         "grant" => permissions::issue(root, req, None),
         "revoke-grant" => permissions::revoke(root, req, None),
         "harness-permission" => Ok(serde_json::to_value(permissions::harness_permission(
@@ -26,10 +36,30 @@ pub(super) fn authorized(
         "delegate" | "update-delegation" | "delegation-inbox" => {
             delegation::dispatch(root, req, approved, authorization)
         }
-        "harness-connect" | "harness-steer" => {
-            super::harness_adapter::dispatch(root, req, approved)
-        }
+        "harness-connect"
+        | "harness-steer"
+        | "harness-continue"
+        | "harness-turn-result"
+        | "harness-finish" => super::task_session::dispatch(root, req, approved),
         "record-adoption" => activity::adopt(root, req, approved),
+        #[cfg(unix)]
+        "cocoon-job-status" => {
+            let (dir, _) = storage::job(root, text(req, "id")?)?;
+            crate::cocoon::job::status(&dir, text(req, "operation_id")?)
+        }
+        #[cfg(unix)]
+        "cocoon-release" => {
+            let (dir, _) = storage::job(root, text(req, "id")?)?;
+            if !dir.join("cancel.json").exists() && !dir.join("completion.json").exists() {
+                return Err("release requires a closed or cancelled task".into());
+            }
+            crate::cocoon::job::release(&dir)
+        }
+        #[cfg(unix)]
+        "cocoon-status" => {
+            let (dir, _) = storage::job(root, text(req, "id")?)?;
+            crate::cocoon::observe(&dir.join("cocoon-operations"), text(req, "operation_id")?)
+        }
         "activity" => activity::view(root, text(req, "id")?),
         "show" => observation::snapshot(root),
         "task" => observation::task(root, text(req, "id")?),
@@ -109,12 +139,68 @@ fn submit(
             return Err("task already submitted; inspect its original ID, never replay".into());
         }
     }
+    #[cfg(unix)]
+    let candidate = if let Some(selected) = req.get("candidate").or_else(|| req.get("job_output")) {
+        if req.get("input").is_some()
+            || req.get("artifact").is_some()
+            || (req.get("candidate").is_some() && req.get("job_output").is_some())
+        {
+            return Err("candidate input cannot be combined with another input".into());
+        }
+        let actor = authorization.ok_or("candidate input requires task authority")?;
+        let session = text(selected, "session")?;
+        let source = permissions::owned_job(root, actor, session)?;
+        let Job::Harness {
+            authorization: Some(binding),
+            ..
+        } = source
+        else {
+            return Err("candidate producer must be a task session".into());
+        };
+        crate::task_permissions::active(&binding)?;
+        let (directory, _) = storage::job(root, session)?;
+        if directory.join("cancel.json").exists() {
+            return Err("candidate producer cancelled".into());
+        }
+        let task = crate::task_permissions::load(&binding)?.scope.task;
+        let (path, mut evidence) = if req.get("job_output").is_some() {
+            crate::cocoon::job::output(
+                &directory,
+                text(selected, "operation")?,
+                text(selected, "output")?,
+                &task,
+            )?
+        } else {
+            crate::cocoon::transfer::candidate(
+                &directory.join("cocoon-transfers"),
+                text(selected, "transfer")?,
+                &task,
+                text(selected, "sha256")?,
+            )?
+        };
+        evidence["session"] = json!(session);
+        Some((path, evidence, binding))
+    } else {
+        None
+    };
+    #[cfg(not(unix))]
+    let candidate: Option<(PathBuf, Value, Binding)> = {
+        if req.get("candidate").is_some() {
+            return Err("unsupported Cocoon candidate platform".into());
+        }
+        None
+    };
     let input = req
         .get("input")
         .map(|_| text(req, "input").map(Path::new))
         .transpose()?;
     let seconds = req["seconds"].as_u64().ok_or("seconds")?;
     let executable = storage::config(root)?.executable;
+    // Producer lineage keeps cancellation/revocation effective after admission.
+    let selected_authority = candidate
+        .as_ref()
+        .map(|(_, _, binding)| binding)
+        .or(authorization);
     // Reuse the native preview/approval once per request. Rebuilding it twice
     // re-hashes the selected runtime inventory without adding authority.
     let prepared = spool::supervisor::prepare_authorized(
@@ -129,22 +215,25 @@ fn submit(
                 return Err("artifact input path mismatch".into());
             }
             spool::supervisor::Input::Artifact(catalog, revision)
+        } else if let Some((path, _, _)) = &candidate {
+            spool::supervisor::Input::File(path)
         } else {
             spool::supervisor::Input::File(input.ok_or("input or artifact required")?)
         },
         seconds,
         &executable,
         approved,
-        authorization,
+        selected_authority,
     )?;
     if prepared["reserved"] != true {
         return Ok(prepared);
     }
     let job = Job::Spool {
-        authorization: authorization.cloned(),
+        authorization: selected_authority.cloned(),
         instance: instance.canonicalize()?,
         run: run.into(),
         request: text(&prepared, "approval_sha256")?.into(),
+        candidate_input: candidate.map(|(_, evidence, _)| evidence),
     };
     let id = scheduler::enqueue(root, &job)?;
     Ok(json!({"id":id,"queued":true,"executed":false,"request":job.request()}))

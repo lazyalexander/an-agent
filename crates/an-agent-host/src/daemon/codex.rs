@@ -8,9 +8,18 @@ pub(super) struct Codex {
     pub(super) interactive: bool,
 }
 impl super::harness_adapter::HarnessAdapter for Codex {
-    fn capabilities(&self) -> Value {
-        json!({"version":VERSION,"steer":self.interactive,"reconnect_observation":true,
-            "resume_execution":false,"cancel":"host-process-group","usage":"reported-only"})
+    fn capabilities(&self) -> super::harness_adapter::Capabilities {
+        super::harness_adapter::Capabilities {
+            version: VERSION,
+            interactive: self.interactive,
+            steer: self.interactive,
+            continue_turn: self.interactive,
+            finish_session: self.interactive,
+            reconnect_observation: true,
+            resume_execution: false,
+            cancel: "host-process-group",
+            usage: "provider-cumulative-snapshots",
+        }
     }
     fn execute(
         &self,
@@ -160,5 +169,63 @@ pub(super) fn event(native: &Value) -> Value {
         "thread/tokenUsage/updated" => "usage",
         _ => "other",
     };
-    json!({"event":category,"evidence":"external-harness-report","grants_authority":false})
+    let mut event =
+        json!({"event":category,"evidence":"external-harness-report","grants_authority":false});
+    if let Some(usage) = usage(native) {
+        event["usage"] = usage;
+    }
+    event["observed_ms"] = native["host_observed_ms"].clone();
+    event
+}
+
+pub(super) fn usage(native: &Value) -> Option<Value> {
+    let (usage, session, turn, names) = match native["method"].as_str() {
+        Some("thread/tokenUsage/updated") => (
+            &native["params"]["tokenUsage"]["total"],
+            native["params"]["threadId"].as_str()?,
+            native["params"]["turnId"].as_str(),
+            [
+                "inputTokens",
+                "cachedInputTokens",
+                "outputTokens",
+                "reasoningOutputTokens",
+                "totalTokens",
+            ],
+        ),
+        _ if native["type"] == "turn.completed" && native["usage"].is_object() => (
+            &native["usage"],
+            "finite-exec",
+            None,
+            [
+                "input_tokens",
+                "cached_input_tokens",
+                "output_tokens",
+                "reasoning_output_tokens",
+                "total_tokens",
+            ],
+        ),
+        _ => return None,
+    };
+    let mut result = json!({"session":session,"turn":turn,"scope":"session-total",
+        "source":"provider-reported","cache_is_input_subset":true,"reasoning_is_output_subset":true});
+    for (target, source) in [
+        "input_tokens",
+        "cached_input_tokens",
+        "output_tokens",
+        "reasoning_output_tokens",
+        "total_tokens",
+    ]
+    .into_iter()
+    .zip(names)
+    {
+        result[target] = usage[source].as_u64().map_or(Value::Null, |n| json!(n));
+    }
+    if result["total_tokens"].is_null() {
+        result["total_tokens"] = result["input_tokens"]
+            .as_u64()
+            .zip(result["output_tokens"].as_u64())
+            .and_then(|(a, b)| a.checked_add(b))
+            .map_or(Value::Null, |n| json!(n));
+    }
+    Some(result)
 }

@@ -9,6 +9,8 @@ license.workspace = true
 workspace = true
 
 [dependencies]
+flate2 = "1"
+tar = "0.4"
 rusqlite = { version = "0.36", features = ["bundled"] }
 an-agent-core = { path = "../an-agent-core" }
 an-agent-spool = { path = "../an-agent-spool" }

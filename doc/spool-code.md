@@ -89,3 +89,76 @@ keep instruction resources immutable, bind configuration changes and new executa
 bytes to fresh approval, prove baseline preservation/reset, retain declared products
 and reclaim remaining kit only after confirmed settlement. Reuse current host and
 Loom contracts; do not add a generic workflow engine or infer grants from labels.
+
+## Proposed progressive disclosure for the single-main baseline
+
+The following is a benchmark design for information exposed by spools. Its initial
+implementation belongs in fixture metadata and existing discovery entrypoints.
+Runtime manifests retain their current accepted fields. Several parsers reject
+unknown fields, so adding these ideas to a release manifest requires a separately
+reviewed schema change. Measure the proposed fields before adopting them as a
+public contract. [Benchmark protocol](testing.md#single-main-agent-benchmark-v1)
+
+### Information needed at each decision
+
+| Layer | Exposed information | When needed |
+| --- | --- | --- |
+| Index card | Release-bound identity, short capability description, input/output kinds and a detailed-contract reference | Discover plausible capabilities |
+| Detailed contract | Exact schemas, prerequisites, declared effects, resource requirements, entrypoint and acceptance references | Check fit and prepare a bounded invocation |
+| Selected knowledge | Release-bound skills, domain rules and supporting material needed for the current step | Resolve domain decisions or adapt authorized working files |
+
+Keep index cards small and measure their actual serialized size. Try different
+description lengths in the benchmark before imposing a permanent token budget.
+Reuse existing identity, description and requirements fields. Link the card and
+knowledge resources to the selected release digest so the host can detect stale
+references. A loaded skill remains subject to the instruction-protection and kit
+rules above.
+
+The host attaches current availability, compatible execution profile and grant
+eligibility to discovery results. Availability and issued authority can change
+between discovery and execution. Recheck them at invocation. A spool's declaration
+of requested access supplies input to authorization. Methods receive the existing
+host-verifiable grant reference, narrowed to the task and operation.
+
+### Initial execution choices
+
+The main agent can choose a declared deterministic program when the inputs and
+preconditions are satisfied. It can load selected knowledge into its current
+session when the task needs domain interpretation or an authorized adaptation.
+It can request missing information or report an unsupported capability. Programs
+may overlap when the host permits their resource usage.
+
+The host validates each chosen invocation and owns admission, resource scheduling
+and settlement. The benchmark records the choice and its eventual outcome. This
+lets us measure whether the available information improves early decisions.
+Architecture changes remain subject to comparative evaluation.
+
+### Candidate hints to evaluate
+
+| Information | Decision it can inform | Validation and accounting |
+| --- | --- | --- |
+| Required inputs, produced outputs and dependencies | Whether the task is ready and which steps depend on earlier results | Verify schemas and selected artifact revisions |
+| Deterministic entrypoint and knowledge references | Direct program execution or knowledge loading | Verify release binding and callable availability |
+| Independently checkable subresults | Whether work can be decomposed | Test independence against domain oracles |
+| Shared files, app documents and exclusive resources | Whether program executions can overlap | Enforce conflicts in the host and Shuttle |
+| Effects, idempotency, cancellation and recovery capabilities | How to handle interruption or an uncertain outcome | Require qualified backend/adapter evidence |
+| Knowledge volume and estimated context demand | Which resources to disclose and in what order | Record bytes or tokenizer/version, then measure actual disclosure |
+| Observed duration, usage and success by task shape | Whether a previous execution mode is promising | Host-owned measurements with sample count, environment, model and version |
+
+Treat all spool-supplied hints as advisory. Unknown values stay explicit.
+Only the host's observations establish current capability or historical cost.
+Resolve uncertainty using the original operation identity and existing lifecycle
+rules. Descriptions of recovery or cancellation cannot authorize cleanup.
+
+Start with identity, purpose, I/O, requirements and knowledge references, deriving
+them from the existing release where possible. Add hints only when an observed
+selection or scheduling failure demonstrates missing information. Evaluate the
+catalog-size, context-pressure, work-shape and unseen-spool cases against eager
+full-context loading. The same accepted result must be obtainable through each
+tested discovery configuration.
+
+Record the selected card/revision, eligibility checks, chosen execution mode,
+resources disclosed and final result. Use these records to refine the fields and
+selection policy. A spool's preferred agent topology would introduce an additional
+policy dependency, so the initial proposal leaves that decision to measured host
+policy and explicit comparative experiments.

@@ -1,5 +1,6 @@
 //! Pinned app-server dialogue; all host effects reuse task capability checks.
 use super::*;
+mod continuation;
 mod steering;
 use std::{
     io::{Read, Write},
@@ -28,9 +29,9 @@ pub(super) fn execute(
         dir,
         &args,
         cancelled,
-        |input, output, exceeded| {
+        |input, output, exceeded, stopped| {
             dialogue(
-                root, dir, task, authority, cancelled, input, output, exceeded,
+                root, dir, task, authority, cancelled, input, output, exceeded, stopped,
             )
         },
     )?;
@@ -51,65 +52,6 @@ fn send(input: &mut ChildStdin, value: Value) -> std::io::Result<()> {
     input.flush()
 }
 
-pub(super) fn dispatch(root: &Path, envelope: &Value) -> Result<Value> {
-    let (dir, job) = storage::job(root, text(envelope, "id")?)?;
-    let Job::Harness {
-        task,
-        authorization: Some(authority),
-        ..
-    } = job
-    else {
-        return Err("no harness authority".into());
-    };
-    if !super::harness_adapter::interactive(&task)?
-        || !dir.join("owner.json").exists()
-        || dir.join("cancel.json").exists()
-        || dir.join("completion.json").exists()
-    {
-        return Err("app-server task is not active".into());
-    }
-    let result = host_tool(root, &authority, &envelope["arguments"]);
-    let receipt = json!({"request_sha256":store::digest(&serde_json::to_vec(&envelope["arguments"])?),
-        "grant":authority.id,"succeeded":result.is_ok(),
-        "response_sha256":store::digest(&serde_json::to_vec(&match &result { Ok(v)=>v.clone(), Err(e)=>json!({"error":e.to_string()}) })?)});
-    let path = dir.join("tool-receipts.jsonl");
-    store::no_links(&path)?;
-    if !path.exists() {
-        store::write_new(&path, b"")?;
-    }
-    let mut file = fs::OpenOptions::new().append(true).open(path)?;
-    serde_json::to_writer(&mut file, &receipt)?;
-    file.write_all(b"\n")?;
-    file.sync_all()?;
-    result
-}
-
-fn host_tool(root: &Path, authority: &Binding, arguments: &Value) -> Result<Value> {
-    let mut req: Value = serde_json::from_str(text(arguments, "request")?)?;
-    let op = text(&req, "op")?;
-    if matches!(
-        op,
-        "derive-grant" | "grant" | "revoke-grant" | "harness-permission"
-    ) {
-        return Err("harness cannot issue credentials or administer grants".into());
-    }
-    let selected = if let Some(id) = req.get("grant").and_then(Value::as_str) {
-        let child = crate::task_permissions::binding(root, id)?;
-        if !crate::task_permissions::load(authority)?.scope.delegate
-            || !crate::task_permissions::owns(authority, &child)?
-            || child == *authority
-        {
-            return Err("delegation requires an authorized descendant grant".into());
-        }
-        child
-    } else {
-        authority.clone()
-    };
-    req.as_object_mut().ok_or("host request")?.remove("grant");
-    crate::task_permissions::active(authority)?;
-    permissions::dispatch_bound(root, &req, &selected)
-}
-
 #[allow(
     clippy::too_many_arguments,
     reason = "explicit original owner and transport bindings"
@@ -123,6 +65,7 @@ fn dialogue(
     mut input: ChildStdin,
     output: ChildStdout,
     exceeded: Arc<AtomicBool>,
+    stopped: Arc<AtomicBool>,
 ) -> std::io::Result<Vec<u8>> {
     let convert = |error: Box<dyn std::error::Error>| std::io::Error::other(error.to_string());
     let mut journal = fs::OpenOptions::new()
@@ -139,6 +82,7 @@ fn dialogue(
     let mut turn = String::new();
     let mut calls = std::collections::BTreeSet::new();
     let mut total = 0;
+    let mut completed = 0u8;
     loop {
         if dir.join("cancel.json").exists() || crate::task_permissions::active(authority).is_err() {
             cancelled.store(true, Ordering::Release);
@@ -146,16 +90,53 @@ fn dialogue(
         }
         steering::send_pending(dir, authority, cancelled, &mut input, &thread, &turn)
             .map_err(convert)?;
+        if turn.is_empty() && completed > 0 {
+            if super::task_session::finish::ready(dir, completed).map_err(convert)? {
+                let candidate =
+                    store::read(&dir.join(format!("candidate-{completed}.json")), 131072)
+                        .map_err(convert)?;
+                store::write_new(&dir.join("decision.json"), &candidate).map_err(convert)?;
+                return Ok(Vec::new());
+            }
+            continuation::send_pending(
+                dir,
+                &mut input,
+                &thread,
+                completed,
+                &task.schema,
+                authority,
+                cancelled,
+            )
+            .map_err(convert)?;
+        }
         let Some(raw) = messages.next()? else {
             continue;
         };
-        total += raw.len();
+        let mut message: Value = serde_json::from_slice(&raw)?;
+        message["host_observed_ms"] = json!(super::harness_metrics::now_ms());
+        let record = serde_json::to_vec(&message)?;
+        total += record.len() + 1;
         if total > 2 * 1024 * 1024 {
             exceeded.store(true, Ordering::Release);
             return Err(std::io::Error::other("app-server evidence limit"));
         }
-        journal.write_all(&raw)?;
-        let message: Value = serde_json::from_slice(&raw)?;
+        journal.write_all(&record)?;
+        journal.write_all(b"\n")?;
+        if let Some(next) = continuation::acknowledge(dir, &message, completed).map_err(convert)? {
+            if !turn.is_empty() {
+                return Err(std::io::Error::other(
+                    "continuation overlapped an active turn",
+                ));
+            }
+            turn = next;
+            super::task_session::publish(
+                &dir.join(format!("turn-start-{}.json", completed + 1)),
+                &json!({"thread":thread,"turn":turn}),
+            )
+            .map_err(convert)?;
+            calls.clear();
+            continue;
+        }
         if steering::acknowledge(dir, &message, &turn).map_err(convert)? {
             continue;
         }
@@ -191,9 +172,14 @@ fn dialogue(
                     .into();
                 let execution = store::digest(&serde_json::to_vec(&json!({
                     "owner":read(&dir.join("owner.json")).map_err(convert)?,"thread":thread,"turn":turn}))?);
-                super::harness_adapter::publish(
+                super::task_session::publish(
                     &dir.join("session.json"),
                     &json!({"execution":execution,"thread":thread,"turn":turn}),
+                )
+                .map_err(convert)?;
+                super::task_session::publish(
+                    &dir.join("turn-start-1.json"),
+                    &json!({"thread":thread,"turn":turn}),
                 )
                 .map_err(convert)?;
             }
@@ -215,9 +201,10 @@ fn dialogue(
                         .file_name()
                         .and_then(|n| n.to_str())
                         .ok_or_else(|| std::io::Error::other("harness task ID"))?;
-                    let result = super::request(
+                    let result = super::task_session::invoke(
                         root,
                         &json!({"op":"harness-tool","id":id,"arguments":p["arguments"]}),
+                        &stopped,
                     );
                     let success = result.is_ok();
                     let content = result.unwrap_or_else(|e| json!({"error":e.to_string()}));
@@ -238,7 +225,7 @@ fn dialogue(
                         // Only the final structured message is published after completion.
                         let parsed: Value = serde_json::from_str(text)?;
                         store::write_new(
-                            &dir.join("candidate.json"),
+                            &dir.join(format!("candidate-{}.json", completed + 1)),
                             &serde_json::to_vec(&parsed)?,
                         )
                         .map_err(convert)?;
@@ -254,11 +241,25 @@ fn dialogue(
                         cancelled.store(true, Ordering::Release);
                         return Err(std::io::Error::other("task authorization cancelled"));
                     }
+                    completed += 1;
                     let candidate =
-                        store::read(&dir.join("candidate.json"), 131072).map_err(convert)?;
-                    store::write_new(&dir.join("decision.json"), &candidate).map_err(convert)?;
+                        store::read(&dir.join(format!("candidate-{completed}.json")), 131072)
+                            .map_err(convert)?;
+                    super::task_session::publish(
+                        &dir.join(format!("turn-result-{completed}.json")),
+                        &json!({"thread":thread,"turn":turn,"number":completed,
+                            "proposal":serde_json::from_slice::<Value>(&candidate)?,
+                            "evidence":"provider-completed-turn","artifact_accepted":false,
+                            "termination_confirmed":false}),
+                    )
+                    .map_err(convert)?;
                     journal.sync_all()?;
-                    return Ok(Vec::new()); // Closing stdin lets the app-server shut down.
+                    if completed == task.turn_limit.unwrap_or(1) {
+                        store::write_new(&dir.join("decision.json"), &candidate)
+                            .map_err(convert)?;
+                        return Ok(Vec::new()); // Closing stdin lets the app-server shut down.
+                    }
+                    turn.clear();
                 }
             }
         }

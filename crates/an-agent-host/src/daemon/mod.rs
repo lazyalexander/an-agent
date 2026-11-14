@@ -3,15 +3,19 @@
 #![cfg_attr(not(target_os = "macos"), allow(dead_code))]
 mod activity;
 mod app_server;
+#[cfg(unix)]
+mod cocoon_job;
 mod codex;
 mod control;
 mod delegation;
 pub(crate) mod harness;
 mod harness_adapter;
+mod harness_metrics;
 mod observation;
 mod permissions;
 mod scheduler;
 mod storage;
+mod task_session;
 #[cfg(unix)]
 mod transport;
 mod web;
@@ -48,11 +52,13 @@ enum Job {
         instance: PathBuf,
         run: String,
         request: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        candidate_input: Option<Value>,
     },
     Harness {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         authorization: Option<Binding>,
-        task: harness::Task,
+        task: Box<harness::Task>,
         request: String,
     },
 }
@@ -134,3 +140,5 @@ pub fn serve(root: &Path, cancelled: &AtomicBool) -> Result<Value> {
         Err("native daemon is qualified for macOS only".into())
     }
 }
+
+mod capacity;

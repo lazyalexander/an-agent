@@ -11,6 +11,10 @@ pub(crate) struct Task {
     pub app_server: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub adapter: Option<super::harness_adapter::Kind>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub turn_limit: Option<u8>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wall_seconds: Option<u64>,
     pub label: String,
     pub binary: PathBuf,
     pub binary_sha256: String,
@@ -41,7 +45,12 @@ pub(super) fn submit(
     if let Some(binding) = authorization {
         crate::task_permissions::require(binding, &permissions::harness_permission(&task)?)?;
     }
-    if task.label.is_empty()
+    if task.turn_limit.is_some_and(|limit| limit == 0 || limit > 8)
+        || task
+            .wall_seconds
+            .is_some_and(|seconds| seconds == 0 || seconds > 3600)
+        || (!super::harness_adapter::interactive(&task)? && task.turn_limit.unwrap_or(1) > 1)
+        || task.label.is_empty()
         || task.label.len() > 120
         || task.prompt.len() > 65536
         || !task.schema.is_object()
@@ -68,7 +77,7 @@ pub(super) fn submit(
     // Never copy the prompt, scoped content, or MCP secret into a public preview.
     let (preview, execute) = approval(
         json!({"operation":"queue-harness", "daemon":root,
-        "task_sha256":binding,"label":task.label,"adapter":super::harness_adapter::kind(&task)?,"version":super::harness_adapter::selected(&task)?.capabilities()["version"],
+        "task_sha256":binding,"label":task.label,"adapter":super::harness_adapter::kind(&task)?,"version":super::harness_adapter::selected(&task)?.capabilities().version,
         "disclosure":"exact submitted prompt/schema/scope; finite MCP if selected"}),
         approved,
     )?;
@@ -79,7 +88,7 @@ pub(super) fn submit(
         root,
         &Job::Harness {
             authorization: authorization.cloned(),
-            task,
+            task: Box::new(task),
             request: binding,
         },
     )?;
@@ -120,13 +129,22 @@ pub fn worker(root: &Path, id: &str, hash: &str, cancelled: &AtomicBool) -> Resu
     let work = dir.join("work");
     store::directory(&work)?;
     write(&dir.join("schema.json"), &task.schema)?;
-    let result = spool::supervisor::monitor(
+    let mut result = spool::supervisor::monitor(
         || {
             if dir.join("cancel.json").exists()
                 || authorization
                     .as_ref()
-                    .is_some_and(|b| crate::task_permissions::active(b).is_err())
+                    .is_some_and(|b| super::task_session::disclosure::active(&dir, b).is_err())
             {
+                if !dir.join("cancel.json").exists() {
+                    let _ = store::write_new(
+                        &dir.join("cancel.json"),
+                        &serde_json::to_vec(
+                            &json!({"request":hash,"reason":"session authority unavailable"}),
+                        )
+                        .unwrap_or_default(),
+                    );
+                }
                 cancelled.store(true, Ordering::Release);
             }
         },
@@ -140,6 +158,19 @@ pub fn worker(root: &Path, id: &str, hash: &str, cancelled: &AtomicBool) -> Resu
             )
         },
     );
+    #[cfg(unix)]
+    {
+        let cleanup = crate::cocoon::job::release(&dir)
+            .unwrap_or_else(|_| json!({"termination_confirmed":false}));
+        if !cleanup.is_null()
+            && let Ok(value) = &mut result
+        {
+            value["termination_confirmed"] = json!(
+                value["termination_confirmed"] == true && cleanup["termination_confirmed"] == true
+            );
+            value["cocoon"] = cleanup;
+        }
+    }
     let response = match &result {
         Ok(result) => json!({"request":hash,"result":result}),
         Err(error) => {

@@ -10,12 +10,33 @@ pub(crate) enum Permission {
         input: PathBuf,
         seconds: u64,
     },
+    RunJobOutput {
+        instance: PathBuf,
+        run: String,
+        operation: String,
+        output: String,
+        seconds: u64,
+    },
+    CocoonJob {
+        spec_sha256: String,
+    },
+    RunCandidate {
+        instance: PathBuf,
+        run: String,
+        transfer: String,
+        sha256: String,
+        seconds: u64,
+    },
     RunArtifact {
         instance: PathBuf,
         run: String,
         catalog: PathBuf,
         revision: String,
         seconds: u64,
+    },
+    Cocoon {
+        profile_sha256: String,
+        operation_sha256: String,
     },
     Harness {
         profile_sha256: String,
@@ -38,6 +59,21 @@ pub(crate) enum Permission {
 impl Permission {
     pub(crate) fn validate(&self) -> Result<()> {
         match self {
+            Self::CocoonJob { spec_sha256 } => digest(spec_sha256)?,
+            Self::RunJobOutput {
+                instance,
+                run,
+                operation,
+                output,
+                seconds,
+            } => {
+                canonical(instance)?;
+                identifier(run)?;
+                identifier(output)?;
+                if uuid::Uuid::parse_str(operation)?.to_string() != *operation || *seconds == 0 {
+                    return Err("invalid Cocoon job output capability".into());
+                }
+            }
             Self::Run {
                 instance,
                 run,
@@ -50,6 +86,20 @@ impl Permission {
                 if *seconds == 0 {
                     return Err("task deadline must be positive".into());
                 }
+            }
+            Self::RunCandidate {
+                instance,
+                run,
+                transfer,
+                sha256,
+                seconds,
+            } => {
+                canonical(instance)?;
+                identifier(run)?;
+                if uuid::Uuid::parse_str(transfer)?.to_string() != *transfer || *seconds == 0 {
+                    return Err("invalid candidate run capability".into());
+                }
+                digest(sha256)?;
             }
             Self::RunArtifact {
                 instance,
@@ -65,6 +115,13 @@ impl Permission {
                 if *seconds == 0 {
                     return Err("task deadline must be positive".into());
                 }
+            }
+            Self::Cocoon {
+                profile_sha256,
+                operation_sha256,
+            } => {
+                digest(profile_sha256)?;
+                digest(operation_sha256)?;
             }
             Self::Harness { profile_sha256 } => digest(profile_sha256)?,
             Self::ReadInput { path, sha256 } => {
@@ -96,6 +153,50 @@ impl Permission {
 
     pub(crate) fn within(&self, parent: &Self) -> bool {
         match (self, parent) {
+            (
+                Self::RunJobOutput {
+                    instance,
+                    run,
+                    operation,
+                    output,
+                    seconds,
+                },
+                Self::RunJobOutput {
+                    instance: p_instance,
+                    run: p_run,
+                    operation: p_operation,
+                    output: p_output,
+                    seconds: p_seconds,
+                },
+            ) => {
+                instance == p_instance
+                    && run == p_run
+                    && operation == p_operation
+                    && output == p_output
+                    && seconds <= p_seconds
+            }
+            (
+                Self::RunCandidate {
+                    instance,
+                    run,
+                    transfer,
+                    sha256,
+                    seconds,
+                },
+                Self::RunCandidate {
+                    instance: p_instance,
+                    run: p_run,
+                    transfer: p_transfer,
+                    sha256: p_sha256,
+                    seconds: p_seconds,
+                },
+            ) => {
+                instance == p_instance
+                    && run == p_run
+                    && transfer == p_transfer
+                    && sha256 == p_sha256
+                    && seconds <= p_seconds
+            }
             (
                 Self::Run {
                     instance,

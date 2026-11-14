@@ -116,6 +116,15 @@ jobs:
       - name: Harness steering and original-owner reconnect
         if: matrix.native_workspace
         run: python3 -B crates/an-agent-host/tests/cli/native_harness_adapter.py --host target/debug/an-agent-host --evidence "$RUNNER_TEMP/native-state/harness-adapter"
+      - name: Original-thread continuation and usage accounting
+        if: matrix.native_workspace
+        run: python3 -B crates/an-agent-host/tests/cli/native_harness_session.py --host target/debug/an-agent-host --evidence "$RUNNER_TEMP/native-state/harness-session"
+      - name: Normal finish under the original session turn limit
+        if: matrix.native_workspace
+        run: python3 -B crates/an-agent-host/tests/cli/native_harness_session.py --host target/debug/an-agent-host --evidence "$RUNNER_TEMP/native-state/harness-finish" --finish-validation
+      - name: Explicit session input attachment and revocation
+        if: matrix.native_workspace
+        run: python3 -B crates/an-agent-host/tests/cli/native_harness_session.py --host target/debug/an-agent-host --evidence "$RUNNER_TEMP/native-state/harness-input" --attachment-validation
       - name: Native selected inputs and accepted artifact handoff
         if: matrix.native_workspace
         run: python3 -B crates/an-agent-host/tests/cli/native_daemon_inputs.py --host target/debug/an-agent-host --evidence "$RUNNER_TEMP/native-state/daemon-inputs"
@@ -146,6 +155,12 @@ jobs:
       - name: Native artifact retirement and admitted downstream custody
         if: matrix.native_workspace
         run: python3 -B crates/an-agent-host/tests/cli/native_retirement.py --host target/debug/an-agent-host --evidence "$RUNNER_TEMP/native-state/retirement"
+      - name: Cocoon binary candidate custody and original-session continuation
+        if: matrix.native_workspace
+        run: python3 -B crates/an-agent-host/tests/cli/native_cocoon_session.py --host target/debug/an-agent-host --evidence "$RUNNER_TEMP/native-state/cocoon-candidate"
+      - name: Cocoon producer cancellation blocks late acceptance
+        if: matrix.native_workspace
+        run: python3 -B crates/an-agent-host/tests/cli/native_cocoon_session.py --host target/debug/an-agent-host --evidence "$RUNNER_TEMP/native-state/cocoon-cancel" --cancel-validation
       - name: Retain native state evidence
         if: always() && matrix.native_workspace
         uses: actions/upload-artifact@v4

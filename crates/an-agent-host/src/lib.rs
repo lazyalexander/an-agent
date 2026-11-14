@@ -26,9 +26,12 @@
 //! [`applied`]: an_agent_core::control::AgentControl::applied
 
 pub mod agent_tools;
+pub mod application;
 pub mod artifact_context;
 pub mod artifact_versions;
 pub mod capability;
+#[cfg(unix)]
+mod cocoon;
 pub mod context_exchange;
 pub mod daemon;
 pub mod execution;
