@@ -26,6 +26,7 @@
 //! [`applied`]: an_agent_core::control::AgentControl::applied
 
 pub mod agent_tools;
+pub mod application;
 pub mod artifact_context;
 pub mod artifact_versions;
 pub mod capability;
