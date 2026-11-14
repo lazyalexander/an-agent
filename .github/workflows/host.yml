@@ -119,6 +119,9 @@ jobs:
       - name: Original-thread continuation and usage accounting
         if: matrix.native_workspace
         run: python3 -B crates/an-agent-host/tests/cli/native_harness_session.py --host target/debug/an-agent-host --evidence "$RUNNER_TEMP/native-state/harness-session"
+      - name: Normal finish under the original session turn limit
+        if: matrix.native_workspace
+        run: python3 -B crates/an-agent-host/tests/cli/native_harness_session.py --host target/debug/an-agent-host --evidence "$RUNNER_TEMP/native-state/harness-finish" --finish-validation
       - name: Native selected inputs and accepted artifact handoff
         if: matrix.native_workspace
         run: python3 -B crates/an-agent-host/tests/cli/native_daemon_inputs.py --host target/debug/an-agent-host --evidence "$RUNNER_TEMP/native-state/daemon-inputs"

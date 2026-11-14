@@ -91,6 +91,13 @@ fn dialogue(
         steering::send_pending(dir, authority, cancelled, &mut input, &thread, &turn)
             .map_err(convert)?;
         if turn.is_empty() && completed > 0 {
+            if super::task_session::finish::ready(dir, completed).map_err(convert)? {
+                let candidate =
+                    store::read(&dir.join(format!("candidate-{completed}.json")), 131072)
+                        .map_err(convert)?;
+                store::write_new(&dir.join("decision.json"), &candidate).map_err(convert)?;
+                return Ok(Vec::new());
+            }
             continuation::send_pending(
                 dir,
                 &mut input,

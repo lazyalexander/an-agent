@@ -26,9 +26,11 @@ pub(super) fn authorized(
         "delegate" | "update-delegation" | "delegation-inbox" => {
             delegation::dispatch(root, req, approved, authorization)
         }
-        "harness-connect" | "harness-steer" | "harness-continue" | "harness-turn-result" => {
-            super::task_session::dispatch(root, req, approved)
-        }
+        "harness-connect"
+        | "harness-steer"
+        | "harness-continue"
+        | "harness-turn-result"
+        | "harness-finish" => super::task_session::dispatch(root, req, approved),
         "record-adoption" => activity::adopt(root, req, approved),
         #[cfg(unix)]
         "cocoon-job-status" => {

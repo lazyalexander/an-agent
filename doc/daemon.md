@@ -487,3 +487,45 @@ custody mutations remain serialized in the daemon. Backend callbacks observe a
 stop signal from the supervised client process, including wall-time expiry;
 expiry retains its timeout classification. A blocked guest program therefore
 does not hold the daemon's control request lane or authorize later job steps.
+
+
+## Offline environment client
+
+`an-agent-host app serve ROOT` starts the separate authenticated product page for
+an existing private daemon. `ROOT/application/endpoint.json` contains its local URL.
+The current client provides environment import and host task observation; task
+creation, domain continuation and artifact download are not yet implemented here.
+It does not change the existing read-only daemon console.
+
+Loom's `pack-runtime SOURCE MANIFEST NEW_ARCHIVE` assembles an explicitly selected
+offline environment. The `an-offline-runtime-v1` manifest pins name/version,
+`macos-aarch64`, license files, component references, and an ordered map of payload
+SHA-256, byte count and executable flag. The gzip tar starts with `runtime.json`,
+followed by exactly those regular files in sorted order. Paths are bounded relative
+ASCII paths; links, traversal and undeclared entries are refused. Total payload is
+bounded to 32 GiB and the page upload to 8 GiB compressed. Hashes identify content,
+not a publisher; the operator must review the selected runtime and its licenses.
+
+The page uploads bytes into its private store, previews verified identities and
+imports only after confirmation of the matching manifest digest. Import never
+executes payloads. It stages a new private directory and publishes a digest-named
+environment only after complete verification. Reuse revalidates installed bytes;
+interrupted staging directories never appear as installed environments. Imported
+content is not a claim that Codex, VM execution or a domain workflow is ready.
+
+
+### Normal session finish and product controls
+
+`harness-finish` previews/closes an idle interactive session using its original
+`id`, `execution` and completed `after_turn`. It requires the original harness
+permission and an adapter advertising `finish_session`. An admitted continuation
+for that turn excludes finish; an admitted finish excludes later continuations.
+The same finish binding is idempotent. Active, cancelled, stale and unavailable
+owners refuse a new finish. Admission is not termination proof: the original
+owner closes the client, releases its VM and retains normal completion evidence.
+This permits two completed turns under a maximum of three without cancellation.
+
+The product page's finite `task-view` and `task-control` actions project original
+records and preview/confirm cancellation or a supplement. Active-turn supplements
+use steering; idle-turn supplements use continuation. Neither action exposes an
+arbitrary daemon request endpoint or establishes a domain workflow's completion.

@@ -1,4 +1,5 @@
 //! Small command-line adapter; parsers stay beside the host capability they invoke.
+mod application;
 mod artifact;
 mod checkpoint;
 mod cohort;
@@ -51,6 +52,7 @@ fn with_cancellation(
 pub(super) fn run(args: Vec<String>) -> Result<()> {
     let (command, args) = args.split_first().ok_or("missing command")?;
     let result = match command.as_str() {
+        "app" => application::dispatch(args)?,
         "daemon" => daemon::dispatch(args)?,
         "spool-supervisor" => supervisor::dispatch(args)?,
         "spool-peer" => peer::dispatch(args)?,

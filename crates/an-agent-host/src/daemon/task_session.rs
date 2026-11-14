@@ -2,6 +2,7 @@
 use super::harness_adapter::{kind, selected};
 use super::*;
 use std::io::Write;
+pub(super) mod finish;
 
 pub(super) fn dispatch(root: &Path, req: &Value, approved: Option<&str>) -> Result<Value> {
     let id = text(req, "id")?;
@@ -16,6 +17,9 @@ pub(super) fn dispatch(root: &Path, req: &Value, approved: Option<&str>) -> Resu
     };
     let adapter = selected(task)?;
     let op = text(req, "op")?;
+    if op == "harness-finish" {
+        return finish::admit(&dir, &job, adapter, req, approved);
+    }
     if op == "harness-turn-result" {
         let number = req["turn"].as_u64().ok_or("turn number required")?;
         if number == 0 || number > u64::from(task.turn_limit.unwrap_or(1)) {
@@ -25,6 +29,9 @@ pub(super) fn dispatch(root: &Path, req: &Value, approved: Option<&str>) -> Resu
     }
     if matches!(op, "harness-steer" | "harness-continue") {
         require_control(adapter, op)?;
+        if dir.join("finish.json").exists() {
+            return Err("task session is finishing".into());
+        }
         let authority = authorization.as_ref().ok_or("missing task authority")?;
         crate::task_permissions::active(authority)?;
         let instruction = text(req, "instruction")?;

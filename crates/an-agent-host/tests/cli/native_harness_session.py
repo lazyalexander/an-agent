@@ -18,6 +18,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--host', type=Path, required=True)
     parser.add_argument('--evidence', type=Path, required=True)
+    parser.add_argument('--finish-validation', action='store_true')
     args = parser.parse_args()
     require_native_workspace()
     driver = Driver(args.host, args.evidence)
@@ -66,6 +67,38 @@ for raw in sys.stdin:
         source = driver.root / 'knowledge.txt'
         source.write_text('selected knowledge')
         read = {'op': 'read-input', 'path': str(source), 'sha256': sha(source), 'encoding': 'utf-8'}
+        if args.finish_validation:
+            task = dict(driver.task(fake, json.dumps(read)), turn_limit=3)
+            credential = driver.grant([driver.profile(task), {'kind':'read-input','path':str(source),'sha256':sha(source)}])
+            job = driver.approve({'op':'harness','task':task}, credential)['id']
+            directory = driver.service/'jobs'/job
+            def completed(number):
+                deadline=time.monotonic()+30
+                while not (directory/f'turn-result-{number}.json').exists():
+                    assert time.monotonic()<deadline
+                    time.sleep(.05)
+                return driver.request({'op':'harness-connect','id':job},credential)
+            view=completed(1)
+            continuation={'op':'harness-continue','id':job,'execution':view['execution'],
+                          'after_turn':1,'command':'second','instruction':json.dumps(read)}
+            driver.approve(continuation,credential)
+            driver.request({'op':'harness-finish','id':job,'execution':view['execution'],'after_turn':1},credential,ok=False)
+            view=completed(2)
+            owner=(directory/'owner.json').read_bytes()
+            finish={'op':'harness-finish','id':job,'execution':view['execution'],'after_turn':2}
+            driver.request(dict(finish,execution='foreign'),credential,ok=False)
+            driver.approve(finish,credential)
+            driver.wait(job,credential)
+            driver.approve(finish,credential)
+            driver.request(dict(continuation,after_turn=2,command='late'),credential,ok=False)
+            result=driver.request({'op':'harness-result','id':job},credential)
+            assert result['result']['termination_confirmed'] and result['proposal']=={'ok':True}
+            assert not (directory/'cancel.json').exists() and not (directory/'turn-start-3.json').exists()
+            assert owner==(directory/'owner.json').read_bytes()
+            (driver.root/'report.json').write_text(json.dumps({'passed':True,'fixture_only':True,
+                'normal_finish':True,'completed_turns':2,'maximum_turns':3,'single_original_owner':True,
+                'duplicate_finish_not_replayed':True,'late_continuation_denied':True,'host_sha256':sha(driver.host)},indent=2))
+            return
         task = dict(driver.task(fake, json.dumps(read)), turn_limit=2)
         profile = driver.profile(task)
         assert profile != driver.profile(driver.task(fake, json.dumps(read)))

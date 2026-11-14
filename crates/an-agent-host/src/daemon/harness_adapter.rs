@@ -15,6 +15,7 @@ pub(super) struct Capabilities {
     pub interactive: bool,
     pub steer: bool,
     pub continue_turn: bool,
+    pub finish_session: bool,
     pub reconnect_observation: bool,
     pub resume_execution: bool,
     pub cancel: &'static str,
