@@ -5,11 +5,13 @@ history.replaceState(null,'',location.pathname);
 let strings={},language='zh-CN',upload,preview,selectedTask,taskView,controlPreview;
 const $=id=>document.getElementById(id);
 async function request(path,body,raw=false){const response=await fetch(path,{method:body?'POST':'GET',headers:{Authorization:`Bearer ${token}`,...(!raw&&body?{'Content-Type':'application/json'}:{})},body:body?(raw?body:JSON.stringify(body)):undefined});const value=await response.json();if(!response.ok)throw new Error(value.error||response.statusText);return value;}
+// Preserve focused controls while unchanged observations are polled.
+function changed(element,value){const key=JSON.stringify([language,value]);if(element.dataset.view===key)return false;element.dataset.view=key;return true;}
 function stateText(value){return strings[language]["state_"+value]||value;}
 function render(){document.documentElement.lang=language;document.querySelectorAll('[data-text]').forEach(e=>e.textContent=strings[language][e.dataset.text]);document.querySelectorAll("[data-aria]").forEach(e=>e.setAttribute("aria-label",strings[language][e.dataset.aria]));}
-async function refresh(){const view=await request('/view');$('capacity').hidden=view.host.concurrency>=2;$('environments').textContent=view.environments.map(e=>`${e.manifest.name} ${e.manifest.version}`).join(' · ');const tasks=view.host.tasks||[];$('tasks').replaceChildren();
+async function refresh(){const view=await request('/view');$('capacity').hidden=view.host.concurrency>=2;$('environments').textContent=view.environments.map(e=>`${e.manifest.name} ${e.manifest.version}`).join(' · ');const tasks=view.host.tasks||[];if(changed($('tasks'),tasks.map(task=>[task.id,task.label,task.outcome,task.state]))){$('tasks').replaceChildren();
 if(!tasks.length)$('tasks').textContent=strings[language].noTasks;
-for(const task of tasks){const button=document.createElement('button');button.textContent=`${task.label||task.id} · ${stateText(task.outcome||task.state)}`;button.onclick=()=>act(()=>selectTask(task.id));$('tasks').append(button);}
+for(const task of tasks){const button=document.createElement('button');button.textContent=`${task.label||task.id} · ${stateText(task.outcome||task.state)}`;button.onclick=()=>act(()=>selectTask(task.id));$('tasks').append(button);}}
 if(selectedTask)await selectTask(selectedTask);await renderDeliveries(view);}
 async function act(callback){$('error').textContent='';try{await callback();}catch(error){$('error').textContent=error.message;} }
 $('language').onchange=e=>{language=e.target.value;render();};
@@ -44,11 +46,12 @@ setInterval(()=>{if(strings[language])act(refresh);},3000);
 
 let deliveryPlan,deliveryId;
 async function renderDeliveries(view){
- const select=$('delivery-environment'),selected=select.value;select.replaceChildren();
+ const select=$('delivery-environment'),selected=select.value;
+ if(changed(select,view.environments.map(e=>[e.id,e.manifest.name,e.manifest.version]))){select.replaceChildren();
  for(const environment of view.environments){if(!environment.manifest.components.delivery)continue;const option=document.createElement('option');option.value=environment.id;option.textContent=`${environment.manifest.name} ${environment.manifest.version}`;select.append(option);}
- if([...select.options].some(o=>o.value===selected))select.value=selected;
- $('deliveries').replaceChildren();
- for(const delivery of view.deliveries||[]){const button=document.createElement('button');button.textContent=`${delivery.id.slice(0,8)} · ${stateText(delivery.state.state)}`;button.onclick=()=>act(()=>showDelivery(delivery.id));$('deliveries').append(button);}
+ if([...select.options].some(o=>o.value===selected))select.value=selected;}
+ if(changed($('deliveries'),(view.deliveries||[]).map(d=>[d.id,d.state.state]))){$('deliveries').replaceChildren();
+ for(const delivery of view.deliveries||[]){const button=document.createElement('button');button.textContent=`${delivery.id.slice(0,8)} · ${stateText(delivery.state.state)}`;button.onclick=()=>act(()=>showDelivery(delivery.id));$('deliveries').append(button);}}
  if(deliveryId)await showDelivery(deliveryId);
 }
 $('delivery-preview').onclick=()=>act(async()=>{
@@ -78,11 +81,11 @@ async function showDelivery(id){
   for(const field of state.clarifications){const label=document.createElement('label');label.textContent=(field.label[language]||field.label.en)+(field.source_label?' · '+field.source_label:'');const input=document.createElement(field.type==='enum'?'select':'input');input.dataset.question=field.key;input.required=true;if(field.type==='enum')for(const choice of field.choices){const option=document.createElement('option');option.value=choice;option.textContent=choice;input.append(option);}else{input.type='number';input.min=field.minimum;input.max=field.maximum;}label.append(input);form.append(label,document.createElement('br'));}
  }
  $('delivery-answer').hidden=state.state!=='waiting-clarification';if(state.state!=='waiting-clarification')form.replaceChildren();
- $('delivery-products').replaceChildren();
+ if(changed($('delivery-products'),[id,state.state])){$('delivery-products').replaceChildren();
  if(state.state==='succeeded')for(const stage of ['intermediate','final']){
   const button=document.createElement('button');button.textContent=strings[language].download+' '+(stage==='intermediate'?'Markdown':'Excel');
   button.onclick=()=>act(async()=>{const artifact=await request('/action',{op:'delivery-artifact',id,stage});const bytes=Uint8Array.from(artifact.bytes);const url=URL.createObjectURL(new Blob([bytes]));const link=document.createElement('a');link.href=url;link.download=stage==='intermediate'?'result.md':'result.xlsx';link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);});$('delivery-products').append(button);
- }
+ }}
 }
 $('delivery-answer').onclick=()=>act(async()=>{
  const answers={};$('clarification-form').querySelectorAll('input,select').forEach(input=>{answers[input.dataset.question]=input.dataset.question==='currency'?input.value:Number(input.value);});
