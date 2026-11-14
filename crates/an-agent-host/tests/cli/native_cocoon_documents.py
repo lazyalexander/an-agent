@@ -11,6 +11,7 @@ import sys
 import sysconfig
 import time
 import uuid
+import urllib.request
 from app_server_support import Driver, sha
 from document_benchmark import make_pdf
 from host_qualification import require_native_workspace
@@ -28,6 +29,8 @@ def main():
     parser.add_argument('--cancel-before-continuation',action='store_true')
     parser.add_argument('--cancel-during-program',action='store_true')
     parser.add_argument('--restart-controller',action='store_true')
+    parser.add_argument('--finish-session',action='store_true')
+    parser.add_argument('--product-controls',action='store_true')
     args=parser.parse_args();require_native_workspace()
     domain=args.domain.resolve(strict=True)
     sys.path.insert(0,str(args.dependency_site.resolve(strict=True)))
@@ -36,6 +39,7 @@ def main():
     import document
     runtime=args.python_runtime.resolve(strict=True)
     driver=Driver(args.host,args.evidence);driver.expires=int(time.time()*1000)+900000
+    page=None
     try:
         source=driver.root/'source.pdf';make_pdf(source,'document_delivery.table_ambiguous' if args.clarification else 'document_delivery.table_exact')
         accepted_md=driver.root/'accepted.md';accepted_md.touch()
@@ -101,7 +105,7 @@ for raw in sys.stdin:
             prompt=('Read the domain contract, then execute the extract job. If requires_clarification is nonempty, do not guess or '
                 'call the Markdown job. Return {"ok":false,"questions":[exact keys from requires_clarification]}. '
                 'The user will supply approved answers in the next turn.\nREQUESTS\n'+json.dumps(requests))
-        task=dict(driver.task(binary,prompt),turn_limit=3 if args.clarification else 2,wall_seconds=600)
+        task=dict(driver.task(binary,prompt),turn_limit=3 if args.clarification or args.finish_session else 2,wall_seconds=600)
         if args.clarification:
             task['schema']={'type':'object','properties':{'ok':{'type':'boolean'},'questions':{'type':'array','items':{'type':'string'}}},
                 'required':['ok','questions'],'additionalProperties':False}
@@ -245,9 +249,28 @@ for raw in sys.stdin:
             'as source_sha256. Execute the fixed workbook job using your structured proposal in data. Its input must remain the supplied '
             'artifact reference. Return {"ok":true} only when state=proposed and verification.json reports passed=true. '
             'If a recovery request precedes the artifact read, submit its exact original data and ID once to reconcile the missing receipt; do not allocate a new ID. Use the original primary session only.\nREQUESTS\n'+json.dumps(second))
-        driver.approve({'op':'harness-continue','id':session,'execution':view['execution'],'after_turn':markdown_turn,
-            'command':'accepted-markdown','instruction':instruction},credential)
-        wait_turn(markdown_turn+1);driver.wait(session,credential)
+        if args.product_controls:
+            page=subprocess.Popen([str(driver.host),'app','serve',str(driver.service)],stdout=driver.log,stderr=driver.log)
+            endpoint=driver.service/'application/endpoint.json';deadline=time.monotonic()+15
+            while not endpoint.exists():
+                assert page.poll() is None and time.monotonic()<deadline
+                time.sleep(.05)
+            url=json.loads(endpoint.read_text())['url'];base,token=url.split('/#')
+            def product(value):
+                request=urllib.request.Request(base+'/action',data=json.dumps(value).encode(),
+                    headers={'Origin':base,'Authorization':'Bearer '+token,'Content-Type':'application/json'})
+                with urllib.request.urlopen(request,timeout=15) as response:return json.load(response)
+            command={'op':'task-control','control':'supplement','id':session,'execution':view['execution'],
+                'after_turn':markdown_turn,'command':'accepted-markdown','instruction':instruction}
+            preview=product(command);product(dict(command,approve=preview['approval_sha256']))
+        else:
+            driver.approve({'op':'harness-continue','id':session,'execution':view['execution'],'after_turn':markdown_turn,
+                'command':'accepted-markdown','instruction':instruction},credential)
+        wait_turn(markdown_turn+1)
+        if args.finish_session and not args.clarification:
+            driver.approve({'op':'harness-finish','id':session,'execution':view['execution'],
+                'after_turn':markdown_turn+1},credential)
+        driver.wait(session,credential)
         if args.lost_receipt:
             assert recovery_file.exists()
             assert (md_root/'operations'/(key+'.json')).read_bytes()==original_intent
@@ -262,11 +285,14 @@ for raw in sys.stdin:
         assert completion['termination_confirmed'] and completion['cocoon']['termination_confirmed']
         activity=driver.request({'op':'activity','id':session},credential)
         summary={'passed':True,'model_calls':None if args.codex else 0,'model_turns':(3 if args.clarification else 2) if args.codex else 0,'real_model':bool(args.codex),'protocol_fixture':not bool(args.codex),
-            'single_original_session':True,'guest_document_programs':3,'clarification':args.clarification,'lost_receipt':args.lost_receipt,'controller_restarted':args.restart_controller,'host_custody':True,'total_eur':'38.50',
+            'single_original_session':True,'guest_document_programs':3,'clarification':args.clarification,'lost_receipt':args.lost_receipt,'controller_restarted':args.restart_controller,'normal_finish':args.finish_session,'product_controls':args.product_controls,'host_custody':True,'total_eur':'38.50',
             'vm_termination_confirmed':True,'workbook_sha256':sha(delivery),'host_sha256':sha(driver.host),
             'domain_program_sha256':sha(program),'metrics':activity.get('harness',{}).get('metrics')}
         (driver.root/'report.json').write_text(json.dumps(summary,indent=2))
-    finally:driver.close()
+    finally:
+        if page is not None:
+            page.terminate();page.wait(timeout=15)
+        driver.close()
 
 
 if __name__=='__main__':main()
