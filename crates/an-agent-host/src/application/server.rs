@@ -201,8 +201,12 @@ fn selected(root: &Path, value: &Value, key: &str) -> Result<PathBuf> {
     }
     Ok(root.join("uploads").join(id))
 }
-fn act(root: &Path, _service: &Path, value: &Value) -> Result<Value> {
+fn act(root: &Path, service: &Path, value: &Value) -> Result<Value> {
     match value["op"].as_str() {
+        Some("task-view") => {
+            super::control::view(service, value["id"].as_str().ok_or("task identity")?)
+        }
+        Some("task-control") => super::control::submit(service, value),
         Some("environment-preview") => {
             super::environment::preview(&selected(root, value, "upload")?)
         }

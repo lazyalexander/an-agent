@@ -14,6 +14,7 @@ impl super::harness_adapter::HarnessAdapter for Codex {
             interactive: self.interactive,
             steer: self.interactive,
             continue_turn: self.interactive,
+            finish_session: self.interactive,
             reconnect_observation: true,
             resume_execution: false,
             cancel: "host-process-group",

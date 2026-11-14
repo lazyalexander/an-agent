@@ -200,7 +200,7 @@ pub(super) fn dispatch_bound(root: &Path, req: &Value, actor: &Binding) -> Resul
                 return Err("use delegate for task-scoped submissions".into());
             }
         }
-        "update-delegation" | "harness-steer" | "harness-continue" => {
+        "update-delegation" | "harness-steer" | "harness-continue" | "harness-finish" => {
             let job = owned_job(root, actor, text(req, "id")?)?;
             let Job::Harness { task, .. } = job else {
                 return Err("not a harness task".into());

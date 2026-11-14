@@ -512,3 +512,20 @@ executes payloads. It stages a new private directory and publishes a digest-name
 environment only after complete verification. Reuse revalidates installed bytes;
 interrupted staging directories never appear as installed environments. Imported
 content is not a claim that Codex, VM execution or a domain workflow is ready.
+
+
+### Normal session finish and product controls
+
+`harness-finish` previews/closes an idle interactive session using its original
+`id`, `execution` and completed `after_turn`. It requires the original harness
+permission and an adapter advertising `finish_session`. An admitted continuation
+for that turn excludes finish; an admitted finish excludes later continuations.
+The same finish binding is idempotent. Active, cancelled, stale and unavailable
+owners refuse a new finish. Admission is not termination proof: the original
+owner closes the client, releases its VM and retains normal completion evidence.
+This permits two completed turns under a maximum of three without cancellation.
+
+The product page's finite `task-view` and `task-control` actions project original
+records and preview/confirm cancellation or a supplement. Active-turn supplements
+use steering; idle-turn supplements use continuation. Neither action exposes an
+arbitrary daemon request endpoint or establishes a domain workflow's completion.

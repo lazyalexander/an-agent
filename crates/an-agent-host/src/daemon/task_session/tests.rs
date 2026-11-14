@@ -9,6 +9,7 @@ impl HarnessAdapter for MemoryAdapter {
             interactive: true,
             steer: false,
             continue_turn: true,
+            finish_session: false,
             reconnect_observation: true,
             resume_execution: false,
             cancel: "test-owner",
