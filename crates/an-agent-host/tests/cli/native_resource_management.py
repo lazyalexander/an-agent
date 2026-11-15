@@ -23,6 +23,8 @@ def main():
     root = args.evidence.resolve(); root.mkdir(mode=0o700)
     service = args.service.resolve(strict=True)
     assert not (service / 'endpoint.json').exists(), 'Stop the owned prior service before this acceptance'
+    endpoint = service / 'application/endpoint.json'
+    previous = json.loads(endpoint.read_text())['url'] if endpoint.exists() else None
     log = (root / 'service.log').open('w')
     page = subprocess.Popen([str(args.host.resolve(strict=True)), 'app', 'serve', str(service)], stdout=log, stderr=log)
     try:
@@ -31,7 +33,9 @@ def main():
         while True:
             assert page.poll() is None and time.monotonic() < deadline
             try:
-                base, token = json.loads(endpoint.read_text())['url'].split('/#'); break
+                url = json.loads(endpoint.read_text())['url']
+                if url != previous:
+                    base, token = url.split('/#'); break
             except (FileNotFoundError, json.JSONDecodeError): time.sleep(.025)
         def call(value):
             request = urllib.request.Request(base + '/action', data=json.dumps(value).encode(), headers={
