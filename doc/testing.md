@@ -1,5 +1,7 @@
 # Testing and cross-repository verification
 
+[简体中文](zh-CN/doc/testing.md)
+
 This contract guides test placement and selective migration. It does not change
 runtime behavior, move existing tests or replace current CI commands. Repository
 verification remains defined in [AGENTS.md](../AGENTS.md) and the workflows.
@@ -83,6 +85,77 @@ cache state and repeated measurements; distinguish cold from warm runs. Python
 can remove Rust test compilation but cannot remove product compilation. Do not
 claim a speedup from a single combined CI duration or a changed runner.
 
+
+## Development cadence and background qualification
+
+Freeze a qualification candidate and continue development in a separate worktree.
+This is the execution policy; automatic queueing, impact selection and concurrent
+workers require separate implementation and qualification. Existing repository
+checks and CI gates remain mandatory.
+
+| Point in development | Required evidence | Gate |
+| --- | --- | --- |
+| Iteration | Focused tests and affected-module checks | Current change |
+| Feature integration | Applicable real scenarios, core control regression and required repository/CI checks | Merge into dev-advance |
+| Stage acceptance or main promotion | Full declared matrix, repetitions and applicable mechanical chains on the selected candidate | Stage acceptance and release |
+| Background qualification | Immutable candidate A while worktree B advances | Results qualify A; review the A-to-B delta before using them for B |
+
+### Frozen candidates and change selection
+
+Build once per source/target/configuration. Freeze source commits or patch digests,
+executables, test drivers and assertions, spool/backend releases, inputs, dependency
+versions, model settings, limits and scenario order. Record their hashes in the run
+manifest. A binary alone is insufficient: a driver must not import changing files
+from the development worktree. Keep each run's service root, evidence and archive
+independent. Follow the branch-owned evidence policy above.
+
+Map each change to affected behavior and explain the selection in the PR. Domain
+changes require their domain scenarios and paired host acceptance; packaging changes
+require bundle validation and paired load/execute checks. Changes to shared execution,
+authorization, lifecycle, persistence or recovery require broader control and dependent
+workflow regression. If impact cannot be bounded, run the full applicable matrix.
+Documentation-only changes use the required documentation/repository checks.
+
+A result from A can support unchanged behavior in B only after reviewing source,
+dependency, driver and input differences. Run affected cases on B and retain the
+mapping to A's evidence. Do not describe combined historical and selective results
+as a fresh full run. Stage/release acceptance still requires the declared complete
+matrix for its selected candidate; feature integration need not rerun unrelated
+mechanical workloads after every small edit.
+
+### Functional concurrency and performance measurements
+
+Start qualification of functional concurrency with at most two independent workers.
+Each needs separate task identities, services, directories, ports, VMs, grants and
+output destinations. Isolation also includes applications, shared stores, device
+access and provider limits. Keep mechanical/GUI workloads single-worker until their
+shared resources are proven independent. Record resource pressure and concurrency;
+concurrent functional passes do not establish comparable performance numbers.
+
+Run latency, cache and token comparisons under the same declared workload and
+concurrency conditions. The default performance lane is serial and exclusive of
+builds, rendering and stress tests on that machine. Use another Mac to continue
+resource-intensive development during measurement; otherwise queue measurements
+for an idle window. Record provider/cache uncertainty even with a dedicated runner.
+Parallel test tasks each retain one main agent; this adds no routing/worker-agent
+topology to the product.
+
+### Queue, failures and rollout
+
+Implement in order: frozen run manifest and isolated runner; background queue and
+status report; reviewed change-to-scenario mapping; then bounded functional workers.
+Expose queued/running/completed state, candidate hash, current case, pass/fail/blocked
+counts and original evidence location. Gate the full run on smoke completion. Report
+failures promptly; independent planned cases may continue when original execution
+has settled, but dependent cases and acceptance remain gated by the failure.
+
+Preserve failed trials and incurred usage. Diagnose product, fixture, provider and
+contention failures before changing code. Unknown execution requires original-ID
+reconciliation, never automatic replay. After a repair, record a new candidate and
+run the affected cases; retain the original result and label selective revalidation.
+Unresolved relevant failures block integration. Known capability gaps remain explicit
+blockers and limit release claims. Queueing and concurrency must not relax assertions,
+termination evidence, deadlines, privacy or the maintainer-owned main merge.
 
 ## CI dependency caching
 
