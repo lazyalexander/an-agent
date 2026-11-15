@@ -62,6 +62,7 @@ $('delivery-preview').onclick=()=>act(async()=>{
  const upload=(await request('/upload',file,true)).upload;
  const value={op:'delivery-preview',id:crypto.randomUUID(),environment,upload,instruction:$('delivery-instruction').value};
  if($('delivery-image').value)value.image=JSON.parse($('delivery-image').value);
+ if($('project-source').value)value.resume_task=$('project-source').value;
  const checked=await request('/action',value);deliveryPlan={...value,op:'delivery-create',approve:checked.approval_sha256};
  $('delivery-description').textContent=`${file.name} · ${checked.plan.model} · ${checked.plan.wall_seconds}s\n${strings[language].scopeNotice}`;
  $('delivery-plan').hidden=false;
@@ -105,11 +106,13 @@ let imagePlan,latestImages=[],deliveryEnvironment;
 function fillOptions(element,options){const selected=element.value;if(!changed(element,options))return;element.replaceChildren();for(const [value,label] of options){const option=document.createElement('option');option.value=value;option.textContent=label;element.append(option);}if([...element.options].some(o=>o.value===selected))element.value=selected;}
 function renderImages(view){
  latestImages=view.images||[];
+ fillOptions($('project-source'),[['',strings[language].newProject],...view.deliveries.filter(d=>d.state.state==='succeeded'&&d.environment===$('delivery-environment').value).map(d=>[d.id,d.id.slice(0,8)])]);
+ const retired=new Set(latestImages.filter(i=>i.state==='succeeded'&&i.receipt.result?.retired).map(i=>i.environment+':'+i.receipt.result.image));
  const environments=view.environments.filter(e=>e.manifest.components.image_api);
  fillOptions($('image-environment'),environments.map(e=>[e.id,`${e.manifest.name} ${e.manifest.version}`]));
  $('save-environment').disabled=!environments.length;
  const approved=new Map(),candidates=new Map();
- for(const item of latestImages){if(item.state!=='succeeded')continue;const result=item.receipt.result;if(result.image&&result.sha256){const key=item.environment+':'+result.image;candidates.set(key,{...item,result});if(result.approved)approved.set(key,{...item,result});}}
+ for(const item of latestImages){if(item.state!=='succeeded')continue;const result=item.receipt.result;if(result.image&&result.sha256&&!retired.has(item.environment+':'+result.image)){const key=item.environment+':'+result.image;candidates.set(key,{...item,result});if(result.approved)approved.set(key,{...item,result});}}
  const taskOptions=[['',strings[language].defaultImage]];
  const imageOptions=[];
  for(const item of approved.values()){const reference=JSON.stringify({image:item.result.image,sha256:item.result.sha256});const label=`${strings[language][item.kind==='environment'?'environmentImage':'projectImage']} ${item.result.image.slice(0,8)}`;if(item.environment===$('delivery-environment').value)taskOptions.push([reference,label]);if(item.environment===$('image-environment').value)imageOptions.push([reference,label]);}
@@ -119,7 +122,7 @@ function renderImages(view){
  if(!changed($('image-list'),latestImages))return;$('image-list').replaceChildren();
  function button(parent,key,callback){const b=document.createElement('button');b.textContent=strings[language][key];b.onclick=()=>act(callback);parent.append(b);}
  for(const item of latestImages){const row=document.createElement('div'),label=document.createElement('p');label.textContent=`${strings[language][item.kind==='environment'?'environmentImage':'projectImage']} · ${item.id.slice(0,8)} · ${stateText(item.state)}`;row.append(label);
-  if(item.state==='succeeded'&&item.receipt.result.image&&item.receipt.result.sha256){const reference={image:item.receipt.result.image,sha256:item.receipt.result.sha256};const isApproved=approved.has(item.environment+':'+reference.image);button(row,isApproved?'branchImage':'promoteImage',()=>prepareImage(isApproved?'branch':'promote',{environment:item.environment,image:reference}));}
+  if(item.state==='succeeded'&&item.receipt.result.image&&item.receipt.result.sha256&&!retired.has(item.environment+':'+item.receipt.result.image)){const reference={image:item.receipt.result.image,sha256:item.receipt.result.sha256};const isApproved=approved.has(item.environment+':'+reference.image);button(row,isApproved?'branchImage':'promoteImage',()=>prepareImage(isApproved?'branch':'promote',{environment:item.environment,image:reference}));}
   if(['running','unknown'].includes(item.state)){for(const [key,control] of [['imageCancel','cancel'],['imageReconcile','reconcile']])button(row,key,async()=>{await request('/action',{op:'image-control',environment:item.environment,id:item.id,control});await refresh();});}
   $('image-list').append(row);
  }

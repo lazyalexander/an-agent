@@ -1,5 +1,6 @@
 //! Durable product intents reference existing host jobs; they are not execution receipts.
 mod journal;
+mod project;
 pub mod runtime;
 pub mod setup;
 use crate::execution::{Result, store};
@@ -91,7 +92,8 @@ pub(super) fn preview(service: &Path, req: &Value) -> Result<Value> {
         }
         None
     };
-    let plan = json!({"id":id,"environment":environment,"environment_digest":verified["id"],"input":input,
+    let project = project::context(service, req, &image)?;
+    let plan = json!({"project":project,"id":id,"environment":environment,"environment_digest":verified["id"],"input":input,
         "input_sha256":store::digest(&bytes),"instruction":instruction,"codex":codex,"codex_sha256":executable,
         "model":"gpt-6.1-sol","wall_seconds":600,"maximum_turns":3,"image":image,"cocoon_state":cocoon_state});
     Ok(
@@ -111,6 +113,7 @@ pub(super) fn create(service: &Path, req: &Value) -> Result<Value> {
         if req["approve"] != expected
             || req["environment"] != original["environment_digest"]
             || req["upload"] != upload
+            || req["resume_task"] != original["project"]["source_task"]
             || req["instruction"] != original["instruction"]
             || req["image"].get("image") != original["image"].get("image")
             || req["image"].get("sha256") != original["image"].get("sha256")

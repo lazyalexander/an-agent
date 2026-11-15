@@ -101,7 +101,9 @@ pub(super) fn selected(service: &Path, environment: &str, reference: &Value) -> 
     }
     Ok(selected)
 }
+mod maintenance;
 mod operations;
+pub(super) use maintenance::inventory;
 mod preview;
 mod tasks;
 pub(super) use operations::{control, list, status, submit};

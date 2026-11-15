@@ -105,7 +105,9 @@ pub(crate) fn image_query(
 ) -> Result<serde_json::Value> {
     if !matches!(
         command,
-        "image-init"
+        "image-maintenance-info"
+            | "image-inventory"
+            | "image-init"
             | "image-info"
             | "disk-info"
             | "image-status"

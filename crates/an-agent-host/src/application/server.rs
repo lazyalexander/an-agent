@@ -129,6 +129,14 @@ fn handle(
                 include_bytes!("app.js").to_vec(),
             );
         }
+        "GET /resources.js HTTP/1.1" => {
+            return respond(
+                stream,
+                200,
+                "text/javascript; charset=utf-8",
+                include_bytes!("resources.js").to_vec(),
+            );
+        }
         "GET /strings.json HTTP/1.1" => {
             return respond(
                 stream,
@@ -205,6 +213,7 @@ fn selected(root: &Path, value: &Value, key: &str) -> Result<PathBuf> {
 }
 fn act(root: &Path, service: &Path, value: &Value) -> Result<Value> {
     match value["op"].as_str() {
+        Some("image-inventory") => super::images::inventory(service, value),
         Some("image-preview") => super::images::preview(service, value),
         Some("image-submit") => super::images::submit(service, value),
         Some("image-control") => super::images::control(service, value),

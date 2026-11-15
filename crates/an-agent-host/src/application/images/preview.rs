@@ -12,6 +12,10 @@ pub(in crate::application) fn preview(service: &Path, value: &Value) -> Result<V
     let state = state_root(service, environment)?;
     let mut kind = "project";
     let action = match value["action"].as_str() {
+        Some("retire" | "reclaim_vm") => {
+            kind = "resource";
+            maintenance::action(service, value)?
+        }
         Some("save_environment") => {
             kind = "environment";
             let mut action = json!({"operation":"import_candidate","environment":environment});

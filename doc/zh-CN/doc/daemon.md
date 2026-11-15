@@ -403,3 +403,12 @@ prepare-document-capacity 调整为两槽，运行任务期间禁止调整。
 48 个真实宿主及 40 个协议场景。
 
 控制服务就绪必须通过认证的只读探测确认，不能仅凭残留套接字文件判断。
+
+手动维护另选 `image_maintenance_api` 数据组件：
+`{"schema":"cocoon-image-maintenance-v1","manual_reclaim":true,"automatic_gc":false}`。
+`image-inventory` 核对固定后端并展示容量、引用和阻塞原因；旧包不支持清理。
+`image-preview`/`image-submit` 复用原操作协议处理 `retire` 和 `reclaim_vm`，执行前
+重新核对引用与原执行终止证据。持久删除意图之后，取消不能恢复字节；中断只协调
+原操作，保留墓碑和回执。未知资源及已验收产物保持保管，共享块占用不保证等量释放。
+显式 `resume_task` 将项目镜像来源 VM 绑定至原成功任务和已验收 Markdown/Excel 版本，
+通过新授权披露历史产物。新 PDF 决定当前交付事实，不继承旧执行权限。
