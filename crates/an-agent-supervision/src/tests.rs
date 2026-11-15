@@ -1,5 +1,10 @@
 use super::*;
-use an_agent_semantic::{Capability, Polarity, Resource};
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct TestAttempt {
+    facts: Vec<(&'static str, &'static str)>,
+}
+type Supervision = super::Supervision<TestAttempt>;
+type ReviewRequest = super::ReviewRequest<TestAttempt>;
 
 fn instance(principal: u128, incarnation: u128) -> InstanceRef {
     InstanceRef {
@@ -26,12 +31,9 @@ fn request(state: &Supervision, child: Uuid, mount: Option<Uuid>) -> ReviewReque
         supervisor: scope.supervisor.map(|s| s.principal),
         subject: "tool:write".into(),
         event_id: None,
-        attempt: Attempt::new(
-            "attempt-1",
-            "tool:write",
-            Capability::exact(Polarity::Effect, "write", Resource::new("object", ["1"])),
-            vec![FactRef::new("generation", "A")],
-        ),
+        attempt: TestAttempt {
+            facts: vec![("generation", "A")],
+        },
         cause: ReviewCause::HighRisk {
             reason: "ask".into(),
         },
@@ -80,7 +82,12 @@ fn closing_a_request_prevents_id_resurrection() {
         .unwrap();
     assert!(
         state
-            .check_call(&original.id, &call(), &original.attempt.facts, "card")
+            .check_call(
+                &original.id,
+                &call(),
+                |attempt| attempt.facts == original.attempt.facts,
+                "card"
+            )
             .unwrap()
     );
     assert!(state.close(&original.id).is_some());
@@ -143,9 +150,29 @@ fn generation_restoration_does_not_restore_a_closed_approval() {
     state
         .resolve(main, &original.id, &approval(), "card")
         .unwrap();
-    assert!(state.invalidate_fact("generation", "A").is_empty());
-    assert_eq!(state.invalidate_fact("generation", "B"), vec![original]);
-    assert!(state.invalidate_fact("generation", "A").is_empty());
+    assert!(
+        state
+            .invalidate_inputs(|attempt| attempt
+                .facts
+                .iter()
+                .any(|(k, v)| *k == "generation" && *v != "A"))
+            .is_empty()
+    );
+    assert_eq!(
+        state.invalidate_inputs(|attempt| attempt
+            .facts
+            .iter()
+            .any(|(k, v)| *k == "generation" && *v != "B")),
+        vec![original]
+    );
+    assert!(
+        state
+            .invalidate_inputs(|attempt| attempt
+                .facts
+                .iter()
+                .any(|(k, v)| *k == "generation" && *v != "A"))
+            .is_empty()
+    );
     assert!(state.pending(main).is_empty());
 }
 
@@ -184,14 +211,24 @@ fn exact_inputs_and_approver_card_are_checked_and_consult_revokes() {
         ..call()
     };
     assert!(matches!(
-        state.check_call(&original.id, &changed, &original.attempt.facts, "card"),
+        state.check_call(
+            &original.id,
+            &changed,
+            |attempt| attempt.facts == original.attempt.facts,
+            "card"
+        ),
         Err(ReviewError::Stale(_))
     ));
     state
         .resolve(main, &original.id, &approval(), "card")
         .unwrap();
     assert!(matches!(
-        state.check_call(&original.id, &call(), &original.attempt.facts, "new-card"),
+        state.check_call(
+            &original.id,
+            &call(),
+            |attempt| attempt.facts == original.attempt.facts,
+            "new-card"
+        ),
         Err(ReviewError::Stale(_))
     ));
     assert!(matches!(
@@ -210,7 +247,12 @@ fn exact_inputs_and_approver_card_are_checked_and_consult_revokes() {
         .unwrap();
     assert!(
         !state
-            .check_call(&original.id, &call(), &original.attempt.facts, "card")
+            .check_call(
+                &original.id,
+                &call(),
+                |attempt| attempt.facts == original.attempt.facts,
+                "card"
+            )
             .unwrap()
     );
 }

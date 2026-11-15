@@ -328,7 +328,7 @@ artifacts.
 **Status:** this section specifies a future contract, not a shipped wire schema.
 Current TaskSession binds instructions, completed turns, execution identities and command receipts;
 it does not persist a unified context revision. Existing disclosures, acceptance and operation records
-remain authoritative. No runtime/API change or an-agent-semantic removal is implied here.
+remain authoritative. The independent semantic crate has been absorbed into core authorization; this section still describes a future TaskSession runtime contract.
 
 ### Content and authority
 

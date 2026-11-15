@@ -12,7 +12,6 @@ workspace = true
 testkit = []
 
 [dependencies]
-an-agent-semantic = { path = "../an-agent-semantic" }
 an-agent-supervision = { path = "../an-agent-supervision" }
 async-trait.workspace = true
 chrono.workspace = true

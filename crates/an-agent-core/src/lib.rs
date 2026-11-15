@@ -17,3 +17,5 @@ pub mod workspace;
 
 #[cfg(any(test, feature = "testkit"))]
 pub mod testkit;
+
+pub mod authorization;

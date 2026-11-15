@@ -3,7 +3,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::{Attempt, Capability, Claim, DenyReason, Disposition, FactRef, decide};
+use crate::authorization::{Attempt, Capability, Claim, DenyReason, Disposition, FactRef, decide};
 
 /// Which claim roles a boundary requires and which operations it checks.
 /// `checked` describes admission coverage only, not all effects of a body.

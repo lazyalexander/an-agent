@@ -1,8 +1,8 @@
 //! Delivery currentness and host landing evidence.
 use super::{AgentControl, ControlError, DeliveryOutcome, SpoolDeclaration, SpoolReply};
 use crate::agent::Agent;
-use an_agent_semantic::FactRef;
-use an_agent_supervision::Supervision;
+use crate::authorization::FactRef;
+type Supervision = an_agent_supervision::Supervision<crate::authorization::Attempt>;
 use serde_json::json;
 use uuid::Uuid;
 

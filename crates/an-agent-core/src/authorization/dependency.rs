@@ -3,7 +3,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::FactRef;
+use crate::authorization::FactRef;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]

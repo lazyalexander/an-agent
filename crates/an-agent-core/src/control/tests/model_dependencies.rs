@@ -3,7 +3,7 @@
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use an_agent_semantic::{
+use crate::authorization::{
     Dependency, DependencyAssessment, DependencyObservation, Outcome, Receipt, Validity,
     assess_dependencies,
 };

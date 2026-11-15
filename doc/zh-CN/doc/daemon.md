@@ -417,7 +417,7 @@ prepare-document-capacity 调整为两槽，运行任务期间禁止调整。
 
 **状态：** 本节定义待实现契约，不是已发布的线上字段格式。当前 TaskSession 已绑定指令、
 完成轮次、execution 和命令回执，但尚未持久化统一上下文版本。现有披露、验收及操作记录
-仍为权威来源；本节不改变运行时/API，也不移除 an-agent-semantic。
+仍为权威来源；独立 semantic crate 已融入 core 授权模块；本节的 TaskSession 运行时契约仍待实现。
 
 ### 内容与权威来源
 

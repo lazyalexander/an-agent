@@ -1,5 +1,5 @@
 use super::*;
-use crate::{Polarity, Resource};
+use crate::authorization::{Polarity, Resource};
 
 fn fixture() -> (Attempt, BoundaryProfile, Vec<ContractClaim>) {
     let capability =

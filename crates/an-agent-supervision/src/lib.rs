@@ -4,7 +4,6 @@
 
 use std::collections::{HashMap, HashSet};
 
-use an_agent_semantic::{Attempt, FactRef};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use uuid::Uuid;
@@ -46,13 +45,13 @@ pub enum ReviewCause {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ReviewRequest {
+pub struct ReviewRequest<A> {
     pub id: String,
     pub child: Uuid,
     pub supervisor: Option<Uuid>,
     pub subject: String,
     pub event_id: Option<String>,
-    pub attempt: Attempt,
+    pub attempt: A,
     pub cause: ReviewCause,
     pub tape_id: String,
     /// Legacy evidence remains readable but cannot enter the active ledger.
@@ -78,13 +77,13 @@ pub struct CallBinding {
 }
 
 #[derive(Debug, Clone)]
-pub struct PendingReview {
-    pub request: ReviewRequest,
+pub struct PendingReview<A> {
+    pub request: ReviewRequest<A>,
     pub call: Option<CallBinding>,
     approver_card: Option<String>,
 }
 
-impl PendingReview {
+impl<A> PendingReview<A> {
     pub fn approved(&self) -> bool {
         self.approver_card.is_some()
     }
@@ -108,16 +107,27 @@ pub enum ReviewError {
 
 /// Trusted process-local ledger, deliberately not serializable. Historical
 /// records cannot restore authority by deserializing a request or approval.
-#[derive(Default)]
-pub struct Supervision {
+pub struct Supervision<A> {
     instances: HashMap<Uuid, (InstanceRef, u64)>,
     mounts: HashSet<Uuid>,
     supervisors: HashMap<InstanceRef, InstanceRef>,
-    pending: HashMap<String, PendingReview>,
+    pending: HashMap<String, PendingReview<A>>,
     seen: HashSet<String>,
 }
 
-impl Supervision {
+impl<A> Default for Supervision<A> {
+    fn default() -> Self {
+        Self {
+            instances: HashMap::new(),
+            mounts: HashSet::new(),
+            supervisors: HashMap::new(),
+            pending: HashMap::new(),
+            seen: HashSet::new(),
+        }
+    }
+}
+
+impl<A: Clone> Supervision<A> {
     pub fn open(&mut self, instance: InstanceRef) -> Result<(), ReviewError> {
         if self.instances.contains_key(&instance.principal) {
             return Err(ReviewError::Binding("principal already active".into()));
@@ -141,7 +151,7 @@ impl Supervision {
         self.mounts.contains(&id)
     }
 
-    pub fn unmount(&mut self, id: Uuid) -> Vec<ReviewRequest> {
+    pub fn unmount(&mut self, id: Uuid) -> Vec<ReviewRequest<A>> {
         self.mounts.remove(&id);
         self.remove_where(|p| {
             p.request
@@ -210,7 +220,7 @@ impl Supervision {
         scope: &ReviewScope,
         subject: &str,
         call: bool,
-    ) -> Option<&PendingReview> {
+    ) -> Option<&PendingReview<A>> {
         self.pending.values().find(|p| {
             p.request.scope.as_ref() == Some(scope)
                 && p.request.subject == subject
@@ -218,7 +228,7 @@ impl Supervision {
         })
     }
 
-    pub fn pending(&self, supervisor: Uuid) -> Vec<ReviewRequest> {
+    pub fn pending(&self, supervisor: Uuid) -> Vec<ReviewRequest<A>> {
         let mut requests: Vec<_> = self
             .pending
             .values()
@@ -229,7 +239,7 @@ impl Supervision {
         requests
     }
 
-    pub fn get(&self, id: &str) -> Result<&PendingReview, ReviewError> {
+    pub fn get(&self, id: &str) -> Result<&PendingReview<A>, ReviewError> {
         self.pending
             .get(id)
             .ok_or_else(|| ReviewError::Missing(id.into()))
@@ -237,7 +247,7 @@ impl Supervision {
 
     pub fn insert(
         &mut self,
-        request: ReviewRequest,
+        request: ReviewRequest<A>,
         call: Option<CallBinding>,
     ) -> Result<(), ReviewError> {
         let scope = request
@@ -333,7 +343,7 @@ impl Supervision {
         &self,
         id: &str,
         call: &CallBinding,
-        facts: &[FactRef],
+        matches_inputs: impl FnOnce(&A) -> bool,
         approver_card: &str,
     ) -> Result<bool, ReviewError> {
         let pending = self.get(id)?;
@@ -344,7 +354,7 @@ impl Supervision {
             .ok_or_else(|| ReviewError::Stale(id.into()))?;
         if !self.current(scope)
             || pending.call.as_ref() != Some(call)
-            || pending.request.attempt.facts != facts
+            || !matches_inputs(&pending.request.attempt)
         {
             return Err(ReviewError::Stale(id.into()));
         }
@@ -356,13 +366,13 @@ impl Supervision {
         Ok(pending.approved())
     }
 
-    pub fn close(&mut self, id: &str) -> Option<ReviewRequest> {
+    pub fn close(&mut self, id: &str) -> Option<ReviewRequest<A>> {
         self.pending.remove(id).map(|p| p.request)
     }
 
     /// Advance the authority epoch and remove all reviews involving it.
     /// On epoch exhaustion the instance retires rather than wrapping.
-    pub fn revoke(&mut self, principal: Uuid) -> Result<Vec<ReviewRequest>, ReviewError> {
+    pub fn revoke(&mut self, principal: Uuid) -> Result<Vec<ReviewRequest<A>>, ReviewError> {
         let (instance, epoch) = *self
             .instances
             .get(&principal)
@@ -376,7 +386,7 @@ impl Supervision {
         }))
     }
 
-    pub fn retire(&mut self, principal: Uuid) -> Vec<ReviewRequest> {
+    pub fn retire(&mut self, principal: Uuid) -> Vec<ReviewRequest<A>> {
         if let Some((instance, _)) = self.instances.remove(&principal) {
             self.supervisors
                 .retain(|child, parent| *child != instance && *parent != instance);
@@ -386,17 +396,15 @@ impl Supervision {
         })
     }
 
-    pub fn invalidate_fact(&mut self, kind: &str, revision: &str) -> Vec<ReviewRequest> {
-        self.remove_where(|p| {
-            p.request
-                .attempt
-                .facts
-                .iter()
-                .any(|f| f.kind == kind && f.revision != revision)
-        })
+    /// The trusted caller evaluates current input versions; this ledger owns invalidation.
+    pub fn invalidate_inputs(&mut self, stale: impl Fn(&A) -> bool) -> Vec<ReviewRequest<A>> {
+        self.remove_where(|p| stale(&p.request.attempt))
     }
 
-    fn remove_where(&mut self, predicate: impl Fn(&PendingReview) -> bool) -> Vec<ReviewRequest> {
+    fn remove_where(
+        &mut self,
+        predicate: impl Fn(&PendingReview<A>) -> bool,
+    ) -> Vec<ReviewRequest<A>> {
         let mut ids: Vec<_> = self
             .pending
             .iter()

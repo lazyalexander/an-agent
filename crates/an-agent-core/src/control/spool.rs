@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use uuid::Uuid;
 
-use an_agent_semantic::{
+use crate::authorization::{
     Attempt, BoundaryProfile, Capability, Claim, ContractClaim, FactRef, Polarity,
     Resource as SemanticResource,
 };
