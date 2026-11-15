@@ -2,7 +2,7 @@
 //! every model call is admitted against the card and taped as its own
 //! anchored action + observation pair — never hidden inside one note.
 
-use an_agent_semantic::{Attempt, Decision, Outcome, Receipt};
+use crate::authorization::{Attempt, Decision, Outcome, Receipt};
 use std::sync::Mutex;
 
 use super::*;

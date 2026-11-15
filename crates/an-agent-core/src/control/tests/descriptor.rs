@@ -2,7 +2,7 @@
 
 use super::supervision::{Cautious, setup};
 use super::*;
-use an_agent_semantic::{Attempt, FactRef};
+use crate::authorization::{Attempt, FactRef};
 
 fn descriptor() -> SpoolDescriptor {
     SpoolDescriptor {

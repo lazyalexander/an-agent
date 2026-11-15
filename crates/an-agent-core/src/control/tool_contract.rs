@@ -1,9 +1,8 @@
-//! Shadow projections of existing tool and review ceilings. These records
+//! Evidence of existing tool and review ceilings. These records
 //! describe trusted boundary decisions, not OS isolation or new authority.
 
-use an_agent_semantic::{
-    AssessmentDisposition, Attempt, BoundaryProfile, Capability, Claim, ContractClaim, FactRef,
-    Polarity, Resource, assess_contract,
+use crate::authorization::{
+    Attempt, BoundaryProfile, Capability, Claim, ContractClaim, FactRef, Polarity, Resource,
 };
 use serde_json::json;
 
@@ -213,18 +212,18 @@ impl AgentControl {
         gate: &str,
     ) -> Result<(), ControlError> {
         let profile = boundary.profile();
-        let assessment = assess_contract(attempt, &profile, contracts);
-        let comparison = match assessment.disposition {
-            AssessmentDisposition::Unknown => "incomplete",
-            AssessmentDisposition::Allow if allowed => "agree",
-            AssessmentDisposition::Deny if !allowed => "agree",
-            _ => "different",
-        };
-        self.append_audit_event(agent, Kind::Observation, "tool_contract", json!({
-            "attempt": attempt, "gate": gate,
-            "legacy": if allowed { "allow" } else { "deny" },
-            "contract": {"mode": "shadow", "profile": profile, "claims": contracts, "assessment": assessment, "comparison": comparison},
-        }).to_string(), attempt.refs.clone())?;
+        self.append_audit_event(
+            agent,
+            Kind::Observation,
+            "tool_contract",
+            json!({
+                "attempt": attempt, "gate": gate,
+                "legacy": if allowed { "allow" } else { "deny" },
+                "contract": {"mode": "boundary-evidence", "profile": profile, "claims": contracts},
+            })
+            .to_string(),
+            attempt.refs.clone(),
+        )?;
         Ok(())
     }
 }

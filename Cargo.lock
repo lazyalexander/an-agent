@@ -26,7 +26,6 @@ dependencies = [
 name = "an-agent-core"
 version = "0.1.0"
 dependencies = [
- "an-agent-semantic",
  "an-agent-supervision",
  "async-trait",
  "chrono",
@@ -66,18 +65,9 @@ dependencies = [
 ]
 
 [[package]]
-name = "an-agent-semantic"
-version = "0.1.0"
-dependencies = [
- "serde",
- "serde_json",
-]
-
-[[package]]
 name = "an-agent-supervision"
 version = "0.1.0"
 dependencies = [
- "an-agent-semantic",
  "serde",
  "thiserror",
  "uuid",

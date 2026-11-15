@@ -233,7 +233,12 @@ impl AgentControl {
             .lock()
             .unwrap_or_else(|e| e.into_inner());
         let record = self.inner.workspace.put_register(&bytes)?;
-        let requests = state.invalidate_fact("workspace.registration.generation", &record.id);
+        let requests = state.invalidate_inputs(|attempt| {
+            attempt
+                .facts
+                .iter()
+                .any(|f| f.kind == "workspace.registration.generation" && f.revision != record.id)
+        });
         self.record_review_closures(requests, "registration_changed")?;
         Ok(record)
     }
@@ -267,10 +272,13 @@ impl AgentControl {
             .lock()
             .unwrap_or_else(|e| e.into_inner());
         let record = self.inner.workspace.put_config(name, bytes)?;
-        let requests = state.invalidate_fact(
-            "workspace.config.generation",
-            &self.workspace_cite()?.config_id.unwrap_or_default(),
-        );
+        let revision = self.workspace_cite()?.config_id.unwrap_or_default();
+        let requests = state.invalidate_inputs(|attempt| {
+            attempt
+                .facts
+                .iter()
+                .any(|f| f.kind == "workspace.config.generation" && f.revision != revision)
+        });
         self.record_review_closures(requests, "config_changed")?;
         Ok(record)
     }
@@ -286,10 +294,13 @@ impl AgentControl {
             .lock()
             .unwrap_or_else(|e| e.into_inner());
         let record = self.inner.workspace.put_env(name, markdown)?;
-        let requests = state.invalidate_fact(
-            "workspace.env.generation",
-            &self.workspace_cite()?.env_id.unwrap_or_default(),
-        );
+        let revision = self.workspace_cite()?.env_id.unwrap_or_default();
+        let requests = state.invalidate_inputs(|attempt| {
+            attempt
+                .facts
+                .iter()
+                .any(|f| f.kind == "workspace.env.generation" && f.revision != revision)
+        });
         self.record_review_closures(requests, "env_changed")?;
         Ok(record)
     }

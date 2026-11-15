@@ -102,7 +102,7 @@ distinct. A restart selects explicit inputs/state and creates a new attempt.
 Runtime crates do not depend on Loom or a domain workflow example. Domain
 sequencing and checks stay in the spool. The host does not need to interpret
 business state to retain and version it. Backend-specific policy/state is
-translated by host adapters; it does not enter the pure semantic crate.
+translated by host adapters; it does not enter the pure core authorization module.
 
 The spool requests capabilities; the host grants them. Package instructions,
 source-analysis reports, generated YAML and model findings cannot create grants.

@@ -24,7 +24,7 @@
 
 use std::sync::Arc;
 
-use an_agent_semantic::{
+use crate::authorization::{
     Attempt, BoundaryProfile, Capability, Claim, ContractClaim, Dependency, DependencyUse,
     Disposition, FactRef, Freshness, Outcome, Polarity, Receipt, Resource as SemanticResource,
     decide,

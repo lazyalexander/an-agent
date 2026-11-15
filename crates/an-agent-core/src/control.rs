@@ -183,7 +183,7 @@ struct Inner {
     model_client: Mutex<Option<Arc<dyn ModelClient>>>,
     /// The embedding software's label, stated in the model envelope.
     host_label: Mutex<String>,
-    supervision: Mutex<an_agent_supervision::Supervision>,
+    supervision: Mutex<an_agent_supervision::Supervision<crate::authorization::Attempt>>,
 }
 
 /// The handle a host software uses to drive agents in this process.

@@ -2,8 +2,8 @@
 
 English · [简体中文](../../doc/zh-CN/crates/an-agent-supervision/README.md)
 
-Transport-neutral, process-local review state. Depends on `an-agent-semantic`,
-not on core, tapes, tools, spool loaders, or host interaction loops.
+Transport-neutral, process-local review state. Accepts opaque operation payloads and trusted caller predicates.
+It does not depend on core, tapes, tools, spool loaders, or host interaction loops.
 
 Tracks live instances, supervisor relationships, mount identities, authority
 epochs, pending reviews, and exact one-shot approval bindings. It performs no

@@ -2,7 +2,7 @@
 
 use super::supervision::{call, count_ctor, requested, setup};
 use super::*;
-use an_agent_semantic::{Assessment, Attempt, BoundaryProfile, ContractClaim, assess_contract};
+use crate::authorization::Attempt;
 
 fn records(control: &AgentControl, child: Uuid) -> Vec<Value> {
     control
@@ -15,19 +15,10 @@ fn records(control: &AgentControl, child: Uuid) -> Vec<Value> {
             assert!(event.act.is_none());
             let record: Value = serde_json::from_str(&event.content).unwrap();
             let attempt: Attempt = serde_json::from_value(record["attempt"].clone()).unwrap();
-            let profile: BoundaryProfile =
-                serde_json::from_value(record["contract"]["profile"].clone()).unwrap();
-            let contracts: Vec<ContractClaim> =
-                serde_json::from_value(record["contract"]["claims"].clone()).unwrap();
-            let assessment: Assessment =
-                serde_json::from_value(record["contract"]["assessment"].clone()).unwrap();
-            assert_eq!(assess_contract(&attempt, &profile, &contracts), assessment);
-            assert_eq!(record["contract"]["comparison"], "agree");
-            assert_eq!(
-                record["legacy"],
-                record["contract"]["assessment"]["disposition"]
-            );
-            assert!(!assessment.limitations.is_empty());
+            assert!(!attempt.facts.is_empty());
+            assert_eq!(record["contract"]["mode"], "boundary-evidence");
+            assert!(record["contract"].get("assessment").is_none());
+            assert!(record["contract"].get("comparison").is_none());
             record
         })
         .collect()

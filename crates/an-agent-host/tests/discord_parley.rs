@@ -108,7 +108,7 @@ config = { persona = "Bob the lighthouse keeper" }
         .unwrap();
 
     // Publish both bodies from the shelf.
-    let shelf = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../spools");
+    let shelf = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/spools");
     let registry = Registry::open(tmp.path().join("registry")).unwrap();
     let npc = library::publish(&registry, &shelf.join("chat_npc/chat_npc.yaml")).unwrap();
     let channel = library::publish(&registry, &shelf.join("discord/discord.yaml")).unwrap();

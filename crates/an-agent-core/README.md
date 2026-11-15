@@ -29,7 +29,7 @@ The kernel. Spool constructors live in `an-agent-host`. Embedders supply explici
 ## Conventions
 
 Delivery and model admission retain role-labelled contract projections, explicit
-boundary coverage, and shadow comparison diagnostics in their existing semantic
+boundary coverage, and authoritative decision evidence in their existing semantic
 audit records. The independent checker does not control execution; hard gates,
 review routing, and lifecycle enforcement remain unchanged. Missing or uncovered
 inputs are visible as unknown, not represented as proof of safety.

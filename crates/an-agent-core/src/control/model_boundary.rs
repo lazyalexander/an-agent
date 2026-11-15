@@ -2,7 +2,7 @@
 //! lock serializes snapshots/publication with supported workspace and lifecycle
 //! changes. It is never held across the external call and is not an OS fence.
 
-use an_agent_semantic::{
+use crate::authorization::{
     Attempt, Capability, Dependency, DependencyObservation, DependencyState, DependencyUse,
     FactRef, Freshness, Polarity, Resource, Validity, assess_dependencies,
 };

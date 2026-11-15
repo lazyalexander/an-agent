@@ -1,7 +1,7 @@
 //! Trusted boundary adapter for the independent supervision state machine.
 //! Core owns authentication, resource ceilings, evidence, mail and scheduling.
 
-use an_agent_semantic::{Attempt, Capability, FactRef, Polarity, Resource};
+use crate::authorization::{Attempt, Capability, FactRef, Polarity, Resource};
 use serde_json::json;
 use uuid::Uuid;
 
@@ -9,10 +9,10 @@ use super::{AgentControl, ControlError};
 use crate::act::{Charter, FileFacet, Permit, ToolCall, tag_of};
 use crate::agent::Agent;
 use crate::memstream::Kind;
-use an_agent_supervision::{CallBinding, ReviewError, Supervision};
-pub use an_agent_supervision::{
-    InstanceRef, ReviewCause, ReviewRequest, ReviewResolution, ReviewScope,
-};
+use an_agent_supervision::{CallBinding, ReviewError};
+type Supervision = an_agent_supervision::Supervision<Attempt>;
+pub type ReviewRequest = an_agent_supervision::ReviewRequest<Attempt>;
+pub use an_agent_supervision::{InstanceRef, ReviewCause, ReviewResolution, ReviewScope};
 
 impl From<ReviewError> for ControlError {
     fn from(error: ReviewError) -> Self {
@@ -369,7 +369,12 @@ impl AgentControl {
                     .supervisor
                     .ok_or_else(|| ControlError::ReviewAuthority(id.clone()))?,
             )?;
-            match state.check_call(id, &binding, &facts, approver.card_hash()) {
+            match state.check_call(
+                id,
+                &binding,
+                |attempt| attempt.facts == facts,
+                approver.card_hash(),
+            ) {
                 Err(ReviewError::Stale(_)) => {
                     self.close_review(&mut state, id, "stale")?;
                     return Err(ControlError::ReviewStale(id.clone()));

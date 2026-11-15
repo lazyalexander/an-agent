@@ -1,6 +1,6 @@
-# an-agent-semantic
+# Core authorization
 
-English · [简体中文](../../doc/zh-CN/crates/an-agent-semantic/README.md)
+English · [简体中文](../../../../doc/zh-CN/crates/an-agent-core/src/authorization/README.md)
 
 The vertical semantic plane: transport-neutral claims, concrete attempts,
 version-bound decisions, grants, and execution receipts. It contains no tools, tapes, workspaces,
@@ -15,7 +15,7 @@ or single-use consumption. Receipts record succeeded, failed, or unknown
 execution with the grant and evidence; unknown does not permit a safe retry.
 
 **Boundary rule:** business crates translate domain actions into semantic
-attempts. This crate never imports their vocabulary or schedules, cancels,
+attempts. This module never imports their vocabulary or schedules, cancels,
 unmounts, or contacts an agent. Its decision is an assessment, not an interrupt
 command. Trusted execution boundaries own the handles and enforce hard ceilings;
 the control layer stops blocked operations and sends review requests to a
@@ -27,7 +27,7 @@ unknown with findings and explicit coverage limits, never a grant. Missing roles
 duplicate roles, absent/unbound evidence, and uncovered operations cannot produce
 allow. Known violations remain deny even when other evidence is incomplete.
 Profiles and claim roles come from trusted adapters, not self-asserted YAML.
-The same pure function supports offline preflight and runtime comparison without
+The same pure function supports offline preflight without
 a tape or host. It checks declarations, not arbitrary program behavior.
 
 **Dependency checker:** `assess_dependencies` distinguishes authorization,
@@ -44,21 +44,20 @@ original scope remains live. It does not cancel an external call or undo it.
 completion decisions. Model attempts bind the card, mounted declaration,
 delivery registration, workspace ingredients, and retained application
 request. A denied delivery or model call returns a review request without
-unmounting the body. Terminal model observations carry receipts. The new
-contract assessment is recorded alongside the existing decision in shadow mode;
-agreement, difference, and incomplete inputs are explicit. Existing admission
-still decides execution. Card-configured endpoints are not independent egress
+unmounting the body. Terminal model observations carry receipts. Admission uses the existing exact-bound decision and grant checks. Boundary evidence
+retains profiles and claims; duplicate shadow assessments and comparisons are removed. Card-configured endpoints are not independent egress
 grants, and a delivery profile does not cover a native body's hidden IO.
 Language-level static analysis,
 external provenance, idempotency, replay execution, and OS sandbox enforcement
 remain later slices.
 
-**Dependencies:** `serde` only. Product crates may depend on this crate; this
-crate never depends on them. Policy languages, storage, transport, interaction,
+**Placement:** this pure module lives in core; it is no longer a standalone crate. Policy languages, storage, transport, interaction,
 and observation exporters remain replaceable adapters.
 
 **Execution terminology:** a silk is now an internal callable step of a spool.
 The spool attempt owns execution isolation and lifecycle; semantic assessment
 does not allocate a backend per silk. Historical Silk communication records
 retain their original schema and meaning. Vendor-specific policy and OpenShell
-state are translated at the host boundary, never imported into this crate.
+state are translated at the host boundary, never imported into this module.
+
+The standalone semantic crate is removed. This module retains the existing pure checks; duplicate shadow diagnostics are removed. Supervision receives opaque operation payloads and caller-supplied currentness checks.

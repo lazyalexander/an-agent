@@ -2,9 +2,8 @@
 
 use super::supervision::setup;
 use super::*;
-use an_agent_semantic::{
-    Assessment, AssessmentDisposition, Attempt, BoundaryProfile, Capability, Claim, ContractClaim,
-    FactRef, Polarity, Resource, assess_contract,
+use crate::authorization::{
+    Attempt, BoundaryProfile, Capability, Claim, ContractClaim, FactRef, Polarity, Resource,
 };
 
 fn check_records(control: &AgentControl, child: Uuid) -> Vec<Value> {
@@ -16,21 +15,14 @@ fn check_records(control: &AgentControl, child: Uuid) -> Vec<Value> {
         .map(|event| serde_json::from_str(&event.content).unwrap())
         .collect();
     for record in &records {
-        assert_eq!(record["contract"]["mode"], "shadow");
-        assert_eq!(record["contract"]["comparison"], "agree");
+        assert_eq!(record["contract"]["mode"], "boundary-evidence");
+        assert!(record["contract"].get("assessment").is_none());
+        assert!(record["contract"].get("comparison").is_none());
         let attempt: Attempt = serde_json::from_value(record["attempt"].clone()).unwrap();
-        let profile: BoundaryProfile =
-            serde_json::from_value(record["contract"]["profile"].clone()).unwrap();
-        let claims: Vec<ContractClaim> =
-            serde_json::from_value(record["contract"]["claims"].clone()).unwrap();
-        let assessment: Assessment =
-            serde_json::from_value(record["contract"]["assessment"].clone()).unwrap();
-        assert_eq!(assess_contract(&attempt, &profile, &claims), assessment);
-        assert!(!assessment.limitations.is_empty());
-        assert!(record["contract"]["assessment"].get("grant").is_none());
+        let claims: Vec<Claim> = serde_json::from_value(record["claims"].clone()).unwrap();
         assert_eq!(
-            record["decision"]["disposition"],
-            record["contract"]["assessment"]["disposition"]
+            serde_json::to_value(crate::authorization::decide(&attempt, &claims)).unwrap(),
+            record["decision"]
         );
     }
     records
@@ -183,9 +175,7 @@ fn shadow_diagnostics_cannot_replace_an_existing_denial() {
     ));
     let record: Value =
         serde_json::from_str(&control.events(child).unwrap().last().unwrap().content).unwrap();
-    assert_eq!(record["contract"]["comparison"], "different");
-    let assessment: Assessment =
-        serde_json::from_value(record["contract"]["assessment"].clone()).unwrap();
-    assert_eq!(assessment.disposition, AssessmentDisposition::Allow);
+    assert_eq!(record["contract"]["mode"], "boundary-evidence");
+    assert!(record["contract"].get("assessment").is_none());
     assert_eq!(record["decision"]["disposition"], "deny");
 }
