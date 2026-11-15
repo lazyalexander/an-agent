@@ -121,7 +121,7 @@ function renderImages(view){
  $('rollback-prepare').disabled=!$('rollback-branch').value||!$('rollback-image').value;
  if(!changed($('image-list'),latestImages))return;$('image-list').replaceChildren();
  function button(parent,key,callback){const b=document.createElement('button');b.textContent=strings[language][key];b.onclick=()=>act(callback);parent.append(b);}
- for(const item of latestImages){const row=document.createElement('div'),label=document.createElement('p');label.textContent=`${strings[language][item.kind==='environment'?'environmentImage':'projectImage']} · ${item.id.slice(0,8)} · ${stateText(item.state)}`;row.append(label);
+ for(const item of latestImages){const row=document.createElement('div'),label=document.createElement('p');label.textContent=`${strings[language][item.kind==='resource'?'resourceOperation':item.kind==='environment'?'environmentImage':'projectImage']} · ${item.id.slice(0,8)} · ${stateText(item.state)}`;row.append(label);
   if(item.state==='succeeded'&&item.receipt.result.image&&item.receipt.result.sha256&&!retired.has(item.environment+':'+item.receipt.result.image)){const reference={image:item.receipt.result.image,sha256:item.receipt.result.sha256};const isApproved=approved.has(item.environment+':'+reference.image);button(row,isApproved?'branchImage':'promoteImage',()=>prepareImage(isApproved?'branch':'promote',{environment:item.environment,image:reference}));}
   if(['running','unknown'].includes(item.state)){for(const [key,control] of [['imageCancel','cancel'],['imageReconcile','reconcile']])button(row,key,async()=>{await request('/action',{op:'image-control',environment:item.environment,id:item.id,control});await refresh();});}
   $('image-list').append(row);
@@ -131,7 +131,7 @@ async function prepareImage(action,source={}){
  const requestValue={op:'image-preview',id:crypto.randomUUID(),environment:$('image-environment').value,action,...source};
  const preview=await request('/action',requestValue);imagePlan={...requestValue,op:'image-submit',approve:preview.approval_sha256};
  const summary={kind:preview.plan.kind,environment:preview.plan.environment,...preview.plan.action};for(const key of ['kernel','initrd','disk'])delete summary[key];
- $('image-description').textContent=strings[language].imageReview+'\n'+JSON.stringify(summary,null,2);$('image-plan').hidden=false;
+ $('image-description').textContent=strings[language][['retire','reclaim_vm'].includes(action)?'cleanupReview':'imageReview']+'\n'+JSON.stringify(summary,null,2);$('image-plan').hidden=false;
 }
 $('save-environment').onclick=()=>act(()=>prepareImage('save_environment'));
 $('save-project').onclick=()=>act(async()=>{await prepareImage('save_project',{task:deliveryId,environment:deliveryEnvironment});});

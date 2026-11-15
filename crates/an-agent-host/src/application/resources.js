@@ -16,7 +16,12 @@ async function showResources() {
   const environment = $('image-environment').value;
   if (!environment) throw new Error(strings[language].noEnvironment);
   resourceInventory = await request('/action', {op: 'image-inventory', environment});
+  renderResources();
+}
+
+function renderResources() {
   const list = $('resource-list');
+  const environment = resourceInventory.environment;
   list.replaceChildren();
   if (!resourceInventory.supported) {
     list.textContent = strings[language].maintenanceUnsupported;
@@ -47,3 +52,9 @@ function renderResource(list, resource, environment) {
 }
 
 $('resources').onclick = () => act(showResources);
+
+$('language').addEventListener('change', () => { if (resourceInventory) renderResources(); });
+$('image-environment').addEventListener('change', () => {
+  resourceInventory = null;
+  $('resource-list').replaceChildren();
+});

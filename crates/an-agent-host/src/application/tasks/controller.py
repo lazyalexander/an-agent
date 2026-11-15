@@ -249,6 +249,8 @@ def main():
         vm_bound=True;update(state='running',session=session,operations=operations)
         first=wait_turn(1);turn=1
         if not first['ok']:
+            if not first['questions']:
+                raise RuntimeError('The primary could not produce a valid proposal and requested no supported clarification; inspect the original tool receipts.')
             contract=recipe['clarification_source']
             extraction=read(service/'jobs'/session/'cocoon-jobs'/operations['extract']/'result.json')
             facts=json.loads(extraction['outputs'][contract['output']]['text'])

@@ -72,7 +72,9 @@
     "resource_unsafe_or_missing_directory": "目录无法核实，保留原数据",
     "resource_unexpected_or_shared_files": "存在未识别或共享文件",
     "resource_unsafe_or_missing_file": "文件无法核实，保留原数据",
-    "resource_unregistered_resources": "存在未注册资源，保留原数据并先核实"
+    "resource_unregistered_resources": "存在未注册资源，保留原数据并先核实",
+    "cleanupReview": "确认清理所列资源。已验收产物单独保留；删除开始后取消不能恢复字节，中断需核对原操作。",
+    "resourceOperation": "资源清理"
   },
   "en": {
     "intro": "Local tasks and delivery",
@@ -147,6 +149,8 @@
     "resource_unsafe_or_missing_directory": "Directory unverifiable; original data retained",
     "resource_unexpected_or_shared_files": "Unexpected or shared files",
     "resource_unsafe_or_missing_file": "File unverifiable; original data retained",
-    "resource_unregistered_resources": "Unregistered resources retained; reconcile first"
+    "resource_unregistered_resources": "Unregistered resources retained; reconcile first",
+    "cleanupReview": "Confirm cleanup of the listed resources. Accepted products stay retained. Cancellation cannot restore bytes after deletion starts; reconcile the original operation after interruption.",
+    "resourceOperation": "Resource cleanup"
   }
 }

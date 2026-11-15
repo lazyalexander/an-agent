@@ -412,3 +412,18 @@ managed attempt and positive no-start receipt. Deterministic Rust tests cancel
 after native admission and verify original settlement, while preset standalone
 cancellation keeps its existing non-admission behavior. Product recovery uses
 the original spool facade's verified prelaunch or workspace proof.
+
+For daily cold-project qualification, run `native_image_delivery.py --continuation`
+with explicit frozen `--host`, `--bundle` and private `--evidence`. Three pairs
+compare an environment start with a project start using a revised PDF; the prior
+accepted inputs are historical context, not the new source of facts. Each task
+retains one primary job and fresh VM/grant identities. Report sample counts,
+median/max wall time, original provider usage coverage and storage estimates;
+three pairs do not establish a latency percentile or a controlled cache result.
+
+After original tasks settle, [manual resource acceptance](../crates/an-agent-host/tests/cli/native_resource_management.py)
+reclaims explicitly selected task copies, retires the unreferenced project image
+and verifies original accepted artifact hashes. Query or reconcile interrupted
+cleanup by its original ID. Quarantined or unverified resources are ineligible.
+Cocoon's maintenance fixture suite separately measures actual durable-intent
+process-loss windows; fixture bytes make no VM execution or performance claim.
