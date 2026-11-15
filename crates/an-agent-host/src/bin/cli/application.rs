@@ -3,6 +3,7 @@ use super::{Path, Result, Value};
 use an_agent_host::application::environment;
 pub(super) fn dispatch(args: &[String]) -> Result<Value> {
     match args {
+        [op,root,id] if op=="task-image-settle"=>an_agent_host::application::tasks::setup::settle_image(Path::new(root),id),
         [op,root,id] if op=="task-release-setup"=>an_agent_host::application::tasks::setup::release_original(Path::new(root),id),
         [op,root,id] if op=="task-bind-setup"=>an_agent_host::application::tasks::setup::bind(Path::new(root),id),
         [op,root,id,pid] if op=="task-runtime-owner"=>an_agent_host::application::tasks::runtime::record(Path::new(root),id,pid.parse()?),

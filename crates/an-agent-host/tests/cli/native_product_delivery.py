@@ -10,6 +10,7 @@ import subprocess
 import time
 import urllib.request
 import urllib.error
+import uuid
 from document_benchmark import make_pdf
 from host_qualification import require_native_workspace
 
@@ -23,13 +24,16 @@ def main():
     parser=argparse.ArgumentParser(description=__doc__)
     for name in ('host','bundle','evidence'):parser.add_argument('--'+name,type=Path,required=True)
     parser.add_argument('--reuse-service',type=Path)
+    parser.add_argument('--image-reference',type=Path)
+    parser.add_argument('--prepare-image',action='store_true')
+    parser.add_argument('--cancel-when-image-branch',action='store_true')
     parser.add_argument('--clarification',action='store_true')
     parser.add_argument('--cancel',action='store_true')
     parser.add_argument('--cancel-preparing',action='store_true')
     parser.add_argument('--cancel-when-clarifying',action='store_true')
     parser.add_argument('--restart-page',action='store_true')
     parser.add_argument('--lose-controller',action='store_true')
-    parser.add_argument('--lose-controller-at',choices=('setup','validator'))
+    parser.add_argument('--lose-controller-at',choices=('setup','validator','image-branch'))
     parser.add_argument('--drop-execution-projection',action='store_true')
     parser.add_argument('--drop-clarification-receipt',action='store_true')
     args=parser.parse_args();require_native_workspace()
@@ -73,6 +77,29 @@ def main():
                 observation_reconnects+=1;time.sleep(.05)
     def approve(value):
         preview=call(value);return call(dict(value,approve=preview['approval_sha256']))
+    def image_status(task_root):
+        config=json.loads((task_root/'plan.json').read_text());environment=Path(config['environment'])
+        manifest=json.loads((environment/'runtime.json').read_text())
+        response=subprocess.run([str(environment/manifest['components']['cocoon']),'host',config['cocoon_state'],'image-status',str(task_root/'image-branch-query.json')],capture_output=True,text=True,timeout=10)
+        return json.loads(response.stdout) if response.returncode==0 else None
+    def image_ready(task_root):
+        if not (task_root/'image-branch-intent.json').exists() or (task_root/'image-branch-result.json').exists() or (task_root/'start-intent.json').exists():return False
+        result=image_status(task_root)
+        return result is not None and result['state']=='running'
+    def prepare_image(environment):
+        image=None
+        for action in ('save_environment','promote'):
+            identity=str(uuid.uuid4());request={'op':'image-preview','id':identity,'environment':environment,'action':action}
+            if image:request['image']=image
+            preview=call(request);call(dict(request,op='image-submit',approve=preview['approval_sha256']))
+            deadline=time.monotonic()+240
+            while True:
+                result=next(value for value in call(path='/view')['images'] if value['id']==identity)
+                if result['state']=='succeeded':break
+                assert result['state'] not in ('failed','cancelled') and time.monotonic()<deadline,result
+                time.sleep(.1)
+            result=result['receipt']['result'];image={'image':result['image'],'sha256':result['sha256']}
+        (root/'image-reference.json').write_text(json.dumps(image));return image
     try:
         url=connect(previous_url)
         if args.reuse_service:
@@ -85,9 +112,10 @@ def main():
             installed=call({'op':'environment-import','upload':upload,'approve':preview['approval_sha256']})
         source=root/'source.pdf';make_pdf(source,'document_delivery.table_ambiguous' if args.clarification else 'document_delivery.table_exact')
         upload=call(path='/upload',raw=source.read_bytes())['upload']
-        import uuid
         task=str(uuid.uuid4())
         request={'op':'delivery-preview','id':task,'environment':installed['id'],'upload':upload,'instruction':'Preserve all source facts and deliver Markdown and Excel.'}
+        if args.image_reference:request['image']=json.loads(args.image_reference.read_text())
+        if args.prepare_image:request['image']=prepare_image(installed['id'])
         preview=call(request);creation=dict(request,op='delivery-create',approve=preview['approval_sha256'])
         assert call(creation)['id']==task
         assert call(creation)['id']==task
@@ -103,7 +131,8 @@ def main():
             claims=service/'application/cocoon-vm-claims'
             setup_ready=claims.exists() and any(claim_belongs(path,task_root) for path in claims.glob('*.json')) and not (task_root/'intents/primary.json').exists()
             validator_ready=(task_root/'intents/intermediate-result.json').exists()
-            loss_ready=setup_ready if args.lose_controller_at=='setup' else validator_ready if args.lose_controller_at=='validator' else state['state']=='waiting-clarification'
+            branch_ready=image_ready(task_root) if args.lose_controller_at=='image-branch' or args.cancel_when_image_branch else False
+            loss_ready=branch_ready if args.lose_controller_at=='image-branch' else setup_ready if args.lose_controller_at=='setup' else validator_ready if args.lose_controller_at=='validator' else state['state']=='waiting-clarification'
             if args.lose_controller and loss_ready and not lost:
                 owner=json.loads((service/'application/tasks'/task/'owner.json').read_text())
                 os.kill(owner['pid'],signal.SIGKILL);lost=True;loss_started=time.monotonic()
@@ -120,6 +149,8 @@ def main():
             if lost:
                 state=call({'op':'delivery-reconcile','id':task})['state']
                 assert time.monotonic()-loss_started<=30,('Original recovery exceeded 30 seconds',state.get('reconciliation'))
+            if args.cancel and args.cancel_when_image_branch and branch_ready and not cancelled:
+                call({'op':'delivery-cancel','id':task});cancelled=True
             if args.cancel and args.cancel_preparing and state.get('vm') and not cancelled:
                 call({'op':'delivery-cancel','id':task});cancelled=True
             if args.cancel and not args.lose_controller and state.get('session') and not cancelled and (not args.cancel_when_clarifying or state['state']=='waiting-clarification'):
@@ -142,7 +173,7 @@ def main():
             recovered_seconds=time.monotonic()-loss_started
             assert recovered_seconds<=30,('Original-owner recovery exceeded 30 seconds',recovered_seconds)
             assert sorted(path.name for path in (service/'jobs').iterdir() if path.name not in existing_jobs)==original_jobs,'Recovery enqueued new work'
-            if args.lose_controller_at=='setup':assert not original_jobs,'Preparation fault admitted a primary'
+            if args.lose_controller_at in ('setup','image-branch'):assert not original_jobs,'Preparation fault admitted a primary'
             else:
                 jobs=[json.loads((service/'jobs'/identity/'request.json').read_text()) for identity in original_jobs]
                 assert sum(job['kind']=='harness' for job in jobs)==1,'Primary execution duplicated'
@@ -155,6 +186,10 @@ def main():
         products={}
         assert state['termination_confirmed']
         assert state['runtime_termination_confirmed']
+        if args.lose_controller_at=='image-branch' or args.cancel_when_image_branch:
+            assert image_status(task_root)['state']=='cancelled'
+            assert not (task_root/'start-intent.json').exists()
+            assert not state.get('session')
         if args.cancel:assert 'final' not in state.get('products',{})
         if not args.cancel:
             assert state['termination_confirmed']
@@ -180,7 +215,7 @@ def main():
         if not args.cancel:assert primary_count==1 and len(case_jobs)==3,'Delivery bypassed original validators'
         assert hashlib.sha256(host.read_bytes()).hexdigest()==host_digest,'Selected host binary changed during acceptance'
         (root/'report.json').write_text(json.dumps({'passed':True,'real_model':bool(state.get('session')) and any((service/'jobs'/state['session']).glob('turn-result-*.json')),'task':task,'primary_count':primary_count,'native_validator_count':len(case_jobs)-primary_count,'primary_admitted':bool(state.get('session')),'empty_service':not bool(args.reuse_service),'product_http':True,
-            'clarification':answered,'cancelled':cancelled,'page_restarted':restarted,'observation_reconnects':observation_reconnects,'controller_lost':lost,'loss_boundary':args.lose_controller_at or 'clarification','projection_dropped':args.drop_execution_projection,'recovery_seconds':recovered_seconds,'original_jobs':original_jobs,'clarification_receipt_retried':args.drop_clarification_receipt,'products':products,
+            'image_branch_cancelled':bool(args.cancel_when_image_branch or args.lose_controller_at=='image-branch'),'clarification':answered,'cancelled':cancelled,'page_restarted':restarted,'observation_reconnects':observation_reconnects,'controller_lost':lost,'loss_boundary':args.lose_controller_at or 'clarification','projection_dropped':args.drop_execution_projection,'recovery_seconds':recovered_seconds,'original_jobs':original_jobs,'clarification_receipt_retried':args.drop_clarification_receipt,'products':products,
             'host_sha256':hashlib.sha256(host.read_bytes()).hexdigest()},indent=2))
     finally:
         if task and base:

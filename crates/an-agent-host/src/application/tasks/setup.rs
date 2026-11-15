@@ -45,3 +45,7 @@ pub(super) fn versioned(root: &Path) -> Result<bool> {
     }
     Ok(true)
 }
+
+pub fn settle_image(service: &Path, id: &str) -> Result<Value> {
+    Ok(json!({"settled":crate::application::images::settle_task_branch(&directory(service,id)?)?}))
+}
