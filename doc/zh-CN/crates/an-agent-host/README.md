@@ -27,3 +27,9 @@ cargo install --path crates/an-agent-host --locked
 `execution/` 拥有准入、后端协调和结算；`native_spool/` 拥有发布绑定的外观。`workspace_job/`、`artifact_versions/` 和 `instance/` 保持临时数据、已接受的产品和显式状态区分开。`Host::pump` 保留其嵌入的事件语义；子进程不会在无故障的汇入点中运行。
 
 在[AGENTS.md](../../AGENTS.zh-CN.md)中运行仓库门禁。真实 CLI 接受入口点和测试用例所有权列在[tests/cli](tests/cli/README.md)中。
+
+包声明与不可变注册表校验归入宿主 `spool_loading/`。原 `an-agent-spool` crate 已移除；
+下游导入迁移为 `an_agent_host::spool_loading::{descriptor, spool, library}`。
+Rhai 构造器迁入 `an_agent_host::embedded`，仅在启用默认关闭的 `embedded-rhai` 特性时提供；
+根路径的 `Host`、`HostBodies`、`HostError`、`HostHooks` 同样受此特性控制。
+无调用方的 `ScopeTree` 已移除，生命周期仍由宿主管理。

@@ -48,6 +48,33 @@ embedding code; mounting a declaration does not place that code in isolation.
 The native facade qualifies bounded multi-silk CLI execution; arbitrary agent
 containment and a general multi-backend spool ABI remain unimplemented.
 
+## Package loading and execution ownership
+
+The host's `spool_loading` module owns declaration parsing, content-addressed
+registry recovery and pinned dependency checks. YAML is a capability declaration
+and effect ceiling, never a grant. Existing YAML bytes, hashes and registry index
+formats remain unchanged. Domain knowledge and acceptance rules belong to the
+independent an-spool repository, not to this loader.
+
+TaskSession controls use the existing ExecutionBackend boundary. Cocoon provides
+isolated environments, images and input/output transport; the host retains
+scheduling, grants, cancellation, reconnect, unknown-result reconciliation and
+final artifact acceptance. No provider or harness dependency enters the loader.
+
+The old an-agent-spool crate and its unused ScopeTree are removed. Trusted Rhai
+embedding remains only behind the host's default-off `embedded-rhai` feature;
+`Host`, `HostBodies`, `HostError` and `HostHooks` retain their root paths when
+that feature is enabled. This compatibility API is not an alternate TaskSession
+executor. Run its preserved tests with `cargo test --workspace --all-features`.
+
+The registry remains append-only and content-addressed. An advisory index lock
+serializes publication and recovery across cooperating processes. Staging uses
+exclusive files; bytes, directory entries (Unix) and index are synced before
+success. Failed append/sync is uncertain publication, not rollback. Incomplete
+tails, conflicting identities and mismatched blobs are refused without repair;
+orphan blobs are not automatically reclaimed. Paths must remain operator-owned;
+this is not a distributed lock or protection from hostile inode replacement.
+
 ## Local execution strategy
 
 Spool interaction is workspace-event routing, not a host business workflow graph.

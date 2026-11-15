@@ -62,7 +62,7 @@ it dies:
   standard `cargo test` coverage that exercises the real kernel path
   (AgentControl, register, mount match, dispatch, tape). Assets ride
   feature PRs into `dev-advance` and later `main`. Example:
-  `an-agent-spool/tests/discord_parley.rs` — its scripted outbox can be
+  `an-agent-host/tests/discord_parley.rs` — its scripted outbox can be
   swapped for a real bridge without touching the chain it proves.
 - **Probe** — leaves only scaffolding: a parallel harness, a duplicate
   mount path, one-off glue. Probes must never reach the main line.

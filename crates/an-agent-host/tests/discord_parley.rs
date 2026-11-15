@@ -1,3 +1,4 @@
+#![cfg(feature = "embedded-rhai")]
 //! The discord parley case, scripted end to end: two published spools —
 //! `chat_npc` (a rhai character body, mounted twice as two personas) and
 //! `discord` (a host channel body standing in for the bridge). A user
@@ -27,9 +28,9 @@ use an_agent_core::control::{
 use an_agent_core::principal::card::{AgentCard, ModelSpec, ToolGrant, Topology};
 use an_agent_core::testkit::{TempDir, bash_registry};
 use an_agent_core::workspace::WorkspaceRecord;
-use an_agent_spool::beat::RhaiBeat;
-use an_agent_spool::library;
-use an_agent_spool::spool::Registry;
+use an_agent_host::embedded::beat::RhaiBeat;
+use an_agent_host::spool_loading::library;
+use an_agent_host::spool_loading::spool::Registry;
 
 fn card() -> AgentCard {
     AgentCard {

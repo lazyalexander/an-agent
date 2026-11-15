@@ -14,7 +14,7 @@ use serde_json::Value;
 
 use an_agent_core::control::HookVerdict;
 
-use crate::spool::{Constructor, SpoolSpec};
+use crate::spool_loading::spool::{Constructor, SpoolSpec};
 
 pub struct RhaiGate {
     engine: rhai::Engine,
@@ -27,12 +27,12 @@ impl RhaiGate {
     /// effector faces, and the script compiles now, not at the first
     /// delivery.
     pub fn from_spool(spec: &SpoolSpec) -> Result<Self, String> {
-        crate::beat::require_effectless(spec)?;
+        crate::embedded::beat::require_effectless(spec)?;
         let script = match &spec.constructor {
             Constructor::Rhai { script } => script,
             _ => return Err("not a rhai spool".into()),
         };
-        let engine = crate::policy::bounded_engine();
+        let engine = crate::embedded::policy::bounded_engine();
         let ast = engine.compile(script).map_err(|e| e.to_string())?;
         Ok(Self { engine, ast })
     }
@@ -85,7 +85,7 @@ impl RhaiGate {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::spool;
+    use crate::spool_loading::spool;
 
     fn spec(script: &str) -> SpoolSpec {
         let yaml = format!(

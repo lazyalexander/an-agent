@@ -1,3 +1,4 @@
+#![cfg(feature = "embedded-rhai")]
 //! Hook chains through the host runner: spool handlers are rhai gates
 //! from the shelf (compiled once, cached), MCP handlers fail closed
 //! until the factory grows MCP. Three cases: a before-deny blocks the
@@ -15,9 +16,9 @@ use an_agent_core::act::{Permit, ToolTag};
 use an_agent_core::control::{AgentControl, ControlError, EventRoute, Registration};
 use an_agent_core::principal::card::{AgentCard, ModelSpec, ToolGrant, Topology};
 use an_agent_core::testkit::{TempDir, bash_registry};
+use an_agent_host::spool_loading::library;
+use an_agent_host::spool_loading::spool::Registry;
 use an_agent_host::{Host, HostBodies, HostError, HostHooks};
-use an_agent_spool::library;
-use an_agent_spool::spool::Registry;
 
 fn card() -> AgentCard {
     AgentCard {
@@ -376,7 +377,9 @@ fn pump_returns_partial_settlement_without_landing_or_replaying_siblings() {
         })
         .unwrap();
     host.mount_from_config().unwrap();
-    let declaration = an_agent_spool::spool::parse(GREETER).unwrap().declaration();
+    let declaration = an_agent_host::spool_loading::spool::parse(GREETER)
+        .unwrap()
+        .declaration();
     host.control()
         .mount_spool(
             "breaker",

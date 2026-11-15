@@ -46,7 +46,7 @@ pub(super) fn check_release(root: &Path, package: &str) -> Result<()> {
         return Err("release mismatch".into());
     }
     let yaml = regular(&path.join("spool.yaml"), 65536)?;
-    let spec = an_agent_spool::spool::parse(std::str::from_utf8(&yaml)?)?;
+    let spec = crate::spool_loading::spool::parse(std::str::from_utf8(&yaml)?)?;
     if spec.config.get("profile").and_then(Value::as_str) != Some("file-kit-v1") {
         return Err("instance requires the native file-kit profile".into());
     }

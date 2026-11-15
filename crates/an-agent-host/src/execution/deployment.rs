@@ -3,8 +3,8 @@ use super::{
     Result, publication,
     store::{directory, load, lock, write_new},
 };
+use crate::spool_loading::spool::Registry;
 use an_agent_core::det_seam::Entropy;
-use an_agent_spool::spool::Registry;
 use serde_json::{Value, json};
 use std::{fs, path::Path};
 

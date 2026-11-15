@@ -46,20 +46,22 @@ name = "an-agent-host"
 version = "0.1.0"
 dependencies = [
  "an-agent-core",
- "an-agent-spool",
  "flate2",
  "landlock",
  "libc",
+ "rhai",
  "rmcp",
  "rusqlite",
  "seccompiler",
  "serde",
+ "serde-saphyr",
  "serde_json",
  "sha2",
  "signal-hook",
  "tar",
  "thiserror",
  "tokio",
+ "toml",
  "uuid",
 ]
 
@@ -69,23 +71,6 @@ version = "0.1.0"
 dependencies = [
  "serde",
  "serde_json",
-]
-
-[[package]]
-name = "an-agent-spool"
-version = "0.1.0"
-dependencies = [
- "an-agent-core",
- "async-trait",
- "rhai",
- "serde",
- "serde-saphyr",
- "serde_json",
- "sha2",
- "thiserror",
- "tokio",
- "toml",
- "uuid",
 ]
 
 [[package]]

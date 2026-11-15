@@ -89,7 +89,7 @@ fn separate_processes_cannot_both_publish_conflicting_bodies() {
             std::process::Command::new(std::env::current_exe().unwrap())
                 .args([
                     "--exact",
-                    "spool::tests::registry_tests::registry_child",
+                    "spool_loading::spool::tests::registry_tests::registry_child",
                     "--nocapture",
                 ])
                 .env("AN_AGENT_REGISTRY_TEST_ROOT", temp.path())

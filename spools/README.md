@@ -48,7 +48,7 @@ Current entries:
   many mounts — the persona is mount config.
 - `discord/` — the channel envelope (host constructor): consumes
   `discord.post` to send, produces inbound `discord.message`, net
-  egress. The scripted parley case (`an-agent-spool/tests/
+  egress. The scripted parley case (`an-agent-host/tests/
   discord_parley.rs`) stands in for the real bridge.
 
 The generic `agent_loop` policy is retired with the in-tree harness helpers.

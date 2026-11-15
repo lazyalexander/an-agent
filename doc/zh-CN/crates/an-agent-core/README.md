@@ -2,7 +2,7 @@
 
 [English](../../../../crates/an-agent-core/README.md) · 中文译文，以英文为准。 · [中文目录](../../README.md)
 
-内核。Spool 构造器位于 `an-agent-spool`。嵌入者向 `build_with` / `spawn_with` 显式提供工具构造器；编码框架拥有其外壳工具、会话上下文和压缩。CAS 存储位于 `an-agent-workspace`。记录器工作区（`Wp`）也在此处。
+内核。Spool 构造器位于 `an-agent-host`。嵌入者向 `build_with` / `spawn_with` 显式提供工具构造器；编码框架拥有其外壳工具、会话上下文和压缩。CAS 存储位于 `an-agent-workspace`。记录器工作区（`Wp`）也在此处。
 
 ## 模块
 

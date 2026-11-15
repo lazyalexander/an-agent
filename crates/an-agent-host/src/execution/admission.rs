@@ -1,5 +1,6 @@
 //! Kernel admission and audit settlement for one attempt; never backend enforcement.
 use super::{Result, store::write_new};
+use crate::spool_loading::spool::SpoolSpec;
 use an_agent_core::{
     control::{
         AgentControl, DeliveryOutcome, EventRoute, Registration, ReplyIntent, SpoolBeat,
@@ -8,7 +9,6 @@ use an_agent_core::{
     principal::card::{AgentCard, ModelSpec, Topology},
     workspace::WorkspaceRecord,
 };
-use an_agent_spool::spool::SpoolSpec;
 use serde_json::{Value, json};
 use std::{
     path::{Path, PathBuf},

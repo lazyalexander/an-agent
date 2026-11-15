@@ -1,3 +1,4 @@
+#![cfg(feature = "embedded-rhai")]
 //! A policy-sort spool through the host crate: the workspace config names
 //! a persona, mount_from_config mounts it as an agent body, and a pump
 //! drives the full chain — the body asks for a model call, core admits
@@ -17,9 +18,9 @@ use an_agent_core::control::{
 use an_agent_core::memstream::Kind;
 use an_agent_core::principal::card::{AgentCard, ModelSpec, ToolGrant, Topology};
 use an_agent_core::testkit::{TempDir, bash_registry};
+use an_agent_host::spool_loading::library;
+use an_agent_host::spool_loading::spool::Registry;
 use an_agent_host::{Host, HostBodies, HostError};
-use an_agent_spool::library;
-use an_agent_spool::spool::Registry;
 
 fn card() -> AgentCard {
     AgentCard {

@@ -35,7 +35,7 @@
 - `chat_npc/` — 一个Discord角色（rhai beat）：以人格化身份回答一个
   `discord.message`，回复变为`discord.post`。一个主体，多个挂载 —— 人格是挂载配置。
 - `discord/` — 通道信封（宿主构造器）：消耗
-  `discord.post`以发送，产生入站的`discord.message`，网络出站。脚本化的对话案例（`an-agent-spool/tests/
+  `discord.post`以发送，产生入站的`discord.message`，网络出站。脚本化的对话案例（`an-agent-host/tests/
   discord_parley.rs`）代表了真实的桥梁。
 
 通用的`agent_loop`策略已随着树内工具辅助程序一同退役。使用现有的编码辅助程序来实现其模型/工具循环。领域特定策略
