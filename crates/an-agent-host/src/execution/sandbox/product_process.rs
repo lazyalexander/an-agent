@@ -53,3 +53,37 @@ pub(crate) fn replace_controller(
         Err("product workers require macOS".into())
     }
 }
+
+/// Signal only a still-matching recorded process; never substitute another PID.
+pub(crate) fn stop_control(identity: &serde_json::Value) -> Result<bool> {
+    let pid = identity["pid"]
+        .as_u64()
+        .filter(|p| *p > 1 && *p <= i32::MAX as u64)
+        .ok_or("invalid control process identity")? as u32;
+    if super::service_process::exited(pid) {
+        return Ok(true);
+    }
+    if super::service_process::identity(pid) != *identity {
+        return Err("control process identity changed".into());
+    }
+    #[cfg(unix)]
+    if unsafe { libc::kill(pid as i32, libc::SIGTERM) } != 0 {
+        return Err(std::io::Error::last_os_error().into());
+    }
+    let deadline =
+        an_agent_core::det_seam::Clock::monotonic_now() + std::time::Duration::from_secs(10);
+    while an_agent_core::det_seam::Clock::monotonic_now() < deadline {
+        if super::service_process::exited(pid) {
+            return Ok(true);
+        }
+        // Exit can make BSD birth metadata unavailable before PID removal.
+        // Observe only after signaling; never signal a replacement process.
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    Ok(false)
+}
+
+#[cfg(all(test, target_os = "macos"))]
+pub(crate) fn test_control() -> Result<Child> {
+    Ok(Command::new("/bin/sleep").arg("60").spawn()?)
+}

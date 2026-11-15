@@ -119,6 +119,59 @@ impl Drop for HostProcess {
     }
 }
 
+// Read native process metadata without launching competing observer processes.
+#[cfg(target_os = "macos")]
+fn kit_child(parent: u32) -> Result<Option<u32>> {
+    let mut pids = [0i32; 64];
+    // SAFETY: the writable array and its exact byte capacity are passed to libproc.
+    let count = unsafe {
+        libc::proc_listchildpids(
+            parent as i32,
+            pids.as_mut_ptr().cast(),
+            std::mem::size_of_val(&pids) as i32,
+        )
+    };
+    if count < 0 {
+        return Err(std::io::Error::last_os_error().into());
+    }
+    if count as usize >= pids.len() {
+        return Err("child observation limit".into());
+    }
+    for pid in pids.into_iter().take(count as usize).filter(|pid| *pid > 0) {
+        let mut name = [0u8; 128];
+        // SAFETY: proc_name receives a valid writable byte buffer and its capacity.
+        let length = unsafe { libc::proc_name(pid, name.as_mut_ptr().cast(), name.len() as u32) };
+        if length > 0 && (length as usize) < name.len() {
+            let bytes = &name[..length as usize];
+            if bytes.strip_suffix(&[0]).unwrap_or(bytes) == b"program" {
+                return Ok(Some(pid as u32));
+            }
+        }
+    }
+    Ok(None)
+}
+
+#[cfg(target_os = "linux")]
+fn kit_child(parent: u32) -> Result<Option<u32>> {
+    let children = Command::new("pgrep")
+        .args(["-P", &parent.to_string()])
+        .output()?;
+    for pid in String::from_utf8_lossy(&children.stdout)
+        .lines()
+        .filter_map(|s| s.parse::<u32>().ok())
+    {
+        let command = Command::new("ps")
+            .args(["-p", &pid.to_string(), "-o", "comm="])
+            .output()?;
+        if Path::new(String::from_utf8_lossy(&command.stdout).trim()).file_name()
+            == Some(std::ffi::OsStr::new("program"))
+        {
+            return Ok(Some(pid));
+        }
+    }
+    Ok(None)
+}
+
 #[test]
 #[allow(clippy::disallowed_methods, reason = "real process test deadline")]
 fn cli_signals_reap_child_preserve_receipt_and_release_store_lock() -> Result<()> {
@@ -139,25 +192,16 @@ fn cli_signals_reap_child_preserve_receipt_and_release_store_lock() -> Result<()
         let host_pid = host.0.as_ref().unwrap().id();
         let start = Instant::now();
         let kit_pid = loop {
-            let children = Command::new("pgrep")
-                .args(["-P", &host_pid.to_string()])
-                .output()?;
-            let mut kit = None;
-            for pid in String::from_utf8_lossy(&children.stdout)
-                .lines()
-                .filter_map(|s| s.parse::<u32>().ok())
-            {
-                let command = Command::new("ps")
-                    .args(["-p", &pid.to_string(), "-o", "comm="])
-                    .output()?;
-                let name = String::from_utf8_lossy(&command.stdout);
-                // The trusted copy helper is not the kit. Wait for the real
-                // executable, not merely the first direct child of the CLI.
-                if Path::new(name.trim()).file_name() == Some(std::ffi::OsStr::new("program")) {
-                    kit = Some(pid);
-                    break;
-                }
+            if host.0.as_mut().unwrap().try_wait()?.is_some() {
+                let output = host.0.take().unwrap().wait_with_output()?;
+                panic!(
+                    "host exited before kit readiness: status={}; stdout={}; stderr={}",
+                    output.status,
+                    String::from_utf8_lossy(&output.stdout),
+                    String::from_utf8_lossy(&output.stderr)
+                );
             }
+            let kit = kit_child(host_pid)?;
             if let Some(pid) = kit {
                 break pid;
             }

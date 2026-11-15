@@ -53,6 +53,12 @@ pub(in crate::application) fn reconcile(service: &Path, id: &str) -> Result<Valu
             }
         }
     }
+    if state["runtime_cleanup_required"] == true {
+        if !super::runtime::cleanup(&root)? {
+            return Ok(observed);
+        }
+        state["runtime_termination_confirmed"] = json!(true);
+    }
     // An interrupted coordinator cannot claim successful delivery from proposals.
     state["state"] = json!(if root.join("cancel.json").exists() {
         "cancelled"
@@ -62,7 +68,10 @@ pub(in crate::application) fn reconcile(service: &Path, id: &str) -> Result<Valu
     state["termination_confirmed"] = json!(true);
     state["reconciled"] = json!(true);
     state["error"] = json!("original owners settled; interrupted delivery was not replayed");
-    let pending = root.join(".reconciled-state.json");
+    let pending = root.join(format!(
+        ".reconciled-{}.json",
+        an_agent_core::det_seam::Entropy::os().uuid_v4()
+    ));
     store::write_new(&pending, &serde_json::to_vec(&state)?)?;
     fs::rename(pending, root.join("state.json"))?;
     Ok(json!({"id":id,"state":state}))
