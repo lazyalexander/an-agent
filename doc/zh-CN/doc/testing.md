@@ -48,6 +48,12 @@
 | 阶段验收或 main 晋级 | 所选候选的完整声明矩阵、重复测量和适用机械链 | 阶段验收与发布 |
 | 后台验收 | 冻结候选 A，开发 worktree B 继续推进 | 结果属于 A；用于 B 前审查 A 到 B 的差异 |
 
+开发工具入口为 `python3 -B tools/qualification/qualify.py --root PRIVATE_DIRECTORY COMMAND`。
+`freeze CONFIG` 选择干净的 host/spool/shuttle 源码及显式运行输入；
+`enqueue CANDIDATE DIGEST --phase smoke` 入队；`start`、`status`、`stop`、
+`reconcile ID` 和 `dashboard` 用于后台运行与观察。`stop` 等待当前阶段结束，
+不会中断当前模型操作。工具仍在验收中；完成配对验收前，不能将其完成状态作为发布证据。
+
 ### 冻结候选与按改动选择场景
 
 每个源码、目标和配置组合只构建一次。冻结源码提交或补丁摘要、可执行文件、测试驱动与

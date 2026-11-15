@@ -100,6 +100,14 @@ checks and CI gates remain mandatory.
 | Stage acceptance or main promotion | Full declared matrix, repetitions and applicable mechanical chains on the selected candidate | Stage acceptance and release |
 | Background qualification | Immutable candidate A while worktree B advances | Results qualify A; review the A-to-B delta before using them for B |
 
+The developer tool entry point is `python3 -B tools/qualification/qualify.py
+--root PRIVATE_DIRECTORY COMMAND`. `freeze CONFIG` selects clean host/spool/shuttle
+repositories and explicit runtime inputs; `enqueue CANDIDATE DIGEST --phase smoke`
+records a run, and `start`, `status`, `stop`, `reconcile ID`, and `dashboard` manage
+its observation. `stop` drains the active phase; it does not interrupt its current
+model operation. The tool is under qualification: do not treat its completion
+projection as release evidence until the paired acceptance is complete.
+
 ### Frozen candidates and change selection
 
 Build once per source/target/configuration. Freeze source commits or patch digests,
