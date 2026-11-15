@@ -79,6 +79,7 @@ fn handle(
     authority: &str,
     token: &str,
 ) -> Result<()> {
+    stream.set_nonblocking(false)?;
     stream.set_read_timeout(Some(Duration::from_secs(30)))?;
     stream.set_write_timeout(Some(Duration::from_secs(5)))?;
     let mut input = BufReader::new(stream.try_clone()?);
@@ -281,3 +282,6 @@ fn respond(stream: &mut TcpStream, status: u16, mime: &str, body: Vec<u8>) -> Re
     stream.write_all(&body)?;
     Ok(())
 }
+
+#[cfg(test)]
+mod tests;
