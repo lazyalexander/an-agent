@@ -29,6 +29,14 @@ pub(crate) fn daemon(root: &Path, log: File) -> Result<Child> {
 pub(crate) fn task(root: &Path, id: &str, log: File) -> Result<Child> {
     host_child(root, log, Some(id))
 }
+
+/// The original page process retains wait ownership of this exact child.
+pub(crate) fn reap(mut child: Child) -> Result<()> {
+    std::thread::Builder::new()
+        .name("product-owner-reaper".into())
+        .spawn(move || child.wait())?;
+    Ok(())
+}
 pub(crate) fn replace_controller(
     python: &Path,
     script: &Path,

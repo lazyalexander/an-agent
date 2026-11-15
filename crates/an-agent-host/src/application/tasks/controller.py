@@ -26,6 +26,9 @@ def save(path,value):
     with temporary.open('x') as stream:
         os.chmod(temporary,0o600);json.dump(value,stream);stream.flush();os.fsync(stream.fileno())
     os.replace(temporary,path)
+    descriptor=os.open(path.parent,os.O_RDONLY)
+    try:os.fsync(descriptor)
+    finally:os.close(descriptor)
 
 
 class Client:
@@ -43,14 +46,35 @@ class Client:
         try:return self.cli('daemon','task-request' if credential else 'request',self.service,path)
         finally:path.unlink()
 
-    def approve(self,value,credential=None):
+    def approve(self,value,credential=None,record=None):
         preview=self.request(value,credential)
-        return self.request(dict(value,approve=preview['approval_sha256']),credential)
+        if record:
+            identity=preview.get('plan',{}).get('task_sha256') if value['op']=='harness' else preview['approval_sha256']
+            if not identity:raise ValueError('Original request identity unavailable')
+            journal=self.root/'intents';journal.mkdir(exist_ok=True,mode=0o700)
+            descriptor=os.open(self.root,os.O_RDONLY)
+            try:os.fsync(descriptor)
+            finally:os.close(descriptor)
+            intent={'kind':'harness' if value['op']=='harness' else 'spool','request':identity,
+                    'grant':credential['id'],'instance':value.get('instance'),'run':value.get('run')}
+            path=journal/(record+'.json')
+            if path.exists():raise RuntimeError('Execution intent already exists; reconcile original work')
+            save(path,intent)
+        result=self.request(dict(value,approve=preview['approval_sha256']),credential)
+        if record:save(journal/(record+'-result.json'),result)
+        return result
+
+
+def unprojected_execution(root,state):
+    return any((root/'intents'/(name+'.json')).exists() and not
+               (state.get('session') if name=='primary' else state.get('steps',{}).get(name))
+               for name in ('primary','intermediate','final'))
 
 
 def main():
     host,service,root= sys.argv[1:]
     root=Path(root);service=Path(service)
+    save(root/'recovery-version.json',{'version':1})
     config=read(root/'plan.json');environment=Path(config['environment'])
     manifest=read(environment/'runtime.json');components=manifest['components']
     recipe=read(environment/components['delivery'])
@@ -60,7 +84,7 @@ def main():
     accepted.touch(exist_ok=False)
     client=Client(host,service,root);deadline=time.monotonic()+600
     state={'state':'preparing','products':{},'session':None,'steps':{},'runtime_cleanup_required':True}
-    vm=None;api_process=None;credential=None;transport=None;work=None;vm_bound=False;cocoon_state=root/'cocoon'
+    vm=None;api_process=None;credential=None;transport=None;work=None;vm_bound=False;setup_bound=False;cocoon_state=root/'cocoon'
     stopping=False;owners_confirmed=True;requested_outcome='failed'
     def stop(_signal,_frame):
         nonlocal stopping
@@ -99,7 +123,8 @@ def main():
     try:
         check()
         image=direct('image','import',environment/components['kernel'],environment/components['initrd'],environment/components['root_image'],'Reviewed offline runtime')['image']
-        vm=str(uuid.uuid4());update(vm=vm)
+        vm=str(uuid.uuid4());save(root/'setup.json',{'vm':vm,'image':image,'owner':'product-task'})
+        update(vm=vm)
         direct('vm','create',vm,image,'product-task','retain')
         log=(root/'cocoon.log').open('w')
         save(root/'runtime-launch.json',{'automatic_retries':0})
@@ -112,7 +137,9 @@ def main():
             if api_process.poll() is not None:raise RuntimeError('Cocoon service stopped')
             time.sleep(.05)
         check()
-        active=api({'operation':'start','vm':vm})
+        start_id=str(uuid.uuid4());save(root/'start-intent.json',{'request':start_id,'vm':vm})
+        active=api({'operation':'start','vm':vm},request_id=start_id)
+        save(root/'start-result.json',active)
         work=api({'operation':'issue_grant','subject':'product-task','vm':vm,'actions':['inspect','guest','export','stop'],
                   'expires_unix':int(time.time())+900,'max_export_bytes':4194304})
         transport=root/'transport.json';save(transport,{'socket':str(socket),'grant':work['token'],'caller':'product-task','vm':vm,'generation':active['generation']})
@@ -123,6 +150,8 @@ def main():
                 'program_sha256':sha(domain/recipe['program']),'interpreter':recipe['guest_interpreter'],
                 'arguments':['-I','-B','{program}',recipe[name]['action'],'{request}','{output}'],'outputs':recipe[name]['outputs']})
             specs[name]=spec
+        client.cli('app','task-bind-setup',service,root.name)
+        setup_bound=True
         source_ref={'op':'read-input','path':str(source),'sha256':sha(source)}
         answer_ref=lambda:{'op':'read-input','path':str(answers),'sha256':sha(answers)}
         def job(name,inputs):
@@ -164,7 +193,7 @@ def main():
         scope={'task':root.name,'subject':'primary','expires_ms':int(time.time()*1000)+900000,'delegate':True,'permissions':rights}
         credential=client.approve({'op':'grant','scope':scope})['credential'];save(root/'credential.json',credential)
         check()
-        session=client.approve({'op':'harness','task':task},credential)['id']
+        session=client.approve({'op':'harness','task':task},credential,record='primary')['id']
         state['session']=session
         client.approve({'op':'harness-bind-cocoon','id':session,'spec':str(specs['extract']),'spec_sha256':sha(specs['extract'])})
         vm_bound=True;update(state='running',session=session,operations=operations)
@@ -198,7 +227,7 @@ def main():
         def accept(name):
             check()
             resource={'instance':str(instances[name]),'run':'deliver'}
-            pending=client.approve({'op':'submit',**resource,'seconds':30,'job_output':{'session':session,'operation':operations[name],'output':recipe[name]['output']}},credential)['id']
+            pending=client.approve({'op':'submit',**resource,'seconds':30,'job_output':{'session':session,'operation':operations[name],'output':recipe[name]['output']}},credential,record=name)['id']
             state['steps'][name]=pending;update(state='validating')
             wait_job(pending);check();client.approve({'op':'accept',**resource},credential)
             artifact=client.request({'op':'artifact-read',**resource,'output':recipe[name]['output']},credential)
@@ -219,6 +248,9 @@ def main():
     except Exception as error:
         requested_outcome='cancelled' if isinstance(error,InterruptedError) else 'failed'
         update(state='stopping',error=str(error))
+        if unprojected_execution(root,state):
+            owners_confirmed=False
+            update(state='unknown',error='Original request may be admitted; reconcile without replay')
         for pending in state['steps'].values():
             try:client.approve({'op':'cancel','id':pending},credential)
             except Exception:state['state']='unknown';save(root/'state.json',state)
@@ -253,6 +285,9 @@ def main():
                 elif vm_bound:
                     observed=client.request({'op':'cocoon-release','id':state['session']},credential)
                     if not observed or not observed.get('termination_confirmed'):raise RuntimeError('Original VM release is unconfirmed')
+                elif setup_bound:
+                    observed=client.cli('app','task-release-setup',service,root.name)
+                    if not observed.get('termination_confirmed'):raise RuntimeError('Original setup release is unconfirmed')
                 elif work:
                     stop_id=str(uuid.uuid4());save(root/'controller-stop.json',{'request':stop_id,'vm':vm})
                     observed=api({'operation':'stop','vm':vm},work['token'],stop_id)
@@ -264,7 +299,7 @@ def main():
                     update(state='unknown',error='VM release not confirmed')
             except Exception:
                 update(state='unknown',error='VM release not confirmed')
-        if api_process is not None and vm_confirmed:
+        if api_process is not None and vm_confirmed and owners_confirmed:
             api_process.terminate()
             try:api_process.wait(timeout=15)
             except subprocess.TimeoutExpired:vm_confirmed=False

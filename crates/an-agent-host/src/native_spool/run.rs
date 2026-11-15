@@ -456,3 +456,43 @@ fn custody(path: &Path, name: &str, approved: Option<&str>, mode: Custody) -> Re
     )?;
     Ok(bound)
 }
+
+#[cfg(all(test, target_os = "macos"))]
+mod cancellation_tests {
+    use super::*;
+    use std::sync::atomic::Ordering;
+
+    #[test]
+    fn cancellation_after_native_admission_settles_without_starting_a_program() -> Result<()> {
+        let temporary = an_agent_core::testkit::TempDir::new("native-cancel-window");
+        let base = temporary.path().canonicalize()?;
+        let source = super::super::tests::fixture(&base)?;
+        let root = base.join("instance");
+        super::super::load(&source, &root)?;
+        let input = base.join("input.txt");
+        fs::write(&input, b"selected input")?;
+        let cancelled = AtomicBool::new(false);
+        let preview = start(&root, "cancelled", &input, 10, None, &cancelled)?;
+        let result = start_selected(
+            &root,
+            "cancelled",
+            Input::File(&input),
+            10,
+            preview["approval_sha256"].as_str(),
+            RunAdmission {
+                cancelled: &cancelled,
+                supervisor: None,
+                routed: None,
+            },
+            |_| {
+                cancelled.store(true, Ordering::Release);
+                Ok(())
+            },
+        )?;
+        assert_eq!(result["status"], "cancelled");
+        assert_eq!(result["workspace"]["process_started"], false);
+        assert_eq!(settled(&root, "cancelled")?, result);
+        assert!(!root.join("runs/cancelled/accepted.json").exists());
+        Ok(())
+    }
+}

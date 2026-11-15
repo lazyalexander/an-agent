@@ -389,3 +389,26 @@ and receipt-only reconciliation without replay. It requires native macOS,
 qualified Codex/auth and a reviewed Cocoon/Python runtime, and is not a CI fixture.
 Use `native_harness_session.py --attachment-validation` for exact supplemental
 read grants, revocation, single-primary and fixed-operation enforcement regression.
+
+`product_controller_journal.py` faults before enqueue, after enqueue and during
+receipt publication for the primary and both validators; repeated submission must
+be refused. Native CI runs `native_delivery_recovery.py --host FROZEN_BINARY
+--evidence NEW_DIRECTORY`: ten samples each before enqueue, after a lost reply, after daemon reconnect
+and with a cancelled native validator queued behind its primary. The deterministic protocol fixture requires the original
+job, local termination, revoked late requests, no extra queue entries, and recovery
+within 30 seconds; it is not provider or VM qualification.
+
+For real VM preparation loss use `native_product_delivery.py --cancel
+--lose-controller-at setup`. For lost primary projection add `--clarification
+--cancel --lose-controller --drop-execution-projection`; for a lost validator
+projection use `--cancel --lose-controller-at validator --drop-execution-projection`.
+These kill the actual coordinator, retain original intents/receipts and verify no
+new queue entries and recovery within 30 seconds. Use a short private evidence path
+to respect Unix socket limits. Run the six P0 cases three times and ten samples per
+applicable fault boundary before claiming the complete P1.1 qualification.
+
+An admitted native run cancelled before workspace spawn still persists its
+managed attempt and positive no-start receipt. Deterministic Rust tests cancel
+after native admission and verify original settlement, while preset standalone
+cancellation keeps its existing non-admission behavior. Product recovery uses
+the original spool facade's verified prelaunch or workspace proof.

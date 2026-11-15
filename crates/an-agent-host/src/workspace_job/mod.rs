@@ -133,7 +133,7 @@ pub fn run(
     run_inner(
         profile_path,
         path,
-        previous,
+        Origin::Standalone(previous),
         approved,
         cancelled,
         None,
@@ -152,7 +152,7 @@ pub(crate) fn run_managed(
     run_inner(
         profile_path,
         path,
-        None,
+        Origin::Managed,
         approved,
         cancelled,
         reader,
@@ -171,16 +171,26 @@ fn standalone(path: &Path) -> Result<()> {
     Ok(())
 }
 
+#[derive(Clone, Copy)]
+enum Origin<'a> {
+    Standalone(Option<&'a str>),
+    Managed,
+}
+
 // Private deterministic fault seam; callers cannot alter launch ordering.
 fn run_inner(
     profile_path: &Path,
     path: &Path,
-    previous: Option<&str>,
+    origin: Origin<'_>,
     approved: Option<&str>,
     cancelled: &AtomicBool,
     reader: Option<NativeInputs<'_>>,
     mut boundary: impl FnMut(not_started::Boundary, &Path),
 ) -> Result<Value> {
+    let previous = match origin {
+        Origin::Standalone(previous) => previous,
+        Origin::Managed => None,
+    };
     let root = root(path)?;
     let _guard = if root.exists() {
         Some(store::lock(&root)?)
@@ -208,7 +218,8 @@ fn run_inner(
     if !sandbox::workspace::supported() {
         return Err("workspace execution is macOS-only; no fallback".into());
     }
-    if cancelled.load(Ordering::Acquire) {
+    // An admitted spool run needs a durable attempt even when no program starts.
+    if cancelled.load(Ordering::Acquire) && matches!(origin, Origin::Standalone(_)) {
         return Ok(
             json!({"status":"cancelled","executed":false,"process_started":false,
             "termination_confirmed":true,"automatic_retries":0}),
