@@ -566,7 +566,7 @@ operation ID; unknown effects cannot be retried with a fresh ID. Existing generi
 remain compatible. Idle one-slot roots can explicitly preview/approve `prepare-document-capacity` to
 reserve two slots; running tasks prevent this change.
 
-The controller records its Cocoon control-service child with kernel birth identity and original
+The controller checks authenticated readiness and records its Cocoon child birth identity and original
 controller ownership before VM work. Reconciliation may stop only that child after original
 workloads and VM release are confirmed. Missing ownership retains unknown. Cleanup signals no
 changed identity. The original page reaps its exact coordinator child; a live PID, missing launch

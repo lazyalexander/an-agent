@@ -71,6 +71,21 @@ def unprojected_execution(root,state):
                for name in ('primary','intermediate','final'))
 
 
+def wait_control(socket,process,probe,check):
+    # A persistent store can retain a socket inode after its original owner exits.
+    for _ in range(300):
+        check()
+        if process.poll() is not None:raise RuntimeError('Cocoon service stopped')
+        if socket.exists():
+            try:
+                probe()
+                return
+            except (OSError,RuntimeError):
+                pass  # Only a read-only authenticated probe may be repeated.
+        time.sleep(.05)
+    raise TimeoutError('Cocoon control readiness unavailable')
+
+
 def main():
     host,service,root= sys.argv[1:]
     root=Path(root);service=Path(service)
@@ -155,11 +170,7 @@ def main():
         api_process=subprocess.Popen([str(environment/components['cocoon']),'host',str(cocoon_state),'serve',str(environment/components['runner'])],stdout=log,stderr=log)
         client.cli('app','task-runtime-owner',service,root.name,api_process.pid)
         socket=Path('/tmp')/('cocoon-host-'+hashlib.sha256(os.fsencode(cocoon_state)).hexdigest()+'.sock')
-        for _ in range(300):
-            check()
-            if socket.exists():break
-            if api_process.poll() is not None:raise RuntimeError('Cocoon service stopped')
-            time.sleep(.05)
+        wait_control(socket,api_process,lambda:api({'operation':'protection_status'}),check)
         check()
         if config.get('image'):
             request_id=str(uuid.uuid4())

@@ -3,6 +3,8 @@
 import importlib.util
 from pathlib import Path
 import tempfile
+import socket
+import threading
 import unittest
 from unittest.mock import patch
 
@@ -58,6 +60,45 @@ class JournalFaults(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError,'identity unavailable'):
                     client.approve({'op':'harness'},{'id':'original'},record='primary')
                 self.assertEqual(exchange.call_count,1)
+
+
+class ControlReadiness(unittest.TestCase):
+    def test_retained_socket_inode_does_not_prove_control_readiness(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path=Path(directory).resolve()/'control.sock'
+            with socket.socket(socket.AF_UNIX) as stale:stale.bind(str(path))
+            self.assertTrue(path.exists())
+            refused=threading.Event();failures=[];probes=[]
+            def server():
+                try:
+                    if not refused.wait(3):raise AssertionError('stale endpoint was accepted without a probe')
+                    path.unlink()
+                    with socket.socket(socket.AF_UNIX) as listener:
+                        listener.bind(str(path));listener.listen(1);listener.settimeout(3)
+                        client,_=listener.accept()
+                        with client:client.sendall(b'ready')
+                except BaseException as error:failures.append(error)
+            worker=threading.Thread(target=server);worker.start()
+            def probe():
+                probes.append(True)
+                try:
+                    with socket.socket(socket.AF_UNIX) as client:
+                        client.settimeout(1);client.connect(str(path))
+                        self.assertEqual(client.recv(5),b'ready')
+                except OSError:
+                    refused.set();raise
+            process=type('Process',(),{'poll':lambda self:None})()
+            try:controller.wait_control(path,process,probe,lambda:None)
+            finally:refused.set();worker.join(timeout=4)
+            self.assertFalse(worker.is_alive());self.assertFalse(failures,failures)
+            self.assertGreaterEqual(len(probes),2)
+
+    def test_exited_owner_refuses_a_still_present_endpoint(self):
+        process=type('Process',(),{'poll':lambda self:0})()
+        probe=unittest.mock.Mock()
+        with self.assertRaisesRegex(RuntimeError,'service stopped'):
+            controller.wait_control(Path('/unused'),process,probe,lambda:None)
+        probe.assert_not_called()
 
 
 if __name__=='__main__':unittest.main()
