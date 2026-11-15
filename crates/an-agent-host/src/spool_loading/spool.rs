@@ -1,9 +1,6 @@
-//! Spool descriptor. A spool declares an internal capability: constructor,
-//! effect ceiling, pinned requires, inverse. The document is a grant
-//! envelope, not a self-description — what a spool actually forms at
-//! runtime is observed on the tape, not read off the declaration.
-//! (The document subsists in the registry; the mounted instance is its
-//! hypostasis.)
+//! Spool declarations describe construction, effect ceilings and pinned dependencies.
+//! They never grant authority. The host admits operations separately and records
+//! observed results; the loader does not execute workloads.
 //!
 //! A published body is addressed by its sha256 and is never rewritten. A
 //! later version is a new body. Workspace recovery reads the old body back
@@ -17,7 +14,7 @@ use thiserror::Error;
 
 use an_agent_core::act::{FileFacet, MemoryFacet, ModelFacet};
 
-use crate::descriptor::{self, Net, Proc, SpecError};
+use crate::spool_loading::descriptor::{self, Net, Proc, SpecError};
 
 #[derive(Debug, Error)]
 pub enum SpoolError {

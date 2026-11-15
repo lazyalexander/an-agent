@@ -7,7 +7,7 @@
 
 use std::path::{Path, PathBuf};
 
-use crate::spool::{Registry, SpoolError, SpoolSpec};
+use crate::spool_loading::spool::{Registry, SpoolError, SpoolSpec};
 
 fn invalid(msg: impl Into<String>) -> SpoolError {
     SpoolError::Invalid(msg.into())
@@ -70,7 +70,7 @@ pub fn load(path: &Path) -> Result<String, SpoolError> {
             inlined.push('\n');
         }
     }
-    if inlined.len() > crate::descriptor::MAX_DESCRIPTOR_BYTES {
+    if inlined.len() > crate::spool_loading::descriptor::MAX_DESCRIPTOR_BYTES {
         return Err(invalid(format!(
             "inlined body too large: {} bytes",
             inlined.len()
@@ -128,10 +128,10 @@ produces: []
         assert!(body.contains("script: |"));
         assert!(body.contains("  let x = 1;"));
         assert!(!body.contains('@'));
-        let spec = crate::spool::parse(&body).unwrap();
+        let spec = crate::spool_loading::spool::parse(&body).unwrap();
         assert!(matches!(
             spec.constructor,
-            crate::spool::Constructor::Rhai { .. }
+            crate::spool_loading::spool::Constructor::Rhai { .. }
         ));
         let reg = Registry::open(tmp.path().join("registry")).unwrap();
         let published = publish(&reg, &yaml).unwrap();
@@ -168,6 +168,6 @@ produces: []
         let yaml = write(tmp.path(), "host.yaml", &body);
         let loaded = load(&yaml).unwrap();
         assert_eq!(loaded, body);
-        assert!(crate::spool::parse(&loaded).is_ok());
+        assert!(crate::spool_loading::spool::parse(&loaded).is_ok());
     }
 }

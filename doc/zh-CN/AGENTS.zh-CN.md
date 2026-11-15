@@ -29,7 +29,7 @@
 
 一个案例通过它在死亡时留下的东西获得其位置：
 
-- **资产** — 留下运行时机制、已发布的spool体和标准`cargo test`覆盖，这些测试真实内核路径（AgentControl, register, mount match, dispatch, tape）。资产通过功能 PR 进入`dev-advance`和后来的`main`。示例：`an-agent-spool/tests/discord_parley.rs` — 其脚本出站可替换为真实桥，而无需改动它证明的链。
+- **资产** — 留下运行时机制、已发布的spool体和标准`cargo test`覆盖，这些测试真实内核路径（AgentControl, register, mount match, dispatch, tape）。资产通过功能 PR 进入`dev-advance`和后来的`main`。示例：`an-agent-host/tests/discord_parley.rs` — 其脚本出站可替换为真实桥，而无需改动它证明的链。
 - **探针** — 只留下骨架：并行套件、重复的mount路径、单次粘合。探针必须永远不进入主分支。示例：退役的`an-agent-probes` crate — 它在内核旁运行，而非通过它，删除它成本为零。
 
 ## 实验室（实验和观察工具集）

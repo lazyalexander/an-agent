@@ -120,3 +120,24 @@ Loom的宿主适配器被故意耦合到合格的CLI/接收格式。这是开发
 嵌入式 harness 的边界见[守护服务契约](daemon.md)。
 Codex app-server 负责推理与会话管理。宿主签发的任务权限及现有 spool
 执行监管器负责工具与文件的授权。Weaver 在 Loom 开发流程中使用同一可替换 harness。
+
+## 包加载与执行归属
+
+宿主 `spool_loading` 负责声明解析、内容寻址注册表恢复及锁定依赖校验。
+YAML 是能力声明和效果上限，不授予权限；原 YAML 字节、摘要和索引格式保持不变。
+领域知识及领域验收规则属于独立的 an-spool 仓库。
+
+TaskSession 继续通过现有 ExecutionBackend 控制执行。Cocoon 提供隔离环境、镜像和
+输入输出传输；调度、授权、取消、重连、未知结果核对及最终产物验收仍由宿主负责。
+加载层不引入模型提供方或 harness 依赖。
+
+原 an-agent-spool crate 及无调用方的 ScopeTree 已移除。可信 Rhai 嵌入接口仅在启用
+默认关闭的 `embedded-rhai` 特性时提供；此时 `Host`、`HostBodies`、`HostError`、
+`HostHooks` 保留根路径。该兼容接口不参与 TaskSession 调度。
+使用 `cargo test --workspace --all-features` 运行保留的兼容测试。
+
+注册表仍为仅追加、内容寻址存储。索引 advisory 锁串行化协作进程的发布和恢复。
+暂存文件独占创建；成功返回前同步字节、目录项（Unix）和索引。
+追加或同步失败表示发布结果未知，不表示回滚。不完整尾部、身份冲突和 blob 不匹配
+均拒绝恢复且不自动修复；孤立 blob 不自动回收。路径须由操作员控制；
+这不是分布式锁，也不防御恶意替换 inode。

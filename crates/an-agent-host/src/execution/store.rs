@@ -1,10 +1,10 @@
 //! Host-owned immutable deployment snapshots. No archive extraction or build hooks.
 use super::Result;
-use an_agent_core::act::{FileFacet, MemoryFacet, ModelFacet};
-use an_agent_spool::{
+use crate::spool_loading::{
     descriptor::{Net, Proc},
     spool::{self, Constructor, Flow, Inverse, Sort, SpoolSpec},
 };
+use an_agent_core::act::{FileFacet, MemoryFacet, ModelFacet};
 use sha2::{Digest, Sha256};
 use std::{
     fs::{self, OpenOptions},

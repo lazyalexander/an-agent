@@ -58,6 +58,10 @@ jobs:
         run: cargo test --workspace --locked
         env:
           AN_AGENT_ACCEPTANCE_DIR: ${{ runner.temp }}/native-concurrency
+      - name: Trusted embedded compatibility tests
+        run: |
+          cargo test -p an-agent-host --features embedded-rhai --locked --lib embedded::
+          cargo test -p an-agent-host --features embedded-rhai --locked --test discord_parley --test host_agent --test host_hooks --test host_pump --test supervision
       - name: Retain native lifecycle evidence
         if: always()
         uses: actions/upload-artifact@v4

@@ -29,8 +29,14 @@ authority. Unknown termination never authorizes replay, acceptance or cleanup.
 
 `execution/` owns admission, backend coordination and settlement; `native_spool/`
 owns the release-bound facade. `workspace_job/`, `artifact_versions/` and `instance/`
-keep scratch, accepted products and explicit state distinct. `Host::pump` retains
+keep scratch, accepted products and explicit state distinct. The optional `embedded-rhai` feature exposes the trusted `Host::pump` API and retains
 its embedded event semantics; a subprocess is not run inside an infallible sink.
 
 Run the repository gates in [AGENTS.md](../../AGENTS.md). Real CLI acceptance
 entry points and fixture ownership are listed in [tests/cli](tests/cli/README.md).
+
+Package declarations and immutable registry checks live in `spool_loading/`.
+The former `an-agent-spool` crate is removed; downstream imports migrate to
+`an_agent_host::spool_loading::{descriptor, spool, library}`. Rhai constructors
+move to `an_agent_host::embedded` behind `embedded-rhai` (off by default).
+The unused `ScopeTree` API is removed; host lifecycle remains authoritative.

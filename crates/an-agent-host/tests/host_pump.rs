@@ -1,3 +1,4 @@
+#![cfg(feature = "embedded-rhai")]
 //! The parley pattern through the host crate: one rhai body mounted
 //! twice as two personas, one native body from the app's HostBodies.
 //! The host mounts everything from workspace config, then pumps: replies
@@ -16,9 +17,9 @@ use an_agent_core::control::{AgentControl, EventRoute, Registration, SpoolBeat};
 use an_agent_core::principal::card::{AgentCard, ModelSpec, ToolGrant, Topology};
 use an_agent_core::testkit::{TempDir, bash_registry};
 use an_agent_core::workspace::WorkspaceRecord;
+use an_agent_host::spool_loading::library;
+use an_agent_host::spool_loading::spool::Registry;
 use an_agent_host::{Host, HostBodies};
-use an_agent_spool::library;
-use an_agent_spool::spool::Registry;
 
 fn card() -> AgentCard {
     AgentCard {

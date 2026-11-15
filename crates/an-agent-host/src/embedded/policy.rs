@@ -14,7 +14,7 @@ use serde_json::Value;
 use an_agent_core::act::MemoryFacet;
 use an_agent_core::control::{AgentBody, BeatStep};
 
-use crate::spool::{Constructor, Flow, SpoolSpec};
+use crate::spool_loading::spool::{Constructor, Flow, SpoolSpec};
 
 /// The next step a policy script yields. Malformed output is a hard
 /// error, never silently reinterpreted.
@@ -158,7 +158,7 @@ impl RhaiPolicy {
         spec: &SpoolSpec,
         config: serde_json::Map<String, Value>,
     ) -> Result<Self, String> {
-        use crate::descriptor::{Net, Proc};
+        use crate::spool_loading::descriptor::{Net, Proc};
         use an_agent_core::act::FileFacet;
         if spec.effect.file != FileFacet::None {
             return Err(format!(

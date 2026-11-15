@@ -10,7 +10,7 @@ Admission: every effect-ful action passes through here. Intent is taped before e
 
 **Vocabulary rule:** `ActKind` is intent domains only (utterance, invoke, remember, …). The channel rides on `ActEnvelope.tool`: `Some(name)` = via tool, `None` = model-side or direct. Generic tool calls and model calls share `invoke`.
 
-**Dependencies:** `memstream` (to tape). Resource mnemonics live in this module. Never: `principal`, `an-agent-spool`, the workspace CAS store.
+**Dependencies:** `memstream` (to tape). Resource mnemonics live in this module. Never: `principal`, `an-agent-host`, the workspace CAS store.
 
 **Tool payload boundary:** new tool actions, observations, and remember clips carry
 `tool_payload_v1` references (SHA-256 and byte length), not argument/result bodies.

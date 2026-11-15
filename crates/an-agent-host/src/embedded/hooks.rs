@@ -10,10 +10,10 @@ use std::sync::{Arc, Mutex};
 
 use serde_json::json;
 
+use crate::embedded::gate::RhaiGate;
+use crate::spool_loading::spool::Registry;
 use an_agent_core::control::{HookHandler, HookRunner, HookVerdict, SpoolReply};
 use an_agent_core::workspace::WorkspaceRecord;
-use an_agent_spool::gate::RhaiGate;
-use an_agent_spool::spool::Registry;
 
 pub struct HostHooks {
     registry: Registry,

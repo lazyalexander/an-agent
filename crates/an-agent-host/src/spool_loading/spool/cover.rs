@@ -2,7 +2,7 @@
 
 use an_agent_core::act::{FileFacet, MemoryFacet};
 
-use crate::descriptor::{Net, Proc};
+use crate::spool_loading::descriptor::{Net, Proc};
 
 use super::{Faces, Flow};
 

@@ -6,7 +6,7 @@ fn spec(effect: &str) -> SpoolSpec {
     let yaml = format!(
         "v: 1\nkind: spool\nname: pol\nversion: 1.0.0\nsummary: p\nconstructor: rhai\nscript: |\n  #{{ kind: \"halt\" }}\neffect:\n{effect}\n  model: {{ op: none }}\n  flow: none\ninverse: none\nrequires:\n  - {{ name: echo, version: 1.0.0 }}\nconsumes: []\nproduces: []\n"
     );
-    crate::spool::parse(&yaml).unwrap()
+    crate::spool_loading::spool::parse(&yaml).unwrap()
 }
 
 #[test]
@@ -102,7 +102,7 @@ fn evaluate_yields_a_validated_continuation() {
         Continuation::Halt
     );
     // A script yielding garbage fails at the boundary.
-    let garbage = crate::spool::parse(
+    let garbage = crate::spool_loading::spool::parse(
         "v: 1\nkind: spool\nname: bad\nversion: 1.0.0\nsummary: b\nconstructor: rhai\nscript: |\n  42\neffect:\n  net: none\n  file: { op: none }\n  proc: none\n  memory: { op: ignore }\n  model: { op: none }\n  flow: none\ninverse: none\nrequires: []\nconsumes: []\nproduces: []\n",
     )
     .unwrap();
@@ -119,8 +119,11 @@ fn as_agent_body_approve_is_refused() {
         let yaml = format!(
             "v: 1\nkind: spool\nname: pol\nversion: 1.0.0\nsummary: p\nconstructor: rhai\nscript: |\n  {script}\neffect:\n  net: none\n  file: {{ op: none }}\n  proc: none\n  memory: {{ op: ignore }}\n  model: {{ op: none }}\n  flow: none\ninverse: none\nrequires: []\nconsumes: []\nproduces: []\n"
         );
-        RhaiPolicy::from_spool(&crate::spool::parse(&yaml).unwrap(), serde_json::Map::new())
-            .unwrap()
+        RhaiPolicy::from_spool(
+            &crate::spool_loading::spool::parse(&yaml).unwrap(),
+            serde_json::Map::new(),
+        )
+        .unwrap()
     };
     let projection = serde_json::json!({});
     let policy =

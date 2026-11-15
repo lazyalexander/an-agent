@@ -1,7 +1,7 @@
 //! One admitted attempt: input selection, backend execution and settled evidence.
 use super::{Result, backend, publication, sandbox, store};
+use crate::spool_loading::spool::Registry;
 use an_agent_core::det_seam::Entropy;
-use an_agent_spool::spool::Registry;
 use serde_json::{Value, json};
 use std::{fs, path::Path};
 use store::{digest, directory, load, lock, no_links, read, valid_digest, write_new};

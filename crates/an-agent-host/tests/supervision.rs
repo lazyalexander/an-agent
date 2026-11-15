@@ -1,3 +1,4 @@
+#![cfg(feature = "embedded-rhai")]
 //! Published policy, actual host pump, supervisor mail, and explicit replanning.
 
 #![allow(clippy::unwrap_used)]
@@ -10,8 +11,8 @@ use an_agent_core::control::{
 };
 use an_agent_core::principal::card::{AgentCard, ModelSpec, ToolGrant, Topology};
 use an_agent_core::testkit::{TempDir, bash_registry};
+use an_agent_host::spool_loading::{library, spool::Registry};
 use an_agent_host::{Host, HostBodies};
-use an_agent_spool::{library, spool::Registry};
 
 const WORKER: &str = r#"v: 1
 kind: spool

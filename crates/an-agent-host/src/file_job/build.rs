@@ -170,7 +170,7 @@ pub fn build(
         config: vec![],
         env: vec![],
     })?;
-    let spec = an_agent_spool::spool::parse(BUILD_DECLARATION)?;
+    let spec = crate::spool_loading::spool::parse(BUILD_DECLARATION)?;
     control.mount_spool_described(
         &spec.name,
         Arc::new(BuildShuttle),

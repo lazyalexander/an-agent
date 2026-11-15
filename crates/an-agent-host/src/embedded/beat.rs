@@ -14,8 +14,8 @@ use serde_json::{Map, Value};
 use an_agent_core::control::SpoolBeat;
 use an_agent_core::workspace::WorkspaceRecord;
 
-use crate::descriptor::{Net, Proc};
-use crate::spool::{Constructor, SpoolSpec};
+use crate::spool_loading::descriptor::{Net, Proc};
+use crate::spool_loading::spool::{Constructor, SpoolSpec};
 
 pub struct RhaiBeat {
     engine: rhai::Engine,
@@ -33,7 +33,7 @@ impl RhaiBeat {
             Constructor::Rhai { script } => script,
             _ => return Err("not a rhai spool".into()),
         };
-        let engine = crate::policy::bounded_engine();
+        let engine = crate::embedded::policy::bounded_engine();
         let ast = engine.compile(script).map_err(|e| e.to_string())?;
         Ok(Self {
             engine,
@@ -93,7 +93,7 @@ impl SpoolBeat for RhaiBeat {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::spool;
+    use crate::spool_loading::spool;
 
     fn spec(script: &str) -> SpoolSpec {
         let yaml = format!(

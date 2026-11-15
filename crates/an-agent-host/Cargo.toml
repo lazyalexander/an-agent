@@ -1,6 +1,6 @@
 [package]
 name = "an-agent-host"
-description = "The embedding surface: mount spools from workspace config, pump replies into intents and applied landings"
+description = "Host-owned package admission, task lifecycle, backend execution and artifact custody"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -8,12 +8,17 @@ license.workspace = true
 [lints]
 workspace = true
 
+[features]
+default = []
+embedded-rhai = ["dep:rhai"]
+
 [dependencies]
+rhai = { workspace = true, optional = true }
+serde-saphyr.workspace = true
 flate2 = "1"
 tar = "0.4"
 rusqlite = { version = "0.36", features = ["bundled"] }
 an-agent-core = { path = "../an-agent-core" }
-an-agent-spool = { path = "../an-agent-spool" }
 tokio.workspace = true
 sha2.workspace = true
 serde.workspace = true
@@ -31,6 +36,6 @@ landlock = "0.4.7"
 seccompiler = "0.5"
 
 [dev-dependencies]
+toml.workspace = true
 an-agent-core = { path = "../an-agent-core", features = ["testkit"] }
-an-agent-spool = { path = "../an-agent-spool" }
 uuid.workspace = true
