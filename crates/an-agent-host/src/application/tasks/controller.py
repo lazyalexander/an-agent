@@ -201,7 +201,12 @@ def main():
         def job(name,inputs):
             return {'op':'cocoon-job','spec':str(specs[name]),'spec_sha256':sha(specs[name]),'operation_id':operations[name],'data':{},'inputs':inputs}
         knowledge=domain/recipe['knowledge']
-        def prompt(key,requests):return recipe[key]+'\nUser task: '+config['instruction']+'\nStarting image metadata: '+json.dumps(config.get('image'))+'\nREQUESTS\n'+json.dumps(requests)
+        project=config.get('project')
+        project_requests=[]
+        if project:
+            for product in [project['products']['intermediate']]:
+                project_requests.append({'op':'artifact-read',**product['reference']})
+        def prompt(key,requests):return recipe[key]+'\nUser task: '+config['instruction']+'\nStarting image metadata: '+json.dumps(config.get('image'))+'\nAuthorized prior project products: '+json.dumps(project)+'\nREQUESTS\n'+json.dumps(project_requests+requests)
         task={'app_server':True,'label':recipe['label'],'binary':config['codex'],'binary_sha256':config['codex_sha256'],
               'prompt':prompt('initial_instruction',[{'op':'read-input','path':str(knowledge),'sha256':sha(knowledge),'encoding':'utf-8'},job('extract',[source_ref]),job('intermediate',[source_ref])]),
               'schema':{'type':'object','properties':{'ok':{'type':'boolean'},'questions':{'type':'array','items':{'type':'string'}}},'required':['ok','questions'],'additionalProperties':False},
@@ -227,6 +232,7 @@ def main():
         update(instances={name:str(path) for name,path in instances.items()})
         rights=[client.request({'op':'harness-permission','task':task}),{'kind':'read-input','path':str(source),'sha256':sha(source)},
                 {'kind':'read-input','path':str(knowledge),'sha256':sha(knowledge)}]
+        rights += [{'kind':'artifact',**product['reference']} for product in (project or {}).get('products',{}).values()]
         rights += [{'kind':'cocoon-job','spec_sha256':sha(spec)} for spec in specs.values()]
         # Answers are immutable once supplied; derive their exact read capability then.
         rights.append({'kind':'read-input','path':str(answers),'sha256':sha(answers)})
@@ -243,6 +249,8 @@ def main():
         vm_bound=True;update(state='running',session=session,operations=operations)
         first=wait_turn(1);turn=1
         if not first['ok']:
+            if not first['questions']:
+                raise RuntimeError('The primary could not produce a valid proposal and requested no supported clarification; inspect the original tool receipts.')
             contract=recipe['clarification_source']
             extraction=read(service/'jobs'/session/'cocoon-jobs'/operations['extract']/'result.json')
             facts=json.loads(extraction['outputs'][contract['output']]['text'])

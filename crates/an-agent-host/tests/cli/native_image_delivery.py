@@ -19,6 +19,7 @@ def main():
     parser=argparse.ArgumentParser(description=__doc__)
     for key in ('host','bundle','evidence'):parser.add_argument('--'+key,type=Path,required=True)
     parser.add_argument('--rounds',type=int,choices=range(1,4),default=3)
+    parser.add_argument('--continuation',action='store_true')
     args=parser.parse_args();require_native_workspace()
     root=args.evidence.resolve();root.mkdir(mode=0o700);service=root/'service';host=args.host.resolve(strict=True)
     log=(root/'page.log').open('w');page=None;base=token=None;records=[]
@@ -60,14 +61,19 @@ def main():
         records.append(selected);return selected
     def reference(record):
         result=record['receipt']['result'];return {'image':result['image'],'sha256':result['sha256']}
-    def delivery(reference_value,name):
+    def delivery(reference_value,name,resume_task=None):
         close_page();path=root/(name+'-image.json');path.write_text(json.dumps(reference_value))
         destination=root/name
-        result=subprocess.run([sys.executable,'-B',str(Path(__file__).with_name('native_product_delivery.py')),'--host',str(host),'--bundle',str(args.bundle.resolve()),'--reuse-service',str(service),'--image-reference',str(path),'--evidence',str(destination),'--restart-page'],stdout=log,stderr=log,timeout=900)
+        command=[sys.executable,'-B',str(Path(__file__).with_name('native_product_delivery.py')),'--host',str(host),'--bundle',str(args.bundle.resolve()),'--reuse-service',str(service),'--image-reference',str(path),'--evidence',str(destination),'--restart-page']
+        if resume_task:command+=['--resume-task',resume_task,'--source-revision']
+        started=time.monotonic()
+        result=subprocess.run(command,stdout=log,stderr=log,timeout=900)
         assert result.returncode==0,('Real product image delivery failed',destination)
         start();report=json.loads((destination/'report.json').read_text());assert report['passed'] and report['real_model']
         task=service/'application/tasks'/report['task'];plan=json.loads((task/'plan.json').read_text())
         setup=json.loads((task/'setup.json').read_text());branch=json.loads((task/'image-branch-result.json').read_text())
+        report['elapsed_seconds']=time.monotonic()-started
+        if resume_task:assert plan['project']['source_task']==resume_task
         assert plan['image']['image']==reference_value['image'] and branch['state']=='succeeded'
         assert branch['result']['vm']==setup['vm'] and setup['image']==reference_value['image']
         return report,setup
@@ -83,9 +89,9 @@ def main():
             original,source=delivery(base_image,f'environment-task-{cycle+1}')
             project=image('save_project',task=original['task']);assert project['kind']=='project'
             accepted=image('promote',image=reference(project));assert accepted['kind']=='project'
-            resumed,target=delivery(reference(accepted),f'project-task-{cycle+1}')
+            resumed,target=delivery(reference(accepted),f'project-task-{cycle+1}',original['task'] if args.continuation else None)
             assert source['vm']!=target['vm'] and original['task']!=resumed['task']
-            cycles.append({'environment_task':original['task'],'project_task':resumed['task'],'source_vm':source['vm'],'independent_vm':target['vm'],'source_products':original['products'],'products':resumed['products']})
+            cycles.append({'environment_task':original['task'],'project_task':resumed['task'],'source_vm':source['vm'],'independent_vm':target['vm'],'source_products':original['products'],'products':resumed['products'],'environment_seconds':original['elapsed_seconds'],'project_seconds':resumed['elapsed_seconds'],'resume_task':original['task'] if args.continuation else None,'environment_usage':(original.get('metrics') or {}).get('usage'),'project_usage':(resumed.get('metrics') or {}).get('usage'),'environment_admission_ms':original.get('admission_to_outcome_ms'),'project_admission_ms':resumed.get('admission_to_outcome_ms')})
             (root/'checkpoint.json').write_text(json.dumps(cycles,indent=2))
             print(json.dumps({'cycle':cycle+1,'passed':True}),flush=True)
         (root/'report.json').write_text(json.dumps({'passed':True,'rounds':args.rounds,'real_model':True,'product_http':True,'host_sha256':hashlib.sha256(host.read_bytes()).hexdigest(),'cycles':cycles,'image_operations':records,'memory_restore_qualified':False,'automatic_replays':0},indent=2))

@@ -26,6 +26,9 @@ def main():
     parser.add_argument('--reuse-service',type=Path)
     parser.add_argument('--image-reference',type=Path)
     parser.add_argument('--prepare-image',action='store_true')
+    parser.add_argument('--resume-task')
+    parser.add_argument('--source-revision',action='store_true')
+    parser.add_argument('--unsupported-source',action='store_true')
     parser.add_argument('--cancel-when-image-branch',action='store_true')
     parser.add_argument('--clarification',action='store_true')
     parser.add_argument('--cancel',action='store_true')
@@ -110,13 +113,19 @@ def main():
             upload=call(path='/upload',raw=args.bundle.read_bytes())['upload']
             preview=call({'op':'environment-preview','upload':upload})
             installed=call({'op':'environment-import','upload':upload,'approve':preview['approval_sha256']})
-        source=root/'source.pdf';make_pdf(source,'document_delivery.table_ambiguous' if args.clarification else 'document_delivery.table_exact')
+        source=root/'source.pdf';make_pdf(source,'document_delivery.table_revision' if args.unsupported_source else 'document_delivery.table_ambiguous' if args.clarification else 'document_delivery.table_exact')
+        if args.source_revision and not args.clarification:
+            # Preserve the native spool's declared single-line format and valid PDF offsets.
+            original=source.read_bytes();assert original.count(b'(Bolt 12 0.50)')==1
+            source.write_bytes(original.replace(b'(Bolt 12 0.50)',b'(Bolt 13 0.50)'))
         upload=call(path='/upload',raw=source.read_bytes())['upload']
         task=str(uuid.uuid4())
         request={'op':'delivery-preview','id':task,'environment':installed['id'],'upload':upload,'instruction':'Preserve all source facts and deliver Markdown and Excel.'}
+        if args.resume_task:request['resume_task']=args.resume_task
         if args.image_reference:request['image']=json.loads(args.image_reference.read_text())
         if args.prepare_image:request['image']=prepare_image(installed['id'])
         preview=call(request);creation=dict(request,op='delivery-create',approve=preview['approval_sha256'])
+        admitted=time.monotonic()
         assert call(creation)['id']==task
         assert call(creation)['id']==task
         blocked=dict(creation,id=str(uuid.uuid4()))
@@ -125,9 +134,14 @@ def main():
         else:raise AssertionError('Concurrent product task was not refused')
         deadline=time.monotonic()+660;answered=False;cancelled=False;restarted=False;lost=False
         original_jobs=None;loss_started=None;recovered_seconds=None
+        observed_phases={};phase=None;phase_started=time.monotonic()
         task_root=service/'application/tasks'/task
         while time.monotonic()<deadline:
             state=call({'op':'delivery-view','id':task})['state']
+            observed=time.monotonic()
+            if state['state']!=phase:
+                if phase is not None:observed_phases[phase]=observed_phases.get(phase,0)+(observed-phase_started)*1000
+                phase,phase_started=state['state'],observed
             claims=service/'application/cocoon-vm-claims'
             setup_ready=claims.exists() and any(claim_belongs(path,task_root) for path in claims.glob('*.json')) and not (task_root/'intents/primary.json').exists()
             validator_ready=(task_root/'intents/intermediate-result.json').exists()
@@ -182,7 +196,16 @@ def main():
                 late=root/'late-request.json';late.write_text(json.dumps({'credential':credential,'request':{'op':'harness','task':primary['task']}}))
                 refused=subprocess.run([str(host),'daemon','task-request',str(service),str(late)],capture_output=True,text=True,timeout=15)
                 assert refused.returncode and 'revoked' in refused.stderr,'Late original authorization remained executable'
-        assert state['state']==('cancelled' if args.cancel else 'succeeded'),state
+        assert state['state']==('cancelled' if args.cancel else 'failed' if args.unsupported_source else 'succeeded'),state
+        if args.unsupported_source:
+            assert state['termination_confirmed'] and 'requested no supported clarification' in state['error']
+        outcome_ms=(time.monotonic()-admitted)*1000
+        metrics=None
+        if state.get('session'):
+            query=root/'metrics-query.json';query.write_text(json.dumps({'op':'activity','id':state['session']}))
+            response=subprocess.run([str(host),'daemon','request',str(service),str(query)],capture_output=True,text=True,timeout=30)
+            if response.returncode==0:metrics=json.loads(response.stdout).get('harness',{}).get('metrics')
+            (root/'metrics.json').write_text(json.dumps(metrics,indent=2))
         products={}
         assert state['termination_confirmed']
         assert state['runtime_termination_confirmed']
@@ -191,12 +214,12 @@ def main():
             assert not (task_root/'start-intent.json').exists()
             assert not state.get('session')
         if args.cancel:assert 'final' not in state.get('products',{})
-        if not args.cancel:
+        if not args.cancel and not args.unsupported_source:
             assert state['termination_confirmed']
             for stage,name in [('intermediate','accepted.md'),('final','result.xlsx')]:
                 artifact=call({'op':'delivery-artifact','id':task,'stage':stage})
                 output=root/name;output.write_bytes(bytes(artifact['bytes']));products[name]=hashlib.sha256(output.read_bytes()).hexdigest()
-        if not args.cancel:
+        if not args.cancel and not args.unsupported_source:
             from zipfile import ZipFile
             from xml.etree import ElementTree as ET
             from decimal import Decimal
@@ -204,7 +227,7 @@ def main():
             with ZipFile(root/'result.xlsx') as archive:
                 sheet=ET.fromstring(archive.read('xl/worksheets/sheet1.xml'))
                 cells={cell.attrib['r']:cell for cell in sheet.findall('.//s:sheetData/s:row/s:c',namespace)}
-                assert Decimal(cells['D5'].findtext('s:v',namespaces=namespace))==Decimal('38.50')
+                assert Decimal(cells['D5'].findtext('s:v',namespaces=namespace))==Decimal('39.00' if args.source_revision and not args.clarification else '38.50')
                 assert cells['D5'].findtext('s:f',namespaces=namespace)=='SUM(D2:D4)'
                 for row in range(2,5):assert cells[f'D{row}'].findtext('s:f',namespaces=namespace)==f'B{row}*C{row}'
             markdown=(root/'accepted.md').read_text()
@@ -212,11 +235,11 @@ def main():
         case_jobs=[json.loads((path/'request.json').read_text()) for path in (service/'jobs').iterdir() if path.name not in existing_jobs]
         primary_count=sum(job['kind']=='harness' for job in case_jobs)
         assert primary_count<=1,'Product task admitted more than one primary'
-        if not args.cancel:assert primary_count==1 and len(case_jobs)==3,'Delivery bypassed original validators'
+        if not args.cancel and not args.unsupported_source:assert primary_count==1 and len(case_jobs)==3,'Delivery bypassed original validators'
         assert hashlib.sha256(host.read_bytes()).hexdigest()==host_digest,'Selected host binary changed during acceptance'
         (root/'report.json').write_text(json.dumps({'passed':True,'real_model':bool(state.get('session')) and any((service/'jobs'/state['session']).glob('turn-result-*.json')),'task':task,'primary_count':primary_count,'native_validator_count':len(case_jobs)-primary_count,'primary_admitted':bool(state.get('session')),'empty_service':not bool(args.reuse_service),'product_http':True,
             'image_branch_cancelled':bool(args.cancel_when_image_branch or args.lose_controller_at=='image-branch'),'clarification':answered,'cancelled':cancelled,'page_restarted':restarted,'observation_reconnects':observation_reconnects,'controller_lost':lost,'loss_boundary':args.lose_controller_at or 'clarification','projection_dropped':args.drop_execution_projection,'recovery_seconds':recovered_seconds,'original_jobs':original_jobs,'clarification_receipt_retried':args.drop_clarification_receipt,'products':products,
-            'host_sha256':hashlib.sha256(host.read_bytes()).hexdigest()},indent=2))
+            'admission_to_outcome_ms':outcome_ms,'observed_phase_ms':observed_phases,'phase_clock':'poll-observed host monotonic; not provider reasoning time','metrics':metrics,'expected_refusal':args.unsupported_source,'resume_task':args.resume_task,'source_revision':args.source_revision,'host_sha256':hashlib.sha256(host.read_bytes()).hexdigest()},indent=2))
     finally:
         if task and base:
             try:

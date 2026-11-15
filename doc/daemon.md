@@ -582,19 +582,18 @@ settlement uses the original spool facade, including verified supervisor no-laun
 
 ### P1.2 private cold-disk images
 
-An optional pinned `image_api` component declares `cocoon-image-api-v1`, disk support and
-`memory_restore_qualified:false`. Older bundles/records retain their original task-local stores. New
-stores live privately under the service and offline environment digest. No resident image scheduler
-or harness dependency is added. `image-preview`/`image-submit` bind a finite save-environment, save-
-project, promote, branch or rollback operation to an original ID, exact runtime and source digests. Writes require operator confirmation; `image-control` cancels/reconciles that ID.
-Registration/replacement and success receipts share Cocoon's SQLite transaction. Lost replies query
-the original receipt; interruption stays unknown until reconciled. Environment candidates use
-reviewed offline bytes only. Project candidates contain private task state/kit and require original
-VM termination evidence. Approval never changes their provenance into a shared environment. Each
-image-based task gets an independent VM, new attempt and fresh authorization; only image metadata
-enters the primary session. The existing finite control process owns branch preparation too.
-Cancellation/reconnection settle its original image request after confirmed control exit; missing
-ownership retains unknown. Accepted artifacts retain original host custody and must be revalidated
-independently of saved disks. Memory restore is unqualified. Qualify both golden chains three times
-plus ten repetitions per write failure window, then rerun the prior 48 real-host and 40 protocol
-scenarios.
+Optional pinned `image_api` declares `cocoon-image-api-v1`, disk support and `memory_restore_qualified:false`.
+Older bundles keep task-local stores; new stores are private to the service and offline environment digest. `image-preview`/`image-submit` bind save-environment, save-project, promote, branch or rollback to an original
+ID, source digests and operator approval. `image-control` cancels/reconciles that ID. Registration and success
+receipts share one Cocoon transaction; unknown effects are queried, never replayed. Only reviewed offline bytes
+form environment candidates. Project state requires original termination evidence and never becomes a shared baseline.
+Each image task gets an independent VM, attempt and grant. Explicit `resume_task` binds a project image's source VM
+to its original successful task and accepted Markdown/workbook revisions; only fresh grants disclose historical products.
+New PDFs remain authoritative; accepted artifacts retain host custody independently of saved disks. Optional `image_maintenance_api` pins `{"schema":"cocoon-image-maintenance-v1","manual_reclaim":true,"automatic_gc":false}`;
+`image-inventory` probes the pinned backend and reports sizes, references and blockers. Older bundles lack cleanup.
+Preview/submit additionally support `retire` and `reclaim_vm`; the backend rechecks references and original termination.
+Durable deletion intents retain tombstones and receipts. After that fence cancellation cannot restore bytes; only original
+reconciliation finishes interrupted cleanup. Unknown/legacy resources and accepted artifacts are preserved. Shared-block
+allocation is an estimate, not guaranteed free space. No automatic GC, image scheduler or harness dependency is added.
+Cancellation/reconnection settle the original branch after confirmed control exit. Qualify three real cold/document cycles,
+ten repetitions per write fault window, the prior 48 real-host/40 protocol cases, and explicit real VM reclaim cycles.
