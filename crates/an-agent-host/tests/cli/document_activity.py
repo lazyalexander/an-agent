@@ -207,7 +207,7 @@ catch (error) { console.error(error.message); process.exitCode = 1; }
             assert '?' in proposal['markdown'] and not proposal['rows'], proposal
             approve({'op': 'harness-continue', 'id': main_id, 'execution': connect['execution'],
                      'after_turn': 1, 'command': 'clarification',
-                     'instruction': 'The currency is EUR and the Bolt quantity is 12. Produce the requested Markdown now.'}, main_credential)
+                     'instruction': 'The currency is EUR, the Bolt quantity is 12, and all listed unit prices are decimal EUR amounts. Produce the requested Markdown now.'}, main_credential)
             clarified = turn_result(main_id, 2, main_credential)
             assert clarified['thread'] == first['thread']
             turns.append(clarified['turn'])
