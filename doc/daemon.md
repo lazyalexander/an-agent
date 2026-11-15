@@ -1,16 +1,15 @@
 # macOS user service
 
-The service is a local product entry point over native spools, not a second
-execution host. It queues references to original `native_spool::supervisor`
-reservations; those finite owners still perform admission, native workspace
-execution, termination confirmation and artifact custody. Domain sequencing and
-instructions remain in spool releases. No VM or container is required.
+The service is a local product entry point over native spools, not a second execution host. It queues references to
+original `native_spool::supervisor` reservations; those finite owners still perform admission, native workspace
+execution, termination confirmation and artifact custody. Domain sequencing and instructions remain in spool releases.
+No VM or container is required.
 
 ## Start and inspect
 
-Select the built host by its real absolute path. Create a new service directory
-under an existing private parent, using canonical paths (macOS `/var` and `/tmp`
-are symlinks). The service root must belong to the logged-in user with mode 0700.
+Select the built host by its real absolute path. Create a new service directory under an existing private parent, using
+canonical paths (macOS `/var` and `/tmp` are symlinks). The service root must belong to the logged-in user with mode
+0700.
 
 ```sh
 an-agent-host daemon init /absolute/private/service 2
@@ -20,24 +19,21 @@ an-agent-host daemon request /absolute/private/service /absolute/request.json
 an-agent-host daemon launchd /absolute/private/service /absolute/agent.plist
 ```
 
-`serve` stays in the foreground for launchd. SIGTERM closes its admission socket;
-original finite owners retain their deadlines and control records. The generated
-LaunchAgent plist is not installed automatically. Install one selected service per
-user with the operator's existing launchd workflow; never run this as root. An
-OS-owned advisory lock prevents duplicate services and releases after process loss.
-No privileged helper, root daemon or provider credential store is installed.
+`serve` stays in the foreground for launchd. SIGTERM closes its admission socket; original finite owners retain their
+deadlines and control records. The generated LaunchAgent plist is not installed automatically. Install one selected
+service per user with the operator's existing launchd workflow; never run this as root. An OS-owned advisory lock
+prevents duplicate services and releases after process loss. No privileged helper, root daemon or provider credential
+store is installed.
 
-`endpoint.json` contains the loopback console URL. Its fragment token authorizes
-read-only snapshot requests. The socket accepts only same-user callers, bounded
-JSON lines and private store access. The HTTP surface provides no controls, CORS
-access or arbitrary file serving. Host checks and authorization gate data reads.
-This is a trusted same-user service, not isolation from malicious peer processes.
+`endpoint.json` contains the loopback console URL. Its fragment token authorizes read-only snapshot requests. The socket
+accepts only same-user callers, bounded JSON lines and private store access. The HTTP surface provides no controls, CORS
+access or arbitrary file serving. Host checks and authorization gate data reads. This is a trusted same-user service,
+not isolation from malicious peer processes.
 
 ## Operations and approval
 
-Each request has `op` and the selected fields below. Controls returning
-`approval_sha256` are previews; resubmit the same request with `approve` set to that
-exact digest. Changing inputs, runtime selection or scope invalidates approval.
+Each request has `op` and the selected fields below. Controls returning `approval_sha256` are previews; resubmit the
+same request with `approve` set to that exact digest. Changing inputs, runtime selection or scope invalidates approval.
 Registration alone grants neither execution nor model disclosure.
 
 | Operation | Fields | Effect |
@@ -53,134 +49,109 @@ Registration alone grants neither execution nor model disclosure.
 | `harness` | `task` | Preview/queue a finite external client with explicit content disclosure |
 | `harness-result` | `id` | Read a completed proposal, never an accepted business artifact |
 
-The bounded queue permits 1–8 concurrent tasks, one active queued attempt per
-instance, at most 128 registered instances and 256 retained scheduling entries.
-Selection is FIFO among eligible entries. Existing direct entry points keep their
+The bounded queue permits 1–8 concurrent tasks, one active queued attempt per instance, at most 128 registered instances
+and 256 retained scheduling entries. Selection is FIFO among eligible entries. Existing direct entry points keep their
 own locking and do not become globally scheduled implicitly.
 
-A durable claim is written before launching. Claimed work is never automatically
-replayed, including after a service crash in the spawn window. On restart, the
-service reads original completion evidence. An unresolved claim holds its budget
-slot and is displayed as `running-or-unconfirmed`; missing receipts cannot be
-converted into successful cancellation, accepted output or permission to reclaim.
-A stop request and confirmed termination remain separate. Queue records contain
-scheduling metadata, not a new authoritative execution ledger. Registry archival,
-automatic state migration and automatic retries are not implemented.
+A durable claim is written before launching. Claimed work is never automatically replayed, including after a service
+crash in the spawn window. On restart, the service reads original completion evidence. An unresolved claim holds its
+budget slot and is displayed as `running-or-unconfirmed`; missing receipts cannot be converted into successful
+cancellation, accepted output or permission to reclaim. A stop request and confirmed termination remain separate. Queue
+records contain scheduling metadata, not a new authoritative execution ledger. Registry archival, automatic state
+migration and automatic retries are not implemented.
 
 <a id="native-teaching-applications"></a>
 
 ## Native clients and operator runtime selection
 
-Applications can load the three mechanical releases as ordinary native Python
-instances and use this same register/submit/accept path. An operator Python runtime
-may additionally select bounded `readonly` roots (at most six), snapshot `inputs`
-(at most eight), and `graphics: "macos-agx-metal-v1"`. These selections live in the
-immutable instance runtime binding, never in portable release authority. Auxiliary
-files become numbered `AN_SPOOL_AUX_0` inputs with unique snapshot names; their
-bytes participate in the original preview and are rechecked before execution.
-A Python release requesting `gpu: "metal"` refuses loading without that explicit
-graphics selection. Only this selection allows the existing 900-second bound;
-other native runs retain 300 seconds. Backend graphics policy remains unchanged.
+Applications can load the three mechanical releases as ordinary native Python instances and use this same
+register/submit/accept path. An operator Python runtime may additionally select bounded `readonly` roots (at most six),
+snapshot `inputs` (at most eight), and `graphics: "macos-agx-metal-v1"`. These selections live in the immutable instance
+runtime binding, never in portable release authority. Auxiliary files become numbered `AN_SPOOL_AUX_0` inputs with
+unique snapshot names; their bytes participate in the original preview and are rechecked before execution. A Python
+release requesting `gpu: "metal"` refuses loading without that explicit graphics selection. Only this selection allows
+the existing 900-second bound; other native runs retain 300 seconds. Backend graphics policy remains unchanged.
 
-For a downstream run, `submit.artifact` selects an already accepted revision;
-`input` is omitted for new clients. A `run-artifact` permission binds the catalog reference, exact revision, receiving instance/run and maximum seconds. The host resolves the blob location and retains the existing claim/custody path. Legacy callers may still supply `input` with a path-based `run` grant; if both fields are supplied the host verifies they identify the same artifact. The supervisor
-retains the revision and revalidates it at launch through the existing input
-reader/claim path. A copied file is not silently treated as the original revision.
-Queue loss, cancellation and uncertain completion keep their existing behavior.
+For a downstream run, `submit.artifact` selects an already accepted revision; `input` is omitted for new clients. A
+`run-artifact` permission binds the catalog reference, exact revision, receiving instance/run and maximum seconds. The
+host resolves the blob location and retains the existing claim/custody path. Legacy callers may still supply `input`
+with a path-based `run` grant; if both fields are supplied the host verifies they identify the same artifact. The
+supervisor retains the revision and revalidates it at launch through the existing input reader/claim path. A copied file
+is not silently treated as the original revision. Queue loss, cancellation and uncertain completion keep their existing
+behavior.
 
-An example-only teaching client is in an-spool's `examples/mechanical-animation/product`; it is not an installed product component. Shared client and optional page helpers stay in `examples/support`, outside production packages.
-Its browser page previews each finite operation, obtains a narrowed task grant,
-and submits through the existing task socket. Credentials live only for that call;
-there is no application credential store or execution queue. Stage eligibility and
-progress come from original task and custody projections. No automatic retries or
-background stage advancement are introduced. The existing console remains
-read-only; the application has a separate loopback control token and requires
-same-origin POSTs. The final accepted OpenRaster handoff uses Shuttle's existing
-Krita bridge and is a first-frame reference, not editable animation or part layers.
+An example-only teaching client is in an-spool's `examples/mechanical-animation/product`; it is not an installed product
+component. Shared client and optional page helpers stay in `examples/support`, outside production packages. Its browser
+page previews each finite operation, obtains a narrowed task grant, and submits through the existing task socket.
+Credentials live only for that call; there is no application credential store or execution queue. Stage eligibility and
+progress come from original task and custody projections. No automatic retries or background stage advancement are
+introduced. The existing console remains read-only; the application has a separate loopback control token and requires
+same-origin POSTs. The final accepted OpenRaster handoff uses Shuttle's existing Krita bridge and is a first-frame
+reference, not editable animation or part layers.
 
-`native_daemon_inputs.py` checks bound auxiliary bytes, graphics refusal and an
-accepted binary revision handed between original queued supervisors. The teaching
-application's real steam/four-cylinder qualification remains a separate product
-acceptance; this fixture does not claim Blender or Krita validation.
+`native_daemon_inputs.py` checks bound auxiliary bytes, graphics refusal and an accepted binary revision handed between
+original queued supervisors. The teaching application's real steam/four-cylinder qualification remains a separate
+product acceptance; this fixture does not claim Blender or Krita validation.
 
 ## Finite Codex harness
 
-The initial adapter reuses the qualified Codex CLI 0.166.0 finite material profile.
-`task` contains `label`, canonical `binary`, `binary_sha256`, `prompt`, `schema`,
-`scope`, nullable `model` and nullable `mcp: {url, token}`. The selected executable
-is hashed at approval and checked again before invocation. Native authentication
-belongs to Codex; no credentials are copied into a spool or console snapshot.
+The initial adapter reuses the qualified Codex CLI 0.166.0 finite material profile. `task` contains `label`, canonical
+`binary`, `binary_sha256`, `prompt`, `schema`, `scope`, nullable `model` and nullable `mcp: {url, token}`. The selected
+executable is hashed at approval and checked again before invocation. Native authentication belongs to Codex; no
+credentials are copied into a spool or console snapshot.
 
-The client owns model/tool loops and context. Shell, editing, plugins, native
-agent delegation and unrelated tools are disabled. The only optional MCP tool is
-`read_approved_material` on an explicitly selected loopback endpoint. A request
-must already have application-owned disclosure authorization. This initial adapter
-is for data proposals, not general-purpose coding, arbitrary remote harness
-protocols or remote environment lifecycle. Remote inference through the selected
-Codex client is distinct from local spool execution.
+The client owns model/tool loops and context. Shell, editing, plugins, native agent delegation and unrelated tools are
+disabled. The only optional MCP tool is `read_approved_material` on an explicitly selected loopback endpoint. A request
+must already have application-owned disclosure authorization. This initial adapter is for data proposals, not
+general-purpose coding, arbitrary remote harness protocols or remote environment lifecycle. Remote inference through the
+selected Codex client is distinct from local spool execution.
 
-The same existing process-group supervisor defaults to a 180-second native client deadline
-and confirms its local termination. This is not confirmation that a remote model
-stopped or that provider usage is zero. Native events remain private; completed
-proposals still require domain validation and the existing kit-edit/artifact gates.
-The client version, scope and task reference replace Shuttle's duplicate driver.
+The same existing process-group supervisor defaults to a 180-second native client deadline and confirms its local
+termination. This is not confirmation that a remote model stopped or that provider usage is zero. Native events remain
+private; completed proposals still require domain validation and the existing kit-edit/artifact gates. The client
+version, scope and task reference replace Shuttle's duplicate driver.
 
 ## Embedded app-server ownership
 
-The host may supervise a pinned Codex app-server as a replaceable child process.
-The harness owns model turns and private conversation history. The host owns task
-identity, grants, native execution settlement and accepted products. A model turn
-completion never accepts an artifact or proves a remote request stopped.
+The host may supervise a pinned Codex app-server as a replaceable child process. The harness owns model turns and
+private conversation history. The host owns task identity, grants, native execution settlement and accepted products. A
+model turn completion never accepts an artifact or proves a remote request stopped.
 
-The first profile creates a fresh ephemeral thread per host harness attempt.
-Set `task.app_server=true` on the existing harness request. It is part of the
-harness permission digest; legacy requests omit it and keep their old identity.
-This profile requires task authorization and refuses external MCP configuration.
-Only the explicit prompt and results of authorized host tools enter that thread.
-Shell, editing, plugins, implicit project instructions and native subagent tools
-are disabled. Host-mediated delegation opens another fresh thread under an
-operator-issued descendant grant. The child receives an explicit task and no
-parent conversation. Grant references remain host-owned; bearer secrets never
-enter model context. Every tool dispatch rechecks the original task grant and
-concrete resource capability. Delegation may only select an existing descendant
-of that grant and cannot restore rights removed from the child.
+The first profile creates a fresh ephemeral thread per host harness attempt. Set `task.app_server=true` on the existing
+harness request. It is part of the harness permission digest; legacy requests omit it and keep their old identity. This
+profile requires task authorization and refuses external MCP configuration. Only the explicit prompt and results of
+authorized host tools enter that thread. Shell, editing, plugins, implicit project instructions and native subagent
+tools are disabled. Host-mediated delegation opens another fresh thread under an operator-issued descendant grant. The
+child receives an explicit task and no parent conversation. Grant references remain host-owned; bearer secrets never
+enter model context. Every tool dispatch rechecks the original task grant and concrete resource capability. Delegation
+may only select an existing descendant of that grant and cannot restore rights removed from the child.
 
-Approval binds the selected adapter, executable, model, output schema and scope.
-Cancellation and revocation reach the existing independent owner. The owner
-confirms local process-group termination; unknown results remain held without
-replay. Work already admitted to a separate spool retains its original owner
-and must be cancelled explicitly. Tool requests return to the original daemon;
-its ordinary task checks and queue serialize effects. The model sees one
-`host_request` tool with a JSON `request` argument. Previews grant nothing and
-mutations still require an exact approval plus a concrete capability. An optional
-`grant` ID selects an existing descendant. Only a delegating parent can select
-one; models cannot issue bearer credentials or administer grants. Request/response
-hashes and outcomes are retained in private `tool-receipts.jsonl`.
-The app-server uses a private client home with a reference to the native file
-login. User config, project rules and private sessions are not copied. This
-initial file-login profile does not qualify keyring-only authentication. Local
-termination permits deletion of that private client home. Protocol errors,
-missing receipts and unsupported server requests fail closed without replay.
-Domain conversion belongs to packaged programs
-and application adapters, not to this protocol bridge.
+Approval binds the selected adapter, executable, model, output schema and scope. Cancellation and revocation reach the
+existing independent owner. The owner confirms local process-group termination; unknown results remain held without
+replay. Work already admitted to a separate spool retains its original owner and must be cancelled explicitly. Tool
+requests return to the original daemon; its ordinary task checks and queue serialize effects. The model sees one
+`host_request` tool with a JSON `request` argument. Previews grant nothing and mutations still require an exact approval
+plus a concrete capability. An optional `grant` ID selects an existing descendant. Only a delegating parent can select
+one; models cannot issue bearer credentials or administer grants. Request/response hashes and outcomes are retained in
+private `tool-receipts.jsonl`. The app-server uses a private client home with a reference to the native file login. User
+config, project rules and private sessions are not copied. This initial file-login profile does not qualify keyring-only
+authentication. Local termination permits deletion of that private client home. Protocol errors, missing receipts and
+unsupported server requests fail closed without replay. Domain conversion belongs to packaged programs and application
+adapters, not to this protocol bridge.
 
 ## Task-scoped permissions
 
-The operator socket issues `grant` with a `scope` containing `task`, `subject`,
-`expires_ms` (host Unix milliseconds), `delegate` and `permissions`. Preview and
-exact approval bind that scope. The response returns a private bearer credential
-`{id, secret}` and a durable grant binding. Store credentials in private application
-memory or files. Activity and queue records retain only grant IDs and digests.
-`subject` attributes work to a role; possession of the credential authenticates
-requests. The existing same-user operator endpoint remains trusted administration.
+The operator socket issues `grant` with a `scope` containing `task`, `subject`, `expires_ms` (host Unix milliseconds),
+`delegate` and `permissions`. Preview and exact approval bind that scope. The response returns a private bearer
+credential `{id, secret}` and a durable grant binding. Store credentials in private application memory or files.
+Activity and queue records retain only grant IDs and digests. `subject` attributes work to a role; possession of the
+credential authenticates requests. The existing same-user operator endpoint remains trusted administration.
 
-Use `daemon task-request ROOT JSON` for delegated calls. It connects to `tasks.sock`
-in the same service and requires `{credential, request}` on every call. Missing,
-forged or stripped credentials fail. This endpoint exposes only granted operations
-and the caller's own descendant jobs. Both sockets share the existing queue,
-supervisors and custody. Workloads must remain excluded from operator sockets,
-host stores and other credentials by the selected execution profile. The native
-client and application adapters are still trusted same-user software.
+Use `daemon task-request ROOT JSON` for delegated calls. It connects to `tasks.sock` in the same service and requires
+`{credential, request}` on every call. Missing, forged or stripped credentials fail. This endpoint exposes only granted
+operations and the caller's own descendant jobs. Both sockets share the existing queue, supervisors and custody.
+Workloads must remain excluded from operator sockets, host stores and other credentials by the selected execution
+profile. The native client and application adapters are still trusted same-user software.
 
 Permissions use exact resources, with at most 64 entries per grant.
 
@@ -193,167 +164,135 @@ Permissions use exact resources, with at most 64 entries per grant.
 | `accept` | Registered `instance` and `run`; delegates original acceptance and permits recording proposal adoption for that run |
 | `artifact` | Registered `instance`, `run`, `output`; `artifact-read` verifies original custody and returns bytes plus the selected inventory |
 
-The byte-read operations are bounded to 512 KiB. Permission selection does not
-interpret arbitrary prompt text or prove its provenance. The trusted application
-owns disclosure and domain checks. Every harness submission still requires the
+The byte-read operations are bounded to 512 KiB. Permission selection does not interpret arbitrary prompt text or prove
+its provenance. The trusted application owns disclosure and domain checks. Every harness submission still requires the
 original exact prompt approval; the launch binding also includes its grant.
 
-`derive-grant` on the task endpoint uses the same scope fields. Its permissions
-must be a subset, its task must match, and expiry cannot increase. A native run
-deadline can decrease. The parent must allow delegation. A child can remove that
-ability. The host checks the entire immutable ancestor chain, bounded to 16 grants;
-the service retains at most 256 grants. Child credentials are returned only to the
-issuing caller. The caller explicitly passes them to the intended adapter.
+`derive-grant` on the task endpoint uses the same scope fields. Its permissions must be a subset, its task must match,
+and expiry cannot increase. A native run deadline can decrease. The parent must allow delegation. A child can remove
+that ability. The host checks the entire immutable ancestor chain, bounded to 16 grants; the service retains at most 256
+grants. Child credentials are returned only to the issuing caller. The caller explicitly passes them to the intended
+adapter.
 
-`revoke-grant` with `id` closes the selected grant and descendants after exact
-approval. Scoped callers can revoke their own grant or descendants. `cancel` for
-a permission-bound job previews and revokes its grant, including other jobs using
-that grant. Use distinct child grants for independently cancellable work. Original
-workers observe revocation/expiry during execution even after daemon loss; queue
-reconciliation forwards cancellation to the original owners. Status inspection
-and further cancellation remain available after revocation. New work, proposal
-retrieval and artifact acquisition fail. Existing accepted products remain in
-their original custody. Local termination evidence still comes from the original
-supervisors; remote inference termination remains unknown.
+`revoke-grant` with `id` closes the selected grant and descendants after exact approval. Scoped callers can revoke their
+own grant or descendants. `cancel` for a permission-bound job previews and revokes its grant, including other jobs using
+that grant. Use distinct child grants for independently cancellable work. Original workers observe revocation/expiry
+during execution even after daemon loss; queue reconciliation forwards cancellation to the original owners. Status
+inspection and further cancellation remain available after revocation. New work, proposal retrieval and artifact
+acquisition fail. Existing accepted products remain in their original custody. Local termination evidence still comes
+from the original supervisors; remote inference termination remains unknown.
 
-`native_task_permissions.py` qualifies credential refusals, attenuation, cross-task
-access, changed inputs, native filesystem denial, cancellation, persistent parent
-revocation and worker expiry during daemon loss. `document_activity.py` qualifies
-two real Codex agents with separate child grants, accepted PDF/Markdown/XLSX
-handoff, cancellation and retained products. Pass `--shuttle-client` with the
-compiled CAD daemon client to exercise its capability transport.
+`native_task_permissions.py` qualifies credential refusals, attenuation, cross-task access, changed inputs, native
+filesystem denial, cancellation, persistent parent revocation and worker expiry during daemon loss.
+`document_activity.py` qualifies two real Codex agents with separate child grants, accepted PDF/Markdown/XLSX handoff,
+cancellation and retained products. Pass `--shuttle-client` with the compiled CAD daemon client to exercise its
+capability transport.
 
 ## Observation and acceptance
 
-The console projects original instance, round-control, run, custody and kit labels.
-It displays task order, cancellation, uncertainty and outcomes separately from
-artifact acceptance. OS samples include the service and birth-identity checked
-live task-owner descendants. Summed resident sizes may include shared pages; the
-sample excludes exited workers, reparented processes and shared CAD/Krita apps.
-No unavailable metric is reported as zero or used to authorize process control.
-Model billing, historical resource accounting and automatic resource enforcement
-are not inferred from these samples. The console is currently read-only. English is the default UI language; its language button selects the retained Simplified Chinese companion without changing authority or task records.
+The console projects original instance, round-control, run, custody and kit labels. It displays task order,
+cancellation, uncertainty and outcomes separately from artifact acceptance. OS samples include the service and
+birth-identity checked live task-owner descendants. Summed resident sizes may include shared pages; the sample excludes
+exited workers, reparented processes and shared CAD/Krita apps. No unavailable metric is reported as zero or used to
+authorize process control. Model billing, historical resource accounting and automatic resource enforcement are not
+inferred from these samples. The console is currently read-only. English is the default UI language; its language button
+selects the retained Simplified Chinese companion without changing authority or task records.
 
-Run `tests/cli/native_daemon.py` with explicit `--host` and a fresh `--evidence`
-directory on macOS. It covers duplicate service exclusion, bound approvals,
-FIFO/concurrency, service loss without replay, queued cancellation, original
-custody, lifecycle controls, external-client cancellation, resource observation and
-console authorization. Its local harness fixture is not provider evidence.
-CAD→Krita and real Codex/MCP tests remain separately required in Shuttle before
-promoting a mature spool. Unsupported platforms refuse service execution.
+Run `tests/cli/native_daemon.py` with explicit `--host` and a fresh `--evidence` directory on macOS. It covers duplicate
+service exclusion, bound approvals, FIFO/concurrency, service loss without replay, queued cancellation, original
+custody, lifecycle controls, external-client cancellation, resource observation and console authorization. Its local
+harness fixture is not provider evidence. CAD→Krita and real Codex/MCP tests remain separately required in Shuttle
+before promoting a mature spool. Unsupported platforms refuse service execution.
 
 ## Async delegation
 
-`delegate` takes `parent` and the existing finite harness `task`, returning a task
-ID immediately after exact disclosure approval. `parent` is a correlation label,
-not an authorization grant or isolation boundary. Same-user access rules apply.
-`update-delegation` takes `id`, `strategy: "enqueue"` and `instruction`. It retains
-the original harness, scope, schema and MCP binding, appends the instruction to
-its prompt and requires a new approval. This is a new finite attempt, not a live
-session resume: predecessor output is not automatically injected. The FIFO queue
-starts it only after confirmed predecessor success. Failed, cancelled or unknown
-predecessors leave it queued; explicitly cancel it to settle it without running.
-Interrupt/replay and autonomous recursive spawning are not supported.
+`delegate` takes `parent` and the existing finite harness `task`, returning a task ID immediately after exact disclosure
+approval. `parent` is a correlation label, not an authorization grant or isolation boundary. Same-user access rules
+apply. `update-delegation` takes `id`, `strategy: "enqueue"` and `instruction`. It retains the original harness, scope,
+schema and MCP binding, appends the instruction to its prompt and requires a new approval. This is a new finite attempt,
+not a live session resume: predecessor output is not automatically injected. The FIFO queue starts it only after
+confirmed predecessor success. Failed, cancelled or unknown predecessors leave it queued; explicitly cancel it to settle
+it without running. Interrupt/replay and autonomous recursive spawning are not supported.
 
-Use existing `task` and `cancel` operations. `delegation-inbox` takes `parent` and
-returns durable task projections and completed proposals; repeated reads and
-service restarts do not consume messages or replay execution. This minimum uses
-pull delivery: automatic orchestrator wake-up and inbox acknowledgements are not
-implemented. Proposals remain untrusted data, not accepted artifacts. Existing
-queue limits bound all delegations; there is no second scheduler or model loop.
+Use existing `task` and `cancel` operations. `delegation-inbox` takes `parent` and returns durable task projections and
+completed proposals; repeated reads and service restarts do not consume messages or replay execution. This minimum uses
+pull delivery: automatic orchestrator wake-up and inbox acknowledgements are not implemented. Proposals remain untrusted
+data, not accepted artifacts. Existing queue limits bound all delegations; there is no second scheduler or model loop.
 
 ## Agent activity and adoption
 
-`activity` with `id` returns a bounded view over retained request, claim, owner,
-cancellation, completion and proposal records. Each source has a digest; record
-categories are not a reconstructed wall-clock timeline. Native spool custody
-continues to come from the original status/acceptance facade. The console's task
-detail uses the same authenticated read-only activity view.
+`activity` with `id` returns a bounded view over retained request, claim, owner, cancellation, completion and proposal
+records. Each source has a digest; record categories are not a reconstructed wall-clock timeline. Native spool custody
+continues to come from the original status/acceptance facade. The console's task detail uses the same authenticated
+read-only activity view.
 
-External Codex JSONL events are classified into fixed event/action categories,
-with original line numbers and the retained source digest. At most 128 events
-are returned; omitted and malformed lines are counted. Raw prompts, arguments,
-messages, URLs and tool output are never copied into this view. These are harness
-reports, not host-confirmed filesystem changes or authority. Missing events mean
-unknown visibility. Original private events remain the source, with no duplicate
-activity ledger.
+External Codex JSONL events are classified into fixed event/action categories, with original line numbers and the
+retained source digest. At most 128 events are returned; omitted and malformed lines are counted. Raw prompts,
+arguments, messages, URLs and tool output are never copied into this view. These are harness reports, not host-confirmed
+filesystem changes or authority. Missing events mean unknown visibility. Original private events remain the source, with
+no duplicate activity ledger.
 
-`record-adoption` with `id`, registered `instance` and `run` previews an explicit
-operator association between a confirmed proposal digest and original formally
-accepted artifact custody. Exact approval writes one retained association under
-the task. It cannot accept an artifact, change custody or prove semantic
-equivalence. An unaccepted/cancelled run cannot be linked. The retained record
-survives service restart and is included in activity queries.
+`record-adoption` with `id`, registered `instance` and `run` previews an explicit operator association between a
+confirmed proposal digest and original formally accepted artifact custody. Exact approval writes one retained
+association under the task. It cannot accept an artifact, change custody or prove semantic equivalence. An
+unaccepted/cancelled run cannot be linked. The retained record survives service restart and is included in activity
+queries.
 
-The opt-in `document_activity.py` CLI qualification uses a synthetic PDF table,
-two real finite Codex delegations and an operator-selected mature workbook
-builder. PDF extraction and workbook authoring stay in application adapters;
-original native spools publish the exact PDF, Markdown and XLSX bytes and retain
-their custody. Approved adoption links connect the two proposals to accepted
-Markdown/XLSX artifacts. Exported OOXML values and formulas are independently
-checked. This is one text-PDF case, not OCR or native Excel qualification.
+The opt-in `document_activity.py` CLI qualification uses a synthetic PDF table, two real finite Codex delegations and an
+operator-selected mature workbook builder. PDF extraction and workbook authoring stay in application adapters; original
+native spools publish the exact PDF, Markdown and XLSX bytes and retain their custody. Approved adoption links connect
+the two proposals to accepted Markdown/XLSX artifacts. Exported OOXML values and formulas are independently checked.
+This is one text-PDF case, not OCR or native Excel qualification.
 
-The document case takes `--host`, fresh `--evidence`, synthetic `--pdf`, qualified
-`--codex`, `--node` and application-owned `--builder` paths. The controller needs
-`pypdf`. The builder receives typed rows JSON and an output directory and writes
-`result.xlsx`: source rows A6:C8, amount formulas D6:D8 and total D10. It never
-installs tools or provisions services. The fixture checks Bolt (12 at 0.50),
-Plate (3 at 8.00), Bearing (2 at 4.25), total EUR 38.50.
+The document case takes `--host`, fresh `--evidence`, synthetic `--pdf`, qualified `--codex`, `--node` and
+application-owned `--builder` paths. The controller needs `pypdf`. The builder receives typed rows JSON and an output
+directory and writes `result.xlsx`: source rows A6:C8, amount formulas D6:D8 and total D10. It never installs tools or
+provisions services. The fixture checks Bolt (12 at 0.50), Plate (3 at 8.00), Bearing (2 at 4.25), total EUR 38.50.
 
 ## Harness adapters and reconnect
 
-`HarnessAdapter` supplies execution, capability discovery and normalized event
-translation behind the existing daemon queue and independent task owner. Select
-`task.adapter="codex-app-server"` for interactive Codex. `codex-exec` preserves the
-finite profile. Existing omitted selectors and `app_server=true` retain their
-serialized identities and permission profiles. Conflicting selectors are rejected.
-Both Codex profiles remain pinned to CLI 0.166.0 and the approved executable hash.
+`HarnessAdapter` supplies execution, capability discovery and normalized event translation behind the existing daemon
+queue and independent task owner. Select `task.adapter="codex-app-server"` for interactive Codex. `codex-exec` preserves
+the finite profile. Existing omitted selectors and `app_server=true` retain their serialized identities and permission
+profiles. Conflicting selectors are rejected. Both Codex profiles remain pinned to CLI 0.166.0 and the approved
+executable hash.
 
-Call `harness-connect` with `id` and optional `cursor` through the original task
-endpoint. It returns the original execution handle, capability flags, task state,
-normalized events, the next cursor and steering receipts. Reconnecting uses retained
-records and the original worker. It survives a controller disconnect or daemon
-restart while that worker stays alive. `resume_execution=false` explicitly describes
-worker/provider loss. Unknown executions keep their original IDs without replay.
-Cancelled credentials retain scoped observation and cancellation access.
+Call `harness-connect` with `id` and optional `cursor` through the original task endpoint. It returns the original
+execution handle, capability flags, task state, normalized events, the next cursor and steering receipts. Reconnecting
+uses retained records and the original worker. It survives a controller disconnect or daemon restart while that worker
+stays alive. `resume_execution=false` explicitly describes worker/provider loss. Unknown executions keep their original
+IDs without replay. Cancelled credentials retain scoped observation and cancellation access.
 
-Call `harness-steer` with `id`, `execution`, a unique `command` and `instruction`.
-Preview and exact approval bind the instruction digest to the original execution.
-The selected active turn is also bound. Idle sessions require an explicit continuation.
-Commands arriving after their selected turn ends are rejected.
-The caller must own the task and retain its harness capability. The worker rechecks
-the original task grant before delivery. Up to 32 commands are ordered by admission,
-with instructions bounded to 64 KiB. Reusing an identical command ID reconciles its
-receipt. Reusing it for different content fails. The durable sent marker precedes
-transport, so a crash between marker and acknowledgement remains unknown.
-`queued` describes local admission. `acknowledged` records provider acceptance into
-the same turn. It does not prove the requested change appeared in the result.
+Call `harness-steer` with `id`, `execution`, a unique `command` and `instruction`. Preview and exact approval bind the
+instruction digest to the original execution. The selected active turn is also bound. Idle sessions require an explicit
+continuation. Commands arriving after their selected turn ends are rejected. The caller must own the task and retain its
+harness capability. The worker rechecks the original task grant before delivery. Up to 32 commands are ordered by
+admission, with instructions bounded to 64 KiB. Reusing an identical command ID reconciles its receipt. Reusing it for
+different content fails. The durable sent marker precedes transport, so a crash between marker and acknowledgement
+remains unknown. `queued` describes local admission. `acknowledged` records provider acceptance into the same turn. It
+does not prove the requested change appeared in the result.
 
-The Codex bridge maps steering to `turn/steer` with the original `expectedTurnId`.
-Cancellation continues through the existing revocable grant and supervised process
-group. Local release evidence gates settlement. Remote provider termination remains
-unconfirmed. Final structured output remains a proposal until the existing spool
-publication and acceptance path accepts a concrete product. The adapter owns no
-scheduler, model loop, permission issuer or artifact store. Protocol details follow
-the pinned binary schema and [Codex app-server documentation](https://learn.chatgpt.com/docs/app-server).
+The Codex bridge maps steering to `turn/steer` with the original `expectedTurnId`. Cancellation continues through the
+existing revocable grant and supervised process group. Local release evidence gates settlement. Remote provider
+termination remains unconfirmed. Final structured output remains a proposal until the existing spool publication and
+acceptance path accepts a concrete product. The adapter owns no scheduler, model loop, permission issuer or artifact
+store. Protocol details follow the pinned binary schema and [Codex app-server
+documentation](https://learn.chatgpt.com/docs/app-server).
 
-A future modified DeepSeek adapter must implement this contract, declare supported
-capabilities, map its native session identities privately and pass the same scoped
-steering, cancellation, reconnect and artifact-custody checks. Unsupported capabilities
-must be rejected explicitly. Adding an adapter must preserve the existing host job,
-grant lineage, cancellation owner and acceptance path.
+A future modified DeepSeek adapter must implement this contract, declare supported capabilities, map its native session
+identities privately and pass the same scoped steering, cancellation, reconnect and artifact-custody checks. Unsupported
+capabilities must be rejected explicitly. Adding an adapter must preserve the existing host job, grant lineage,
+cancellation owner and acceptance path.
 
-`native_harness_adapter.py` verifies two background owners, steering acknowledgements,
-stale handles, sibling denial, duplicate command rejection, isolated cancellation
-and daemon restart with unchanged owners using deterministic protocol processes.
-`document_activity.py --app-server` exercises real Codex proposals through the
-existing PDF, Markdown and Excel custody path using explicitly selected inputs and
-an application-owned workbook builder. Real-provider evidence is retained locally.
+`native_harness_adapter.py` verifies two background owners, steering acknowledgements, stale handles, sibling denial,
+duplicate command rejection, isolated cancellation and daemon restart with unchanged owners using deterministic protocol
+processes. `document_activity.py --app-server` exercises real Codex proposals through the existing PDF, Markdown and
+Excel custody path using explicitly selected inputs and an application-owned workbook builder. Real-provider evidence is
+retained locally.
 
-The standalone workspace shell is built with `python3 packages/workbench/build.py`.
-Its TypeScript and HTML source use English. Simplified Chinese interface messages
-are maintained in `packages/workbench/zh-CN.json` and embedded during the build.
-User-authored workspace names, goals and records retain their original language.
+The standalone workspace shell is built with `python3 packages/workbench/build.py`. Its TypeScript and HTML source use
+English. Simplified Chinese interface messages are maintained in `packages/workbench/zh-CN.json` and embedded during the
+build. User-authored workspace names, goals and records retain their original language.
 
 ### Bounded turns and measurements
 
@@ -362,238 +301,285 @@ Interactive tasks may declare `turn_limit` from 1 to 8 and `wall_seconds` from 1
 harness permission digest. The original owner, execution handle, thread, schema,
 grants and supervisor span all declared turns. Finite exec supports one turn.
 
-`harness-turn-result` takes `id` and a one-based `turn`. It returns an immutable
-completed-turn proposal with `artifact_accepted=false` and
-`termination_confirmed=false`. `harness-continue` takes `id`, `execution`,
-`after_turn`, a unique `command` and `instruction`. Exact approval binds the
-instruction and completed turn. One continuation is admitted for each completed
-turn within the original limit. Identical commands reconcile their original
-receipts. The sent marker precedes transport. Unknown commands retain original
-identities. Cancellation and grant revocation also terminate an owner waiting
-between turns. Final `harness-result` still requires original task settlement.
+`harness-turn-result` takes `id` and a one-based `turn`. It returns an immutable completed-turn proposal with
+`artifact_accepted=false` and `termination_confirmed=false`. `harness-continue` takes `id`, `execution`, `after_turn`, a
+unique `command` and `instruction`. Exact approval binds the instruction and completed turn. One continuation is
+admitted for each completed turn within the original limit. Identical commands reconcile their original receipts. The
+sent marker precedes transport. Unknown commands retain original identities. Cancellation and grant revocation also
+terminate an owner waiting between turns. Final `harness-result` still requires original task settlement.
 
-`activity.harness.metrics` projects numeric cumulative provider counters and
-authorized resource disclosures from existing retained records. Cached input is
-part of input, and reasoning output is part of output. Repeated cumulative updates
-are deduplicated per session. Invalid or regressing counters reduce coverage.
-Missing values remain `null`. Resource receipts expose digests, byte counts and
-host dispatch timing. Actual model consumption remains unknown. `read-input` and
-`artifact-read` accept optional `encoding="utf-8"` through the same authorization
-checks. The default response retains the existing byte representation.
+`activity.harness.metrics` projects numeric cumulative provider counters and authorized resource disclosures from
+existing retained records. Cached input is part of input, and reasoning output is part of output. Repeated cumulative
+updates are deduplicated per session. Invalid or regressing counters reduce coverage. Missing values remain `null`.
+Resource receipts expose digests, byte counts and host dispatch timing. Actual model consumption remains unknown.
+`read-input` and `artifact-read` accept optional `encoding="utf-8"` through the same authorization checks. The default
+response retains the existing byte representation.
 
 ### Host task-session boundary
 
-The internal task-session layer owns continuation admission, command reconciliation,
-observation and authorized tool dispatch. Adapter capabilities are typed; steering
-and continuation are independent capabilities. Codex native event and usage parsing
-remain in the Codex adapter. Existing `harness-*` operations, persisted identities
-and permission digests remain compatible. This extraction does not introduce a new
-scheduler or authorize guest/provider reports to accept artifacts.
+The internal task-session layer owns continuation admission, command reconciliation, observation and authorized tool
+dispatch. Adapter capabilities are typed; steering and continuation are independent capabilities. Codex native event and
+usage parsing remain in the Codex adapter. Existing `harness-*` operations, persisted identities and permission digests
+remain compatible. This extraction does not introduce a new scheduler or authorize guest/provider reports to accept
+artifacts.
+
+## Per-turn context contract v1 (target)
+
+**Status:** this section specifies a future contract, not a shipped wire schema.
+Current TaskSession binds instructions, completed turns, execution identities and command receipts;
+it does not persist a unified context revision. Existing disclosures, acceptance and operation records
+remain authoritative. No runtime/API change or an-agent-semantic removal is implied here.
+
+### Content and authority
+
+TaskSession assembles and retains provider-neutral `TurnContext` snapshots. The following are
+logical contract fields; wire spelling and storage are reserved for the implementation change.
+
+| Content | Authority and update rule |
+| --- | --- |
+| Identity | Host binds task, original execution, local turn, context revision and parent revision. Provider thread/turn IDs remain adapter mappings. |
+| User intent | Original goal, effective constraints and supplemental instruction references retain provenance and order. Model text cannot become a user instruction. |
+| Working summary | Model-proposed understanding, stage, plan, pending work and questions retain source and originating turn. Persistence is not endorsement. |
+| Readable material | Fixed-version references to authorized inputs and knowledge distinguish eligibility to read from actual disclosure receipts. |
+| Accepted products | Host-accepted artifact versions and acceptance receipts only. Proposals, scratch files and Cocoon exports alone are not accepted products. |
+| Operations | Original operation IDs, observed states, receipt references and unresolved outcomes preserve failure, cancellation and uncertainty. |
+| Authority and budget | Host-projected scope and remaining original task budget; no credentials, inherited grants or renewed allowance. |
+
+Verified host records take precedence over conflicting model summaries. The host checks a summary's
+binding and bounded representation, not the truth of its narrative. Instructions and data retain their
+origin; neither a digest nor a model-written role label creates authority.
+
+### Round transition
+
+1. The host builds the first snapshot from the approved task. Knowledge and large files remain references;
+   existing authorized tools disclose selected bytes on demand, rather than loading all material.
+2. During execution, existing components own operation records, lifecycle and artifact custody. Context
+   references those records and does not become a second scheduler or execution-state database.
+3. `TurnProposal` binds the input context revision and contains the model working summary, suggested
+   next actions and candidate artifact references. It cannot overwrite host facts or accept products.
+4. The host combines the prior snapshot, user updates, proposal and current receipts into an immutable
+   successor. Old snapshots remain available; turn number and context revision are separate counters.
+5. Supplemental instructions may create a new revision within an active turn through existing steering.
+   Prepared, sent, acknowledged, rejected and unknown delivery remain distinct. Saved does not mean received.
+6. Continuation retains the original job, execution, provider thread, turn ceiling and budget. Reconnection
+   reads committed snapshots and original command receipts; it does not regenerate or resend inputs.
+
+Adapters only render this neutral input and map provider acknowledgements. The existing Codex thread
+continues to carry conversation history. This contract neither replaces harness compaction nor promises
+that the provider consumed every disclosed byte. A proposal records the revision known to its turn;
+an unacknowledged steering update must not be attributed to that proposal.
+
+### Consistency and failure boundaries
+
+Updates name the expected parent revision; stale updates fail rather than overwriting concurrent input.
+Command identity binds the context digest: the same ID with different content is refused. Snapshot
+publication and command admission must preserve that binding across restart, using host-owned persistence.
+Authorization is rechecked at disclosure, execution and result admission. Historical scope descriptions
+cannot authorize current work; revocation cannot erase material already disclosed to provider history.
+
+The existing sent-before-transport fence remains. Missing confirmation is unknown and is reconciled by
+original command ID, never replayed automatically. Dependent continuation cannot assume the update arrived.
+Unknown application operations retain their original IDs: unrelated authorized read-only observation may
+continue, but actions requiring success remain blocked until evidence resolves that dependency.
+Cancellation refuses new steering and continuation, preserves proposals, accepted products and unresolved
+operations, and relies on original host termination evidence. Old sessions without revisions remain
+explicitly legacy; do not synthesize historical snapshots. Future versioned capability negotiation must
+opt in without silently changing existing approval digests.
+
+### Example and required acceptance
+
+PDF → Markdown → Excel stays on one session. The first context references the approved PDF and knowledge;
+the model proposes Markdown. Host acceptance produces an artifact revision for the next context. The
+same agent reads that accepted Markdown and authorized table knowledge, then proposes structured rows.
+The existing builder generates Excel and the original host accepts it. A claim of completion or an
+unaccepted Markdown reference cannot advance the accepted-product set. Clarification uses the same
+instruction/update flow within the originally approved turn limit.
+
+Implementation acceptance must cover normal two-turn delivery; same-turn steering; stale/concurrent
+updates; a false completed summary; unaccepted artifacts; revoked knowledge access; crashes on both sides
+of the send fence; lost acknowledgements; reconnect without replay; and cancellation rejecting new input.
+Assert original job/thread continuity, no budget reset and original host artifact acceptance throughout.
+These are future tests, not results claimed by this documentation change. Contract completion requires
+matching bilingual ownership and failure rules plus passing documentation/architecture checks. Types,
+persistence and runtime wiring follow separately; a full model benchmark is not required for this edit.
 
 ## Task-session Cocoon transport
 
-The task-session middle layer accepts `cocoon-call`, `cocoon-status` and
-`cocoon-reconcile` through the existing `host_request` tool. This is a bounded
-transport foundation, not a qualified spool execution backend or artifact importer.
-It neither starts VMs nor accepts exported files into artifact custody.
+The task-session middle layer accepts `cocoon-call`, `cocoon-status` and `cocoon-reconcile` through the existing
+`host_request` tool. This is a bounded transport foundation, not a qualified spool execution backend or artifact
+importer. It neither starts VMs nor accepts exported files into artifact custody.
 
-A trusted operator supplies a private JSON profile (mode 0600) with `socket`,
-`grant`, `caller`, `vm` and `generation`. The profile contains only a work grant,
-not the Cocoon management credential. The model receives the
-profile path and SHA-256, never its contents. A task grant must include
-`{"kind":"cocoon","profile_sha256":"…","operation_sha256":"…"}`; the latter
-binds the serialized Cocoon operation exactly. Issue this capability through the
-existing operator preview/approval flow. Do not grant the model profile read access.
-Cocoon independently checks its own work grant on every request.
+A trusted operator supplies a private JSON profile (mode 0600) with `socket`, `grant`, `caller`, `vm` and `generation`.
+The profile contains only a work grant, not the Cocoon management credential. The model receives the profile path and
+SHA-256, never its contents. A task grant must include `{"kind":"cocoon","profile_sha256":"…","operation_sha256":"…"}`;
+the latter binds the serialized Cocoon operation exactly. Issue this capability through the existing operator
+preview/approval flow. Do not grant the model profile read access. Cocoon independently checks its own work grant on
+every request.
 
-A `cocoon-call` request includes `profile`, `profile_sha256`, `operation_id` (a UUID)
-and `operation`. Allowed operations are show, context, stop, guest and
-export. Guest/export identities must match the profile VM, caller and generation.
-Management operations, including grant issuance and VM creation, are unavailable.
-The host creates a separate Cocoon request UUID and durably records its binding
-before transport. Repeated identical local operation IDs observe the original
-record; changed content is rejected. Transport loss remains unknown without replay.
-Records belong to the original task session, including when a grant serves several
-sessions. Credentials and guest payloads are omitted from intent records.
+A `cocoon-call` request includes `profile`, `profile_sha256`, `operation_id` (a UUID) and `operation`. Allowed
+operations are show, context, stop, guest and export. Guest/export identities must match the profile VM, caller and
+generation. Management operations, including grant issuance and VM creation, are unavailable. The host creates a
+separate Cocoon request UUID and durably records its binding before transport. Repeated identical local operation IDs
+observe the original record; changed content is rejected. Transport loss remains unknown without replay. Records belong
+to the original task session, including when a grant serves several sessions. Credentials and guest payloads are omitted
+from intent records.
 
-`cocoon-reconcile` takes the same profile, operation identity and exact-operation
-capability. It queries Cocoon's original request ID and retains a confirmed success;
-it never resubmits the operation. `cocoon-status` requires only the operation ID
-inside the tool. Controllers may also use the authenticated task endpoint with
-`id` and `operation_id`, including after task-grant revocation, to observe their
-own records. This is local receipt observation, not renewed execution authority.
-`harness-connect` also returns the session’s retained `cocoon_operations` receipts.
-Every response keeps `artifact_accepted=false`. `observed` means a correlated
-backend reply exists; VM termination and product acceptance require separate checks.
+`cocoon-reconcile` takes the same profile, operation identity and exact-operation capability. It queries Cocoon's
+original request ID and retains a confirmed success; it never resubmits the operation. `cocoon-status` requires only the
+operation ID inside the tool. Controllers may also use the authenticated task endpoint with `id` and `operation_id`,
+including after task-grant revocation, to observe their own records. This is local receipt observation, not renewed
+execution authority. `harness-connect` also returns the session’s retained `cocoon_operations` receipts. Every response
+keeps `artifact_accepted=false`. `observed` means a correlated backend reply exists; VM termination and product
+acceptance require separate checks.
 
-`cocoon-transfer` stages bounded binary input/output using the same profile and
-exact-operation capability. Its `operation` plan binds `direction` (upload or
-download), guest `path` below `/workspace/`, active VM `attempt`, `sha256` and
-`bytes` (at most 4 MiB). Upload additionally binds `source`, requiring a matching
-ReadInput capability. Download cannot choose a host destination. The host supplies
-the task identity and verifies each correlated 8192-byte chunk, cursor, final size
-and digest. Each chunk has a durable submission fence; re-entry observes or queries
-its original operation, never resends an uncertain write. Cancellation/revocation
-is checked between chunks and before staging a candidate. Downloads remain private
-session candidates (`candidate.bin`); `staged` never means accepted, executable or
+`cocoon-transfer` stages bounded binary input/output using the same profile and exact-operation capability. Its
+`operation` plan binds `direction` (upload or download), guest `path` below `/workspace/`, active VM `attempt`, `sha256`
+and `bytes` (at most 4 MiB). Upload additionally binds `source`, requiring a matching ReadInput capability. Download
+cannot choose a host destination. The host supplies the task identity and verifies each correlated 8192-byte chunk,
+cursor, final size and digest. Each chunk has a durable submission fence; re-entry observes or queries its original
+operation, never resends an uncertain write. Cancellation/revocation is checked between chunks and before staging a
+candidate. Downloads remain private session candidates (`candidate.bin`); `staged` never means accepted, executable or
 delivered. This interface does not establish VM termination or domain correctness.
 
-A staged download can be selected as a spool `submit` input using
-`candidate={session,transfer,sha256}` instead of `input` or `artifact`. The caller
-must own the producer session and hold `run-candidate` permission binding the
-instance, run, transfer, digest and maximum seconds. The producer grant must remain
-active. The host verifies the complete staged receipt and candidate bytes before
-preview and reservation; no caller-supplied host path is accepted. The existing
-spool supervisor snapshots that input and owns execution/termination. Its grant
-follows the producer lineage so cancellation/revocation remains effective after
-reservation. Task observation retains `candidate_input` provenance. Formal custody
-still requires the original spool `accept`, and `artifact-read` verifies that
-custody before returning bytes to the continuing primary session. This bridge
-qualifies candidate input and custody; it does not move the domain runtime into
-Cocoon or establish PDF/Excel correctness.
+A staged download can be selected as a spool `submit` input using `candidate={session,transfer,sha256}` instead of
+`input` or `artifact`. The caller must own the producer session and hold `run-candidate` permission binding the
+instance, run, transfer, digest and maximum seconds. The producer grant must remain active. The host verifies the
+complete staged receipt and candidate bytes before preview and reservation; no caller-supplied host path is accepted.
+The existing spool supervisor snapshots that input and owns execution/termination. Its grant follows the producer
+lineage so cancellation/revocation remains effective after reservation. Task observation retains `candidate_input`
+provenance. Formal custody still requires the original spool `accept`, and `artifact-read` verifies that custody before
+returning bytes to the continuing primary session. This bridge qualifies candidate input and custody; it does not move
+the domain runtime into Cocoon or establish PDF/Excel correctness.
 
 ## Fixed Cocoon programs
 
-`cocoon-job` is a host task-session tool, independent of provider protocols. It
-accepts `spec`, `spec_sha256`, a unique `operation_id`, bounded JSON `data`, and up
-to four authorized `read-input`/`artifact-read` byte references in `inputs`. A
-`cocoon-job` capability binds `spec_sha256`. The private operator spec pins the
-transport profile, program path/SHA-256, guest interpreter, fixed arguments and
-output names/encodings. Arguments may substitute `{program}`, `{request}` and
-`{output}`; source data never becomes a command. Programs consume a request JSON
-containing `data` and host-resolved guest input paths, and produce declared files
-plus a bounded `manifest.json` mapping names to `sha256` and `bytes`.
+`cocoon-job` is a host task-session tool, independent of provider protocols. It accepts `spec`, `spec_sha256`, a unique
+`operation_id`, bounded JSON `data`, and up to four authorized `read-input`/`artifact-read` byte references in `inputs`.
+A `cocoon-job` capability binds `spec_sha256`. The private operator spec pins the transport profile, program
+path/SHA-256, guest interpreter, fixed arguments and output names/encodings. Arguments may substitute `{program}`,
+`{request}` and `{output}`; source data never becomes a command. Programs consume a request JSON containing `data` and
+host-resolved guest input paths, and produce declared files plus a bounded `manifest.json` mapping names to `sha256` and
+`bytes`.
 
-The host claims one VM generation for the original primary session before guest
-mutation. The work grant must support inspect, guest and stop. Each step has an
-original durable request ID; uncertain execution is queried, not resent. Results
-remain `proposed`. Their output `reference` can be passed as `submit.job_output`;
-`run-job-output` authority binds instance, run, operation, output and maximum
-seconds. The original native spool supervisor and `accept` retain domain checking,
-termination and formal custody. Domain code owns PDF/workbook semantics.
+The host claims one VM generation for the original primary session before guest mutation. The work grant must support
+inspect, guest and stop. Each step has an original durable request ID; uncertain execution is queried, not resent.
+Results remain `proposed`. Their output `reference` can be passed as `submit.job_output`; `run-job-output` authority
+binds instance, run, operation, output and maximum seconds. The original native spool supervisor and `accept` retain
+domain checking, termination and formal custody. Domain code owns PDF/workbook semantics.
 
-`harness-connect.cocoon_jobs` and `cocoon-job-status` retain observations without
-opening a transport. Controllers supply task `id` and `operation_id`; the task tool
-uses its current session. The original harness owner releases claimed VMs before
-completion on success, cancellation or failure. Both local process and VM release
-must be confirmed for task settlement. If the owner is lost, an owning controller
-may request `cocoon-release` on the cancelled/closed task, including with a revoked
-task credential. This only reconciles original stop identities and observes the
-same VM generation. Expired/unavailable Cocoon authority remains unconfirmed;
-there is no management-credential fallback or execution replay.
+`harness-connect.cocoon_jobs` and `cocoon-job-status` retain observations without opening a transport. Controllers
+supply task `id` and `operation_id`; the task tool uses its current session. The original harness owner releases claimed
+VMs before completion on success, cancellation or failure. Both local process and VM release must be confirmed for task
+settlement. If the owner is lost, an owning controller may request `cocoon-release` on the cancelled/closed task,
+including with a revoked task credential. This only reconciles original stop identities and observes the same VM
+generation. Expired/unavailable Cocoon authority remains unconfirmed; there is no management-credential fallback or
+execution replay.
 
-TaskSession routes backend I/O to the verified original owner, while queue and
-custody mutations remain serialized in the daemon. Backend callbacks observe a
-stop signal from the supervised client process, including wall-time expiry;
-expiry retains its timeout classification. A blocked guest program therefore
-does not hold the daemon's control request lane or authorize later job steps.
+TaskSession routes backend I/O to the verified original owner, while queue and custody mutations remain serialized in
+the daemon. Backend callbacks observe a stop signal from the supervised client process, including wall-time expiry;
+expiry retains its timeout classification. A blocked guest program therefore does not hold the daemon's control request
+lane or authorize later job steps.
 
 ## Offline environment client
 
-`an-agent-host app serve ROOT` starts the separate authenticated product page for an existing
-private daemon. `ROOT/application/endpoint.json` contains its local URL. The client provides offline
-environment import, bounded document task creation, clarification, cancellation and accepted
-artifact download. It does not change the existing read-only daemon console.
+`an-agent-host app serve ROOT` starts the separate authenticated product page for an existing private daemon.
+`ROOT/application/endpoint.json` contains its local URL. The client provides offline environment import, bounded
+document task creation, clarification, cancellation and accepted artifact download. It does not change the existing
+read-only daemon console.
 
-Loom's `pack-runtime SOURCE MANIFEST NEW_ARCHIVE` assembles an explicitly selected offline
-environment. The `an-offline-runtime-v1` manifest pins name/version, `macos-aarch64`, license files,
-component references, and an ordered map of payload SHA-256, byte count and executable flag. The
-gzip tar starts with `runtime.json`, followed by exactly those regular files in sorted order. Paths
-are bounded relative ASCII paths; links, traversal and undeclared entries are refused. Total payload
-is bounded to 32 GiB and the page upload to 8 GiB compressed. Hashes identify content, not a
+Loom's `pack-runtime SOURCE MANIFEST NEW_ARCHIVE` assembles an explicitly selected offline environment. The
+`an-offline-runtime-v1` manifest pins name/version, `macos-aarch64`, license files, component references, and an ordered
+map of payload SHA-256, byte count and executable flag. The gzip tar starts with `runtime.json`, followed by exactly
+those regular files in sorted order. Paths are bounded relative ASCII paths; links, traversal and undeclared entries are
+refused. Total payload is bounded to 32 GiB and the page upload to 8 GiB compressed. Hashes identify content, not a
 publisher; the operator must review the selected runtime and its licenses.
 
-The page uploads bytes into its private store, previews verified identities and imports only after
-confirmation of the matching manifest digest. Import never executes payloads. It stages a new
-private directory and publishes a digest-named environment only after complete verification. Reuse
-revalidates installed bytes; interrupted staging directories never appear as installed environments.
-Imported content is not a claim that Codex, VM execution or a domain workflow is ready.
+The page uploads bytes into its private store, previews verified identities and imports only after confirmation of the
+matching manifest digest. Import never executes payloads. It stages a new private directory and publishes a digest-named
+environment only after complete verification. Reuse revalidates installed bytes; interrupted staging directories never
+appear as installed environments. Imported content is not a claim that Codex, VM execution or a domain workflow is
+ready.
 
 ### Session finish and product controls
 
-`harness-finish` closes an idle interactive session bound to its original `id`, `execution` and
-completed `after_turn`, using the original harness permission and an adapter advertising
-`finish_session`. Continuation and finish for the same turn exclude each other; repeated identical
-finish is idempotent. Active, cancelled, stale or unavailable owners refuse. The original owner
-still closes its client, releases the VM and retains termination evidence. The page's finite `task-
-view` and `task-control` preview/confirm cancellation or supplements, using steering for active
-turns and continuation for idle turns. They expose no arbitrary daemon proxy.
+`harness-finish` closes an idle interactive session bound to its original `id`, `execution` and completed `after_turn`,
+using the original harness permission and an adapter advertising `finish_session`. Continuation and finish for the same
+turn exclude each other; repeated identical finish is idempotent. Active, cancelled, stale or unavailable owners refuse.
+The original owner still closes its client, releases the VM and retains termination evidence. The page's finite `task-
+view` and `task-control` preview/confirm cancellation or supplements, using steering for active turns and continuation
+for idle turns. They expose no arbitrary daemon proxy.
 
 ### Product document delivery
 
-On a new private root, `app serve ROOT` starts the original daemon with two slots. An existing root
-keeps its selected executable; a changed selection is refused. One product delivery is admitted at a
-time, on an idle service with at least two slots, so its retained primary session cannot block its
-native acceptance job. An unresolved product keeps its admission slot until reconciliation.
+On a new private root, `app serve ROOT` starts the original daemon with two slots. An existing root keeps its selected
+executable; a changed selection is refused. One product delivery is admitted at a time, on an idle service with at least
+two slots, so its retained primary session cannot block its native acceptance job. An unresolved product keeps its
+admission slot until reconciliation.
 
-The offline manifest selects `delivery`, `cocoon`, `runner`, `kernel`, `initrd`, `root_image`,
-`native_python`, `native_stdlib`, `native_site`, `intermediate_package` and `final_package`.
-Component references select files; package/site/stdlib directories derive from their selected
-manifest/index files. The delivery declaration and domain prompts belong to an-spool. Import is not
-execution qualification. A task separately freezes environment and input identity, Codex selection,
-instruction, 600-second deadline and maximum three turns. The first document profile accepts text
-EUR quotes up to the existing authorized input-reader limit of 512 KiB. OCR and arbitrary PDF
-layouts remain unsupported.
+The offline manifest selects `delivery`, `cocoon`, `runner`, `kernel`, `initrd`, `root_image`, `native_python`,
+`native_stdlib`, `native_site`, `intermediate_package` and `final_package`. Component references select files;
+package/site/stdlib directories derive from their selected manifest/index files. The delivery declaration and domain
+prompts belong to an-spool. Import is not execution qualification. A task separately freezes environment and input
+identity, Codex selection, instruction, 600-second deadline and maximum three turns. The first document profile accepts
+text EUR quotes up to the existing authorized input-reader limit of 512 KiB. OCR and arbitrary PDF layouts remain
+unsupported.
 
-Product actions are `delivery-preview`, `delivery-create`, `delivery-view`, `delivery-clarify`,
-`delivery-cancel`, `delivery-reconcile` and `delivery-artifact`. Creation and clarification use
-exact previews; creation/answer identities never replay work. Model control remains behind
-TaskSession; the product controller uses original queue, authorization, supervisor and acceptance
-APIs and owns no model loop. Product records are projections linking original jobs, VM and artifact
-references. An unavailable original controller is shown as unknown, never restarted implicitly.
+Product actions are `delivery-preview`, `delivery-create`, `delivery-view`, `delivery-clarify`, `delivery-cancel`,
+`delivery-reconcile` and `delivery-artifact`. Creation and clarification use exact previews; creation/answer identities
+never replay work. Model control remains behind TaskSession; the product controller uses original queue, authorization,
+supervisor and acceptance APIs and owns no model loop. Product records are projections linking original jobs, VM and
+artifact references. An unavailable original controller is shown as unknown, never restarted implicitly.
 
-`harness-bind-cocoon` binds an approved fixed job specification to its original primary session
-before exposing the task as running. This transfers VM cleanup to the original owner even if
-cancellation precedes the first model tool call. `harness-attach-input` explicitly approves one
-exact read-only input grant for the same task, with no delegation or expiry extension; the original
-grant is unchanged. The original owner monitors attached grants, and their revocation cancels the
-session and downstream work. Explicit narrowed tool grants retain their checks. The controller stops
-only its own untransferred VM with its original work authority.
+`harness-bind-cocoon` binds an approved fixed job specification to its original primary session before exposing the task
+as running. This transfers VM cleanup to the original owner even if cancellation precedes the first model tool call.
+`harness-attach-input` explicitly approves one exact read-only input grant for the same task, with no delegation or
+expiry extension; the original grant is unchanged. The original owner monitors attached grants, and their revocation
+cancels the session and downstream work. Explicit narrowed tool grants retain their checks. The controller stops only
+its own untransferred VM with its original work authority.
 
-The client downloads only accepted revisions after successful original process and VM release.
-Operator download revalidates custody and is independent of the expired model disclosure grant. No
-scratch file or internal path is served. Closing/reopening the page preserves original task identity
-and execution.
+The client downloads only accepted revisions after successful original process and VM release. Operator download
+revalidates custody and is independent of the expired model disclosure grant. No scratch file or internal path is
+served. Closing/reopening the page preserves original task identity and execution.
 
-Terminal projections are published only after original process and VM release. Unknown delivery
-reconciliation fences the original task grant on the serialized daemon, then recovers unique queue
-IDs from durable request digests and that grant. Primary and native-validator intents precede
-submission; lost replies never cause resubmission. It reads original completion receipts without
-restarting the controller. Unmatched/ambiguous executions retain unknown. Interrupted work becomes
-failed/cancelled, with accepted products retained in their original custody. The approved primary
-scope forbids child harness/delegation requests and pins each Cocoon specification to its original
-operation ID; unknown effects cannot be retried with a fresh ID. Existing generic session scopes
-remain compatible. Idle one-slot roots can explicitly preview/approve `prepare-document-capacity` to
-reserve two slots; running tasks prevent this change.
+Terminal projections are published only after original process and VM release. Unknown delivery reconciliation fences
+the original task grant on the serialized daemon, then recovers unique queue IDs from durable request digests and that
+grant. Primary and native-validator intents precede submission; lost replies never cause resubmission. It reads original
+completion receipts without restarting the controller. Unmatched/ambiguous executions retain unknown. Interrupted work
+becomes failed/cancelled, with accepted products retained in their original custody. The approved primary scope forbids
+child harness/delegation requests and pins each Cocoon specification to its original operation ID; unknown effects
+cannot be retried with a fresh ID. Existing generic session scopes remain compatible. Idle one-slot roots can explicitly
+preview/approve `prepare-document-capacity` to reserve two slots; running tasks prevent this change.
 
-The controller checks authenticated readiness and records its Cocoon child birth identity and original
-controller ownership before VM work. Reconciliation may stop only that child after original
-workloads and VM release are confirmed. Missing ownership retains unknown. Cleanup signals no
-changed identity. The original page reaps its exact coordinator child; a live PID, missing launch
-owner or incomplete completion receipt cannot prove termination. Reconciliation may reread original
+The controller checks authenticated readiness and records its Cocoon child birth identity and original controller
+ownership before VM work. Reconciliation may stop only that child after original workloads and VM release are confirmed.
+Missing ownership retains unknown. Cleanup signals no changed identity. The original page reaps its exact coordinator
+child; a live PID, missing launch owner or incomplete completion receipt cannot prove termination. Reconciliation may
+reread original receipts.
+
+Preparation records a versioned start intent before VM start and binds the original work grant to a Cocoon
+generation/attempt before primary admission. Reconciliation reuses that claim's stop identity if no primary release
+exists. Missing start/stop authority or a legacy unversioned record retains unknown; version 1 with no start intent
+proves no VM start was submitted. Runtime launch records require independent control-process cleanup even when their
+page projection is lost. Native settlement uses the original spool facade, including verified supervisor no-launch
 receipts.
-
-Preparation records a versioned start intent before VM start and binds the original work grant to a
-Cocoon generation/attempt before primary admission. Reconciliation reuses that claim's stop identity
-if no primary release exists. Missing start/stop authority or a legacy unversioned record retains
-unknown; version 1 with no start intent proves no VM start was submitted. Runtime launch records
-require independent control-process cleanup even when their page projection is lost. Native
-settlement uses the original spool facade, including verified supervisor no-launch receipts.
 
 ### P1.2 private cold-disk images
 
-Optional pinned `image_api` declares `cocoon-image-api-v1`, disk support and `memory_restore_qualified:false`.
-Older bundles keep task-local stores; new stores are private to the service and offline environment digest. `image-preview`/`image-submit` bind save-environment, save-project, promote, branch or rollback to an original
-ID, source digests and operator approval. `image-control` cancels/reconciles that ID. Registration and success
-receipts share one Cocoon transaction; unknown effects are queried, never replayed. Only reviewed offline bytes
-form environment candidates. Project state requires original termination evidence and never becomes a shared baseline.
-Each image task gets an independent VM, attempt and grant. Explicit `resume_task` binds a project image's source VM
-to its original successful task and accepted Markdown/workbook revisions; only fresh grants disclose historical products.
-New PDFs remain authoritative; accepted artifacts retain host custody independently of saved disks. Optional `image_maintenance_api` pins `{"schema":"cocoon-image-maintenance-v1","manual_reclaim":true,"automatic_gc":false}`;
+Optional pinned `image_api` declares `cocoon-image-api-v1`, disk support and `memory_restore_qualified:false`. Older
+bundles keep task-local stores; new stores are private to the service and offline environment digest.
+`image-preview`/`image-submit` bind save-environment, save-project, promote, branch or rollback to an original ID,
+source digests and operator approval. `image-control` cancels/reconciles that ID. Registration and success receipts
+share one Cocoon transaction; unknown effects are queried, never replayed. Only reviewed offline bytes form environment
+candidates. Project state requires original termination evidence and never becomes a shared baseline. Each image task
+gets an independent VM, attempt and grant. Explicit `resume_task` binds a project image's source VM to its original
+successful task and accepted Markdown/workbook revisions; only fresh grants disclose historical products. New PDFs
+remain authoritative; accepted artifacts retain host custody independently of saved disks. Optional
+`image_maintenance_api` pins `{"schema":"cocoon-image-maintenance-v1","manual_reclaim":true,"automatic_gc":false}`;
 `image-inventory` probes the pinned backend and reports sizes, references and blockers. Older bundles lack cleanup.
 Preview/submit additionally support `retire` and `reclaim_vm`; the backend rechecks references and original termination.
-Durable deletion intents retain tombstones and receipts. After that fence cancellation cannot restore bytes; only original
-reconciliation finishes interrupted cleanup. Unknown/legacy resources and accepted artifacts are preserved. Shared-block
-allocation is an estimate, not guaranteed free space. No automatic GC, image scheduler or harness dependency is added.
-Cancellation/reconnection settle the original branch after confirmed control exit. Qualify three real cold/document cycles,
-ten repetitions per write fault window, the prior 48 real-host/40 protocol cases, and explicit real VM reclaim cycles.
+Durable deletion intents retain tombstones and receipts. After that fence cancellation cannot restore bytes; only
+original reconciliation finishes interrupted cleanup. Unknown/legacy resources and accepted artifacts are preserved.
+Shared-block allocation is an estimate, not guaranteed free space. No automatic GC, image scheduler or harness
+dependency is added. Cancellation/reconnection settle the original branch after confirmed control exit. Qualify three
+real cold/document cycles, ten repetitions per write fault window, the prior 48 real-host/40 protocol cases, and
+explicit real VM reclaim cycles.
