@@ -1,5 +1,5 @@
 use super::*;
-fn fixture() -> Result<(an_agent_core::testkit::TempDir, PathBuf, String, PathBuf)> {
+pub(super) fn fixture() -> Result<(an_agent_core::testkit::TempDir, PathBuf, String, PathBuf)> {
     let temporary = an_agent_core::testkit::TempDir::new("product-task");
     let service = temporary.path().canonicalize()?.join("service");
     fs::create_dir_all(service.join("application/tasks"))?;
@@ -109,5 +109,94 @@ fn runtime_cleanup_requires_exact_original_child_and_birth_identity() -> Result<
     assert!(runtime::cleanup(&root)?);
     waiter.join().map_err(|_| "runtime reaper panicked")??;
     assert!(runtime::cleanup(&root)?);
+    Ok(())
+}
+
+#[test]
+fn preparation_loss_requires_version_and_original_start_authority() -> Result<()> {
+    let (_temporary, service, id, root) = fixture()?;
+    store::write_new(&root.join("state.json"), b"{\"state\":\"unknown\"}")?;
+    assert_eq!(reconcile(&service, &id)?["state"]["state"], "unknown");
+    store::write_new(&root.join("recovery-version.json"), b"{\"version\":1}")?;
+    store::write_new(&root.join("start-intent.json"), b"{}")?;
+    assert_eq!(reconcile(&service, &id)?["state"]["state"], "unknown");
+    fs::remove_file(root.join("start-intent.json"))?;
+    store::write_new(&root.join("runtime-launch.json"), b"{}")?;
+    assert_eq!(reconcile(&service, &id)?["state"]["state"], "unknown");
+    fs::remove_file(root.join("runtime-launch.json"))?;
+    assert_eq!(reconcile(&service, &id)?["state"]["state"], "failed");
+    assert!(!root.join("launch.json").exists());
+    Ok(())
+}
+
+#[test]
+fn unsupported_recovery_version_keeps_admission_blocked() -> Result<()> {
+    let (_temporary, service, id, root) = fixture()?;
+    store::write_new(&root.join("state.json"), b"{\"state\":\"unknown\"}")?;
+    store::write_new(&root.join("recovery-version.json"), b"{\"version\":2}")?;
+    let result = reconcile(&service, &id)?;
+    assert_eq!(result["state"]["state"], "unknown");
+    assert_eq!(
+        result["state"]["reconciliation"]["reason"],
+        "unsupported delivery recovery version"
+    );
+    assert_ne!(result["state"]["termination_confirmed"], true);
+    Ok(())
+}
+
+#[test]
+fn missing_launch_owner_and_live_pid_without_birth_proof_cannot_settle() -> Result<()> {
+    let (_temporary, service, id, root) = fixture()?;
+    store::write_new(&root.join("recovery-version.json"), b"{\"version\":1}")?;
+    store::write_new(&root.join("launch.json"), b"{}")?;
+    assert_eq!(view(&service, &id)?["state"]["state"], "unknown");
+    assert_eq!(reconcile(&service, &id)?["state"]["state"], "unknown");
+    store::write_new(&root.join("state.json"), b"{\"state\":\"unknown\"}")?;
+    let owner = json!({"pid":std::process::id(),"identity":null});
+    store::write_new(&root.join("owner.json"), &serde_json::to_vec(&owner)?)?;
+    assert_eq!(reconcile(&service, &id)?["state"]["state"], "unknown");
+    assert_ne!(view(&service, &id)?["state"]["termination_confirmed"], true);
+    Ok(())
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+fn original_page_reaps_its_exited_coordinator_child() -> Result<()> {
+    use crate::execution::sandbox::{product_process, service_process};
+    let child = product_process::test_control()?;
+    let pid = child.id();
+    product_process::reap(child)?;
+    assert_eq!(unsafe { libc::kill(pid as i32, libc::SIGTERM) }, 0);
+    let deadline =
+        an_agent_core::det_seam::Clock::monotonic_now() + std::time::Duration::from_secs(2);
+    while !service_process::exited(pid)
+        && an_agent_core::det_seam::Clock::monotonic_now() < deadline
+    {
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    assert!(service_process::exited(pid));
+    Ok(())
+}
+
+#[test]
+fn incomplete_original_receipt_stays_unknown_until_it_is_readable() -> Result<()> {
+    let (_temporary, service, id, root) = fixture()?;
+    let session = an_agent_core::det_seam::Entropy::os().uuid_v4().to_string();
+    let job = service.join("jobs").join(&session);
+    fs::create_dir_all(&job)?;
+    store::write_new(
+        &root.join("state.json"),
+        &serde_json::to_vec(&json!({"state":"unknown","session":session}))?,
+    )?;
+    store::write_new(&job.join("completion.json"), b"{")?;
+    let pending = reconcile(&service, &id)?;
+    assert_eq!(pending["state"]["state"], "unknown");
+    assert_eq!(
+        pending["state"]["reconciliation"]["reason"],
+        "original primary receipt incomplete or unavailable"
+    );
+    fs::write(job.join("completion.json"), b"{\"result\":{\"termination_confirmed\":true,\"cocoon\":{\"termination_confirmed\":true}}}")?;
+    assert_eq!(reconcile(&service, &id)?["state"]["state"], "failed");
+    assert!(!root.join("launch.json").exists());
     Ok(())
 }

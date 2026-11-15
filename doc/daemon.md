@@ -572,8 +572,11 @@ expired model disclosure grant. No scratch file or internal path is served.
 Closing/reopening the page preserves original task identity and execution.
 
 Terminal projections are published only after original process and VM release.
-Unknown delivery reconciliation reads original completion receipts and never
-replays a proposal or restarts the controller. Confirmed interrupted work becomes
+Unknown delivery reconciliation fences the original task grant on the serialized
+daemon, then recovers unique queue IDs from durable request digests and that grant.
+Primary and native-validator intents precede submission; lost replies never cause
+resubmission. It reads original completion receipts without restarting the
+controller. Unmatched/ambiguous executions retain unknown. Interrupted work becomes
 failed/cancelled, with accepted products retained in their original custody.
 The approved primary scope forbids child harness/delegation requests and pins
 each Cocoon specification to its original operation ID; unknown effects cannot
@@ -581,10 +584,16 @@ be retried with a fresh ID. Existing generic session scopes remain compatible.
 Idle one-slot roots can explicitly preview/approve `prepare-document-capacity`
 to reserve two slots; running tasks prevent this change.
 
-The product controller records its Cocoon control-service child with kernel birth
-identity and original controller ownership before starting VM work. New delivery
-records distinguish runtime-control cleanup from original workload/VM termination.
-Unknown reconciliation may stop only that recorded child, after all original
-execution owners and VM release are confirmed; missing ownership evidence retains
-unknown state. Cleanup sends one SIGTERM and observes exit without retrying an
-unknown effect or signaling a changed process identity.
+The controller records its Cocoon control-service child with kernel birth identity
+and original controller ownership before VM work. Reconciliation may stop only that
+child after original workloads and VM release are confirmed. Missing ownership
+retains unknown. Cleanup signals no changed identity. The original page reaps its
+exact coordinator child; a live PID, missing launch owner or incomplete completion
+receipt cannot prove termination. Reconciliation may reread original receipts.
+
+Preparation records a versioned start intent before VM start and binds the original
+work grant to a Cocoon generation/attempt before primary admission. Reconciliation
+reuses that claim's stop identity if no primary release exists. Missing start/stop
+authority or a legacy unversioned record retains unknown; version 1 with no start
+intent proves no VM start was submitted. Runtime launch records require independent
+control-process cleanup even when their page projection is lost.

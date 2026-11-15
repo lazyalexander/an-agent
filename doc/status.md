@@ -67,7 +67,7 @@ not reopen the qualified native-event/storage P1 above. Keep TaskSession neutral
 
 | Slice | Completion gate |
 | --- | --- |
-| P1.1 reliability | Original-identity fault reconciliation and confirmed workload, VM and task-owned control-service cleanup; implementation in progress |
+| P1.1 reliability | Durable original-request recovery, preparation VM claims and confirmed control-service cleanup implemented; full repeated fault qualification in progress |
 | P1.2 persistent images | Approved save, branch, rollback and restart through existing Cocoon operations; pending |
 | P1.3 daily deployment | Readiness, idle-service version switch, retained history and data-preserving uninstall; pending |
 | P1.4 combined qualification | Installation, clarified delivery, image reuse, fault cleanup, upgrade and old-product reads; pending |

@@ -1,5 +1,7 @@
 //! Durable product intents reference existing host jobs; they are not execution receipts.
+mod journal;
 pub mod runtime;
+pub mod setup;
 use crate::execution::{Result, store};
 use serde_json::{Value, json};
 use std::{
@@ -167,6 +169,8 @@ pub(super) fn create(service: &Path, req: &Value) -> Result<Value> {
         &root.join("owner.json"),
         &serde_json::to_vec(&json!({"pid":child.id(),"identity":identity}))?,
     )?;
+    fs::File::open(&root)?.sync_all()?;
+    crate::execution::sandbox::product_process::reap(child)?;
     Ok(json!({"id":id,"replayed":false}))
 }
 pub fn worker(service: &Path, id: &str) -> Result<Value> {
@@ -196,6 +200,10 @@ pub(super) fn view(service: &Path, id: &str) -> Result<Value> {
         json!({"state":"preparing"})
     };
     let owner = root.join("owner.json");
+    if !owner.exists() && root.join("launch.json").exists() {
+        state["state"] = json!("unknown");
+        state["error"] = json!("original coordinator ownership unavailable; no replay");
+    }
     if owner.exists()
         && !matches!(
             state["state"].as_str(),
@@ -284,6 +292,10 @@ pub(super) fn cancel(service: &Path, id: &str) -> Result<Value> {
         store::write_new(&root.join("cancel.json"), b"{}")?;
     }
     let state = view(service, id)?;
+    if state["state"]["state"] == "unknown" {
+        reconcile(service, id)?;
+        return Ok(json!({"cancellation_requested":true}));
+    }
     if let Some(session) = state["state"]["session"].as_str() {
         let req = json!({"op":"cancel","id":session});
         let preview = crate::daemon::request(service, &req)?;

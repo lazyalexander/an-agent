@@ -185,3 +185,16 @@ owner 和作业记录。--cancel-during-program 通过固定慢程序检查客�
 原 ID 取消与只读回执核对，不重放执行。需要原生 macOS、已验收 Codex/认证与审核过的
 Cocoon/Python 环境，不作为 CI 夹具。native_harness_session.py --attachment-validation
 覆盖精确补充读取授权、撤销、单主会话及固定操作 ID 的协议回归。
+
+`product_controller_journal.py` 在主会话及两级验收的入队前、入队后回执丢失和结果发布
+中断处注入故障，要求拒绝重新提交。原生 CI 运行 `native_delivery_recovery.py --host
+FROZEN_BINARY --evidence NEW_DIRECTORY`，对入队前、回执丢失、守护服务重连各做十次。
+协议夹具要求找回原 ID、确认原进程终止、拒绝撤销后的迟到请求、无新增队列项、30 秒内
+核对完成；这不替代真实提供方和 VM 验收。
+
+真实 VM 用 `native_product_delivery.py --cancel --lose-controller-at setup` 检查准备
+阶段丢失；`--clarification --cancel --lose-controller --drop-execution-projection`
+检查主会话投影丢失；`--cancel --lose-controller-at validator --drop-execution-projection`
+检查验收任务投影丢失。夹具强制终止真实协调器，保留原意图和回执，要求无新增任务且
+30 秒内完成核对。证据目录采用短的私有路径，避免 Unix socket 长度上限。完整 P1.1
+验收仍须六项 P0 各重复三次，并对适用故障边界各做十次。

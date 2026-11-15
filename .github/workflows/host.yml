@@ -50,6 +50,8 @@ jobs:
             tools/archcheck -> target
           cache-bin: false
       - run: cargo fmt --all -- --check
+      - name: Product request journal fault windows
+        run: python3 -B crates/an-agent-host/tests/cli/product_controller_journal.py
       - name: Compile all workspace test binaries
         run: cargo test --workspace --locked --no-run
       - name: Execute all workspace tests
@@ -110,6 +112,9 @@ jobs:
       - name: Native user service and queue acceptance
         if: matrix.native_workspace
         run: python3 -B crates/an-agent-host/tests/cli/native_daemon.py --host target/debug/an-agent-host --evidence "$RUNNER_TEMP/native-state/user-daemon"
+      - name: Lost product replies and original-owner recovery
+        if: matrix.native_workspace
+        run: python3 -B crates/an-agent-host/tests/cli/native_delivery_recovery.py --host target/debug/an-agent-host --evidence "$RUNNER_TEMP/native-state/delivery-recovery"
       - name: App-server scoped tools, revocation and cancellation
         if: matrix.native_workspace
         run: python3 -B crates/an-agent-host/tests/cli/native_app_server.py --host target/debug/an-agent-host --evidence "$RUNNER_TEMP/native-state/app-server"
