@@ -12,7 +12,7 @@ function render(){document.documentElement.lang=language;document.querySelectorA
 async function refresh(){const view=await request('/view');$('capacity').hidden=view.host.concurrency>=2;$('environments').textContent=view.environments.map(e=>`${e.manifest.name} ${e.manifest.version}`).join(' · ');const tasks=view.host.tasks||[];if(changed($('tasks'),tasks.map(task=>[task.id,task.label,task.outcome,task.state]))){$('tasks').replaceChildren();
 if(!tasks.length)$('tasks').textContent=strings[language].noTasks;
 for(const task of tasks){const button=document.createElement('button');button.textContent=`${task.label||task.id} · ${stateText(task.outcome||task.state)}`;button.onclick=()=>act(()=>selectTask(task.id));$('tasks').append(button);}}
-if(selectedTask)await selectTask(selectedTask);await renderDeliveries(view);}
+if(selectedTask)await selectTask(selectedTask);await renderDeliveries(view);renderImages(view);}
 async function act(callback){$('error').textContent='';try{await callback();}catch(error){$('error').textContent=error.message;} }
 $('language').onchange=e=>{language=e.target.value;render();};
 $('inspect').onclick=()=>act(async()=>{preview=null;$('approve').hidden=true;const file=$('bundle').files[0];if(!file)throw new Error(strings[language].choose);$('status').textContent=strings[language].uploading;upload=(await request('/upload',file,true)).upload;preview=await request('/action',{op:'environment-preview',upload});$('preview').textContent=JSON.stringify(preview.manifest,null,2);$('approve').hidden=false;$('status').textContent='';});
@@ -61,6 +61,7 @@ $('delivery-preview').onclick=()=>act(async()=>{
  if(file.size>524288)throw new Error(language==='en'?'PDF limit: 512 KiB':'PDF 大小上限为 512 KiB');
  const upload=(await request('/upload',file,true)).upload;
  const value={op:'delivery-preview',id:crypto.randomUUID(),environment,upload,instruction:$('delivery-instruction').value};
+ if($('delivery-image').value)value.image=JSON.parse($('delivery-image').value);
  const checked=await request('/action',value);deliveryPlan={...value,op:'delivery-create',approve:checked.approval_sha256};
  $('delivery-description').textContent=`${file.name} · ${checked.plan.model} · ${checked.plan.wall_seconds}s\n${strings[language].scopeNotice}`;
  $('delivery-plan').hidden=false;
@@ -73,7 +74,8 @@ $('delivery-confirm').onclick=()=>act(async()=>{
 async function showDelivery(id){
  if(deliveryId!==id)$('clarification-form').replaceChildren();deliveryId=id;
  const value=await request('/action',{op:'delivery-view',id});if(deliveryId!==id)return;
- const state=value.state;$('delivery-detail').hidden=false;$('delivery-state').textContent=stateText(state.state)+(state.error?' · '+state.error:'');
+ deliveryEnvironment=value.environment;const state=value.state;$('save-project').hidden=state.termination_confirmed!==true||!state.vm;
+ $('delivery-detail').hidden=false;$('delivery-state').textContent=stateText(state.state)+(state.error?' · '+state.error:'');
  $('delivery-reconcile').hidden=state.state!=='unknown';
  $('delivery-cancel').disabled=['succeeded','cancelled','failed'].includes(state.state);
  const form=$('clarification-form');
@@ -98,3 +100,38 @@ $('capacity').onclick=()=>act(async()=>{const value={op:'delivery-capacity',comm
 $('capacity-confirm').onclick=()=>act(async()=>{await request('/action',capacityPlan);$('capacity-confirm').hidden=true;$('capacity-description').textContent='';await refresh();});
 
 $('delivery-reconcile').onclick=()=>act(async()=>{await request('/action',{op:'delivery-reconcile',id:deliveryId});await showDelivery(deliveryId);});
+
+let imagePlan,latestImages=[],deliveryEnvironment;
+function fillOptions(element,options){const selected=element.value;if(!changed(element,options))return;element.replaceChildren();for(const [value,label] of options){const option=document.createElement('option');option.value=value;option.textContent=label;element.append(option);}if([...element.options].some(o=>o.value===selected))element.value=selected;}
+function renderImages(view){
+ latestImages=view.images||[];
+ const environments=view.environments.filter(e=>e.manifest.components.image_api);
+ fillOptions($('image-environment'),environments.map(e=>[e.id,`${e.manifest.name} ${e.manifest.version}`]));
+ $('save-environment').disabled=!environments.length;
+ const approved=new Map(),candidates=new Map();
+ for(const item of latestImages){if(item.state!=='succeeded')continue;const result=item.receipt.result;if(result.image&&result.sha256){const key=item.environment+':'+result.image;candidates.set(key,{...item,result});if(result.approved)approved.set(key,{...item,result});}}
+ const taskOptions=[['',strings[language].defaultImage]];
+ const imageOptions=[];
+ for(const item of approved.values()){const reference=JSON.stringify({image:item.result.image,sha256:item.result.sha256});const label=`${strings[language][item.kind==='environment'?'environmentImage':'projectImage']} ${item.result.image.slice(0,8)}`;if(item.environment===$('delivery-environment').value)taskOptions.push([reference,label]);if(item.environment===$('image-environment').value)imageOptions.push([reference,label]);}
+ fillOptions($('delivery-image'),taskOptions);fillOptions($('rollback-image'),imageOptions);
+ fillOptions($('rollback-branch'),latestImages.filter(i=>i.action==='branch'&&i.state==='succeeded'&&i.environment===$('image-environment').value).map(i=>[i.id,i.receipt.result.vm.slice(0,8)]));
+ $('rollback-prepare').disabled=!$('rollback-branch').value||!$('rollback-image').value;
+ if(!changed($('image-list'),latestImages))return;$('image-list').replaceChildren();
+ function button(parent,key,callback){const b=document.createElement('button');b.textContent=strings[language][key];b.onclick=()=>act(callback);parent.append(b);}
+ for(const item of latestImages){const row=document.createElement('div'),label=document.createElement('p');label.textContent=`${strings[language][item.kind==='environment'?'environmentImage':'projectImage']} · ${item.id.slice(0,8)} · ${stateText(item.state)}`;row.append(label);
+  if(item.state==='succeeded'&&item.receipt.result.image&&item.receipt.result.sha256){const reference={image:item.receipt.result.image,sha256:item.receipt.result.sha256};const isApproved=approved.has(item.environment+':'+reference.image);button(row,isApproved?'branchImage':'promoteImage',()=>prepareImage(isApproved?'branch':'promote',{environment:item.environment,image:reference}));}
+  if(['running','unknown'].includes(item.state)){for(const [key,control] of [['imageCancel','cancel'],['imageReconcile','reconcile']])button(row,key,async()=>{await request('/action',{op:'image-control',environment:item.environment,id:item.id,control});await refresh();});}
+  $('image-list').append(row);
+ }
+}
+async function prepareImage(action,source={}){
+ const requestValue={op:'image-preview',id:crypto.randomUUID(),environment:$('image-environment').value,action,...source};
+ const preview=await request('/action',requestValue);imagePlan={...requestValue,op:'image-submit',approve:preview.approval_sha256};
+ const summary={kind:preview.plan.kind,environment:preview.plan.environment,...preview.plan.action};for(const key of ['kernel','initrd','disk'])delete summary[key];
+ $('image-description').textContent=strings[language].imageReview+'\n'+JSON.stringify(summary,null,2);$('image-plan').hidden=false;
+}
+$('save-environment').onclick=()=>act(()=>prepareImage('save_environment'));
+$('save-project').onclick=()=>act(async()=>{await prepareImage('save_project',{task:deliveryId,environment:deliveryEnvironment});});
+$('rollback-prepare').onclick=()=>act(()=>prepareImage('rollback',{branch:$('rollback-branch').value,image:JSON.parse($('rollback-image').value)}));
+$('image-confirm').onclick=()=>act(async()=>{await request('/action',imagePlan);$('image-plan').hidden=true;await refresh();});
+$('delivery-environment').onchange=()=>act(refresh);$('image-environment').onchange=()=>act(refresh);

@@ -95,3 +95,48 @@ pub(crate) fn stop_control(identity: &serde_json::Value) -> Result<bool> {
 pub(crate) fn test_control() -> Result<Child> {
     Ok(Command::new("/bin/sleep").arg("60").spawn()?)
 }
+
+/// Fixed finite image commands, separate from the model's work-lane transport.
+pub(crate) fn image_query(
+    binary: &Path,
+    root: &Path,
+    command: &str,
+    argument: Option<&Path>,
+) -> Result<serde_json::Value> {
+    if !matches!(
+        command,
+        "image-init"
+            | "image-info"
+            | "disk-info"
+            | "image-status"
+            | "image-cancel"
+            | "image-reconcile"
+    ) {
+        return Err("unsupported image query".into());
+    }
+    let mut child = Command::new(binary);
+    child
+        .arg("host")
+        .arg(root)
+        .arg(command)
+        .stdin(Stdio::null());
+    if let Some(argument) = argument {
+        child.arg(argument);
+    }
+    let output = child.output()?;
+    if !output.status.success() {
+        return Err("Cocoon image query failed; inspect the original private record".into());
+    }
+    Ok(serde_json::from_slice(&output.stdout)?)
+}
+pub(crate) fn image_submit(binary: &Path, root: &Path, request: &Path, log: File) -> Result<Child> {
+    Ok(Command::new(binary)
+        .arg("host")
+        .arg(root)
+        .arg("image-request")
+        .arg(request)
+        .stdin(Stdio::null())
+        .stdout(log.try_clone()?)
+        .stderr(log)
+        .spawn()?)
+}

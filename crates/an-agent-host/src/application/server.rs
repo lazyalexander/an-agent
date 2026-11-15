@@ -205,6 +205,9 @@ fn selected(root: &Path, value: &Value, key: &str) -> Result<PathBuf> {
 }
 fn act(root: &Path, service: &Path, value: &Value) -> Result<Value> {
     match value["op"].as_str() {
+        Some("image-preview") => super::images::preview(service, value),
+        Some("image-submit") => super::images::submit(service, value),
+        Some("image-control") => super::images::control(service, value),
         Some("delivery-capacity") => {
             let mut request = json!({"op":"prepare-document-capacity","command":value["command"]});
             if let Some(approval) = value.get("approve") {
@@ -269,7 +272,7 @@ fn view(root: &Path, service: &Path) -> Result<Value> {
         }
     }
     Ok(
-        json!({"environments":environments,"deliveries":deliveries,"host":crate::daemon::request(service,&json!({"op":"show"}))?}),
+        json!({"environments":environments,"images":super::images::list(service)?,"deliveries":deliveries,"host":crate::daemon::request(service,&json!({"op":"show"}))?}),
     )
 }
 fn respond(stream: &mut TcpStream, status: u16, mime: &str, body: Vec<u8>) -> Result<()> {

@@ -488,113 +488,113 @@ stop signal from the supervised client process, including wall-time expiry;
 expiry retains its timeout classification. A blocked guest program therefore
 does not hold the daemon's control request lane or authorize later job steps.
 
-
 ## Offline environment client
 
-`an-agent-host app serve ROOT` starts the separate authenticated product page for
-an existing private daemon. `ROOT/application/endpoint.json` contains its local URL.
-The client provides offline environment import, bounded document task creation,
-clarification, cancellation and accepted artifact download.
-It does not change the existing read-only daemon console.
+`an-agent-host app serve ROOT` starts the separate authenticated product page for an existing
+private daemon. `ROOT/application/endpoint.json` contains its local URL. The client provides offline
+environment import, bounded document task creation, clarification, cancellation and accepted
+artifact download. It does not change the existing read-only daemon console.
 
-Loom's `pack-runtime SOURCE MANIFEST NEW_ARCHIVE` assembles an explicitly selected
-offline environment. The `an-offline-runtime-v1` manifest pins name/version,
-`macos-aarch64`, license files, component references, and an ordered map of payload
-SHA-256, byte count and executable flag. The gzip tar starts with `runtime.json`,
-followed by exactly those regular files in sorted order. Paths are bounded relative
-ASCII paths; links, traversal and undeclared entries are refused. Total payload is
-bounded to 32 GiB and the page upload to 8 GiB compressed. Hashes identify content,
-not a publisher; the operator must review the selected runtime and its licenses.
+Loom's `pack-runtime SOURCE MANIFEST NEW_ARCHIVE` assembles an explicitly selected offline
+environment. The `an-offline-runtime-v1` manifest pins name/version, `macos-aarch64`, license files,
+component references, and an ordered map of payload SHA-256, byte count and executable flag. The
+gzip tar starts with `runtime.json`, followed by exactly those regular files in sorted order. Paths
+are bounded relative ASCII paths; links, traversal and undeclared entries are refused. Total payload
+is bounded to 32 GiB and the page upload to 8 GiB compressed. Hashes identify content, not a
+publisher; the operator must review the selected runtime and its licenses.
 
-The page uploads bytes into its private store, previews verified identities and
-imports only after confirmation of the matching manifest digest. Import never
-executes payloads. It stages a new private directory and publishes a digest-named
-environment only after complete verification. Reuse revalidates installed bytes;
-interrupted staging directories never appear as installed environments. Imported
-content is not a claim that Codex, VM execution or a domain workflow is ready.
+The page uploads bytes into its private store, previews verified identities and imports only after
+confirmation of the matching manifest digest. Import never executes payloads. It stages a new
+private directory and publishes a digest-named environment only after complete verification. Reuse
+revalidates installed bytes; interrupted staging directories never appear as installed environments.
+Imported content is not a claim that Codex, VM execution or a domain workflow is ready.
 
+### Session finish and product controls
 
-### Normal session finish and product controls
-
-`harness-finish` previews/closes an idle interactive session using its original
-`id`, `execution` and completed `after_turn`. It requires the original harness
-permission and an adapter advertising `finish_session`. An admitted continuation
-for that turn excludes finish; an admitted finish excludes later continuations.
-The same finish binding is idempotent. Active, cancelled, stale and unavailable
-owners refuse a new finish. Admission is not termination proof: the original
-owner closes the client, releases its VM and retains normal completion evidence.
-This permits two completed turns under a maximum of three without cancellation.
-
-The product page's finite `task-view` and `task-control` actions project original
-records and preview/confirm cancellation or a supplement. Active-turn supplements
-use steering; idle-turn supplements use continuation. Neither action exposes an
-arbitrary daemon request endpoint or establishes a domain workflow's completion.
-
+`harness-finish` closes an idle interactive session bound to its original `id`, `execution` and
+completed `after_turn`, using the original harness permission and an adapter advertising
+`finish_session`. Continuation and finish for the same turn exclude each other; repeated identical
+finish is idempotent. Active, cancelled, stale or unavailable owners refuse. The original owner
+still closes its client, releases the VM and retains termination evidence. The page's finite `task-
+view` and `task-control` preview/confirm cancellation or supplements, using steering for active
+turns and continuation for idle turns. They expose no arbitrary daemon proxy.
 
 ### Product document delivery
 
-On a new private root, `app serve ROOT` starts the original daemon with two slots.
-An existing root keeps its selected executable; a changed selection is refused.
-One product delivery is admitted at a time, on an idle service with at least two
-slots, so its retained primary session cannot block its native acceptance job.
-An unresolved product keeps its admission slot until reconciliation.
+On a new private root, `app serve ROOT` starts the original daemon with two slots. An existing root
+keeps its selected executable; a changed selection is refused. One product delivery is admitted at a
+time, on an idle service with at least two slots, so its retained primary session cannot block its
+native acceptance job. An unresolved product keeps its admission slot until reconciliation.
 
-The offline manifest selects `delivery`, `cocoon`, `runner`, `kernel`, `initrd`,
-`root_image`, `native_python`, `native_stdlib`, `native_site`,
-`intermediate_package` and `final_package`. Component references select files;
-package/site/stdlib directories derive from their selected manifest/index files.
-The delivery declaration and domain prompts belong to an-spool. Import is not
-execution qualification. A task separately freezes environment and input identity,
-Codex selection, instruction, 600-second deadline and maximum three turns.
-The first document profile accepts text EUR quotes up to the existing authorized
-input-reader limit of 512 KiB. OCR and arbitrary PDF layouts remain unsupported.
+The offline manifest selects `delivery`, `cocoon`, `runner`, `kernel`, `initrd`, `root_image`,
+`native_python`, `native_stdlib`, `native_site`, `intermediate_package` and `final_package`.
+Component references select files; package/site/stdlib directories derive from their selected
+manifest/index files. The delivery declaration and domain prompts belong to an-spool. Import is not
+execution qualification. A task separately freezes environment and input identity, Codex selection,
+instruction, 600-second deadline and maximum three turns. The first document profile accepts text
+EUR quotes up to the existing authorized input-reader limit of 512 KiB. OCR and arbitrary PDF
+layouts remain unsupported.
 
-Product actions are `delivery-preview`, `delivery-create`, `delivery-view`,
-`delivery-clarify`, `delivery-cancel`, `delivery-reconcile` and `delivery-artifact`. Creation and
-clarification use exact previews; creation/answer identities never replay work.
-Model control remains behind TaskSession; the product controller uses original
-queue, authorization, supervisor and acceptance APIs and owns no model loop.
-Product records are projections linking original jobs, VM and artifact references.
-An unavailable original controller is shown as unknown, never restarted implicitly.
+Product actions are `delivery-preview`, `delivery-create`, `delivery-view`, `delivery-clarify`,
+`delivery-cancel`, `delivery-reconcile` and `delivery-artifact`. Creation and clarification use
+exact previews; creation/answer identities never replay work. Model control remains behind
+TaskSession; the product controller uses original queue, authorization, supervisor and acceptance
+APIs and owns no model loop. Product records are projections linking original jobs, VM and artifact
+references. An unavailable original controller is shown as unknown, never restarted implicitly.
 
-`harness-bind-cocoon` binds an approved fixed job specification to its original
-primary session before exposing the task as running. This transfers VM cleanup
-to the original owner even if cancellation precedes the first model tool call.
-`harness-attach-input` explicitly approves one exact read-only input grant for the
-same task, with no delegation or expiry extension; the original grant is unchanged.
-The original owner monitors attached grants, and their revocation cancels the
-session and downstream work. Explicit narrowed tool grants retain their checks.
-The controller stops only its own untransferred VM with its original work authority.
+`harness-bind-cocoon` binds an approved fixed job specification to its original primary session
+before exposing the task as running. This transfers VM cleanup to the original owner even if
+cancellation precedes the first model tool call. `harness-attach-input` explicitly approves one
+exact read-only input grant for the same task, with no delegation or expiry extension; the original
+grant is unchanged. The original owner monitors attached grants, and their revocation cancels the
+session and downstream work. Explicit narrowed tool grants retain their checks. The controller stops
+only its own untransferred VM with its original work authority.
 
-The client downloads only accepted revisions after successful original process
-and VM release. Operator download revalidates custody and is independent of the
-expired model disclosure grant. No scratch file or internal path is served.
-Closing/reopening the page preserves original task identity and execution.
+The client downloads only accepted revisions after successful original process and VM release.
+Operator download revalidates custody and is independent of the expired model disclosure grant. No
+scratch file or internal path is served. Closing/reopening the page preserves original task identity
+and execution.
 
-Terminal projections are published only after original process and VM release.
-Unknown delivery reconciliation fences the original task grant on the serialized
-daemon, then recovers unique queue IDs from durable request digests and that grant.
-Primary and native-validator intents precede submission; lost replies never cause
-resubmission. It reads original completion receipts without restarting the
-controller. Unmatched/ambiguous executions retain unknown. Interrupted work becomes
-failed/cancelled, with accepted products retained in their original custody.
-The approved primary scope forbids child harness/delegation requests and pins
-each Cocoon specification to its original operation ID; unknown effects cannot
-be retried with a fresh ID. Existing generic session scopes remain compatible.
-Idle one-slot roots can explicitly preview/approve `prepare-document-capacity`
-to reserve two slots; running tasks prevent this change.
+Terminal projections are published only after original process and VM release. Unknown delivery
+reconciliation fences the original task grant on the serialized daemon, then recovers unique queue
+IDs from durable request digests and that grant. Primary and native-validator intents precede
+submission; lost replies never cause resubmission. It reads original completion receipts without
+restarting the controller. Unmatched/ambiguous executions retain unknown. Interrupted work becomes
+failed/cancelled, with accepted products retained in their original custody. The approved primary
+scope forbids child harness/delegation requests and pins each Cocoon specification to its original
+operation ID; unknown effects cannot be retried with a fresh ID. Existing generic session scopes
+remain compatible. Idle one-slot roots can explicitly preview/approve `prepare-document-capacity` to
+reserve two slots; running tasks prevent this change.
 
-The controller records its Cocoon control-service child with kernel birth identity
-and original controller ownership before VM work. Reconciliation may stop only that
-child after original workloads and VM release are confirmed. Missing ownership
-retains unknown. Cleanup signals no changed identity. The original page reaps its
-exact coordinator child; a live PID, missing launch owner or incomplete completion
-receipt cannot prove termination. Reconciliation may reread original receipts.
+The controller records its Cocoon control-service child with kernel birth identity and original
+controller ownership before VM work. Reconciliation may stop only that child after original
+workloads and VM release are confirmed. Missing ownership retains unknown. Cleanup signals no
+changed identity. The original page reaps its exact coordinator child; a live PID, missing launch
+owner or incomplete completion receipt cannot prove termination. Reconciliation may reread original
+receipts.
 
-Preparation records a versioned start intent before VM start and binds the original
-work grant to a Cocoon generation/attempt before primary admission. Reconciliation
-reuses that claim's stop identity if no primary release exists. Missing start/stop
-authority or a legacy unversioned record retains unknown; version 1 with no start
-intent proves no VM start was submitted. Runtime launch records require independent
-control-process cleanup even when their page projection is lost. Native settlement
-uses the original spool facade, including verified supervisor no-launch receipts.
+Preparation records a versioned start intent before VM start and binds the original work grant to a
+Cocoon generation/attempt before primary admission. Reconciliation reuses that claim's stop identity
+if no primary release exists. Missing start/stop authority or a legacy unversioned record retains
+unknown; version 1 with no start intent proves no VM start was submitted. Runtime launch records
+require independent control-process cleanup even when their page projection is lost. Native
+settlement uses the original spool facade, including verified supervisor no-launch receipts.
+
+### P1.2 private cold-disk images
+
+An optional pinned `image_api` component declares `cocoon-image-api-v1`, disk support and
+`memory_restore_qualified:false`. Older bundles/records retain their original task-local stores. New
+stores live privately under the service and offline environment digest. No resident image scheduler
+or harness dependency is added. `image-preview`/`image-submit` bind a finite save-environment, save-
+project, promote, branch or rollback operation to an original ID, exact runtime and source digests. Writes require operator confirmation; `image-control` cancels/reconciles that ID.
+Registration/replacement and success receipts share Cocoon's SQLite transaction. Lost replies query
+the original receipt; interruption stays unknown until reconciled. Environment candidates use
+reviewed offline bytes only. Project candidates contain private task state/kit and require original
+VM termination evidence. Approval never changes their provenance into a shared environment. Each
+image-based task gets an independent VM, new attempt and fresh authorization; only image metadata
+enters the primary session. The existing finite control process owns branch preparation too.
+Cancellation/reconnection settle its original image request after confirmed control exit; missing
+ownership retains unknown. Accepted artifacts retain original host custody and must be revalidated
+independently of saved disks. Memory restore is unqualified. Qualify both golden chains three times
+plus ten repetitions per write failure window, then rerun the prior 48 real-host and 40 protocol
+scenarios.

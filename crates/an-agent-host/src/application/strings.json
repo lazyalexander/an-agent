@@ -36,7 +36,22 @@
     "scopeNotice": "仅使用所选 PDF、获准的领域知识和运行环境，交付 Markdown 与 Excel。",
     "capacity": "准备文档任务容量",
     "capacityNotice": "将空闲服务的容量从 1 调整为 2，让主会话与原生验收各保留一个执行槽。",
-    "reconcile": "核对原执行回执"
+    "reconcile": "核对原执行回执",
+    "images": "磁盘镜像",
+    "imageNotice": "环境镜像仅来自审核过的离线包。项目镜像包含本机私有状态；从镜像新建任务会创建独立工作副本，并重新授权。",
+    "saveEnvironment": "保存环境候选",
+    "saveProject": "保存项目候选",
+    "promoteImage": "批准候选镜像",
+    "branchImage": "建立独立工作副本",
+    "rollbackImage": "将所选副本回滚到镜像",
+    "workingBranch": "独立工作副本",
+    "imageSource": "任务起点镜像",
+    "defaultImage": "使用原始离线环境",
+    "imageCancel": "取消镜像操作",
+    "imageReconcile": "核对原镜像操作",
+    "environmentImage": "环境镜像",
+    "projectImage": "私有项目镜像",
+    "imageReview": "确认所列镜像、摘要和来源后执行；仅保存磁盘，内存恢复尚未验收。"
   },
   "en": {
     "intro": "Local tasks and delivery",
@@ -75,6 +90,21 @@
     "scopeNotice": "Use only the selected PDF, approved domain knowledge and runtime to deliver Markdown and Excel.",
     "capacity": "Prepare document task capacity",
     "capacityNotice": "Change idle service capacity from 1 to 2 for the primary session and native validator.",
-    "reconcile": "Check original execution receipts"
+    "reconcile": "Check original execution receipts",
+    "images": "Disk images",
+    "imageNotice": "Environment images come only from reviewed offline bundles. Project images contain private local state. Each new task receives an independent copy and new authorization.",
+    "saveEnvironment": "Save environment candidate",
+    "saveProject": "Save project candidate",
+    "promoteImage": "Approve candidate image",
+    "branchImage": "Create independent working copy",
+    "rollbackImage": "Roll back selected copy to image",
+    "workingBranch": "Independent working copy",
+    "imageSource": "Task starting image",
+    "defaultImage": "Use original offline environment",
+    "imageCancel": "Cancel image operation",
+    "imageReconcile": "Reconcile original image operation",
+    "environmentImage": "Environment image",
+    "projectImage": "Private project image",
+    "imageReview": "Confirm the listed image, digest and source. Disk only; memory restoration remains unqualified."
   }
 }

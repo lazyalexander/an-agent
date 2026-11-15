@@ -23,6 +23,7 @@ def main():
     parser=argparse.ArgumentParser(description=__doc__)
     for name in ('host','bundle','evidence'):parser.add_argument('--'+name,type=Path,required=True)
     parser.add_argument('--reuse-service',type=Path)
+    parser.add_argument('--image-reference',type=Path)
     parser.add_argument('--clarification',action='store_true')
     parser.add_argument('--cancel',action='store_true')
     parser.add_argument('--cancel-preparing',action='store_true')
@@ -88,6 +89,7 @@ def main():
         import uuid
         task=str(uuid.uuid4())
         request={'op':'delivery-preview','id':task,'environment':installed['id'],'upload':upload,'instruction':'Preserve all source facts and deliver Markdown and Excel.'}
+        if args.image_reference:request['image']=json.loads(args.image_reference.read_text())
         preview=call(request);creation=dict(request,op='delivery-create',approve=preview['approval_sha256'])
         assert call(creation)['id']==task
         assert call(creation)['id']==task

@@ -2,6 +2,7 @@
 mod bootstrap;
 mod control;
 pub mod environment;
+mod images;
 mod manifest;
 pub mod server;
 pub mod tasks;

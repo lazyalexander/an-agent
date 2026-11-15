@@ -71,9 +71,29 @@ pub(super) fn preview(service: &Path, req: &Value) -> Result<Value> {
     if config["concurrency"].as_u64().unwrap_or(0) < 2 {
         return Err("document tasks require two queue slots".into());
     }
+    let image = if req["image"].is_null() {
+        Value::Null
+    } else {
+        super::images::selected(
+            service,
+            req["environment"].as_str().ok_or("environment")?,
+            &req["image"],
+        )?
+    };
+    let cocoon_state = if super::images::capable(&environment, &verified["manifest"])? {
+        Some(super::images::state_root(
+            service,
+            req["environment"].as_str().ok_or("environment")?,
+        )?)
+    } else {
+        if !image.is_null() {
+            return Err("runtime does not support persistent images".into());
+        }
+        None
+    };
     let plan = json!({"id":id,"environment":environment,"environment_digest":verified["id"],"input":input,
         "input_sha256":store::digest(&bytes),"instruction":instruction,"codex":codex,"codex_sha256":executable,
-        "model":"gpt-6.1-sol","wall_seconds":600,"maximum_turns":3});
+        "model":"gpt-6.1-sol","wall_seconds":600,"maximum_turns":3,"image":image,"cocoon_state":cocoon_state});
     Ok(
         json!({"approval_sha256":store::digest(&serde_json::to_vec(&plan)?),"plan":plan,"executed":false}),
     )
@@ -92,6 +112,8 @@ pub(super) fn create(service: &Path, req: &Value) -> Result<Value> {
             || req["environment"] != original["environment_digest"]
             || req["upload"] != upload
             || req["instruction"] != original["instruction"]
+            || req["image"].get("image") != original["image"].get("image")
+            || req["image"].get("sha256") != original["image"].get("sha256")
         {
             return Err("task identity already bound to different content".into());
         }
@@ -115,6 +137,7 @@ pub(super) fn create(service: &Path, req: &Value) -> Result<Value> {
     let root = directory(service, id)?;
     let application = service.join("application");
     let _admission = store::lock(&application)?;
+    super::images::ready(service)?;
     if fs::read_dir(application.join("tasks"))?.take(256).count() >= 256 {
         return Err("product task registry full".into());
     }
@@ -221,7 +244,14 @@ pub(super) fn view(service: &Path, id: &str) -> Result<Value> {
             state["error"] = json!("original coordinator unavailable; no replay");
         }
     }
-    Ok(json!({"id":id,"state":state}))
+    let mut result = json!({"id":id,"state":state});
+    let plan = root.join("plan.json");
+    if plan.exists() {
+        result["environment"] =
+            serde_json::from_slice::<Value>(&store::read(&plan, 131072)?)?["environment_digest"]
+                .clone();
+    }
+    Ok(result)
 }
 pub(super) fn clarify(service: &Path, req: &Value) -> Result<Value> {
     let id = req["id"].as_str().ok_or("task identity")?;

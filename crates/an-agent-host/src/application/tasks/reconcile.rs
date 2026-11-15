@@ -119,6 +119,10 @@ pub(in crate::application) fn reconcile(service: &Path, id: &str) -> Result<Valu
             }
         }
     }
+    if !crate::application::images::settle_task_branch(&root)? {
+        state["reconciliation"] = json!({"status":"missing-evidence","reason":"original image branch settlement unavailable"});
+        return publish(&root, id, state);
+    }
     // An interrupted coordinator cannot claim successful delivery from proposals.
     state["state"] = json!(if root.join("cancel.json").exists() {
         "cancelled"
