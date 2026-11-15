@@ -81,6 +81,10 @@ watch, it belongs to the lab.
 - Lab crates path-depend on workspace crates; workspace crates never
   depend on lab crates. One-way dependencies, so the lab can always be
   deleted without touching the product.
+- Reusable qualification tooling under `tools/qualification/` is an explicit
+  development-tool exception. Its source may be reviewed and published; it is
+  not a product dependency. Machine configuration, credentials, run records,
+  images and generated artifacts remain in ignored private `lab/` storage.
 - Lab code may be dirty. It is not reviewed to product standard and not
   pushed to remote by default — pushing lab work is a deliberate,
   stated decision.
