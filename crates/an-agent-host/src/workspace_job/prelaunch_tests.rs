@@ -66,7 +66,7 @@ fn positively_unstarted_partial_snapshots_can_be_collected_without_retry() -> Re
         let receipt = run_inner(
             &profile,
             &root,
-            None,
+            Origin::Standalone(None),
             preview["approval_sha256"].as_str(),
             &stop,
             None,
@@ -133,7 +133,7 @@ fn cancellation_at_both_durable_boundaries_can_resume_or_reclaim_but_never_publi
             let receipt = run_inner(
                 &profile,
                 &root,
-                None,
+                Origin::Standalone(None),
                 preview["approval_sha256"].as_str(),
                 &stop,
                 None,
@@ -194,7 +194,7 @@ fn preparation_failure_settles_the_successor_and_retains_accepted_artifacts() ->
     let failed = run_inner(
         &profile,
         &root,
-        Some(id),
+        Origin::Standalone(Some(id)),
         preview["approval_sha256"].as_str(),
         &stop,
         None,
@@ -229,7 +229,7 @@ fn missing_or_contradictory_not_started_evidence_is_not_settlement() -> Result<(
     let receipt = run_inner(
         &profile,
         &root,
-        None,
+        Origin::Standalone(None),
         preview["approval_sha256"].as_str(),
         &stop,
         None,
@@ -292,7 +292,7 @@ fn launch_error_or_receipt_write_failure_does_not_authorize_cleanup() -> Result<
         let result = run_inner(
             &profile,
             &root,
-            None,
+            Origin::Standalone(None),
             preview["approval_sha256"].as_str(),
             &stop,
             None,
@@ -322,5 +322,27 @@ fn launch_error_or_receipt_write_failure_does_not_authorize_cleanup() -> Result<
         assert!(run(&profile, &root, Some(&id), None, &AtomicBool::new(false)).is_err());
         assert!(!root.join("reclaim-intent.json").exists());
     }
+    Ok(())
+}
+
+#[test]
+fn managed_preset_cancellation_retains_an_original_attempt_receipt() -> Result<()> {
+    let (_temp, profile, root) = fixture()?;
+    let stop = AtomicBool::new(true);
+    let preview = run_managed(&profile, &root, None, None, &stop)?;
+    let result = run_managed(
+        &profile,
+        &root,
+        None,
+        preview["approval_sha256"].as_str(),
+        &stop,
+    )?;
+    assert_eq!(result["status"], "cancelled");
+    let id = result["attempt"]
+        .as_str()
+        .ok_or("managed cancellation lost its attempt")?;
+    assert_eq!(record(&root, id)?.1, result);
+    assert_eq!(result["process_started"], false);
+    assert!(!attempt(&root, id)?.join("launch.json").exists());
     Ok(())
 }

@@ -596,4 +596,5 @@ work grant to a Cocoon generation/attempt before primary admission. Reconciliati
 reuses that claim's stop identity if no primary release exists. Missing start/stop
 authority or a legacy unversioned record retains unknown; version 1 with no start
 intent proves no VM start was submitted. Runtime launch records require independent
-control-process cleanup even when their page projection is lost.
+control-process cleanup even when their page projection is lost. Native settlement
+uses the original spool facade, including verified supervisor no-launch receipts.

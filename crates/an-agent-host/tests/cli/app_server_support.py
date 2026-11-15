@@ -12,13 +12,13 @@ def sha(path):
 
 
 class Driver:
-    def __init__(self, host, root):
+    def __init__(self, host, root, concurrency=3):
         self.host, self.root = Path(host).resolve(strict=True), Path(root).resolve()
         self.root.mkdir(mode=0o700)
         self.service = self.root / 'service'
         self.calls = []
         self.first_admitted = None
-        self.call('daemon', 'init', self.service, 3)
+        self.call('daemon', 'init', self.service, concurrency)
         self.log = (self.root / 'daemon.log').open('w')
         self.process = subprocess.Popen([str(self.host), 'daemon', 'serve', str(self.service)], stdout=self.log, stderr=self.log)
         deadline = time.monotonic() + 10

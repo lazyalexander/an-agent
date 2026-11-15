@@ -22,7 +22,7 @@ fn crash_child() -> Result<()> {
     run_inner(
         &profile,
         &root,
-        Some(&prior),
+        Origin::Standalone(Some(&prior)),
         preview["approval_sha256"].as_str(),
         &stop,
         None,

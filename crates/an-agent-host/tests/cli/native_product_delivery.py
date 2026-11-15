@@ -46,7 +46,7 @@ def main():
         try:previous_url=json.loads(retained_endpoint.read_text())['url']
         except json.JSONDecodeError:pass
     page=subprocess.Popen([str(host),'app','serve',str(service)],stdout=log,stderr=log)
-    endpoint=service/'application/endpoint.json';task=None;base=None;token=None
+    endpoint=service/'application/endpoint.json';task=None;base=None;token=None;observation_reconnects=0
     def connect(previous=None):
         nonlocal base,token
         deadline=time.monotonic()+20
@@ -59,12 +59,18 @@ def main():
             time.sleep(.05)
         raise AssertionError('Product page unavailable')
     def call(value=None,path='/action',raw=None):
+        nonlocal observation_reconnects
         data=raw if raw is not None else json.dumps(value).encode() if value is not None else None
         request=urllib.request.Request(base+path,data=data,headers={'Origin':base,'Authorization':'Bearer '+token,'Content-Type':'application/json' if raw is None else 'application/octet-stream'})
-        try:
-            with urllib.request.urlopen(request,timeout=300) as response:return json.load(response)
-        except urllib.error.HTTPError as error:
-            raise AssertionError((path,error.code,error.read().decode())) from error
+        for attempt in range(3):
+            try:
+                with urllib.request.urlopen(request,timeout=300) as response:return json.load(response)
+            except urllib.error.HTTPError as error:
+                raise AssertionError((path,error.code,error.read().decode())) from error
+            except (ConnectionResetError,urllib.error.URLError):
+                if value is None or value.get('op')!='delivery-view' or attempt==2:raise
+                assert page.poll() is None,'Original page owner exited'
+                observation_reconnects+=1;time.sleep(.05)
     def approve(value):
         preview=call(value);return call(dict(value,approve=preview['approval_sha256']))
     try:
@@ -113,6 +119,7 @@ def main():
                 call({'op':'delivery-cancel','id':task});cancelled=True
             if lost:
                 state=call({'op':'delivery-reconcile','id':task})['state']
+                assert time.monotonic()-loss_started<=30,('Original recovery exceeded 30 seconds',state.get('reconciliation'))
             if args.cancel and args.cancel_preparing and state.get('vm') and not cancelled:
                 call({'op':'delivery-cancel','id':task});cancelled=True
             if args.cancel and not args.lose_controller and state.get('session') and not cancelled and (not args.cancel_when_clarifying or state['state']=='waiting-clarification'):
@@ -173,7 +180,7 @@ def main():
         if not args.cancel:assert primary_count==1 and len(case_jobs)==3,'Delivery bypassed original validators'
         assert hashlib.sha256(host.read_bytes()).hexdigest()==host_digest,'Selected host binary changed during acceptance'
         (root/'report.json').write_text(json.dumps({'passed':True,'real_model':bool(state.get('session')) and any((service/'jobs'/state['session']).glob('turn-result-*.json')),'task':task,'primary_count':primary_count,'native_validator_count':len(case_jobs)-primary_count,'primary_admitted':bool(state.get('session')),'empty_service':not bool(args.reuse_service),'product_http':True,
-            'clarification':answered,'cancelled':cancelled,'page_restarted':restarted,'controller_lost':lost,'loss_boundary':args.lose_controller_at or 'clarification','projection_dropped':args.drop_execution_projection,'recovery_seconds':recovered_seconds,'original_jobs':original_jobs,'clarification_receipt_retried':args.drop_clarification_receipt,'products':products,
+            'clarification':answered,'cancelled':cancelled,'page_restarted':restarted,'observation_reconnects':observation_reconnects,'controller_lost':lost,'loss_boundary':args.lose_controller_at or 'clarification','projection_dropped':args.drop_execution_projection,'recovery_seconds':recovered_seconds,'original_jobs':original_jobs,'clarification_receipt_retried':args.drop_clarification_receipt,'products':products,
             'host_sha256':hashlib.sha256(host.read_bytes()).hexdigest()},indent=2))
     finally:
         if task and base:

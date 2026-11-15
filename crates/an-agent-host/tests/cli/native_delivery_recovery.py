@@ -20,7 +20,7 @@ def main():
     parser.add_argument('--repetitions',type=int,default=10)
     args=parser.parse_args();require_native_workspace()
     assert 1<=args.repetitions<=10
-    driver=Driver(args.host,args.evidence);page=None;results=[]
+    driver=Driver(args.host,args.evidence,concurrency=1);page=None;results=[]
     try:
         fixture=driver.root/'fixture'
         fixture.write_text('#!'+sys.executable+'\n'+'''import json,sys
@@ -50,15 +50,27 @@ for line in sys.stdin:
                 with urllib.request.urlopen(request,timeout=40) as response:return json.load(response)
             except urllib.error.HTTPError as error:
                 raise AssertionError((value['op'],error.code,error.read().decode())) from error
-        for boundary in ('before-enqueue','lost-reply','daemon-reconnect'):
+        for boundary in ('before-enqueue','lost-reply','daemon-reconnect','native-before-launch'):
             for repeat in range(args.repetitions):
                 identity=str(uuid.uuid4());root=driver.service/'application/tasks'/identity;root.mkdir(mode=0o700)
                 (root/'intents').mkdir(mode=0o700)
                 (root/'recovery-version.json').write_text('{"version":1}')
                 (root/'state.json').write_text('{"state":"unknown","session":null,"steps":{}}')
+                rights=[];native_request=None
+                if boundary=='native-before-launch':
+                    source=driver.root/('release-'+identity);(source/'silk').mkdir(parents=True)
+                    program=b'printf should-not-execute > result.txt\n'
+                    (source/'silk/main.sh').write_bytes(program)
+                    import hashlib
+                    (source/'native-spool.json').write_text(json.dumps({'schema':'an-native-spool-v1','name':'prelaunch','version':'1','entry':'silk/main.sh','files':{'silk/main.sh':hashlib.sha256(program).hexdigest()},'outputs':['result.txt']}))
+                    instance=driver.root/('instance-'+identity);driver.call('spool-load',source,instance)
+                    driver.request({'op':'register','instance':str(instance)})
+                    selected=driver.root/('input-'+identity);selected.write_text('selected input')
+                    native_request={'op':'submit','instance':str(instance),'run':'deliver','input':str(selected),'seconds':10}
+                    rights=[{'kind':'run','instance':str(instance),'run':'deliver','input':str(selected),'seconds':10}]
                 task=dict(driver.task(fixture,'Return ok.',scope={'single_primary':True}),turn_limit=3,wall_seconds=90)
                 credential=driver.approve({'op':'grant','scope':{'task':identity,'subject':'primary','delegate':False,
-                    'expires_ms':int(time.time()*1000)+120000,'permissions':[driver.profile(task)]}})['credential']
+                    'expires_ms':int(time.time()*1000)+120000,'permissions':[driver.profile(task),*rights]}})['credential']
                 (root/'credential.json').write_text(json.dumps(credential))
                 request={'op':'harness','task':task};preview=driver.request(request,credential)
                 (root/'intents/primary.json').write_text(json.dumps({'kind':'harness','request':preview['plan']['task_sha256'],'grant':credential['id']}))
@@ -66,6 +78,11 @@ for line in sys.stdin:
                 if boundary!='before-enqueue':
                     original=driver.request(dict(request,approve=preview['approval_sha256']),credential)['id']
                     driver.ready(original)
+                if native_request:
+                    native_preview=driver.request(native_request,credential)
+                    (root/'intents/intermediate.json').write_text(json.dumps({'kind':'spool','request':native_preview['approval_sha256'],'grant':credential['id'],'instance':native_request['instance'],'run':'deliver'}))
+                    native_job=driver.request(dict(native_request,approve=native_preview['approval_sha256']),credential)['id']
+                    assert not (instance/'runs/deliver/supervisor/owner.json').exists(),'Native was not held behind original primary'
                 if boundary=='daemon-reconnect':
                     driver.process.terminate();driver.process.wait(timeout=15)
                     driver.process=subprocess.Popen([str(driver.host),'daemon','serve',str(driver.service)],stdout=driver.log,stderr=driver.log)
@@ -89,6 +106,12 @@ for line in sys.stdin:
                     assert driver.request({'op':'task','id':original})['outcome']=='cancelled'
                     completion=json.loads((driver.service/'jobs'/original/'completion.json').read_text())
                     assert completion['result']['termination_confirmed']
+                if native_request:
+                    native=driver.request({'op':'task','id':native_job})
+                    assert native['state']=='settled' and native['native']['phase']=='cancelled-before-launch',native
+                    assert native['native']['termination_confirmed']
+                    assert state['steps']['intermediate']==native_job
+                    assert not (instance/'runs/deliver/job').exists(),'Cancelled native program was started'
                 assert 'revoked' in driver.request(request,credential,ok=False)
                 assert call({'op':'delivery-reconcile','id':identity})['state']==state
                 results.append({'boundary':boundary,'repeat':repeat+1,'seconds':elapsed,'original_job':original})

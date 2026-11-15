@@ -87,26 +87,16 @@ pub(in crate::application) fn reconcile(service: &Path, id: &str) -> Result<Valu
         vm_released = receipt["result"]["cocoon"]["termination_confirmed"] == true;
     }
     if let Some(steps) = state["steps"].as_object().cloned() {
-        for (stage, job) in steps {
+        for job in steps.values() {
             let task = crate::daemon::request(service, &json!({"op":"task","id":job}))?;
             if task["state"] != "settled" {
                 state["reconciliation"] =
                     json!({"status":"running","reason":"original validator has not settled"});
                 return publish(&root, id, state);
             }
-            let instance = Path::new(
-                state["instances"][stage]
-                    .as_str()
-                    .ok_or("original instance")?,
-            );
-            let path = instance.join("runs/deliver/supervisor/completion.json");
-            let Some(completion) = completion(&path) else {
-                state["reconciliation"] = json!({"status":"missing-evidence","reason":"original validator receipt incomplete or unavailable"});
-                return publish(&root, id, state);
-            };
-            if completion["result"]["termination_confirmed"] != true
-                && completion["result"]["workspace"]["termination_confirmed"] != true
-            {
+            // The original spool facade verifies both workspace receipts and
+            // positive supervisor cancellation before any workspace exists.
+            if task["native"]["termination_confirmed"] != true {
                 state["reconciliation"] = json!({"status":"missing-evidence","reason":"original validator termination unconfirmed"});
                 return publish(&root, id, state);
             }

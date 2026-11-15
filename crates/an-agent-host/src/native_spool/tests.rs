@@ -1,7 +1,7 @@
 use super::*;
 use an_agent_core::testkit::TempDir;
 
-fn fixture(base: &Path) -> Result<PathBuf> {
+pub(super) fn fixture(base: &Path) -> Result<PathBuf> {
     let root = base.join("source");
     fs::create_dir(&root)?;
     fs::create_dir(root.join("silk"))?;
