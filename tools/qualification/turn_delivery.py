@@ -74,7 +74,8 @@ def audit(service, evidence, require_summary=False):
     assert {result['thread'] for result in results} == {session['thread']}
     assert all(result['artifact_accepted'] is False for result in results)
     accepted = read(job / 'commands/accepted-intermediate.json')['context']
-    assert any(item['output'] == 'markdown.md' and item['artifact_accepted']
+    intermediate = next(b['instance'] for b in contexts[0]['spool_bindings'] if b['name'] == 'intermediate')
+    assert any(item['instance'] == intermediate and item['output'] == 'markdown.md' and item['artifact_accepted']
                for item in accepted['resources']['accepted_artifacts'])
     if require_summary:
         for command in commands:
