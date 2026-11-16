@@ -80,7 +80,7 @@ def main():
         task={'app_server':True,'label':'product-control-fixture','binary':str(fixture),
               'binary_sha256':hashlib.sha256(fixture.read_bytes()).hexdigest(),'prompt':'Return ok.',
               'schema':{'type':'object','properties':{'ok':{'type':'boolean'}},'required':['ok'],'additionalProperties':False},
-              'scope':{},'model':None,'mcp':None,'turn_limit':2}
+              'scope':{'turn_context':{'schema':'an-turn-context-v1'}},'model':None,'mcp':None,'turn_limit':2}
         permission=native({'op':'harness-permission','task':task})
         credential=approved({'op':'grant','scope':{'task':'product-fixture','subject':'main',
             'expires_ms':int(time.time()*1000)+300000,'delegate':False,'permissions':[permission]}})['credential']
@@ -94,7 +94,7 @@ def main():
         job=approved({'op':'harness','task':task},credential)['id']
         value=wait_for(job)
         supplement={'op':'task-control','control':'supplement','id':job,'execution':value['session']['execution'],
-                    'after_turn':1,'command':'user-supplement','instruction':'Preserve all source facts.'}
+                    'after_turn':1,'context_revision':value['session']['context']['snapshot']['revision'],'command':'user-supplement','instruction':'Preserve all source facts.'}
         preview=call('/action',supplement)
         call('/action',dict(supplement,approve=preview['approval_sha256']))
         assert wait_for(job,True)['task']['outcome']=='succeeded'

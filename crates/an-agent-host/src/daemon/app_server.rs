@@ -163,7 +163,7 @@ fn dialogue(
                 send(
                     &mut input,
                     json!({"id":2,"method":"turn/start","params":{"threadId":thread,
-                    "input":[{"type":"text","text":task.prompt}],"outputSchema":task.schema}}),
+                    "input":[{"type":"text","text":super::task_session::context::initial(dir,task,authority).map_err(convert)?}],"outputSchema":task.schema}}),
                 )?;
             }
             Some(2) if message.get("result").is_some() => {
@@ -172,6 +172,9 @@ fn dialogue(
                     .into();
                 let execution = store::digest(&serde_json::to_vec(&json!({
                     "owner":read(&dir.join("owner.json")).map_err(convert)?,"thread":thread,"turn":turn}))?);
+                let execution = super::task_session::context::execution(dir)
+                    .map_err(convert)?
+                    .unwrap_or(json!(execution));
                 super::task_session::publish(
                     &dir.join("session.json"),
                     &json!({"execution":execution,"thread":thread,"turn":turn}),

@@ -64,7 +64,7 @@ pub(super) fn send_pending(
         send(
             input,
             json!({"id":format!("steer-{name}"),"method":"turn/steer","params":{
-            "threadId":thread,"expectedTurnId":turn,"input":[{"type":"text","text":command["instruction"]}]}}),
+            "threadId":thread,"expectedTurnId":turn,"input":[{"type":"text","text":super::super::task_session::context::command_input(&command)?}]}}),
         )?;
     }
     Ok(())

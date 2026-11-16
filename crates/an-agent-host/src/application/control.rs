@@ -41,6 +41,12 @@ pub(super) fn submit(service: &Path, value: &Value) -> Result<Value> {
         }
         _ => return Err("unsupported product task control".into()),
     };
+    if value["control"] == "supplement" && current["session"]["context"].get("snapshot").is_some() {
+        request["context_revision"] = value
+            .get("context_revision")
+            .ok_or("supplement requires the displayed context revision")?
+            .clone();
+    }
     if let Some(approval) = value.get("approve") {
         request["approve"] = approval.clone();
     }
