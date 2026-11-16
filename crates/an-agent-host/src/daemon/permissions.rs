@@ -150,7 +150,7 @@ pub(super) fn dispatch_bound(root: &Path, req: &Value, actor: &Binding) -> Resul
                 {
                     return Err("ambiguous job output input".into());
                 }
-                owned_job(root, actor, text(selected, "session")?)?;
+                super::task_session::context::source_job(root, actor, text(selected, "session")?)?;
                 Permission::RunJobOutput {
                     instance,
                     run,
@@ -162,7 +162,7 @@ pub(super) fn dispatch_bound(root: &Path, req: &Value, actor: &Binding) -> Resul
                 if req.get("input").is_some() || req.get("artifact").is_some() {
                     return Err("candidate input cannot be combined with another input".into());
                 }
-                owned_job(root, actor, text(candidate, "session")?)?;
+                super::task_session::context::source_job(root, actor, text(candidate, "session")?)?;
                 Permission::RunCandidate {
                     instance,
                     run,

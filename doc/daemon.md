@@ -323,85 +323,90 @@ usage parsing remain in the Codex adapter. Existing `harness-*` operations, pers
 remain compatible. This extraction does not introduce a new scheduler or authorize guest/provider reports to accept
 artifacts.
 
-## Per-turn context contract v1 (target)
+## Per-turn context contract v1
 
-**Status:** this section specifies a future contract, not a shipped wire schema.
-Current TaskSession binds instructions, completed turns, execution identities and command receipts;
-it does not persist a unified context revision. Existing disclosures, acceptance and operation records
-remain authoritative. The independent semantic crate has been absorbed into core authorization; this section still describes a future TaskSession runtime contract.
+TaskSession owns immutable, provider-neutral snapshots. New tasks opt in with
+`scope.turn_context = {"schema":"an-turn-context-v1","spool_bindings":[]}`.
+The approved task profile includes this configuration. Legacy sessions keep their original
+wire format and approval hashes; no historical snapshots are invented.
+
+For real product acceptance, run `native_product_delivery.py` with explicit `--host`,
+`--bundle` and fresh `--evidence`. Its `--turn-control steer|cancel-program|revoke-spool`
+modes require an observed outstanding execution request; missed boundaries fail.
+Audit a successful run from the repository root with `python3 -B tools/qualification/turn_delivery.py
+--service SERVICE --evidence EVIDENCE --require-summary`. This separately verifies context
+ancestry, one thread, independent grants, dual supervisor guards, Markdown feedback and exact rows.
 
 ### Content and authority
 
-TaskSession assembles and retains provider-neutral `TurnContext` snapshots. The following are
-logical contract fields; wire spelling and storage are reserved for the implementation change.
+Snapshots bind task, original execution, local turn, parent and SHA-256 revision, original
+intent, latest supplemental instruction, model summary, authorized resource references,
+accepted artifact revisions, operation evidence and original limits. Snapshots are bounded
+to 32 KiB. Large knowledge and input files remain references, disclosed by authorized tools.
+Original wall time and turn ceilings remain enforced by the owner; context never renews them.
+Provider usage may be unknown; the snapshot does not fabricate a remaining token allowance.
 
-| Content | Authority and update rule |
-| --- | --- |
-| Identity | Host binds task, original execution, local turn, context revision and parent revision. Provider thread/turn IDs remain adapter mappings. |
-| User intent | Original goal, effective constraints and supplemental instruction references retain provenance and order. Model text cannot become a user instruction. |
-| Working summary | Model-proposed understanding, stage, plan, pending work and questions retain source and originating turn. Persistence is not endorsement. |
-| Readable material | Fixed-version references to authorized inputs and knowledge distinguish eligibility to read from actual disclosure receipts. |
-| Accepted products | Host-accepted artifact versions and acceptance receipts only. Proposals, scratch files and Cocoon exports alone are not accepted products. |
-| Operations | Original operation IDs, observed states, receipt references and unresolved outcomes preserve failure, cancellation and uncertainty. |
-| Authority and budget | Host-projected scope and remaining original task budget; no credentials, inherited grants or renewed allowance. |
+`turn-context` returns the current snapshot and delivery state. Every other model tool request
+must supply `context_revision`. `turn-propose` accepts only `op`, `context_revision`, a canonical
+UUID `proposal`, and nonempty `summary` of at most 4096 bytes. One proposal is retained per
+revision, during its active turn. Exact duplicates are idempotent; changed content is refused.
+A summary is explicitly `model-proposal`, `grants_authority:false`, `artifact_accepted:false`.
+Plans and candidate references in its text remain claims, never host facts or user instructions.
+The host prompt describes this exact request shape and asks for a summary before turn completion;
+qualification checks summary propagation separately from successful artifact delivery.
+Only verified original acceptance records populate `accepted_artifacts`; a grant to read an
+artifact does not prove it exists or has been accepted. Attachment references likewise do not
+prove that their bytes were disclosed. Disclosure receipts remain the evidence of actual reads.
 
-Verified host records take precedence over conflicting model summaries. The host checks a summary's
-binding and bounded representation, not the truth of its narrative. Instructions and data retain their
-origin; neither a digest nor a model-written role label creates authority.
+### Spool declarations and independent permissions
 
-### Round transition
+Each `spool_bindings` entry pins `name`, canonical `instance`, immutable `release`, independent
+`grant` ID and optional `cocoon_jobs` entries (`spec`, `sha256`). Maximum eight bindings and eight
+job specs per binding. Grants are explicitly approved, same-task, nondelegating and expire no
+later than the primary grant. They are not implicitly inherited from the primary agent.
+The approved task profile binds these IDs; matching task names alone never grants access.
 
-1. The host builds the first snapshot from the approved task. Knowledge and large files remain references;
-   existing authorized tools disclose selected bytes on demand, rather than loading all material.
-2. During execution, existing components own operation records, lifecycle and artifact custody. Context
-   references those records and does not become a second scheduler or execution-state database.
-3. `TurnProposal` binds the input context revision and contains the model working summary, suggested
-   next actions and candidate artifact references. It cannot overwrite host facts or accept products.
-4. The host combines the prior snapshot, user updates, proposal and current receipts into an immutable
-   successor. Old snapshots remain available; turn number and context revision are separate counters.
-5. Supplemental instructions may create a new revision within an active turn through existing steering.
-   Prepared, sent, acknowledged, rejected and unknown delivery remain distinct. Saved does not mean received.
-6. Continuation retains the original job, execution, provider thread, turn ceiling and budget. Reconnection
-   reads committed snapshots and original command receipts; it does not regenerate or resend inputs.
+The snapshot lists static `requested_requirements` and `event_interface` separately from
+`grant_ref` and actual `effective_permissions`. Declarations and kit/silk labels confer no rights.
+Before an operation, the host rechecks grant activity, release, loaded state, checkpoint revision
+and concrete target. Calls select `spool_binding`, never arbitrary grant IDs. Authorized read-only
+artifact inputs may come from another instance; writes must target the selected instance.
+Cocoon fixed jobs must match a pinned spec. Raw Cocoon mutations and model child tasks have no
+qualified mapping in v1 and are refused. The single primary agent remains the only model owner.
 
-Adapters only render this neutral input and map provider acknowledgements. The existing Codex thread
-continues to carry conversation history. This contract neither replaces harness compaction nor promises
-that the provider consumed every disclosed byte. A proposal records the revision known to its turn;
-an unacknowledged steering update must not be attributed to that proposal.
+A pinned spool may consume its original session's candidate through the existing run permission.
+This explicit source binding does not confer ownership/control of the model session. Native
+validation retains both producer and consuming spool grants as revocation guards. Long Cocoon
+jobs recheck the original primary, selected spool and attached input grants. Added inputs use the
+existing approved attachment path, optionally naming one spool. New packages, releases, targets
+or wider grants require a newly approved task profile; v1 does not mutate its pinned bindings.
 
-### Consistency and failure boundaries
+### Transitions, cancellation and recovery
 
-Updates name the expected parent revision; stale updates fail rather than overwriting concurrent input.
-Command identity binds the context digest: the same ID with different content is refused. Snapshot
-publication and command admission must preserve that binding across restart, using host-owned persistence.
-Authorization is rechecked at disclosure, execution and result admission. Historical scope descriptions
-cannot authorize current work; revocation cannot erase material already disclosed to provider history.
+Continuation/steering specifies the expected parent `context_revision`. The host creates a
+successor inside the original immutable command record before transport. Command identity binds
+instruction, plan and context; stale parents and changed duplicates fail even during preview.
+Steering can create a revision within a turn. Continuation keeps the original job, execution,
+provider thread, limits and artifact custody. Adapters render neutral input and map acknowledgements;
+no provider-specific policy or credentials enter the snapshot.
 
-The existing sent-before-transport fence remains. Missing confirmation is unknown and is reconciled by
-original command ID, never replayed automatically. Dependent continuation cannot assume the update arrived.
-Unknown application operations retain their original IDs: unrelated authorized read-only observation may
-continue, but actions requiring success remain blocked until evidence resolves that dependency.
-Cancellation refuses new steering and continuation, preserves proposals, accepted products and unresolved
-operations, and relies on original host termination evidence. Old sessions without revisions remain
-explicitly legacy; do not synthesize historical snapshots. Future versioned capability negotiation must
-opt in without silently changing existing approval digests.
+Reconnect verifies the digest chain and reads original acknowledgements. Before the send marker,
+delivery is `prepared`; after the send fence without acknowledgement it is conservatively `unknown`,
+never assumed delivered. Original acknowledgements distinguish `acknowledged` and `rejected`.
+Dependent tools/continuations stop while delivery is unresolved; observation remains available.
+There is no resend or new owner on recovery. Cancellation rejects new input while retaining proposals,
+accepted products and unresolved operations. Changed context or revoked grants during execution
+prevent result admission; effects retain their original operation IDs for reconciliation.
 
-### Example and required acceptance
+### Verification boundary
 
-PDF → Markdown → Excel stays on one session. The first context references the approved PDF and knowledge;
-the model proposes Markdown. Host acceptance produces an artifact revision for the next context. The
-same agent reads that accepted Markdown and authorized table knowledge, then proposes structured rows.
-The existing builder generates Excel and the original host accepts it. A claim of completion or an
-unaccepted Markdown reference cannot advance the accepted-product set. Clarification uses the same
-instruction/update flow within the originally approved turn limit.
-
-Implementation acceptance must cover normal two-turn delivery; same-turn steering; stale/concurrent
-updates; a false completed summary; unaccepted artifacts; revoked knowledge access; crashes on both sides
-of the send fence; lost acknowledgements; reconnect without replay; and cancellation rejecting new input.
-Assert original job/thread continuity, no budget reset and original host artifact acceptance throughout.
-These are future tests, not results claimed by this documentation change. Contract completion requires
-matching bilingual ownership and failure rules plus passing documentation/architecture checks. Types,
-persistence and runtime wiring follow separately; a full model benchmark is not required for this edit.
+Rust tests cover immutable revisions, proposal provenance, size bounds, independent spool grants,
+source binding, target/release mismatch and revocation. The reusable `native_turn_context.py` fixture
+covers two turns on one owner/thread, stale revision rejection, exact command replay, changed
+instruction refusal, missing acknowledgements, reconnect and cancellation without new execution.
+Fixtures establish protocol behavior, not real model compliance or VM delivery. Live PDF → Markdown
+→ Excel qualification must additionally prove accepted Markdown feeds the same model session and
+that original host validation accepts Excel under the independent spool grants.
 
 ## Task-session Cocoon transport
 

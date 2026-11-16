@@ -40,7 +40,7 @@ pub(super) fn send_pending(
         send(
             input,
             json!({"id":format!("continue-{name}"),"method":"turn/start","params":{
-            "threadId":thread,"input":[{"type":"text","text":command["instruction"]}],"outputSchema":schema}}),
+            "threadId":thread,"input":[{"type":"text","text":super::super::task_session::context::command_input(&command)?}],"outputSchema":schema}}),
         )?;
         return Ok(());
     }

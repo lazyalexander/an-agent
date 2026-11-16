@@ -214,6 +214,14 @@ pub fn worker(service: &Path, id: &str) -> Result<Value> {
     );
     let script = root.join("controller.py");
     store::write_new(&script, include_bytes!("controller.py"))?;
+    store::write_new(
+        &root.join("cocoon_control.py"),
+        include_bytes!("cocoon_control.py"),
+    )?;
+    store::write_new(
+        &root.join("context_support.py"),
+        include_bytes!("context_support.py"),
+    )?;
     crate::execution::sandbox::product_process::replace_controller(&python, &script, service, &root)
 }
 

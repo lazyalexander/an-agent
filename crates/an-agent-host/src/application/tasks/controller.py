@@ -2,6 +2,7 @@
 import hashlib
 import json
 import os
+import runpy
 from pathlib import Path
 import signal
 import subprocess
@@ -46,7 +47,7 @@ class Client:
         try:return self.cli('daemon','task-request' if credential else 'request',self.service,path)
         finally:path.unlink()
 
-    def approve(self,value,credential=None,record=None):
+    def approve(self,value,credential=None,record=None,owner_grant=None):
         preview=self.request(value,credential)
         if record:
             identity=preview.get('plan',{}).get('task_sha256') if value['op']=='harness' else preview['approval_sha256']
@@ -56,7 +57,8 @@ class Client:
             try:os.fsync(descriptor)
             finally:os.close(descriptor)
             intent={'kind':'harness' if value['op']=='harness' else 'spool','request':identity,
-                    'grant':credential['id'],'instance':value.get('instance'),'run':value.get('run')}
+                    'grant':owner_grant or credential['id'],'instance':value.get('instance'),'run':value.get('run')}
+            if owner_grant:intent['execution_grant']=credential['id']
             path=journal/(record+'.json')
             if path.exists():raise RuntimeError('Execution intent already exists; reconcile original work')
             save(path,intent)
@@ -90,6 +92,8 @@ def main():
     host,service,root= sys.argv[1:]
     root=Path(root);service=Path(service)
     save(root/'recovery-version.json',{'version':1})
+    context_support=runpy.run_path(str(Path(__file__).with_name('context_support.py')))
+    cocoon_control=runpy.run_path(str(Path(__file__).with_name('cocoon_control.py')))
     config=read(root/'plan.json');environment=Path(config['environment'])
     manifest=read(environment/'runtime.json');components=manifest['components']
     recipe=read(environment/components['delivery'])
@@ -130,11 +134,7 @@ def main():
         if result.returncode:raise RuntimeError('Cocoon control failed; inspect private records')
         return json.loads(result.stdout)
     def api(operation,grant='',request_id=None):
-        path=root/'cocoon-request.json'
-        save(path,{'request':request_id or str(uuid.uuid4()),'caller':'product-task','credential':'','grant':grant,'operation':operation})
-        result=direct('api',path,abortable=operation['operation']=='image_mutation')['result']
-        if 'Ok' not in result:raise RuntimeError('Cocoon refused operation')
-        return result['Ok']
+        return cocoon_control['call'](direct,save,root,operation,grant,request_id)
     def wait_job(job):
         while True:
             check();value=client.request({'op':'task','id':job},credential)
@@ -230,7 +230,7 @@ def main():
             client.cli('spool-load',package,instance,'--runtime',profile)
             client.request({'op':'register','instance':str(instance)});instances[name]=instance
         update(instances={name:str(path) for name,path in instances.items()})
-        rights=[client.request({'op':'harness-permission','task':task}),{'kind':'read-input','path':str(source),'sha256':sha(source)},
+        rights=[{'kind':'read-input','path':str(source),'sha256':sha(source)},
                 {'kind':'read-input','path':str(knowledge),'sha256':sha(knowledge)}]
         rights += [{'kind':'artifact',**product['reference']} for product in (project or {}).get('products',{}).values()]
         rights += [{'kind':'cocoon-job','spec_sha256':sha(spec)} for spec in specs.values()]
@@ -241,6 +241,7 @@ def main():
             rights += [{'kind':'run-job-output',**resource,'operation':operations[name],'output':recipe[name]['output'],'seconds':30},
                        {'kind':'accept',**resource},{'kind':'artifact',**resource,'output':recipe[name]['output']}]
         scope={'task':root.name,'subject':'primary','expires_ms':int(time.time()*1000)+900000,'delegate':True,'permissions':rights}
+        spool_credentials=context_support['bind'](client,task,scope,instances,specs,sha)
         credential=client.approve({'op':'grant','scope':scope})['credential'];save(root/'credential.json',credential)
         check()
         session=client.approve({'op':'harness','task':task},credential,record='primary')['id']
@@ -270,25 +271,25 @@ def main():
             save(answers,supplied)
             extra=client.approve({'op':'grant','scope':{'task':scope['task'],'subject':'user-answers',
                 'expires_ms':scope['expires_ms'],'delegate':False,'permissions':[{'kind':'read-input','path':str(answers),'sha256':sha(answers)}]}})['credential']
-            client.approve({'op':'harness-attach-input','id':session,'input_grant':extra['id']})
+            client.approve({'op':'harness-attach-input','id':session,'input_grant':extra['id'],'spool_binding':'intermediate'})
             view=client.request({'op':'harness-connect','id':session},credential)
-            client.approve({'op':'harness-continue','id':session,'execution':view['execution'],'after_turn':1,
+            client.approve({'op':'harness-continue','id':session,'execution':view['execution'],'after_turn':1,'context_revision':view['context']['snapshot']['revision'],
                 'command':'user-clarification','instruction':prompt('clarification_instruction',[answer_ref(),job('intermediate',[source_ref,answer_ref()])])},credential)
             update(state='running');turn=2
             if not wait_turn(turn)['ok']:raise RuntimeError('Clarified proposal failed')
         def accept(name):
             check()
             resource={'instance':str(instances[name]),'run':'deliver'}
-            pending=client.approve({'op':'submit',**resource,'seconds':30,'job_output':{'session':session,'operation':operations[name],'output':recipe[name]['output']}},credential,record=name)['id']
+            pending=client.approve({'op':'submit',**resource,'seconds':30,'job_output':{'session':session,'operation':operations[name],'output':recipe[name]['output']}},spool_credentials[name],record=name,owner_grant=credential['id'])['id']
             state['steps'][name]=pending;update(state='validating')
-            wait_job(pending);check();client.approve({'op':'accept',**resource},credential)
+            wait_job(pending);check();client.approve({'op':'accept',**resource},spool_credentials[name])
             artifact=client.request({'op':'artifact-read',**resource,'output':recipe[name]['output']},credential)
             state['products'][name]={**resource,'output':recipe[name]['output']};update()
             return bytes(artifact['bytes'])
         accepted.write_bytes(accept('intermediate'))
         reference={'op':'artifact-read',**state['products']['intermediate']}
         view=client.request({'op':'harness-connect','id':session},credential)
-        client.approve({'op':'harness-continue','id':session,'execution':view['execution'],'after_turn':turn,
+        client.approve({'op':'harness-continue','id':session,'execution':view['execution'],'after_turn':turn,'context_revision':view['context']['snapshot']['revision'],
             'command':'accepted-intermediate','instruction':prompt('final_instruction',[reference,job('final',[reference])])},credential)
         update(state='running');wait_turn(turn+1);accept('final')
         if turn+1<task['turn_limit']:

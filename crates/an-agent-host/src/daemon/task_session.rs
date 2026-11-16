@@ -2,6 +2,7 @@
 use super::harness_adapter::{kind, selected};
 use super::*;
 use std::io::Write;
+pub(crate) mod context;
 pub(super) mod disclosure;
 pub(super) mod finish;
 
@@ -85,12 +86,16 @@ pub(super) fn dispatch(root: &Path, req: &Value, approved: Option<&str>) -> Resu
             plan["operation"] = json!("continue-harness");
             plan["after_turn"] = json!(after);
         }
+        let context = context::command(&dir, task, authority, req, &mut plan)?;
         let (preview, execute) = approval(plan, approved)?;
         if !execute {
             return Ok(preview);
         }
         store::directory(&commands)?;
         let mut record = json!({"plan":preview["plan"],"instruction":instruction});
+        if let Some(context) = context {
+            record["context"] = context;
+        }
         // Same command identity reconciles the original submission, including after completion.
         if path.exists() {
             let original = read(&path)?;
@@ -185,7 +190,7 @@ pub(super) fn dispatch(root: &Path, req: &Value, approved: Option<&str>) -> Resu
     let cocoon_operations = json!([]);
     Ok(
         json!({"cocoon_jobs":cocoon_jobs,"cocoon_operations":cocoon_operations,"id":id,"adapter":kind(task)?,"execution":execution,"capabilities":adapter.capabilities(),
-        "turns":turn_state(&dir, task.turn_limit.unwrap_or(1))?,
+        "context":context::view(&dir)?,"turns":turn_state(&dir, task.turn_limit.unwrap_or(1))?,
         "task":observation::task(root,id)?,"events":events,"cursor":next,"commands":commands,"automatic_retries":0}),
     )
 }
@@ -287,7 +292,16 @@ fn tool_request_inner(root: &Path, envelope: &Value, stopped: &AtomicBool) -> Re
     }
     disclosure::active(&dir, &authority)?;
     let started = an_agent_core::det_seam::Clock::monotonic_now();
-    let requested: Value = serde_json::from_str(text(&envelope["arguments"], "request")?)?;
+    let mut requested: Value = serde_json::from_str(text(&envelope["arguments"], "request")?)?;
+    let input_revision = requested["context_revision"].clone();
+    if let Some(response) = context::tool(&dir, &task, &authority, &mut requested)? {
+        return Ok(response);
+    }
+    let effective = context::authority(&task, &authority, &mut requested)?;
+    if context::config(&task)?.is_some() && requested["op"] == "submit" {
+        requested["turn_session"] = envelope["id"].clone();
+    }
+    let arguments = json!({"request":serde_json::to_string(&requested)?});
     let fixed_job_mismatch = requested["op"] == "cocoon-job"
         && task.scope.get("cocoon_job_ids").is_some_and(|ids| {
             requested["spec_sha256"].as_str().is_none_or(|spec| {
@@ -302,9 +316,18 @@ fn tool_request_inner(root: &Path, envelope: &Value, stopped: &AtomicBool) -> Re
     {
         Err("single-primary sessions cannot launch model child tasks".into())
     } else {
-        host_tool(root, &dir, &authority, &envelope["arguments"], stopped)
+        host_tool(root, &dir, &effective, &arguments, stopped)
     };
-    let receipt = json!({"request_sha256":store::digest(&serde_json::to_vec(&envelope["arguments"])?),
+    let result = if context::config(&task)?.is_some()
+        && (context::view(&dir)?["snapshot"]["revision"] != input_revision
+            || crate::task_permissions::active(&effective).is_err()
+            || crate::task_permissions::active(&authority).is_err())
+    {
+        Err("result retained under its original operation; context changed during execution".into())
+    } else {
+        result
+    };
+    let receipt = json!({"context_revision":input_revision,"effective_grant":effective.id,"request_sha256":store::digest(&serde_json::to_vec(&envelope["arguments"])?),
         "grant":authority.id,"succeeded":result.is_ok(),
         "observed_ms":super::harness_metrics::now_ms(),"elapsed_ms":started.elapsed().as_millis(),
         "elapsed_us":started.elapsed().as_micros(),

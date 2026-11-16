@@ -31,7 +31,7 @@ async function selectTask(id){
 async function prepareControl(control){
  if(!taskView)return;
  const value={op:'task-control',control,id:selectedTask};
- if(control==='supplement')Object.assign(value,{instruction:$('instruction').value,command:crypto.randomUUID(),execution:taskView.session.execution,after_turn:taskView.session.turns.completed});
+ if(control==='supplement')Object.assign(value,{instruction:$('instruction').value,command:crypto.randomUUID(),execution:taskView.session.execution,after_turn:taskView.session.turns.completed,...(taskView.session.context?.snapshot?{context_revision:taskView.session.context.snapshot.revision}:{})});
  const plan=await request('/action',value);controlPreview={...value,approve:plan.approval_sha256};
  $('control-description').textContent=`${strings[language][control]} · ${taskView.task.label||selectedTask}${control==='supplement'?'\n'+value.instruction:''}`;
  $('control-preview').hidden=false;

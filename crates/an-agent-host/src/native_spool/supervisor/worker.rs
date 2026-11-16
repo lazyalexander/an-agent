@@ -25,12 +25,20 @@ pub fn execute(root: &Path, name: &str, hash: &str, cancelled: Arc<AtomicBool>) 
         .get("task_authorization")
         .map(|v| serde_json::from_value(v.clone()))
         .transpose()?;
+    let guards: Vec<crate::task_permissions::Binding> = record["plan"]
+        .get("authority_guards")
+        .map(|v| serde_json::from_value(v.clone()))
+        .transpose()?
+        .unwrap_or_default();
     let result = monitor(
         || {
             poll_control(&dir, None, &cancelled);
             if authorization
                 .as_ref()
                 .is_some_and(|b| crate::task_permissions::active(b).is_err())
+                || guards
+                    .iter()
+                    .any(|b| crate::task_permissions::active(b).is_err())
             {
                 cancelled.store(true, Ordering::Release);
             }

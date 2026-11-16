@@ -164,6 +164,9 @@ jobs:
       - name: Native artifact retirement and admitted downstream custody
         if: matrix.native_workspace
         run: python3 -B crates/an-agent-host/tests/cli/native_retirement.py --host target/debug/an-agent-host --evidence "$RUNNER_TEMP/native-state/retirement"
+      - name: Immutable turn context and unknown delivery
+        if: matrix.native_workspace
+        run: python3 -B crates/an-agent-host/tests/cli/native_turn_context.py --host target/debug/an-agent-host --evidence "$RUNNER_TEMP/native-state/turn-context"
       - name: Cocoon binary candidate custody and original-session continuation
         if: matrix.native_workspace
         run: python3 -B crates/an-agent-host/tests/cli/native_cocoon_session.py --host target/debug/an-agent-host --evidence "$RUNNER_TEMP/native-state/cocoon-candidate"

@@ -8,6 +8,15 @@ pub(super) fn run(
     req: &Value,
     stopped: &AtomicBool,
 ) -> Result<Value> {
+    let (_, owner) = storage::job(
+        root,
+        session
+            .file_name()
+            .and_then(|v| v.to_str())
+            .ok_or("session ID")?,
+    )?;
+    let primary = owner.authorization().ok_or("session authority required")?;
+    crate::task_permissions::active(primary)?;
     let spec_sha256 = text(req, "spec_sha256")?;
     crate::task_permissions::require(
         authority,
@@ -58,6 +67,7 @@ pub(super) fn run(
             {
                 return Err("primary task cancelled".into());
             }
+            crate::task_permissions::active(primary)?;
             for binding in &input_bindings {
                 crate::task_permissions::active(binding)?;
             }

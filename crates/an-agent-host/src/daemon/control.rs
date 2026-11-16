@@ -149,7 +149,7 @@ fn submit(
         }
         let actor = authorization.ok_or("candidate input requires task authority")?;
         let session = text(selected, "session")?;
-        let source = permissions::owned_job(root, actor, session)?;
+        let source = super::task_session::context::source_job(root, actor, session)?;
         let Job::Harness {
             authorization: Some(binding),
             ..
@@ -201,6 +201,20 @@ fn submit(
         .as_ref()
         .map(|(_, _, binding)| binding)
         .or(authorization);
+    let mut guards = selected_authority.cloned().into_iter().collect::<Vec<_>>();
+    if let Some(actor) = authorization
+        && !guards.contains(actor)
+    {
+        guards.push(actor.clone());
+    }
+    if let Some(session) = req.get("turn_session").and_then(Value::as_str) {
+        let actor = authorization.ok_or("session input requires task authority")?;
+        let source = super::task_session::context::source_job(root, actor, session)?;
+        let primary = source.authorization().ok_or("session authority")?;
+        if !guards.contains(primary) {
+            guards.push(primary.clone());
+        }
+    }
     // Reuse the native preview/approval once per request. Rebuilding it twice
     // re-hashes the selected runtime inventory without adding authority.
     let prepared = spool::supervisor::prepare_authorized(
@@ -223,7 +237,7 @@ fn submit(
         seconds,
         &executable,
         approved,
-        selected_authority,
+        &guards,
     )?;
     if prepared["reserved"] != true {
         return Ok(prepared);

@@ -13,6 +13,7 @@ import urllib.error
 import uuid
 from document_benchmark import make_pdf
 from host_qualification import require_native_workspace
+from product_turn_controls import TurnControls
 
 
 def claim_belongs(path,root):
@@ -39,12 +40,15 @@ def main():
     parser.add_argument('--lose-controller-at',choices=('setup','validator','image-branch'))
     parser.add_argument('--drop-execution-projection',action='store_true')
     parser.add_argument('--drop-clarification-receipt',action='store_true')
+    parser.add_argument('--turn-control',choices=('steer','cancel-program','revoke-spool'))
     args=parser.parse_args();require_native_workspace()
+    if args.turn_control=='cancel-program':args.cancel=True
     if args.lose_controller_at or args.drop_execution_projection:
         assert args.cancel,'Fault recovery cases require explicit cancellation'
         args.lose_controller=True
     host=args.host.resolve(strict=True);host_digest=hashlib.sha256(host.read_bytes()).hexdigest();root=args.evidence.resolve();root.mkdir(mode=0o700)
     service=args.reuse_service.resolve(strict=True) if args.reuse_service else root/'service'
+    controls=TurnControls(args.turn_control,host,service,root)
     existing_jobs={p.name for p in (service/'jobs').iterdir()} if service.exists() else set()
     log=(root/'page.log').open('w')
     previous_url=None
@@ -120,6 +124,7 @@ def main():
             source.write_bytes(original.replace(b'(Bolt 12 0.50)',b'(Bolt 13 0.50)'))
         upload=call(path='/upload',raw=source.read_bytes())['upload']
         task=str(uuid.uuid4())
+        controls.task=task
         request={'op':'delivery-preview','id':task,'environment':installed['id'],'upload':upload,'instruction':'Preserve all source facts and deliver Markdown and Excel.'}
         if args.resume_task:request['resume_task']=args.resume_task
         if args.image_reference:request['image']=json.loads(args.image_reference.read_text())
@@ -138,6 +143,7 @@ def main():
         task_root=service/'application/tasks'/task
         while time.monotonic()<deadline:
             state=call({'op':'delivery-view','id':task})['state']
+            if controls.observe(state,call,approve):cancelled=True
             observed=time.monotonic()
             if state['state']!=phase:
                 if phase is not None:observed_phases[phase]=observed_phases.get(phase,0)+(observed-phase_started)*1000
@@ -167,7 +173,7 @@ def main():
                 call({'op':'delivery-cancel','id':task});cancelled=True
             if args.cancel and args.cancel_preparing and state.get('vm') and not cancelled:
                 call({'op':'delivery-cancel','id':task});cancelled=True
-            if args.cancel and not args.lose_controller and state.get('session') and not cancelled and (not args.cancel_when_clarifying or state['state']=='waiting-clarification'):
+            if args.cancel and not args.turn_control and not args.lose_controller and state.get('session') and not cancelled and (not args.cancel_when_clarifying or state['state']=='waiting-clarification'):
                 call({'op':'delivery-cancel','id':task});cancelled=True
             if args.restart_page and state.get('session') and not restarted:
                 page.terminate();page.wait(timeout=15)
@@ -182,7 +188,7 @@ def main():
                     repeated=approve(value);assert repeated['replayed'] is False
                 answered=True
             if state['state'] in ('succeeded','failed','cancelled') or (state['state']=='unknown' and not lost):break
-            time.sleep(.05 if args.lose_controller_at=='setup' else .2)
+            time.sleep(.01 if args.turn_control else .05 if args.lose_controller_at=='setup' else .2)
         if lost:
             recovered_seconds=time.monotonic()-loss_started
             assert recovered_seconds<=30,('Original-owner recovery exceeded 30 seconds',recovered_seconds)
@@ -196,7 +202,7 @@ def main():
                 late=root/'late-request.json';late.write_text(json.dumps({'credential':credential,'request':{'op':'harness','task':primary['task']}}))
                 refused=subprocess.run([str(host),'daemon','task-request',str(service),str(late)],capture_output=True,text=True,timeout=15)
                 assert refused.returncode and 'revoked' in refused.stderr,'Late original authorization remained executable'
-        assert state['state']==('cancelled' if args.cancel else 'failed' if args.unsupported_source else 'succeeded'),state
+        assert state['state']==('cancelled' if args.cancel else 'failed' if args.unsupported_source or args.turn_control=='revoke-spool' else 'succeeded'),state
         if args.unsupported_source:
             assert state['termination_confirmed'] and 'requested no supported clarification' in state['error']
         outcome_ms=(time.monotonic()-admitted)*1000
@@ -209,17 +215,18 @@ def main():
         products={}
         assert state['termination_confirmed']
         assert state['runtime_termination_confirmed']
+        controls.verify(state)
         if args.lose_controller_at=='image-branch' or args.cancel_when_image_branch:
             assert image_status(task_root)['state']=='cancelled'
             assert not (task_root/'start-intent.json').exists()
             assert not state.get('session')
         if args.cancel:assert 'final' not in state.get('products',{})
-        if not args.cancel and not args.unsupported_source:
+        if not args.cancel and not args.unsupported_source and args.turn_control!='revoke-spool':
             assert state['termination_confirmed']
             for stage,name in [('intermediate','accepted.md'),('final','result.xlsx')]:
                 artifact=call({'op':'delivery-artifact','id':task,'stage':stage})
                 output=root/name;output.write_bytes(bytes(artifact['bytes']));products[name]=hashlib.sha256(output.read_bytes()).hexdigest()
-        if not args.cancel and not args.unsupported_source:
+        if not args.cancel and not args.unsupported_source and args.turn_control!='revoke-spool':
             from zipfile import ZipFile
             from xml.etree import ElementTree as ET
             from decimal import Decimal
@@ -235,7 +242,7 @@ def main():
         case_jobs=[json.loads((path/'request.json').read_text()) for path in (service/'jobs').iterdir() if path.name not in existing_jobs]
         primary_count=sum(job['kind']=='harness' for job in case_jobs)
         assert primary_count<=1,'Product task admitted more than one primary'
-        if not args.cancel and not args.unsupported_source:assert primary_count==1 and len(case_jobs)==3,'Delivery bypassed original validators'
+        if not args.cancel and not args.unsupported_source and args.turn_control!='revoke-spool':assert primary_count==1 and len(case_jobs)==3,'Delivery bypassed original validators'
         assert hashlib.sha256(host.read_bytes()).hexdigest()==host_digest,'Selected host binary changed during acceptance'
         (root/'report.json').write_text(json.dumps({'passed':True,'real_model':bool(state.get('session')) and any((service/'jobs'/state['session']).glob('turn-result-*.json')),'task':task,'primary_count':primary_count,'native_validator_count':len(case_jobs)-primary_count,'primary_admitted':bool(state.get('session')),'empty_service':not bool(args.reuse_service),'product_http':True,
             'image_branch_cancelled':bool(args.cancel_when_image_branch or args.lose_controller_at=='image-branch'),'clarification':answered,'cancelled':cancelled,'page_restarted':restarted,'observation_reconnects':observation_reconnects,'controller_lost':lost,'loss_boundary':args.lose_controller_at or 'clarification','projection_dropped':args.drop_execution_projection,'recovery_seconds':recovered_seconds,'original_jobs':original_jobs,'clarification_receipt_retried':args.drop_clarification_receipt,'products':products,

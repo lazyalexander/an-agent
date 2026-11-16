@@ -72,7 +72,7 @@ pub fn prepare(
     executable: &Path,
     approved: Option<&str>,
 ) -> Result<Value> {
-    prepare_authorized(root, name, input, seconds, executable, approved, None)
+    prepare_authorized(root, name, input, seconds, executable, approved, &[])
 }
 
 pub(crate) fn prepare_authorized(
@@ -82,9 +82,9 @@ pub(crate) fn prepare_authorized(
     seconds: u64,
     executable: &Path,
     approved: Option<&str>,
-    authorization: Option<&crate::task_permissions::Binding>,
+    authorization: &[crate::task_permissions::Binding],
 ) -> Result<Value> {
-    if let Some(binding) = authorization {
+    for binding in authorization {
         crate::task_permissions::active(binding)?;
     }
     let root = location(root)?;
@@ -132,8 +132,11 @@ pub(crate) fn prepare_authorized(
 
     let mut plan = json!({"schema":"an-native-supervisor-v1","root":root,"run":name,
         "input":input,"seconds":seconds,"executable":executable,"start":preview["plan"]});
-    if let Some(binding) = authorization {
+    if let Some(binding) = authorization.first() {
         plan["task_authorization"] = json!(binding);
+    }
+    if authorization.len() > 1 {
+        plan["authority_guards"] = json!(&authorization[1..]);
     }
     if let Some(revision) = revision {
         plan["state_revision"] = json!(revision);

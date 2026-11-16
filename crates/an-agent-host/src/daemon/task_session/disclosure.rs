@@ -4,6 +4,7 @@ pub(crate) fn attach(root: &Path, req: &Value, approved: Option<&str>) -> Result
     let (dir, job) = storage::job(root, text(req, "id")?)?;
     let Job::Harness {
         authorization: Some(authority),
+        task,
         ..
     } = job
     else {
@@ -28,7 +29,15 @@ pub(crate) fn attach(root: &Path, req: &Value, approved: Option<&str>) -> Result
     {
         return Err("attachment must be one bounded input for the same task".into());
     }
-    let plan = json!({"operation":"attach-session-input","id":text(req,"id")?,"session_authority":authority,"input_grant":binding});
+    let mut plan = json!({"operation":"attach-session-input","id":text(req,"id")?,"session_authority":authority,"input_grant":binding});
+    if let Some(name) = req.get("spool_binding") {
+        let mut selection = json!({"op":"read-input","spool_binding":name});
+        let target = context::authority(&task, &authority, &mut selection)?;
+        if target == authority {
+            return Err("attachment spool binding required".into());
+        }
+        plan["target_authority"] = json!(target);
+    }
     let (preview, execute) = approval(plan, approved)?;
     if execute {
         let directory = dir.join("input-grants");
@@ -64,9 +73,13 @@ pub(crate) fn input(
     if directory.exists() {
         for path in storage::entries(session, "input-grants", 8)? {
             let record = read(&path)?;
-            if record["session_authority"] != json!(authority) {
-                return Err("input session binding mismatch".into());
+            if record["session_authority"] != json!(authority)
+                && record["target_authority"] != json!(authority)
+            {
+                continue;
             }
+            let original: Binding = serde_json::from_value(record["session_authority"].clone())?;
+            crate::task_permissions::active(&original)?;
             let binding: Binding = serde_json::from_value(record["input_grant"].clone())?;
             if let Ok(value) = permissions::dispatch_bound(root, req, &binding) {
                 return Ok((value, binding));
@@ -89,4 +102,24 @@ pub(crate) fn active(session: &Path, authority: &Binding) -> Result<()> {
         }
     }
     Ok(())
+}
+
+/// References only: attachment approval is not proof that bytes were disclosed.
+pub(super) fn evidence(session: &Path, authority: &Binding) -> Result<Value> {
+    active(session, authority)?;
+    let mut inputs = Vec::new();
+    if !session.join("input-grants").exists() {
+        return Ok(json!(inputs));
+    }
+    for path in storage::entries(session, "input-grants", 8)? {
+        let record = read(&path)?;
+        let binding: Binding = serde_json::from_value(record["input_grant"].clone())?;
+        let grant = crate::task_permissions::load(&binding)?;
+        inputs.push(
+            json!({"grant_ref":{"id":binding.id,"sha256":binding.sha256},
+            "permissions":grant.scope.permissions,"target_grant":record["target_authority"]["id"],
+            "disclosure":"requires-receipt"}),
+        );
+    }
+    Ok(json!(inputs))
 }

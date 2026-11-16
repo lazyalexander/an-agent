@@ -45,6 +45,7 @@ pub(super) fn submit(
     if let Some(binding) = authorization {
         crate::task_permissions::require(binding, &permissions::harness_permission(&task)?)?;
     }
+    super::task_session::context::validate(&task, authorization)?;
     if task.turn_limit.is_some_and(|limit| limit == 0 || limit > 8)
         || task
             .wall_seconds

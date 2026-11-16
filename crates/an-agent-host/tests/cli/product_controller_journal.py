@@ -53,6 +53,17 @@ class JournalFaults(unittest.TestCase):
                     self.assertFalse((root/'intents'/(stage+'-result.json')).exists())
                     self.assertNotIn('private-fixture',intent.read_text())
 
+    def test_spool_execution_retains_original_session_ownership_for_recovery(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory);client=controller.Client('unused','unused',root)
+            with patch.object(client,'request',side_effect=[{'approval_sha256':'a'*64}, {'id':'original'}]):
+                client.approve({'op':'submit','instance':'native','run':'deliver'},
+                               {'id':'spool-grant'},record='intermediate',owner_grant='primary-grant')
+            intent=controller.read(root/'intents/intermediate.json')
+            self.assertEqual(intent['grant'],'primary-grant')
+            self.assertEqual(intent['execution_grant'],'spool-grant')
+            self.assertEqual(controller.read(root/'intents/intermediate-result.json')['id'],'original')
+
     def test_missing_request_identity_cannot_submit_effect(self):
         with tempfile.TemporaryDirectory() as directory:
             client=controller.Client('unused','unused',Path(directory))
@@ -99,6 +110,61 @@ class ControlReadiness(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError,'service stopped'):
             controller.wait_control(Path('/unused'),process,probe,lambda:None)
         probe.assert_not_called()
+
+
+class ContextScopes(unittest.TestCase):
+    def test_spool_writes_are_independent_and_credentials_do_not_enter_context(self):
+        import runpy
+        bind = runpy.run_path(str(SOURCE.with_name('context_support.py')))['bind']
+        issued = []
+        class Client:
+            def approve(self, request):
+                issued.append(request['scope'])
+                return {'credential': {'id': 'grant-' + str(len(issued)), 'secret': 'private-fixture'}}
+            def cli(self, *args):
+                return {'release': 'a' * 64}
+            def request(self, request):
+                self_test.assertEqual(len(request['task']['scope']['turn_context']['spool_bindings']), 2)
+                return {'kind': 'harness', 'profile_sha256': 'b' * 64}
+        self_test = self
+        task = {'scope': {}, 'prompt': 'Preserve facts.'}
+        scope = {'task': 'one', 'subject': 'primary', 'expires_ms': 100, 'delegate': True,
+                 'permissions': [{'kind': 'accept', 'instance': '/intermediate', 'run': 'deliver'},
+                                 {'kind': 'accept', 'instance': '/final', 'run': 'deliver'},
+                                 {'kind': 'read-input', 'path': '/source', 'sha256': 'c' * 64}]}
+        credentials = bind(Client(), task, scope,
+                           {'intermediate': Path('/intermediate'), 'final': Path('/final')},
+                           {name: Path('/' + name) for name in ('extract', 'intermediate', 'final')},
+                           lambda path: 'd' * 64)
+        self.assertEqual(set(credentials), {'intermediate', 'final'})
+        self.assertNotIn('private-fixture', str(task))
+        self.assertFalse(any(p['kind'] == 'accept' for p in scope['permissions']))
+        for index, instance in enumerate(('/intermediate', '/final')):
+            self.assertFalse(issued[index]['delegate'])
+            self.assertEqual([p['instance'] for p in issued[index]['permissions'] if p['kind'] == 'accept'], [instance])
+
+
+class CocoonFailures(unittest.TestCase):
+    def test_backpressure_is_retained_without_replay_or_disabling_protection(self):
+        import runpy
+        call=runpy.run_path(str(SOURCE.with_name('cocoon_control.py')))['call']
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory)
+            direct=unittest.mock.Mock(return_value={'request':'one','caller':'product-task',
+                'result':{'Err':'host protection backpressure rejects new execution'}})
+            with self.assertRaisesRegex(RuntimeError,'memory protection blocked'):
+                call(direct,controller.save,root,{'operation':'start','vm':'fixture'},request_id='one')
+            direct.assert_called_once()
+            self.assertEqual(controller.read(root/'cocoon-errors/one.json')['operation'],'start')
+            self.assertNotIn('grant',controller.read(root/'cocoon-errors/one.json'))
+
+    def test_foreign_response_is_not_accepted(self):
+        import runpy
+        call=runpy.run_path(str(SOURCE.with_name('cocoon_control.py')))['call']
+        with tempfile.TemporaryDirectory() as directory:
+            direct=unittest.mock.Mock(return_value={'request':'foreign','caller':'product-task','result':{'Ok':{}}})
+            with self.assertRaisesRegex(RuntimeError,'identity mismatch'):
+                call(direct,controller.save,Path(directory),{'operation':'start'},request_id='one')
 
 
 if __name__=='__main__':unittest.main()
