@@ -174,7 +174,7 @@ confirmed-only collection. The state suite advances HEAD before selecting the
 old revision and verifies retained checkpoints; `--combined` also pins business
 data and rejects changed selectors. PIDs serve fault injection and observation only; accepted products and independent instances remain unaffected.
 `native_daemon.py`, `native_daemon_inputs.py` and `native_task_permissions.py` cover [service and task permissions](../../../../doc/daemon.md) with explicit `--host` and fresh `--evidence` paths. `document_activity.py` adds the real PDF/Markdown/XLSX case, optionally using `--shuttle-client` for the compiled Shuttle transport.
-
 `native_app_server.py` covers real protocol processes, scoped tools, revocation and cancellation.
 `native_harness_adapter.py --host HOST --evidence NEW_DIRECTORY` verifies two background owners, steering, scoped reconnect, duplicate commands and missing receipts. See the [adapter contract](../../../../doc/daemon.md#harness-adapters-and-reconnect).
 `native_harness_session.py` verifies original-thread continuation and metrics. `document_activity.py` runs PDF/Markdown/Excel on one thread. `single_agent_benchmark.py` runs the [eight-case smoke and full baseline](../../../../doc/testing.md#single-main-agent-benchmark-v1).
+`native_product_delivery.py` adds real product controls; [turn-context qualification](../../../../doc/daemon.md#per-turn-context-contract-v1) audits retained evidence.

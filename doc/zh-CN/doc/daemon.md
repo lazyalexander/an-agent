@@ -415,6 +415,12 @@ prepare-document-capacity 调整为两槽，运行任务期间禁止调整。
 
 ## 逐轮上下文契约 v1
 
+真实产品验收使用 `native_product_delivery.py`，显式提供 `--host`、`--bundle` 和新的
+`--evidence`。`--turn-control steer|cancel-program|revoke-spool` 必须观测到未返回回执的
+执行请求；未命中该边界则失败。在仓库根目录执行 `python3 -B tools/qualification/turn_delivery.py
+--service SERVICE --evidence EVIDENCE --require-summary`，独立核验上下文链、原线程、独立授权、
+双重监督授权、Markdown 回流与表格各行。运行证据保持私有。
+
 TaskSession 保管不可变、提供方无关的上下文快照。新任务通过
 `scope.turn_context = {"schema":"an-turn-context-v1","spool_bindings":[]}` 显式启用，
 配置进入任务批准摘要。旧会话保持原字段和批准摘要，不补造历史快照。
@@ -427,6 +433,7 @@ TaskSession 保管不可变、提供方无关的上下文快照。新任务通�
 时间和轮数上限，不因续轮重置。提供方用量可能未知，不伪造剩余 token 额度。
 
 `turn-context` 返回当前快照及投递状态；其他模型工具请求必须带 `context_revision`。
+宿主提示明确提案字段，并要求每轮结束前提交摘要；验收分别检查摘要回流和产物交付。
 `turn-propose` 仅接受 `op`、`context_revision`、规范 UUID `proposal` 和最多 4096 字节
 的非空 `summary`。每个版本只保留一份提案，且仅允许在所属活跃轮提交；完全相同的重试
 幂等，改写拒绝。摘要明确标记 `model-proposal`、`grants_authority:false` 和

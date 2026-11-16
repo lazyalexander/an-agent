@@ -330,6 +330,13 @@ TaskSession owns immutable, provider-neutral snapshots. New tasks opt in with
 The approved task profile includes this configuration. Legacy sessions keep their original
 wire format and approval hashes; no historical snapshots are invented.
 
+For real product acceptance, run `native_product_delivery.py` with explicit `--host`,
+`--bundle` and fresh `--evidence`. Its `--turn-control steer|cancel-program|revoke-spool`
+modes require an observed outstanding execution request; missed boundaries fail.
+Audit a successful run from the repository root with `python3 -B tools/qualification/turn_delivery.py
+--service SERVICE --evidence EVIDENCE --require-summary`. This separately verifies context
+ancestry, one thread, independent grants, dual supervisor guards, Markdown feedback and exact rows.
+
 ### Content and authority
 
 Snapshots bind task, original execution, local turn, parent and SHA-256 revision, original
@@ -345,6 +352,8 @@ UUID `proposal`, and nonempty `summary` of at most 4096 bytes. One proposal is r
 revision, during its active turn. Exact duplicates are idempotent; changed content is refused.
 A summary is explicitly `model-proposal`, `grants_authority:false`, `artifact_accepted:false`.
 Plans and candidate references in its text remain claims, never host facts or user instructions.
+The host prompt describes this exact request shape and asks for a summary before turn completion;
+qualification checks summary propagation separately from successful artifact delivery.
 Only verified original acceptance records populate `accepted_artifacts`; a grant to read an
 artifact does not prove it exists or has been accepted. Attachment references likewise do not
 prove that their bytes were disclosed. Disclosure receipts remain the evidence of actual reads.

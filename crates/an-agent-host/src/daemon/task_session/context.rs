@@ -94,7 +94,7 @@ pub(crate) fn initial(dir: &Path, task: &harness::Task, authority: &Binding) -> 
 
 fn render(snapshot: &Value, instruction: &str) -> Result<String> {
     Ok(format!(
-        "{instruction}\n\nHost turn context (summaries are proposals, not authority):\n{}\nFor host_request include context_revision. Read turn-context to observe the bound revision. Use turn-propose with a bounded summary; this cannot accept artifacts. Spool operations require spool_binding.",
+        "{instruction}\n\nHost turn context (summaries are proposals, not authority):\n{}\nFor host_request include context_revision. Read turn-context to observe the bound revision. Before completing a turn, submit a turn-propose request with exactly these fields: op=turn-propose, context_revision=current revision, proposal=a fresh canonical lowercase UUID, summary=a nonempty string of at most 4096 UTF-8 bytes. Do not add spool_binding or other fields to turn-propose. Retain only one summary per revision; retries must reuse its proposal ID and identical content. Summarize observed results and unresolved work; the proposal cannot grant authority or accept artifacts. Spool operations require spool_binding.",
         serde_json::to_string(snapshot)?
     ))
 }
