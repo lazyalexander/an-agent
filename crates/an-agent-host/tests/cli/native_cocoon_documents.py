@@ -24,9 +24,12 @@ def main():
     parser.add_argument('--dependency-site',type=Path,required=True)
     parser.add_argument('--codex',type=Path)
     parser.add_argument('--model',default='gpt-6.1-sol')
+    parser.add_argument('--guest-interpreter',default='/opt/python/bin/python3.12')
     parser.add_argument('--clarification',action='store_true')
     parser.add_argument('--lost-receipt',action='store_true')
+    parser.add_argument('--lost-runtime-receipt',action='store_true')
     parser.add_argument('--cancel-before-continuation',action='store_true')
+    parser.add_argument('--revoke-before-continuation',action='store_true')
     parser.add_argument('--cancel-during-program',action='store_true')
     parser.add_argument('--restart-controller',action='store_true')
     parser.add_argument('--finish-session',action='store_true')
@@ -53,7 +56,7 @@ def main():
         for action in operations:
             path=driver.root/(action+'-spec.json')
             path.write_text(json.dumps({'transport':str(transport),'transport_sha256':sha(transport),
-                'program':str(program),'program_sha256':sha(program),'interpreter':'/opt/python/bin/python3.12',
+                'program':str(program),'program_sha256':sha(program),'interpreter':args.guest_interpreter,
                 'arguments':['-I','-B','{program}','job-'+action,'{request}','{output}'],'outputs':output_specs[action]}))
             specs[action]=path
         def job(action,data,inputs):
@@ -180,17 +183,24 @@ for raw in sys.stdin:
                 'cancellation_admission_ms':cancellation_ms,'vm_termination_confirmed':True},indent=2))
             return
         first=wait_turn(1,not args.clarification)
-        if args.cancel_before_continuation:
-            driver.approve({'op':'cancel','id':session},credential)
-            driver.wait(session,credential,'cancelled')
+        if args.cancel_before_continuation or args.revoke_before_continuation:
+            if args.revoke_before_continuation:
+                driver.approve({'op':'revoke-grant','id':credential['id']})
+            else:
+                driver.approve({'op':'cancel','id':session},credential)
+            driver.wait(session,None if args.revoke_before_continuation else credential,'cancelled')
             completion=json.loads((driver.service/'jobs'/session/'completion.json').read_text())['result']
             assert completion['termination_confirmed'] and completion['cocoon']['termination_confirmed']
-            retained=driver.request({'op':'cocoon-job-status','id':session,'operation_id':operations['extract']},credential)
+            if args.revoke_before_continuation:
+                retained=json.loads((driver.service/'jobs'/session/'cocoon-jobs'/operations['extract']/'result.json').read_text())
+            else:
+                retained=driver.request({'op':'cocoon-job-status','id':session,'operation_id':operations['extract']},credential)
             assert retained['state']=='proposed'
             driver.request({'op':'submit','instance':str(instances['markdown']),'run':'deliver','seconds':30,
                 'job_output':{'session':session,'operation':operations['markdown'],'output':'markdown.md'}},credential,ok=False)
             (driver.root/'report.json').write_text(json.dumps({'passed':True,'real_model':bool(args.codex),
-                'cancelled':True,'single_original_session':True,'vm_termination_confirmed':True,'no_late_acceptance':True},indent=2))
+                'cancelled':True,'revoked':args.revoke_before_continuation,'single_original_session':True,
+                'vm_termination_confirmed':True,'no_late_acceptance':True},indent=2))
             return
         markdown_turn=1
         if args.clarification:
@@ -234,11 +244,16 @@ for raw in sys.stdin:
         proposal={'source_sha256':'' if args.codex else sha(accepted_md),'rows':[] if args.codex else document.parse_markdown(md)}
         second=[read_md,job('workbook',proposal,[read_md])]
         recovery_file=None
-        if args.lost_receipt:
+        if args.lost_receipt or args.lost_runtime_receipt:
             md_root=job_root/operations['markdown']
             key=hashlib.sha256((operations['markdown']+':execute').encode()).hexdigest()[:32]
             recovery_file=md_root/'operations'/(key+'.result.json')
             original_intent=(md_root/'operations'/(key+'.json')).read_bytes()
+            if args.lost_runtime_receipt:
+                runtime_profile=json.loads(transport.read_text())['apple_container']
+                runtime_receipt=Path(runtime_profile['ledger'])/(json.loads(original_intent)['request']+'.result.json')
+                assert runtime_receipt.exists()
+                runtime_receipt.unlink()
             assert recovery_file.exists()
             recovery_file.unlink();(md_root/'result.json').unlink()
             uncertain=driver.request({'op':'cocoon-job-status','id':session,'operation_id':operations['markdown']},credential)
@@ -271,10 +286,14 @@ for raw in sys.stdin:
             driver.approve({'op':'harness-finish','id':session,'execution':view['execution'],
                 'after_turn':markdown_turn+1},credential)
         driver.wait(session,credential)
-        if args.lost_receipt:
-            assert recovery_file.exists()
+        if args.lost_receipt or args.lost_runtime_receipt:
             assert (md_root/'operations'/(key+'.json')).read_bytes()==original_intent
-            assert json.loads((md_root/'result.json').read_text())==md_result
+            if args.lost_runtime_receipt:
+                assert not recovery_file.exists() and not runtime_receipt.exists()
+                assert not (md_root/'result.json').exists()
+            else:
+                assert recovery_file.exists()
+                assert json.loads((md_root/'result.json').read_text())==md_result
         accepted=accept('workbook','result.xlsx')
         delivery=driver.root/'result.xlsx';delivery.write_bytes(bytes(accepted['bytes']))
         report=document.verify_workbook(md,delivery)
@@ -285,7 +304,7 @@ for raw in sys.stdin:
         assert completion['termination_confirmed'] and completion['cocoon']['termination_confirmed']
         activity=driver.request({'op':'activity','id':session},credential)
         summary={'passed':True,'model_calls':None if args.codex else 0,'model_turns':(3 if args.clarification else 2) if args.codex else 0,'real_model':bool(args.codex),'protocol_fixture':not bool(args.codex),
-            'single_original_session':True,'guest_document_programs':3,'clarification':args.clarification,'lost_receipt':args.lost_receipt,'controller_restarted':args.restart_controller,'normal_finish':args.finish_session,'product_controls':args.product_controls,'host_custody':True,'total_eur':'38.50',
+            'single_original_session':True,'guest_document_programs':3,'clarification':args.clarification,'lost_receipt':args.lost_receipt,'lost_runtime_receipt':args.lost_runtime_receipt,'controller_restarted':args.restart_controller,'normal_finish':args.finish_session,'product_controls':args.product_controls,'host_custody':True,'total_eur':'38.50',
             'vm_termination_confirmed':True,'workbook_sha256':sha(delivery),'host_sha256':sha(driver.host),
             'domain_program_sha256':sha(program),'metrics':activity.get('harness',{}).get('metrics')}
         (driver.root/'report.json').write_text(json.dumps(summary,indent=2))

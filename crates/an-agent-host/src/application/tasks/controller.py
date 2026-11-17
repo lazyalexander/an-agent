@@ -102,8 +102,8 @@ def main():
     save(answers,{})
     accepted.touch(exist_ok=False)
     client=Client(host,service,root);deadline=time.monotonic()+600
-    state={'state':'preparing','products':{},'session':None,'steps':{},'runtime_cleanup_required':True}
-    vm=None;api_process=None;credential=None;transport=None;work=None;vm_bound=False;setup_bound=False;cocoon_state=Path(config.get('cocoon_state') or root/'cocoon')
+    state={'state':'preparing','backend':'cocoon','products':{},'session':None,'steps':{},'runtime_cleanup_required':True}
+    credential=None;vm_bound=False;setup_bound=False
     stopping=False;owners_confirmed=True;requested_outcome='failed'
     def stop(_signal,_frame):
         nonlocal stopping
@@ -114,27 +114,8 @@ def main():
         if time.monotonic()>deadline:raise TimeoutError('Task deadline reached')
     def update(**values):
         state.update(values);save(root/'state.json',state)
-    def direct(*args,abortable=False):
-        command=[str(environment/components['cocoon']),'host',str(cocoon_state),*map(str,args)]
-        if abortable:
-            with subprocess.Popen(command,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True) as process:
-                while True:
-                    try:
-                        stdout,stderr=process.communicate(timeout=.1)
-                        if process.returncode:raise RuntimeError('Cocoon control failed; inspect original request')
-                        return json.loads(stdout)
-                    except subprocess.TimeoutExpired:
-                        try:check()
-                        except BaseException:
-                            try:subprocess.run(command[:3]+['image-cancel',str(root/'image-branch-query.json')],capture_output=True,timeout=10)
-                            finally:
-                                process.terminate();process.communicate(timeout=5)
-                            raise
-        result=subprocess.run([str(environment/components['cocoon']),'host',str(cocoon_state),*map(str,args)],capture_output=True,text=True,timeout=180)
-        if result.returncode:raise RuntimeError('Cocoon control failed; inspect private records')
-        return json.loads(result.stdout)
-    def api(operation,grant='',request_id=None):
-        return cocoon_control['call'](direct,save,root,operation,grant,request_id)
+    backend_type=runpy.run_path(str(Path(__file__).with_name('cocoon_backend.py')))['CocoonBackend']
+    backend=backend_type(environment,components,config,root,service,client,save,read,check,update,wait_control,cocoon_control)
     def wait_job(job):
         while True:
             check();value=client.request({'op':'task','id':job},credential)
@@ -151,42 +132,7 @@ def main():
             if value['state']=='settled':raise RuntimeError('Original primary session ended before delivery')
             time.sleep(.1)
     try:
-        check()
-        if not config.get('cocoon_state'):
-            image=direct('image','import',environment/components['kernel'],environment/components['initrd'],environment/components['root_image'],'Reviewed offline runtime')['image']
-        else:
-            cocoon_state.parent.mkdir(parents=True,exist_ok=True,mode=0o700)
-            direct('image-init')
-            if config.get('image'):
-                image=config['image']['image']
-                current=direct('image-info',image)
-                if current['approved'] is not True or current['sha256']!=config['image']['sha256']:raise ValueError('Approved image changed')
-            else:
-                image=direct('image','import',environment/components['kernel'],environment/components['initrd'],environment/components['root_image'],'Reviewed offline runtime')['image']
-        vm=str(uuid.uuid4());save(root/'setup.json',{'vm':vm,'image':image,'owner':'product-task'})
-        update(vm=vm)
-        log=(root/'cocoon.log').open('w')
-        save(root/'runtime-launch.json',{'automatic_retries':0})
-        api_process=subprocess.Popen([str(environment/components['cocoon']),'host',str(cocoon_state),'serve',str(environment/components['runner'])],stdout=log,stderr=log)
-        client.cli('app','task-runtime-owner',service,root.name,api_process.pid)
-        socket=Path('/tmp')/('cocoon-host-'+hashlib.sha256(os.fsencode(cocoon_state)).hexdigest()+'.sock')
-        wait_control(socket,api_process,lambda:api({'operation':'protection_status'}),check)
-        check()
-        if config.get('image'):
-            request_id=str(uuid.uuid4())
-            save(root/'image-branch-query.json',{'request':request_id,'caller':'product-task','credential':(cocoon_state/'api-credential').read_text()})
-            save(root/'image-branch-intent.json',{'request':request_id,'vm':vm,'image':image})
-            result=api({'operation':'image_mutation','action':{'operation':'branch','image':image,'sha256':config['image']['sha256'],'vm':vm,'owner':'product-task:'+root.name}},request_id=request_id)
-            save(root/'image-branch-result.json',result)
-            if result['state']!='succeeded':raise RuntimeError('Original image branch requires reconciliation')
-        else:direct('vm','create',vm,image,'product-task','retain')
-        check()
-        start_id=str(uuid.uuid4());save(root/'start-intent.json',{'request':start_id,'vm':vm})
-        active=api({'operation':'start','vm':vm},request_id=start_id)
-        save(root/'start-result.json',active)
-        work=api({'operation':'issue_grant','subject':'product-task','vm':vm,'actions':['inspect','guest','export','stop'],
-                  'expires_unix':int(time.time())+900,'max_export_bytes':4194304})
-        transport=root/'transport.json';save(transport,{'socket':str(socket),'grant':work['token'],'caller':'product-task','vm':vm,'generation':active['generation']})
+        transport=backend.prepare()
         specs={};operations={name:str(uuid.uuid4()) for name in ('extract','intermediate','final')}
         for name in operations:
             spec=root/(name+'-spec.json')
@@ -329,42 +275,7 @@ def main():
                 time.sleep(.1)
             if not confirmed:owners_confirmed=False;state['state']='unknown';save(root/'state.json',state)
     finally:
-        vm_confirmed=vm is None
-        if vm:
-            try:
-                initial=direct('vm','show',vm)
-                if not vm_bound and initial.get('state')=='prepared' and 'active_lease' in initial and initial['active_lease'] is None and 'active_attempt' in initial and initial['active_attempt'] is None:
-                    observed=initial
-                elif vm_bound:
-                    observed=client.request({'op':'cocoon-release','id':state['session']},credential)
-                    if not observed or not observed.get('termination_confirmed'):raise RuntimeError('Original VM release is unconfirmed')
-                elif setup_bound:
-                    observed=client.cli('app','task-release-setup',service,root.name)
-                    if not observed.get('termination_confirmed'):raise RuntimeError('Original setup release is unconfirmed')
-                elif work:
-                    stop_id=str(uuid.uuid4());save(root/'controller-stop.json',{'request':stop_id,'vm':vm})
-                    observed=api({'operation':'stop','vm':vm},work['token'],stop_id)
-                else:observed=direct('vm','stop',vm)
-                save(root/'vm-release.json',observed)
-                observed=direct('vm','show',vm)
-                vm_confirmed=observed.get('active_lease') is None and (observed.get('state') in ('stopped','recovery_required') or (observed.get('state')=='prepared' and observed.get('active_attempt') is None))
-                if observed.get('active_lease') is not None or not vm_confirmed:
-                    update(state='unknown',error='VM release not confirmed')
-            except Exception:
-                if not (root/'start-intent.json').exists():vm_confirmed=True
-                else:update(state='unknown',error='VM release not confirmed')
-        if api_process is not None and vm_confirmed and owners_confirmed:
-            api_process.terminate()
-            try:api_process.wait(timeout=15)
-            except subprocess.TimeoutExpired:vm_confirmed=False
-        runtime_confirmed=api_process is None or api_process.poll() is not None
-        if runtime_confirmed:
-            try:
-                if not client.cli('app','task-image-settle',service,root.name)['settled']:owners_confirmed=False
-            except Exception:owners_confirmed=False
-        if not owners_confirmed:update(state='unknown',error='Original operation settlement unconfirmed')
-        if vm_confirmed and owners_confirmed and runtime_confirmed and state['state']=='stopping':update(state=requested_outcome,termination_confirmed=True,runtime_termination_confirmed=True)
-        elif not runtime_confirmed:update(state='unknown',error='Control service release not confirmed')
+        backend.cleanup(state, credential, vm_bound, setup_bound, owners_confirmed, requested_outcome)
 
 
 if __name__=='__main__':main()

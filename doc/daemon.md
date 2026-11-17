@@ -487,6 +487,15 @@ lane or authorize later job steps.
 
 ## Offline environment client
 
+Apple Container migration currently provides an opt-in guest transport and separates legacy lifecycle
+coordination into `application/tasks/cocoon_backend.py`. Product tasks still select Cocoon. Fork build
+qualification uses `tools/qualification/container_build.py SOURCE NEW_EVIDENCE_DIRECTORY` with the adjacent
+`container-build-lock.json`; changed source, dependencies or toolchain are refused. The resulting build
+manifest hashes CLI and service products. `container_install.py SOURCE BUILD_JSON` verifies those bytes,
+signs and installs them under the user's Application Support directory and records installed hashes.
+Neither command starts services or qualifies execution, quotas, cold restore or product delivery.
+Installation and build evidence remain private; official binary results cannot qualify the fork.
+
 `an-agent-host app serve ROOT` starts the separate authenticated product page for an existing private daemon.
 `ROOT/application/endpoint.json` contains its local URL. The client provides offline environment import, bounded
 document task creation, clarification, cancellation and accepted artifact download. It does not change the existing

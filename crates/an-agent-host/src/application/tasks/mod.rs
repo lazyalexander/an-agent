@@ -219,6 +219,10 @@ pub fn worker(service: &Path, id: &str) -> Result<Value> {
         include_bytes!("cocoon_control.py"),
     )?;
     store::write_new(
+        &root.join("cocoon_backend.py"),
+        include_bytes!("cocoon_backend.py"),
+    )?;
+    store::write_new(
         &root.join("context_support.py"),
         include_bytes!("context_support.py"),
     )?;
