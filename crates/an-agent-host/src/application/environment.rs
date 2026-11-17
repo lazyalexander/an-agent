@@ -5,6 +5,7 @@ use flate2::read::GzDecoder;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::{
+    collections::BTreeMap,
     fs,
     io::{Read, Seek, SeekFrom, Write},
     path::Path,
@@ -54,6 +55,7 @@ fn inspect(archive: &Path, destination: Option<&Path>) -> Result<Manifest> {
         .validate()
         .map_err(|e| -> Box<dyn std::error::Error> { e.into() })?;
     drop(first);
+    let mut metadata = BTreeMap::new();
     for (name, declared) in &manifest.files {
         let mut entry = entries.next().ok_or("runtime payload missing")??;
         if entry.path_bytes().as_ref() != name.as_bytes()
@@ -76,7 +78,19 @@ fn inspect(archive: &Path, destination: Option<&Path>) -> Result<Manifest> {
         } else {
             None
         };
-        if hash_stream(&mut entry, output.as_mut(), declared.bytes)? != declared.sha256 {
+        let hash = if super::runtime_backend::is_metadata(&manifest, name) {
+            if declared.bytes > 65536 {
+                return Err("runtime backend metadata limit".into());
+            }
+            let mut bytes = Vec::new();
+            entry.read_to_end(&mut bytes)?;
+            let hash = hash_stream(&mut bytes.as_slice(), output.as_mut(), declared.bytes)?;
+            metadata.insert(name.clone(), bytes);
+            hash
+        } else {
+            hash_stream(&mut entry, output.as_mut(), declared.bytes)?
+        };
+        if hash != declared.sha256 {
             return Err("runtime payload digest mismatch".into());
         }
         if let Some(file) = output {
@@ -95,6 +109,12 @@ fn inspect(archive: &Path, destination: Option<&Path>) -> Result<Manifest> {
     if entries.next().is_some() {
         return Err("undeclared runtime payload".into());
     }
+    super::runtime_backend::validate(&manifest, |path| {
+        metadata
+            .get(path)
+            .cloned()
+            .ok_or_else(|| "backend metadata missing".into())
+    })?;
     Ok(manifest)
 }
 pub fn preview(archive: &Path) -> Result<Value> {
@@ -169,7 +189,14 @@ pub fn validate_installed(root: &Path) -> Result<Value> {
             return Err("installed environment changed".into());
         }
     }
-    Ok(json!({"id":store::digest(&bytes),"manifest":manifest,"verified":true}))
+    let backend = super::runtime_backend::validate(&manifest, |path| {
+        store::read(&root.join(path), 65536).map_err(|error| error.to_string())
+    })?;
+    Ok(
+        json!({"id":store::digest(&bytes),"manifest":manifest,"verified":true,
+        "backend":backend.as_ref().map_or("cocoon", |value| value.backend.as_str()),
+        "backend_declaration":backend}),
+    )
 }
 #[cfg(test)]
 mod tests;

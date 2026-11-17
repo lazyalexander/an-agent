@@ -4,5 +4,6 @@ mod control;
 pub mod environment;
 mod images;
 mod manifest;
+mod runtime_backend;
 pub mod server;
 pub mod tasks;
