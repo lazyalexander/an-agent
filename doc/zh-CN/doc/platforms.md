@@ -2,7 +2,7 @@
 
 [English](../../platforms.md) · 中文译文，以英文为准。 · [中文目录](../README.md)
 
-这是 an-agent 的运行时支持矩阵。Loom 拥有对应的 [作者指南和包移交矩阵](https://github.com/lazyalexander/an-loom/blob/dev-advance/docs/platforms.md)。保持所有权边界对齐；不要将运行时声明复制到每一个功能文档中。一个构建、测试跳过或清单声明并不能证明该执行边界在该机器上有效。
+这是 an-agent 的运行时支持矩阵。Loom 拥有对应的 [作者指南和包移交矩阵](https://github.com/lazyalexander/an-loom/blob/dev-container-migration/docs/platforms.md)。保持所有权边界对齐；不要将运行时声明复制到每一个功能文档中。一个构建、测试跳过或清单声明并不能证明该执行边界在该机器上有效。
 
 当前交付目标是本地，已审查的无头 spools。现有 Linux 实现和 CI 保持不变；扩展 Linux 执行、GPU/GUI 支持或添加一个后端是独立的工作。没有隐式的操作系统转换。
 
@@ -19,6 +19,7 @@ OpenShell 保留为可选后端；扩展暂停。其现有的适配器和失败�
 | 独立的 Rust 构建配方 | 现有狭窄的构建/文件接受 | 无 Linux 构建适配器 | 未资格 | [构建/文件合同](workspace-jobs.md)；与运行一个已经构建的文件程序分开 |
 | 可选 OpenShell 适配器 | 操作员选择的控制/传输 | 选定后端环境，独立资格 | 未资格 | [历史活证据](openshell.md)；普通 CI 不暗示实际-VM 测试 |
 | Cocoon 文档交付与私有冷启动磁盘镜像 | Apple Silicon 已完成真实 VM、镜像/状态、取消与文档验收 | VM 执行未验收 | 未验收 | [镜像契约](../../../doc/daemon.md#p12-private-cold-disk-images)与[产品验收](../../../crates/an-agent-host/tests/cli/native_image_delivery.py)；固定离线运行包、单主 agent、原宿主保管；内存恢复独立验收 |
+| Apple Container 来宾传输与离线导入 | 可选适配器，macos-aarch64 包校验 | 不支持执行 | 不支持执行 | 宿主校验 fork 来源及组件摘要。产品任务仍使用 Cocoon。见[运行包契约](daemon.md)。 |
 | 可选 SPACE 文件适配器 | 真实公共 host 验收及故障测试 | host CI；Linux 控制宿主未做实测 | 未验收 | Linux x86_64 Firecracker 文件 ABI；保留历史 8 字节产物接管与删除验收；云端实验已停止，CAD→Krita 待验收 |
 | GPU 工程师、GUI 转换器、实时内存暂停 | 分离资格要求 | 分离资格要求 | 分离资格要求 | 既没有 CPU 成功，也没有一个原生二进制建立这些能力 |
 
