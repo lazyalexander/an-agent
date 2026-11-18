@@ -311,7 +311,7 @@ TaskSession 将后端 I/O 交给核实过的原 owner，队列及保管操作仍
 澄清、取消及已验收产物下载。原 daemon 控制台继续只读。
 
 Loom 的 `pack-runtime SOURCE MANIFEST NEW_ARCHIVE` 按明确选定的清单组装离线包。
-Apple Container 迁移目前提供显式选择的 guest 传输；旧生命周期已拆到 `application/tasks/cocoon_backend.py`，产品任务仍使用 Cocoon。
+文档任务按导入环境选择后端。Container 环境为每个任务启动一个独立 Linux guest。操作者先用 `container system start --offline` 启动对应的签名控制服务，以 `container image load -i ARCHIVE` 导入审核过的 init 和工作负载 OCI 归档，再用 `container image tag LOADED_REFERENCE REPOSITORY@sha256:DIGEST` 注册两个摘要引用。任务启动前核对 API 服务可执行文件及镜像身份。共享服务由操作者管理，任务只回收自身带身份标签的 guest。无法确认回收时，任务进入待核对状态。
 `tools/qualification/container_build.py SOURCE NEW_EVIDENCE_DIRECTORY` 按相邻 `container-build-lock.json` 固定源码、依赖和工具链，并记录 CLI 与服务摘要。
 `container_install.py SOURCE BUILD_JSON` 校验、签名并安装到用户 Application Support 目录，记录安装摘要。
 两个命令都不启动服务；构建及安装不代表执行、配额、冷恢复或产品交付验收通过。证据保留在私有目录，官方二进制结果不能代替 fork 验收。
@@ -319,7 +319,7 @@ Apple Container 迁移目前提供显式选择的 guest 传输；旧生命周期
 Container 包沿用 `an-offline-runtime-v1`。非可执行的 `backend` 数据采用 `an-container-backend-v1`，声明 `backend: "apple-container"`、带摘要的 `image`、`cpus`（1–8）、`memory_mib`（256–16384）与 `storage_bytes`（256 MiB–64 GiB）；资源请求不等于已落实配额。
 `container_provenance` 采用 `an-container-provenance-v1`，包含 `repository`、40 位十六进制 `commit`、`swift_lock_sha256` 和路径到摘要的 `files` 表。
 必需组件为 `container`、`container_apiserver`、`container_runtime_linux`、`container_network_vmnet`、`container_images`、`container_kernel`、`container_init`、`container_image`、`container_swift_lock`；前五项可执行，其余为数据。image/init 是离线镜像归档，执行前还必须独立核对加载后的 OCI 身份。
-Loom 与宿主都拒绝来源不匹配、缺失组件和混合旧镜像 API。导入只校验与安装；生命周期验收前，产品执行明确拒绝该后端，不回退。没有 Container 声明的包保留旧规则。
+Loom 与宿主都拒绝来源不匹配、缺失组件和混合旧镜像 API。导入只校验与安装；任务执行前核对所选后端。没有 Container 声明的包保留旧规则。
 
 `an-offline-runtime-v1` 清单绑定名称、版本、`macos-aarch64`、许可文件、组件引用，
 以及各文件的 SHA-256、大小与可执行标记。gzip tar 首项为 `runtime.json`，之后

@@ -102,7 +102,7 @@ def main():
     save(answers,{})
     accepted.touch(exist_ok=False)
     client=Client(host,service,root);deadline=time.monotonic()+600
-    state={'state':'preparing','backend':'cocoon','products':{},'session':None,'steps':{},'runtime_cleanup_required':True}
+    state={'state':'preparing','backend':config.get('backend','cocoon'),'products':{},'session':None,'steps':{},'runtime_cleanup_required':True}
     credential=None;vm_bound=False;setup_bound=False
     stopping=False;owners_confirmed=True;requested_outcome='failed'
     def stop(_signal,_frame):
@@ -115,6 +115,8 @@ def main():
     def update(**values):
         state.update(values);save(root/'state.json',state)
     backend_type=runpy.run_path(str(Path(__file__).with_name('cocoon_backend.py')))['CocoonBackend']
+    if state['backend']=='apple-container':
+        backend_type=runpy.run_path(str(Path(__file__).with_name('container_backend.py')))['ContainerBackend']
     backend=backend_type(environment,components,config,root,service,client,save,read,check,update,wait_control,cocoon_control)
     def wait_job(job):
         while True:
@@ -137,7 +139,7 @@ def main():
         for name in operations:
             spec=root/(name+'-spec.json')
             save(spec,{'transport':str(transport),'transport_sha256':sha(transport),'program':str(domain/recipe['program']),
-                'program_sha256':sha(domain/recipe['program']),'interpreter':recipe['guest_interpreter'],
+                'program_sha256':sha(domain/recipe['program']),'interpreter':'/usr/local/bin/python3' if state['backend']=='apple-container' else recipe['guest_interpreter'],
                 'arguments':['-I','-B','{program}',recipe[name]['action'],'{request}','{output}'],'outputs':recipe[name]['outputs']})
             specs[name]=spec
         client.cli('app','task-bind-setup',service,root.name)

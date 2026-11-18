@@ -30,25 +30,23 @@ pub(super) fn preview(service: &Path, req: &Value) -> Result<Value> {
     if verified["id"] != req["environment"] {
         return Err("environment identity changed".into());
     }
-    if verified["backend"] != "cocoon" {
-        return Err(
-            "selected runtime backend product lifecycle is not yet qualified; no fallback".into(),
-        );
-    }
     let components = &verified["manifest"]["components"];
+    let backend_files: &[&str] = if verified["backend"] == "apple-container" {
+        &super::runtime_backend::COMPONENTS
+    } else {
+        &["cocoon", "runner", "kernel", "initrd", "root_image"]
+    };
     for name in [
         "delivery",
-        "cocoon",
-        "runner",
-        "kernel",
-        "initrd",
-        "root_image",
         "native_python",
         "native_stdlib",
         "native_site",
         "intermediate_package",
         "final_package",
-    ] {
+    ]
+    .into_iter()
+    .chain(backend_files.iter().copied())
+    {
         if components[name].as_str().is_none() {
             return Err(format!("missing environment component: {name}").into());
         }
@@ -100,7 +98,7 @@ pub(super) fn preview(service: &Path, req: &Value) -> Result<Value> {
     let project = project::context(service, req, &image)?;
     let plan = json!({"project":project,"id":id,"environment":environment,"environment_digest":verified["id"],"input":input,
         "input_sha256":store::digest(&bytes),"instruction":instruction,"codex":codex,"codex_sha256":executable,
-        "model":"gpt-6.1-sol","wall_seconds":600,"maximum_turns":3,"image":image,"cocoon_state":cocoon_state});
+        "backend":verified["backend"],"model":"gpt-6.1-sol","wall_seconds":600,"maximum_turns":3,"image":image,"cocoon_state":cocoon_state});
     Ok(
         json!({"approval_sha256":store::digest(&serde_json::to_vec(&plan)?),"plan":plan,"executed":false}),
     )
@@ -217,6 +215,10 @@ pub fn worker(service: &Path, id: &str) -> Result<Value> {
             .as_str()
             .ok_or("native Python")?,
     );
+    store::write_new(
+        &root.join("container_backend.py"),
+        include_bytes!("container_backend.py"),
+    )?;
     let script = root.join("controller.py");
     store::write_new(&script, include_bytes!("controller.py"))?;
     store::write_new(
@@ -277,6 +279,9 @@ pub(super) fn clarify(service: &Path, req: &Value) -> Result<Value> {
     let id = req["id"].as_str().ok_or("task identity")?;
     let root = directory(service, id)?;
     let _clarification = store::lock(&root)?;
+    if root.join("cancel.json").exists() {
+        return Err("task cancellation already requested".into());
+    }
     let retained = root.join("clarification.json");
     if retained.exists() {
         let plan: Value = serde_json::from_slice(&store::read(&retained, 65536)?)?;
@@ -338,8 +343,12 @@ pub(super) fn cancel(service: &Path, id: &str) -> Result<Value> {
     if current["state"]["termination_confirmed"] == true {
         return Ok(json!({"cancellation_requested":false,"settled":true}));
     }
-    if !root.join("cancel.json").exists() {
-        store::write_new(&root.join("cancel.json"), b"{}")?;
+    {
+        let _lock = store::lock(&root)?;
+        if !root.join("cancel.json").exists() {
+            store::write_new(&root.join("cancel.json"), b"{}")?;
+            fs::File::open(&root)?.sync_all()?;
+        }
     }
     let state = view(service, id)?;
     if state["state"]["state"] == "unknown" {
