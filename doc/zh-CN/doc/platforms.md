@@ -2,7 +2,7 @@
 
 [English](../../platforms.md) · 中文译文，以英文为准。 · [中文目录](../README.md)
 
-这是 an-agent 的运行时支持矩阵。Loom 拥有对应的 [作者指南和包移交矩阵](https://github.com/lazyalexander/an-loom/blob/dev-container-migration/docs/platforms.md)。保持所有权边界对齐；不要将运行时声明复制到每一个功能文档中。一个构建、测试跳过或清单声明并不能证明该执行边界在该机器上有效。
+这是 an-agent 的运行时支持矩阵。Loom 拥有对应的 [作者指南和包移交矩阵](https://github.com/lazyalexander/an-loom/blob/dev-advance/docs/platforms.md)。保持所有权边界对齐；不要将运行时声明复制到每一个功能文档中。一个构建、测试跳过或清单声明并不能证明该执行边界在该机器上有效。
 
 当前交付目标是本地，已审查的无头 spools。现有 Linux 实现和 CI 保持不变；扩展 Linux 执行、GPU/GUI 支持或添加一个后端是独立的工作。没有隐式的操作系统转换。
 

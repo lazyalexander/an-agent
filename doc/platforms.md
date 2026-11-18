@@ -1,7 +1,7 @@
 # Platform support and qualification
 
 This is the runtime support matrix for an-agent. Loom owns the corresponding
-[authoring and package handoff matrix](https://github.com/lazyalexander/an-loom/blob/dev-container-migration/docs/platforms.md).
+[authoring and package handoff matrix](https://github.com/lazyalexander/an-loom/blob/dev-advance/docs/platforms.md).
 Keep these ownership boundaries aligned; do not copy a runtime claim into every
 feature document. A build, a test skip or a manifest declaration is not evidence
 that an execution boundary works on that machine.
