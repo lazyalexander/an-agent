@@ -487,14 +487,14 @@ lane or authorize later job steps.
 
 ## Offline environment client
 
-Apple Container remains opt-in; `application/tasks/cocoon_backend.py` owns the legacy lifecycle and product tasks still use Cocoon.
+Product document tasks use the backend selected by the imported environment. An Apple Container environment starts one isolated Linux guest for the task. The operator first starts the matching signed control service with `container system start --offline` and provisions the two reviewed OCI archives with `container image load -i ARCHIVE`. Register each loaded reference under its full repository digest with `container image tag LOADED_REFERENCE REPOSITORY@sha256:DIGEST`. Task startup checks the running API server executable and both image identities. The shared service remains operator-owned; the task owns only its labeled guest. A cancelled or completed task confirms the guest has stopped and reclaims it. Uncertain cleanup remains visible for operator reconciliation.
 `tools/qualification/container_build.py SOURCE NEW_EVIDENCE_DIRECTORY` pins source, Swift dependencies and tools using `container-build-lock.json`.
 `container_install.py SOURCE BUILD_JSON` verifies, signs and installs fork bytes under Application Support, recording hashes without starting services.
 Container bundles retain `an-offline-runtime-v1`; [the executable component contract](../crates/an-agent-host/src/application/runtime_backend.rs) defines required payloads and modes.
 Bounded `backend` data uses `an-container-backend-v1`: `backend: "apple-container"`, digest-qualified `image`, `cpus` (1–8), `memory_mib` (256–16384), `storage_bytes` (256 MiB–64 GiB). Requests do not establish quotas.
 `container_provenance` uses `an-container-provenance-v1`: fork `repository`, 40-hex `commit`, `swift_lock_sha256`, and payload-path-to-digest `files`.
 Image/init archives remain offline bytes; loaded OCI identities require independent host verification. Loom and host reject mismatched provenance, missing components and mixed legacy image APIs.
-Import only verifies and installs bytes. Product execution refuses unqualified backends without fallback; legacy bundles retain their rules. Private build evidence and official binaries cannot substitute for fork execution, cold-restore or delivery qualification.
+Import only verifies and installs bytes. The product controller checks the selected backend before launching guest work. Legacy bundles retain their rules. Private build evidence and official binaries cannot substitute for fork execution, cold-restore or delivery qualification.
 
 `an-agent-host app serve ROOT` starts the separate authenticated product page for an existing private daemon.
 `ROOT/application/endpoint.json` contains its local URL. The client provides offline environment import, bounded

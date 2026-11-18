@@ -220,6 +220,17 @@ def main():
             assert image_status(task_root)['state']=='cancelled'
             assert not (task_root/'start-intent.json').exists()
             assert not state.get('session')
+        if state.get('backend') == 'apple-container' and state.get('vm'):
+            reclaimed = json.loads((task_root/'container-reclaimed.json').read_text())
+            assert reclaimed['vm'] == state['vm']
+        if args.cancel_when_clarifying:
+            late = {'op':'delivery-clarify','id':task,'answers':{key:'EUR' if key=='currency' else 12 for key in state['questions']}}
+            try: call(late)
+            except AssertionError as error: assert 'cancellation already requested' in str(error)
+            else: raise AssertionError('Cancelled task accepted late clarification')
+            try: call({'op':'delivery-artifact','id':task,'stage':'final'})
+            except AssertionError as error: assert 'completed accepted product required' in str(error)
+            else: raise AssertionError('Cancelled task delivered a workbook')
         if args.cancel:assert 'final' not in state.get('products',{})
         if not args.cancel and not args.unsupported_source and args.turn_control!='revoke-spool':
             assert state['termination_confirmed']

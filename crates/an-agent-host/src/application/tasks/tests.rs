@@ -46,6 +46,20 @@ fn clarification_is_exact_and_replay_does_not_write_new_answers() -> Result<()> 
     Ok(())
 }
 #[test]
+fn cancellation_invalidates_pending_clarification() -> Result<()> {
+    let (_temporary, service, id, root) = fixture()?;
+    store::write_new(
+        &root.join("state.json"),
+        br#"{"state":"waiting-clarification","questions":["currency"]}"#,
+    )?;
+    let mut request = json!({"id":id,"answers":{"currency":"EUR"}});
+    request["approve"] = clarify(&service, &request)?["approval_sha256"].clone();
+    cancel(&service, &id)?;
+    assert!(clarify(&service, &request).is_err());
+    assert!(!root.join("clarification.json").exists());
+    Ok(())
+}
+#[test]
 fn product_download_never_reads_a_running_tasks_scratch() -> Result<()> {
     let (_temporary, service, id, root) = fixture()?;
     store::write_new(&root.join("state.json"), b"{\"state\":\"running\"}")?;

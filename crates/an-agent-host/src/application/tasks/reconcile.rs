@@ -106,6 +106,13 @@ pub(in crate::application) fn reconcile(service: &Path, id: &str) -> Result<Valu
         state["reconciliation"] = json!({"status":"missing-evidence","reason":"original VM release or setup authority unavailable"});
         return publish(&root, id, state);
     }
+    if state["backend"] == "apple-container"
+        && root.join("start-intent.json").exists()
+        && !root.join("container-reclaimed.json").is_file()
+    {
+        state["reconciliation"] = json!({"status":"missing-evidence","reason":"original container reclamation unconfirmed"});
+        return publish(&root, id, state);
+    }
     if state["runtime_cleanup_required"] == true || root.join("runtime-launch.json").exists() {
         match super::runtime::cleanup(&root) {
             Ok(true) => state["runtime_termination_confirmed"] = json!(true),
