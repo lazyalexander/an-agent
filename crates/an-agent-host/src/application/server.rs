@@ -213,6 +213,49 @@ fn selected(root: &Path, value: &Value, key: &str) -> Result<PathBuf> {
 }
 fn act(root: &Path, service: &Path, value: &Value) -> Result<Value> {
     match value["op"].as_str() {
+        Some("environment-setup-progress") => {
+            let environment = value["environment"]
+                .as_str()
+                .filter(|id| store::valid_digest(id))
+                .ok_or("invalid environment")?;
+            let home = std::env::var_os("HOME").ok_or("user home unavailable")?;
+            let path = PathBuf::from(home)
+                .join("Library/Application Support/an-agent/container/.prepare.lock");
+            let record = fs::read_to_string(path).unwrap_or_default();
+            let mut fields = record.split_whitespace();
+            let step = if fields.next() == Some(environment) {
+                fields
+                    .next()
+                    .filter(|s| matches!(*s, "start" | "container_init" | "container_image"))
+            } else {
+                None
+            };
+            Ok(json!({"step":step}))
+        }
+        Some("environment-setup") => {
+            let id = value["environment"]
+                .as_str()
+                .filter(|s| store::valid_digest(s))
+                .ok_or("environment required")?;
+            let directory = root.join("environments").join(id);
+            let verified = super::environment::validate_installed(&directory)?;
+            if verified["id"] != id || verified["backend"] != "apple-container" {
+                return Err("verified Container environment required".into());
+            }
+            let approved = value.get("steps").cloned().unwrap_or(Value::Null);
+            let fingerprint = |steps: &Value| {
+                store::digest(format!("prepare-container-v1:{id}:{steps}").as_bytes())
+            };
+            let apply = value.get("approve").is_some();
+            if apply && (!approved.is_array() || value["approve"] != fingerprint(&approved)) {
+                return Err("setup approval changed".into());
+            }
+            let steps = crate::execution::sandbox::product_process::prepare_container(
+                &directory, apply, &approved,
+            )?;
+            let approval = fingerprint(&steps);
+            Ok(json!({"steps":steps,"approval_sha256":approval}))
+        }
         Some("image-inventory") => super::images::inventory(service, value),
         Some("image-preview") => super::images::preview(service, value),
         Some("image-submit") => super::images::submit(service, value),

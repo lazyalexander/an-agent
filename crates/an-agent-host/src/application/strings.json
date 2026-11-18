@@ -74,7 +74,18 @@
     "resource_unsafe_or_missing_file": "文件无法核实，保留原数据",
     "resource_unregistered_resources": "存在未注册资源，保留原数据并先核实",
     "cleanupReview": "确认清理所列资源。已验收产物单独保留；删除开始后取消不能恢复字节，中断需核对原操作。",
-    "resourceOperation": "资源清理"
+    "resourceOperation": "资源清理",
+    "manifestDetails": "查看包清单",
+    "setupCheck": "检查环境",
+    "setupConfirm": "确认准备环境",
+    "setupReady": "可以运行",
+    "setupChecking": "正在检查环境…",
+    "setupApplying": "正在准备环境…",
+    "setup_start": "启动离线 Container 服务",
+    "setup_container_init": "加载并登记初始化镜像",
+    "setup_container_image": "加载并登记任务镜像",
+    "setup_busy": "正在准备环境",
+    "setupRetry": "重试"
   },
   "en": {
     "intro": "Local tasks and delivery",
@@ -151,6 +162,17 @@
     "resource_unsafe_or_missing_file": "File unverifiable; original data retained",
     "resource_unregistered_resources": "Unregistered resources retained; reconcile first",
     "cleanupReview": "Confirm cleanup of the listed resources. Accepted products stay retained. Cancellation cannot restore bytes after deletion starts; reconcile the original operation after interruption.",
-    "resourceOperation": "Resource cleanup"
+    "resourceOperation": "Resource cleanup",
+    "manifestDetails": "Manifest details",
+    "setupCheck": "Check environment",
+    "setupConfirm": "Prepare environment",
+    "setupReady": "Ready to run",
+    "setupChecking": "Checking environment…",
+    "setupApplying": "Preparing environment…",
+    "setup_start": "Start the offline Container service",
+    "setup_container_init": "Load and register the init image",
+    "setup_container_image": "Load and register the workload image",
+    "setup_busy": "Preparation in progress",
+    "setupRetry": "Retry"
   }
 }

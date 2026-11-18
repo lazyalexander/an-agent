@@ -311,7 +311,7 @@ TaskSession 将后端 I/O 交给核实过的原 owner，队列及保管操作仍
 澄清、取消及已验收产物下载。原 daemon 控制台继续只读。
 
 Loom 的 `pack-runtime SOURCE MANIFEST NEW_ARCHIVE` 按明确选定的清单组装离线包。
-文档任务按导入环境选择后端。Container 环境为每个任务启动一个独立 Linux guest。操作者先用 `container system start --offline` 启动对应的签名控制服务，以 `container image load -i ARCHIVE` 导入审核过的 init 和工作负载 OCI 归档，再用 `container image tag LOADED_REFERENCE REPOSITORY@sha256:DIGEST` 注册两个摘要引用。任务启动前核对 API 服务可执行文件及镜像身份。共享服务由操作者管理，任务只回收自身带身份标签的 guest。无法确认回收时，任务进入待核对状态。
+首次使用时，可在本机产品页导入离线包，选择环境并核对待执行的准备步骤。点击确认后，宿主离线启动匹配的已安装 fork，并登记两个镜像摘要。刷新页面会重新检查共享服务；若另一套安装占用了服务，页面显示冲突。任务进行期间刷新同一标签页可继续查看原任务。 共享服务由操作者管理。任务核对 API 服务和镜像身份，回收自身 guest；回收结果不明时进入待核对状态。
 `tools/qualification/container_build.py SOURCE NEW_EVIDENCE_DIRECTORY` 按相邻 `container-build-lock.json` 固定源码、依赖和工具链，并记录 CLI 与服务摘要。
 `container_install.py SOURCE BUILD_JSON` 校验、签名并安装到用户 Application Support 目录，记录安装摘要。
 两个命令都不启动服务；构建及安装不代表执行、配额、冷恢复或产品交付验收通过。证据保留在私有目录，官方二进制结果不能代替 fork 验收。

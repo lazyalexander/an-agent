@@ -142,3 +142,29 @@ pub(crate) fn image_submit(binary: &Path, root: &Path, request: &Path, log: File
         .stderr(log)
         .spawn()?)
 }
+
+/// Fixed host-side setup helper. The authenticated caller selects an installed environment.
+pub(crate) fn prepare_container(
+    environment: &Path,
+    apply: bool,
+    steps: &serde_json::Value,
+) -> Result<serde_json::Value> {
+    let output = Command::new("/usr/bin/python3")
+        .args([
+            "-I",
+            "-B",
+            "-c",
+            include_str!("../../application/prepare.py"),
+        ])
+        .arg(environment)
+        .arg(if apply { "apply" } else { "preview" })
+        .arg(steps.to_string())
+        .output()?;
+    if !output.status.success() {
+        return Err(String::from_utf8_lossy(&output.stderr)
+            .trim()
+            .to_owned()
+            .into());
+    }
+    Ok(serde_json::from_slice(&output.stdout)?)
+}
