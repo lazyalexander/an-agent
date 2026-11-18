@@ -15,7 +15,11 @@ use std::{
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct Profile {
+    #[serde(default)]
     pub socket: PathBuf,
+    #[serde(default)]
+    pub apple_container: Option<crate::execution::guest::apple::Profile>,
+    #[serde(default)]
     pub grant: String,
     pub caller: String,
     pub vm: String,
@@ -29,13 +33,22 @@ pub(crate) fn load(path: &Path, digest: &str) -> Result<Profile> {
     }
     let profile: Profile = serde_json::from_slice(&bytes)?;
     uuid::Uuid::parse_str(&profile.vm)?;
-    if !profile.socket.is_absolute() || profile.caller.is_empty() || profile.grant.len() != 64 {
+    let valid_transport = if let Some(apple) = &profile.apple_container {
+        apple.validate()?;
+        profile.socket.as_os_str().is_empty() && profile.grant.is_empty()
+    } else {
+        profile.socket.is_absolute() && profile.grant.len() == 64
+    };
+    if !valid_transport || profile.caller.is_empty() {
         return Err("invalid Cocoon profile".into());
     }
     Ok(profile)
 }
 
 fn exchange(profile: &Profile, id: &str, operation: Value) -> Result<Value> {
+    if profile.apple_container.is_some() {
+        return crate::execution::guest::apple::exchange(profile, id, operation);
+    }
     let mut stream = UnixStream::connect(&profile.socket)?;
     stream.set_read_timeout(Some(Duration::from_secs(30)))?;
     stream.set_write_timeout(Some(Duration::from_secs(5)))?;
@@ -66,6 +79,9 @@ fn exchange(profile: &Profile, id: &str, operation: Value) -> Result<Value> {
 }
 
 fn validate(profile: &Profile, operation: &Value) -> Result<()> {
+    if profile.apple_container.is_some() && operation["operation"] == "export" {
+        return Err("Apple Container uses bounded guest transfers; export is unavailable".into());
+    }
     match operation["operation"]
         .as_str()
         .ok_or("Cocoon operation required")?

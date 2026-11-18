@@ -12,6 +12,7 @@ impl Fixture {
     }
     fn profile(&self) -> Profile {
         Profile {
+            apple_container: None,
             socket: self.0.join("cc.sock"),
             grant: "a".repeat(64),
             caller: "main".into(),

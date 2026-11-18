@@ -2,6 +2,7 @@
 use std::io::{Read, Write};
 use std::path::Path;
 use std::process::Stdio;
+pub(crate) mod apple_container;
 mod process;
 pub(crate) mod service_process;
 pub(crate) mod space_transport;

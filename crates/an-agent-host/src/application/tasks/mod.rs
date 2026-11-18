@@ -30,6 +30,11 @@ pub(super) fn preview(service: &Path, req: &Value) -> Result<Value> {
     if verified["id"] != req["environment"] {
         return Err("environment identity changed".into());
     }
+    if verified["backend"] != "cocoon" {
+        return Err(
+            "selected runtime backend product lifecycle is not yet qualified; no fallback".into(),
+        );
+    }
     let components = &verified["manifest"]["components"];
     for name in [
         "delivery",
@@ -217,6 +222,10 @@ pub fn worker(service: &Path, id: &str) -> Result<Value> {
     store::write_new(
         &root.join("cocoon_control.py"),
         include_bytes!("cocoon_control.py"),
+    )?;
+    store::write_new(
+        &root.join("cocoon_backend.py"),
+        include_bytes!("cocoon_backend.py"),
     )?;
     store::write_new(
         &root.join("context_support.py"),

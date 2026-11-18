@@ -1,0 +1,9 @@
+{
+  "schema": "an-container-build-lock-v1",
+  "repository": "https://github.com/lazyalexander/container.git",
+  "commit": "a15b46097aa4c2325da13c1fb5192b9274aab083",
+  "package_resolved_sha256": "b7a30948766acb7b1f6f5e20d10c1ffcf3a09b9ee75ea02600f55af1bebc0acc",
+  "swift": "swift-driver version: 1.168.6 Apple Swift version 6.4.2 (swiftlang-6.4.2.1.9 clang-2100.4.1.1)\nTarget: arm64-apple-macosx27.0.0",
+  "xcode": "Xcode 27.2\nBuild version 27B52",
+  "configuration": "release"
+}

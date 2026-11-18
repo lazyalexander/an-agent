@@ -1,7 +1,7 @@
 # Platform support and qualification
 
 This is the runtime support matrix for an-agent. Loom owns the corresponding
-[authoring and package handoff matrix](https://github.com/lazyalexander/an-loom/blob/dev-advance/docs/platforms.md).
+[authoring and package handoff matrix](https://github.com/lazyalexander/an-loom/blob/dev-container-migration/docs/platforms.md).
 Keep these ownership boundaries aligned; do not copy a runtime claim into every
 feature document. A build, a test skip or a manifest declaration is not evidence
 that an execution boundary works on that machine.
@@ -29,6 +29,7 @@ downgrade to native execution or weaken a declaration to fit it.
 | Optional OpenShell adapter | Operator-selected control/transport | Selected backend environment, independently qualified | Unqualified | [Historical live evidence](openshell.md); opt-in real-VM test is not implied by ordinary CI |
 | User service, bounded queue and read-only console | Real native CLI and mechanical teaching application acceptance | Refused | Refused | Original supervisors and custody remain authoritative; [service contract](daemon.md) |
 | Cocoon document delivery and private cold-disk images | Apple Silicon real VM, image/state, cancellation and accepted-document qualification | VM execution unqualified | Unqualified | [Image contract](daemon.md#p12-private-cold-disk-images), [product qualification](../crates/an-agent-host/tests/cli/native_image_delivery.py); selected offline runtime, one primary agent and original host custody; memory restore is separate |
+| Apple Container guest transport and offline import | Opt-in adapter and macos-aarch64 bundle validation | Execution unsupported | Execution unsupported | The host verifies fork provenance and component digests. Product tasks still use Cocoon. See the [runtime contract](daemon.md). |
 | Optional SPACE file adapter | Live public host acceptance plus fault tests | Host CI; live Linux control host unqualified | Unqualified | Fixed Linux x86_64 Firecracker guest file ABI; historical eight-byte custody/deletion qualification; cloud experiments stopped, CAD→Krita pending |
 | Apple Silicon Blender Metal via reviewed workspace and native daemon | Steam and inline-four full-film/source checks, cancellation and custody qualified locally | Unqualified | Unqualified | Explicit graphics selection; [operator profile](workspace-jobs.md#explicit-apple-silicon-metal-selection) and [teaching cases](cases.md) |
 | Other GPU workers, GUI shuttles, live memory suspension | Separate qualification required | Separate qualification required | Separate qualification required | Neither CPU success nor a native binary establishes these capabilities |
