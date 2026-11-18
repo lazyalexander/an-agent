@@ -2,19 +2,21 @@
 const token=location.hash.slice(1)||sessionStorage.getItem('an-local-token')||'';
 if(token)sessionStorage.setItem('an-local-token',token);
 history.replaceState(null,'',location.pathname);
-let strings={},language='zh-CN',upload,preview,selectedTask,taskView,controlPreview;
+let strings={},language=sessionStorage.getItem('an-language')||'zh-CN',upload,preview,selectedTask,taskView,controlPreview;
 const $=id=>document.getElementById(id);
 async function request(path,body,raw=false){const response=await fetch(path,{method:body?'POST':'GET',headers:{Authorization:`Bearer ${token}`,...(!raw&&body?{'Content-Type':'application/json'}:{})},body:body?(raw?body:JSON.stringify(body)):undefined});const value=await response.json();if(!response.ok)throw new Error(value.error||response.statusText);return value;}
 // Preserve focused controls while unchanged observations are polled.
 function changed(element,value){const key=JSON.stringify([language,value]);if(element.dataset.view===key)return false;element.dataset.view=key;return true;}
 function stateText(value){return strings[language]["state_"+value]||value;}
-function render(){document.documentElement.lang=language;document.querySelectorAll('[data-text]').forEach(e=>e.textContent=strings[language][e.dataset.text]);document.querySelectorAll("[data-aria]").forEach(e=>e.setAttribute("aria-label",strings[language][e.dataset.aria]));}
+function render(){document.documentElement.lang=language;$('language').value=language;document.querySelectorAll('[data-text]').forEach(e=>e.textContent=strings[language][e.dataset.text]);document.querySelectorAll("[data-aria]").forEach(e=>e.setAttribute("aria-label",strings[language][e.dataset.aria]));}
 async function refresh(){const view=await request('/view');$('capacity').hidden=view.host.concurrency>=2;$('environments').textContent=view.environments.map(e=>`${e.manifest.name} ${e.manifest.version}`).join(' · ');const tasks=view.host.tasks||[];if(changed($('tasks'),tasks.map(task=>[task.id,task.label,task.outcome,task.state]))){$('tasks').replaceChildren();
 if(!tasks.length)$('tasks').textContent=strings[language].noTasks;
 for(const task of tasks){const button=document.createElement('button');button.textContent=`${task.label||task.id} · ${stateText(task.outcome||task.state)}`;button.onclick=()=>act(()=>selectTask(task.id));$('tasks').append(button);}}
 if(selectedTask)await selectTask(selectedTask);await renderDeliveries(view);renderImages(view);}
 async function act(callback){$('error').textContent='';try{await callback();}catch(error){$('error').textContent=error.message;} }
-$('language').onchange=e=>{language=e.target.value;render();};
+$('language').onchange=e=>{const old=language;language=e.target.value;sessionStorage.setItem('an-language',language);render();
+ if($('delivery-instruction').value===strings[old].defaultInstruction)$('delivery-instruction').value=strings[language].defaultInstruction;
+ act(refresh);if(setupEnvironment)checkSetup();};
 $('inspect').onclick=()=>act(async()=>{preview=null;$('approve').hidden=true;const file=$('bundle').files[0];if(!file)throw new Error(strings[language].choose);$('status').textContent=strings[language].uploading;upload=(await request('/upload',file,true)).upload;preview=await request('/action',{op:'environment-preview',upload});$('preview').textContent=JSON.stringify(preview.manifest,null,2);$('approve').hidden=false;$('status').textContent='';});
 $('approve').onclick=()=>act(async()=>{await request('/action',{op:'environment-import',upload,approve:preview.approval_sha256});$('approve').hidden=true;$('status').textContent=strings[language].imported;await refresh();});
 act(async()=>{strings=await (await fetch('/strings.json')).json();render();$('delivery-instruction').value=strings[language].defaultInstruction;await refresh();});
@@ -44,7 +46,34 @@ $('confirm-control').onclick=()=>act(async()=>{
 });
 setInterval(()=>{if(strings[language])act(refresh);},3000);
 
-let deliveryPlan,deliveryId;
+let deliveryPlan,deliveryId=sessionStorage.getItem('delivery:'+location.origin);
+let setupEnvironment,setupApproval,setupReady=false,setupRequest=0;
+async function checkSetup(apply=false){
+ const environment=setupEnvironment, sequence=++setupRequest, button=$('setup-action');
+ button.hidden=true;button.disabled=true;$('delivery-preview').disabled=true;
+ $('setup-state').textContent=strings[language][apply?'setupApplying':'setupChecking'];
+ let poll;
+ if(apply){
+  const observe=async()=>{
+   try{const r=await request('/action',{op:'environment-setup-progress',environment});
+    if(sequence===setupRequest && r.step)$('setup-state').textContent=strings[language]['setup_'+r.step];
+   }catch{/* Submission reports authoritative errors. */}
+   if(sequence===setupRequest)poll=setTimeout(observe,1500);
+  };
+  poll=setTimeout(observe,1500);
+ }
+ try{
+  const result=await request('/action',{op:'environment-setup',environment,...(apply?setupApproval:{})});
+  if(sequence!==setupRequest)return;
+  setupReady=result.steps.length===0;
+  setupApproval=result.steps.includes('busy')?null:{approve:result.approval_sha256,steps:result.steps};
+  $('setup-state').textContent=setupReady?strings[language].setupReady:result.steps.map(k=>strings[language]['setup_'+k]).join(' · ');
+  button.textContent=strings[language][setupApproval?'setupConfirm':'setupCheck'];
+  if(result.steps.includes('busy'))setTimeout(()=>{if(environment===setupEnvironment && !setupReady)checkSetup();},2000);
+ }catch(error){if(sequence!==setupRequest)return;setupReady=false;setupApproval=null;$('setup-state').textContent=error.message;button.textContent=strings[language].setupRetry;}
+ finally{clearTimeout(poll);if(sequence===setupRequest){setupRequest++;button.disabled=false;button.hidden=setupReady;$('delivery-preview').disabled=!setupReady;}}
+}
+$('setup-action').onclick=()=>checkSetup(Boolean(setupApproval));
 async function renderDeliveries(view){
  const select=$('delivery-environment'),selected=select.value;
  if(changed(select,view.environments.map(e=>[e.id,e.manifest.name,e.manifest.version]))){select.replaceChildren();
@@ -52,7 +81,11 @@ async function renderDeliveries(view){
  if([...select.options].some(o=>o.value===selected))select.value=selected;}
  if(changed($('deliveries'),(view.deliveries||[]).map(d=>[d.id,d.state.state]))){$('deliveries').replaceChildren();
  for(const delivery of view.deliveries||[]){const button=document.createElement('button');button.textContent=`${delivery.id.slice(0,8)} · ${stateText(delivery.state.state)}`;button.onclick=()=>act(()=>showDelivery(delivery.id));$('deliveries').append(button);}}
- if(deliveryId)await showDelivery(deliveryId);
+ const isContainer=Boolean(view.environments.find(e=>e.id===select.value)?.manifest.components.container);
+ $('setup-panel').hidden=!isContainer;$('legacy-images').hidden=isContainer;$('delivery-image').hidden=isContainer;$('project-source').hidden=isContainer;
+ const next=isContainer?select.value:null;
+ if(setupEnvironment!==next){setupEnvironment=next;setupRequest++;setupReady=false;setupApproval=null;$('delivery-plan').hidden=true;$('setup-action').hidden=false;if(next)checkSetup();else $('delivery-preview').disabled=false;}
+ if(deliveryId && view.deliveries?.some(d=>d.id===deliveryId))await showDelivery(deliveryId);
 }
 $('delivery-preview').onclick=()=>act(async()=>{
  const file=$('delivery-file').files[0],environment=$('delivery-environment').value;
@@ -73,15 +106,17 @@ $('delivery-confirm').onclick=()=>act(async()=>{
  finally{$('delivery-confirm').disabled=false;}
 });
 async function showDelivery(id){
- if(deliveryId!==id)$('clarification-form').replaceChildren();deliveryId=id;
+ if(deliveryId!==id)$('clarification-form').replaceChildren();deliveryId=id;sessionStorage.setItem('delivery:'+location.origin,id);
  const value=await request('/action',{op:'delivery-view',id});if(deliveryId!==id)return;
- deliveryEnvironment=value.environment;const state=value.state;$('save-project').hidden=state.termination_confirmed!==true||!state.vm;
+ deliveryEnvironment=value.environment;const state=value.state;$('save-project').hidden=state.backend==='apple-container'||state.termination_confirmed!==true||!state.vm;
  $('delivery-detail').hidden=false;$('delivery-state').textContent=stateText(state.state)+(state.error?' · '+state.error:'');
  $('delivery-reconcile').hidden=state.state!=='unknown';
  $('delivery-cancel').disabled=['succeeded','cancelled','failed'].includes(state.state);
  const form=$('clarification-form');
- if(state.state==='waiting-clarification'&&!form.children.length){
-  for(const field of state.clarifications){const label=document.createElement('label');label.textContent=(field.label[language]||field.label.en)+(field.source_label?' · '+field.source_label:'');const input=document.createElement(field.type==='enum'?'select':'input');input.dataset.question=field.key;input.required=true;if(field.type==='enum')for(const choice of field.choices){const option=document.createElement('option');option.value=choice;option.textContent=choice;input.append(option);}else{input.type='number';input.min=field.minimum;input.max=field.maximum;}label.append(input);form.append(label,document.createElement('br'));}
+ if(state.state==='waiting-clarification'&&(!form.children.length||form.dataset.language!==language)){
+  const answers=Object.fromEntries([...form.querySelectorAll('[data-question]')].map(input=>[input.dataset.question,input.value]));
+  form.replaceChildren();form.dataset.language=language;
+  for(const field of state.clarifications){const label=document.createElement('label');label.textContent=(field.label[language]||field.label.en)+(field.source_label?' · '+field.source_label:'');const input=document.createElement(field.type==='enum'?'select':'input');input.dataset.question=field.key;input.required=true;if(field.type==='enum')for(const choice of field.choices){const option=document.createElement('option');option.value=choice;option.textContent=choice;input.append(option);}else{input.type='number';input.min=field.minimum;input.max=field.maximum;}if(field.key in answers)input.value=answers[field.key];label.append(input);form.append(label,document.createElement('br'));}
  }
  $('delivery-answer').hidden=state.state!=='waiting-clarification';if(state.state!=='waiting-clarification')form.replaceChildren();
  if(changed($('delivery-products'),[id,state.state])){$('delivery-products').replaceChildren();
